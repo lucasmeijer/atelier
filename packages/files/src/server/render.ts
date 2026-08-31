@@ -1,6 +1,7 @@
 import { posix } from "node:path";
 import { actionItemHtml } from "@atelier/design-system/action-item";
-import { disclosureIconHtml, domId, escapeHtml, workspaceFileOpenUrl, workspaceProxyUrl, type WorkspaceWorkViewPresentation } from "@atelier/shared";
+import { Icons } from "@atelier/design-system/icons";
+import { domId, escapeHtml, workspaceFileOpenUrl, workspaceProxyUrl, type WorkspaceWorkViewPresentation } from "@atelier/shared";
 import { workspaceRoot } from "@atelier/workspace";
 import type { FileEntry } from "./files.ts";
 import { defaultFilesViewId, type FilesView } from "./state.ts";
@@ -55,14 +56,14 @@ function selectedFileActions(workspaceId: string, view: FilesView): string {
     <a class="button secondary icon-only" href="${escapeHtml(contentUrl)}" download="${escapeHtml(name)}" data-turbo="false" title="Download file" aria-label="Download file"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M12 3v12M7 10l5 5 5-5M5 21h14"/></svg></a>
     <form method="post" action="/workspaces/${encodeURIComponent(workspaceId)}/file-browser/delete" data-turbo-stream="true" data-turbo-confirm="Delete ${escapeHtml(name)}? This cannot be undone.">
       <input type="hidden" name="path" value="${escapeHtml(path)}"><input type="hidden" name="filesView" value="${escapeHtml(view.id)}">
-      <button class="button danger icon-only" type="submit" title="Delete file" aria-label="Delete file"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M4 7h16M9 7V4h6v3M7 7l1 14h8l1-14M10 11v6M14 11v6"/></svg></button>
+      <button class="button danger icon-only" type="submit" title="Delete file" aria-label="Delete file">${Icons.Trash}</button>
     </form>
   </span>`;
 }
 
 function renderEntryRow(workspaceId: string, viewId: string, entry: FileEntry, expanded: boolean, selectedPath?: string): string {
   const icon = entry.kind === "directory"
-    ? `${disclosureIconHtml}<span class="status-spinner sm files-directory-spinner"></span>`
+    ? `${Icons.Disclosure}<span class="status-spinner sm files-directory-spinner"></span>`
     : entry.kind === "symlink" ? "↗" : "";
   const destination = entry.kind === "directory"
     ? `href="${escapeHtml(directoryToggleUrl(workspaceId, viewId, entry.path, !expanded))}" data-turbo-frame="${filesDirectoryFrameId(workspaceId, viewId, entry.path)}"`

@@ -1,6 +1,7 @@
 import { actionItemHtml } from "@atelier/design-system/action-item";
 import { destructiveConfirmationHtml } from "@atelier/design-system/destructive-confirmation";
-import { disclosureIconHtml, domId, escapeHtml, turboStream } from "@atelier/shared";
+import { Icons } from "@atelier/design-system/icons";
+import { domId, escapeHtml, turboStream } from "@atelier/shared";
 import type { WorkspaceDeletionState } from "./workspace-registry.ts";
 
 export type WorkViewAvailability =
@@ -82,32 +83,10 @@ export interface WorkspacePresentation {
   overlayHtml?: readonly string[];
 }
 
-type IconName = "agent" | "atelier" | "browser" | "code" | "desktop" | "files" | "more" | "panel" | "park" | "plus" | "review" | "settings" | "terminal" | "trash" | "workspace" | "x";
+type WorkViewIconName = "Browser" | "Code" | "Desktop" | "Files" | "Plus" | "Review" | "Terminal";
 
-function icon(name: IconName): string {
-  const paths = {
-    agent: '<path d="M9 4h6M12 4V2M6 8h12a2 2 0 0 1 2 2v7a2 2 0 0 1-2 2H6a2 2 0 0 1-2-2v-7a2 2 0 0 1 2-2z"/><circle cx="9" cy="13" r="1"/><circle cx="15" cy="13" r="1"/>',
-    atelier: '<path d="M12 3v4M7.5 21 12 7l4.5 14M6 18h12M4 13c4 1.5 7.5 1.8 11 .8 2-.6 3.7-.6 5-.2"/>',
-    browser: '<circle cx="12" cy="12" r="9"/><path d="M3 12h18M12 3a15 15 0 0 1 0 18M12 3a15 15 0 0 0 0 18"/>',
-    code: '<path d="m9 7-5 5 5 5m6-10 5 5-5 5"/>',
-    desktop: '<rect x="3" y="4" width="18" height="13" rx="2"/><path d="M8 21h8M12 17v4"/>',
-    files: '<path d="M4 5h6l2 2h8v12H4z"/>',
-    panel: '<path d="M4 4h16v16H4zM15 4v16"/>',
-    more: '<circle cx="5" cy="12" r="1"/><circle cx="12" cy="12" r="1"/><circle cx="19" cy="12" r="1"/>',
-    park: '<path d="M17.5 15.5A7 7 0 0 1 8.5 6.5a7 7 0 1 0 9 9z"/><path d="M16 5h4M18 3v4"/>',
-    plus: '<path d="M12 5v14M5 12h14"/>',
-    review: '<path d="M9 5h6M9 3h6v4H9zM7 5H5v16h14V5h-2M8 13l2 2 5-5"/>',
-    settings: '<circle cx="12" cy="12" r="3"/><path d="M19.4 15a1.7 1.7 0 0 0 .3 1.9l.1.1-2.8 2.8-.1-.1a1.7 1.7 0 0 0-1.9-.3 1.7 1.7 0 0 0-1 1.6v.2h-4V21a1.7 1.7 0 0 0-1-1.6 1.7 1.7 0 0 0-1.9.3l-.1.1L4.2 17l.1-.1a1.7 1.7 0 0 0 .3-1.9A1.7 1.7 0 0 0 3 14H2.8v-4H3a1.7 1.7 0 0 0 1.6-1 1.7 1.7 0 0 0-.3-1.9L4.2 7 7 4.2l.1.1A1.7 1.7 0 0 0 9 4.6a1.7 1.7 0 0 0 1-1.6v-.2h4V3a1.7 1.7 0 0 0 1 1.6 1.7 1.7 0 0 0 1.9-.3l.1-.1L19.8 7l-.1.1a1.7 1.7 0 0 0-.3 1.9 1.7 1.7 0 0 0 1.6 1h.2v4H21a1.7 1.7 0 0 0-1.6 1z"/>',
-    terminal: '<rect x="3" y="5" width="18" height="14" rx="2"/><path d="M7 10l3 2-3 2M12 15h5"/>',
-    trash: '<path d="M4 7h16M9 7V4h6v3M7 7l1 14h8l1-14M10 11v6M14 11v6"/>',
-    workspace: '<path d="M4 5h16v14H4zM8 9h8M8 13h5"/>',
-    x: '<path d="M6 6l12 12M18 6L6 18"/>',
-  } as const;
-  return `<svg aria-hidden="true" viewBox="0 0 24 24" width="17" height="17" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round">${paths[name]}</svg>`;
-}
-
-function topBarButton(label: string, action: string, iconName: Parameters<typeof icon>[0], attributes = ""): string {
-  return `<button type="button" class="button secondary icon-only" title="${escapeHtml(label)}" aria-label="${escapeHtml(label)}" data-action="${action}" ${attributes}>${icon(iconName)}</button>`;
+function topBarButton(label: string, action: string, iconHtml: string, attributes = ""): string {
+  return `<button type="button" class="button secondary icon-only" title="${escapeHtml(label)}" aria-label="${escapeHtml(label)}" data-action="${action}" ${attributes}>${iconHtml}</button>`;
 }
 
 function closeForm(close: ViewCloseAction, buttonHtml: string): string {
@@ -121,7 +100,7 @@ function fullscreenViewAttributes(key: string, title: string): string {
 function selectorCloseForm(close: ViewCloseAction): string {
   const label = escapeHtml(`Close ${close.label}`);
   const confirmation = destructiveConfirmationHtml({
-    buttonHtml: `<button class="fixed-shell-view-close button danger icon-only" type="button" title="${label}" aria-label="${label}">${icon("x")}</button>`,
+    buttonHtml: `<button class="fixed-shell-view-close button danger icon-only" type="button" title="${label}" aria-label="${label}">${Icons.Close}</button>`,
     confirmCaption: "Yes, close",
     cancelCaption: "Oops",
   });
@@ -187,11 +166,11 @@ function renderWorkspaceGroupHeading(id: string, title: string, add: WorkspaceGr
     : mode === "launcher"
       ? { tag: "a" as const, className: "fixed-shell-project-heading", attributesHtml: `href="${escapeHtml(add.href)}" ${addTarget} aria-label="${escapeHtml(add.label)}"` }
       : { tag: "span" as const, className: "fixed-shell-project-heading fixed-shell-project-heading-static" };
-  const settings = options.settingsHref ? `<a class="fixed-shell-project-settings button secondary icon-only" href="${escapeHtml(options.settingsHref)}" ${projectEditorTarget} aria-label="Project settings: ${escapedTitle}" title="Project settings: ${escapedTitle}">${icon("more")}</a>` : "";
+  const settings = options.settingsHref ? `<a class="fixed-shell-project-settings button secondary icon-only" href="${escapeHtml(options.settingsHref)}" ${projectEditorTarget} aria-label="Project settings: ${escapedTitle}" title="Project settings: ${escapedTitle}">${Icons.More}</a>` : "";
   const onboardingClass = options.onboardingDestination ? " is-onboarding-target" : "";
   const onboardingAttribute = options.onboardingDestination ? ` data-empty-workspace-onboarding-destination="${options.onboardingDestination}"` : "";
-  const actions = `<span class="fixed-shell-project-actions button-group">${settings}<a class="fixed-shell-project-add button secondary icon-only${onboardingClass}"${onboardingAttribute} href="${escapeHtml(add.href)}" ${addTarget} aria-label="${escapeHtml(add.label)}" title="${escapeHtml(add.label)}">${icon("plus")}</a></span>`;
-  return actionItemHtml({ kind: "compound", label: { kind: "text", text: title }, leadingHtml: mode === "disclosure" ? disclosureIconHtml : "", container: { className: "fixed-shell-project-heading-row" }, primary, engagedActionsHtml: actions });
+  const actions = `<span class="fixed-shell-project-actions button-group">${settings}<a class="fixed-shell-project-add button secondary icon-only${onboardingClass}"${onboardingAttribute} href="${escapeHtml(add.href)}" ${addTarget} aria-label="${escapeHtml(add.label)}" title="${escapeHtml(add.label)}">${Icons.Plus}</a></span>`;
+  return actionItemHtml({ kind: "compound", label: { kind: "text", text: title }, leadingHtml: mode === "disclosure" ? Icons.Disclosure : "", container: { className: "fixed-shell-project-heading-row" }, primary, engagedActionsHtml: actions });
 }
 
 function renderProjectHeading(project: Pick<WorkspacePaneProject, "id" | "title">, mode: "disclosure" | "launcher" = "disclosure", onboardingDestination?: Exclude<WorkspacePaneOnboardingState, "workspaces">): string {
@@ -205,7 +184,7 @@ function renderParkedWorkspaceGroup(workspaces: readonly WorkspacePaneEntry[], p
   const heading = actionItemHtml({
     kind: "compound",
     label: { kind: "text", text: `${workspaces.length} parked` },
-    leadingHtml: disclosureIconHtml,
+    leadingHtml: Icons.Disclosure,
     container: { className: "fixed-shell-project-heading-row" },
     primary: { tag: "button", className: "fixed-shell-project-heading", attributesHtml: `type="button" aria-expanded="false" data-action="click->workspace-navigation#toggleProject" data-project-id="${escapeHtml(groupId)}"` },
   });
@@ -256,9 +235,9 @@ const workspacePaneScrollDomId = "fixed_shell_workspace_scroll";
 const workspaceProjectsDrawerDomId = "fixed_shell_projects_drawer";
 
 export function renderWorkspacePane(presentation: WorkspacePanePresentation, sidebarContributionsHtml = ""): string {
-  const settings = `<a class="button secondary icon-only" href="/settings" title="Settings" aria-label="Settings" data-controller="settings-prefetch" data-action="pointerenter->settings-prefetch#prefetch focus->settings-prefetch#prefetch click->settings-prefetch#open">${icon("settings")}</a>`;
+  const settings = `<a class="button secondary icon-only" href="/settings" title="Settings" aria-label="Settings" data-controller="settings-prefetch" data-action="pointerenter->settings-prefetch#prefetch focus->settings-prefetch#prefetch click->settings-prefetch#open">${Icons.Settings}</a>`;
   return `<aside class="fixed-shell-workspace-pane" aria-label="Workspaces">
-    <header><strong>${icon("atelier")}Atelier</strong><div class="button-group">${settings}${topBarButton("Collapse Workspace pane", "click->workspace-navigation#toggleDesktopWorkspacePane", "panel", "data-collapse-workspace-pane")}</div></header>
+    <header><strong>${Icons.Atelier}Atelier</strong><div class="button-group">${settings}${topBarButton("Collapse Workspace pane", "click->workspace-navigation#toggleDesktopWorkspacePane", Icons.Panel, "data-collapse-workspace-pane")}</div></header>
     ${renderWorkspacePaneCollections(presentation, sidebarContributionsHtml)}
   </aside>`;
 }
@@ -266,7 +245,7 @@ export function renderWorkspacePane(presentation: WorkspacePanePresentation, sid
 export function renderGlobalMobileNavigation(): string {
   const workspace = actionItemHtml({
     kind: "single",
-    contentHtml: icon("workspace"),
+    contentHtml: Icons.Workspace,
     element: { tag: "button", className: "fixed-shell-mobile-fixed", attributesHtml: 'type="button" aria-label="Workspace" title="Workspace" aria-expanded="false" data-mobile-workspace-destination data-action="click->workspace-navigation#toggleWorkspacePane"' },
   });
   return `<nav class="fixed-shell-mobile-nav fixed-shell-global-mobile-nav button-group" aria-label="Application destinations">${workspace}</nav>`;
@@ -316,7 +295,7 @@ function renderAgentTab(workspaceId: string, agent: AgentPaneContribution): stri
   return actionItemHtml({
     kind: "compound",
     label: { kind: "text", text: agent.title },
-    leadingHtml: `<span class="fixed-shell-agent-icon">${icon("agent")}</span>`,
+    leadingHtml: `<span class="fixed-shell-agent-icon">${Icons.Agent}</span>`,
     container: { className: "fixed-shell-agent-conversation", attributesHtml: `id="${agentTabDomId(workspaceId, agent.id)}"` },
     primary: { tag: "button", attributesHtml: `type="button" role="tab" aria-selected="false" tabindex="-1" data-agent-conversation-id="${escapeHtml(agent.id)}" ${fullscreenViewAttributes(agent.id, agent.title)} data-action="click->workspace-presentation#selectAgent"` },
     engagedActionsHtml: agent.close ? selectorCloseForm(agent.close) : "",
@@ -327,7 +306,7 @@ function renderAgentNavigation(presentation: WorkspacePresentation): string {
   const multiple = presentation.agentConversations.length > 1;
   return multiple
     ? `<div id="${agentTabListDomId(presentation.workspace.id)}" class="fixed-shell-agent-conversations" role="tablist" aria-label="Agent conversations">${presentation.agentConversations.map((agent) => renderAgentTab(presentation.workspace.id, agent)).join("")}</div>`
-    : `<div class="fixed-shell-workspace-title"><span class="fixed-shell-agent-icon">${icon("agent")}</span><strong>${escapeHtml(presentation.workspace.title)}</strong></div>`;
+    : `<div class="fixed-shell-workspace-title"><span class="fixed-shell-agent-icon">${Icons.Agent}</span><strong>${escapeHtml(presentation.workspace.title)}</strong></div>`;
 }
 
 function renderAgentPaneSlot(workspaceId: string, agent: AgentPaneContribution): string {
@@ -337,21 +316,21 @@ function renderAgentPaneSlot(workspaceId: string, agent: AgentPaneContribution):
 }
 
 function renderAgentActions(presentation: WorkspacePresentation): string {
-  const agentActions = (presentation.commands ?? []).filter((command) => command.placement === "agent-action").map((command) => `<form data-turbo="true" method="post" action="/workspaces/${encodeURIComponent(presentation.workspace.id)}/commands/${encodeURIComponent(command.id)}"><button class="button secondary icon-only" type="submit" title="${escapeHtml(command.label)}" aria-label="${escapeHtml(command.label)}">${icon("plus")}</button></form>`).join("");
-  const parkWorkspace = `<form class="fixed-shell-park-workspace" method="post" action="/workspaces/${encodeURIComponent(presentation.workspace.id)}/park" data-action="submit->workspace-navigation#parkWorkspace"><button class="button secondary icon-only" type="submit" title="Park workspace" aria-label="Park workspace">${icon("park")}</button></form>`;
+  const agentActions = (presentation.commands ?? []).filter((command) => command.placement === "agent-action").map((command) => `<form data-turbo="true" method="post" action="/workspaces/${encodeURIComponent(presentation.workspace.id)}/commands/${encodeURIComponent(command.id)}"><button class="button secondary icon-only" type="submit" title="${escapeHtml(command.label)}" aria-label="${escapeHtml(command.label)}">${Icons.Plus}</button></form>`).join("");
+  const parkWorkspace = `<form class="fixed-shell-park-workspace" method="post" action="/workspaces/${encodeURIComponent(presentation.workspace.id)}/park" data-action="submit->workspace-navigation#parkWorkspace"><button class="button secondary icon-only" type="submit" title="Park workspace" aria-label="Park workspace">${Icons.Park}</button></form>`;
   const deleteConfirmation = destructiveConfirmationHtml({
-    buttonHtml: `<button class="button danger icon-only" type="button" title="Delete workspace" aria-label="Delete workspace">${icon("trash")}</button>`,
+    buttonHtml: `<button class="button danger icon-only" type="button" title="Delete workspace" aria-label="Delete workspace">${Icons.Trash}</button>`,
     confirmCaption: "Yes, delete",
     cancelCaption: "Oops",
   });
   const deleteWorkspace = `<form class="fixed-shell-delete-workspace" data-turbo="true" method="post" action="/workspaces/${encodeURIComponent(presentation.workspace.id)}/delete">${deleteConfirmation}</form>`;
-  return `${agentActions}${parkWorkspace}${deleteWorkspace}${topBarButton("Show Work pane", "click->workspace-presentation#toggleWorkPane", "panel", "data-show-work-pane")}`;
+  return `${agentActions}${parkWorkspace}${deleteWorkspace}${topBarButton("Show Work pane", "click->workspace-presentation#toggleWorkPane", Icons.Panel, "data-show-work-pane")}`;
 }
 
 function renderAgentPane(presentation: WorkspacePresentation): string {
   const panes = presentation.agentConversations.map((agent) => renderAgentPaneSlot(presentation.workspace.id, agent)).join("");
   return `<section class="fixed-shell-agent-pane" data-workspace-role-region="agent" data-workspace-presentation-target="agentPane" aria-label="Agent">
-    <header>${topBarButton("Show Workspace pane", "click->workspace-navigation#toggleDesktopWorkspacePane", "panel", "data-show-workspace-pane")}<div id="${agentNavigationDomId(presentation.workspace.id)}" class="fixed-shell-agent-navigation">${renderAgentNavigation(presentation)}</div><div id="${agentActionsDomId(presentation.workspace.id)}" class="fixed-shell-agent-actions button-group">${renderAgentActions(presentation)}</div></header>
+    <header>${topBarButton("Show Workspace pane", "click->workspace-navigation#toggleDesktopWorkspacePane", Icons.Panel, "data-show-workspace-pane")}<div id="${agentNavigationDomId(presentation.workspace.id)}" class="fixed-shell-agent-navigation">${renderAgentNavigation(presentation)}</div><div id="${agentActionsDomId(presentation.workspace.id)}" class="fixed-shell-agent-actions button-group">${renderAgentActions(presentation)}</div></header>
     <div id="${agentBodiesDomId(presentation.workspace.id)}" class="fixed-shell-agent-bodies">${panes}</div>
   </section>`;
 }
@@ -371,7 +350,7 @@ function renderWorkViewSelector(workspaceId: string, view: WorkPaneContribution)
   return actionItemHtml({
     kind: "compound",
     label: { kind: "text", text: view.label },
-    leadingHtml: `<span class="fixed-shell-work-view-icon" data-icon="${iconName}">${icon(iconName)}</span>`,
+    leadingHtml: `<span class="fixed-shell-work-view-icon" data-icon="${iconName.toLowerCase()}">${Icons[iconName]}</span>`,
     trailingHtml: view.attentionSequence === undefined ? "" : '<i class="status-dot attention action-item__status" aria-label="Attention"></i>',
     container: {
       className: "fixed-shell-work-view-selector",
@@ -426,28 +405,28 @@ function workViewType(view: WorkPaneContribution): string {
   return view.key.slice(0, view.key.indexOf(":"));
 }
 
-function workViewIcon(view: WorkPaneContribution): IconName {
+function workViewIcon(view: WorkPaneContribution): WorkViewIconName {
   return workViewTypeIcon(workViewType(view));
 }
 
-function workViewTypeIcon(type: string): IconName {
+function workViewTypeIcon(type: string): WorkViewIconName {
   switch (type) {
-    case "browser": return "browser";
-    case "desktop": return "desktop";
-    case "files": return "files";
-    case "review": return "review";
-    case "terminal": return "terminal";
-    case "vscode": return "code";
-    default: return "plus";
+    case "browser": return "Browser";
+    case "desktop": return "Desktop";
+    case "files": return "Files";
+    case "review": return "Review";
+    case "terminal": return "Terminal";
+    case "vscode": return "Code";
+    default: return "Plus";
   }
 }
 
-function workLauncherIcon(commandId: string): IconName {
+function workLauncherIcon(commandId: string): WorkViewIconName {
   return workViewTypeIcon(commandId.slice(0, commandId.indexOf(".")));
 }
 
 function renderWorkLauncherCommand(command: NonNullable<WorkspacePresentation["commands"]>[number], workspaceId: string): string {
-  const item = actionItemHtml({ kind: "single", label: { kind: "text", text: command.label }, leadingHtml: `<span class="popup-menu__icon">${icon(workLauncherIcon(command.id))}</span>`, element: { tag: "button", attributesHtml: 'type="submit" role="menuitem"' } });
+  const item = actionItemHtml({ kind: "single", label: { kind: "text", text: command.label }, leadingHtml: `<span class="popup-menu__icon">${Icons[workLauncherIcon(command.id)]}</span>`, element: { tag: "button", attributesHtml: 'type="submit" role="menuitem"' } });
   return `<form data-turbo="true" method="post" action="/workspaces/${encodeURIComponent(workspaceId)}/commands/${encodeURIComponent(command.id)}">${item}</form>`;
 }
 
@@ -456,20 +435,20 @@ function renderWorkPane(presentation: WorkspacePresentation): string {
   const panes = presentation.workViews.map((view) => renderWorkViewPane(presentation.workspace.id, view)).join("");
   const workCommands = (presentation.commands ?? []).filter((command) => command.placement === "work-launcher");
   const addMenuId = workViewDomId(presentation.workspace.id, "add_menu");
-  const addMenu = workCommands.length ? `<span class="popup-menu-anchor"><button class="button primary icon-only popup-menu-trigger" type="button" title="Open Work view" aria-label="Open Work view" aria-haspopup="menu" aria-controls="${addMenuId}" popovertarget="${addMenuId}">${icon("plus")}</button><div class="popup-menu action-list popup-menu-anchored" id="${addMenuId}" role="menu" aria-label="Open Work view" popover="auto">${workCommands.map((command) => renderWorkLauncherCommand(command, presentation.workspace.id)).join("")}</div></span>` : "";
+  const addMenu = workCommands.length ? `<span class="popup-menu-anchor"><button class="button primary icon-only popup-menu-trigger" type="button" title="Open Work view" aria-label="Open Work view" aria-haspopup="menu" aria-controls="${addMenuId}" popovertarget="${addMenuId}">${Icons.Plus}</button><div class="popup-menu action-list popup-menu-anchored" id="${addMenuId}" role="menu" aria-label="Open Work view" popover="auto">${workCommands.map((command) => renderWorkLauncherCommand(command, presentation.workspace.id)).join("")}</div></span>` : "";
   return `<section class="fixed-shell-work-pane" data-workspace-role-region="work" data-workspace-presentation-target="workPane" aria-label="Work">
-    <header class="work-view-toolbar"><div id="${workViewDomId(presentation.workspace.id, "selectors")}" class="fixed-shell-work-view-selectors" role="tablist" aria-label="Work views">${selectors}</div><span id="${workViewDomId(presentation.workspace.id, "launchers")}">${addMenu}</span>${topBarButton("Collapse Work pane", "click->workspace-presentation#toggleWorkPane", "panel", "data-collapse-work-pane")}</header>
+    <header class="work-view-toolbar"><div id="${workViewDomId(presentation.workspace.id, "selectors")}" class="fixed-shell-work-view-selectors" role="tablist" aria-label="Work views">${selectors}</div><span id="${workViewDomId(presentation.workspace.id, "launchers")}">${addMenu}</span>${topBarButton("Collapse Work pane", "click->workspace-presentation#toggleWorkPane", Icons.Panel, "data-collapse-work-pane")}</header>
     <div id="${workViewDomId(presentation.workspace.id, "bodies")}" class="fixed-shell-work-bodies">${panes || `<div id="${workViewDomId(presentation.workspace.id, "empty")}" class="fixed-shell-empty-work empty-state">Open Files, a file, terminal, or browser to work alongside the Agent.</div>`}</div>
     <div class="fixed-shell-work-resizer" role="separator" aria-label="Resize Work pane" aria-orientation="vertical" tabindex="0" data-action="pointerdown->workspace-presentation#beginWorkResize keydown->workspace-presentation#resizeWorkWithKeyboard"></div>
   </section>`;
 }
 
-function renderMobileDestination(label: string, destination: string, iconName: IconName, attention = false, workKey?: string): string {
+function renderMobileDestination(label: string, destination: string, iconHtml: string, attention = false, workKey?: string): string {
   const attentionHtml = attention ? '<i class="status-dot attention" aria-label="Attention"></i>' : "";
   const workKeyAttribute = workKey === undefined ? "" : ` data-mobile-work-key="${escapeHtml(workKey)}"`;
   return actionItemHtml({
     kind: "single",
-    contentHtml: `${icon(iconName)}${attentionHtml}`,
+    contentHtml: `${iconHtml}${attentionHtml}`,
     element: { tag: "button", attributesHtml: `type="button" aria-label="${escapeHtml(label)}" title="${escapeHtml(label)}"${workKeyAttribute} data-mobile-destination="${escapeHtml(destination)}" data-action="click->workspace-presentation#selectMobileDestination"` },
   });
 }
@@ -484,14 +463,14 @@ function mobileNavigationPriority(view: WorkPaneContribution): number {
 function renderMobileWorkViews(views: readonly WorkPaneContribution[]) {
   const ordered = [...views].sort((left, right) => mobileNavigationPriority(left) - mobileNavigationPriority(right));
   return {
-    destinations: ordered.map((view) => renderMobileDestination(view.label, `work:${view.key}`, workViewIcon(view), view.attentionSequence !== undefined, view.key)).join(""),
+    destinations: ordered.map((view) => renderMobileDestination(view.label, `work:${view.key}`, Icons[workViewIcon(view)], view.attentionSequence !== undefined, view.key)).join(""),
     overflowItems: ordered.map((view) => {
       const iconName = workViewIcon(view);
       const attention = view.attentionSequence === undefined ? "" : '<i class="status-dot attention action-item__status" aria-label="Attention"></i>';
       return actionItemHtml({
         kind: "single",
         label: { kind: "text", text: view.label },
-        leadingHtml: `<span class="fixed-shell-work-view-icon" data-icon="${iconName}">${icon(iconName)}</span>`,
+        leadingHtml: `<span class="fixed-shell-work-view-icon" data-icon="${iconName.toLowerCase()}">${Icons[iconName]}</span>`,
         trailingHtml: attention,
         element: { tag: "button", attributesHtml: `type="button" role="menuitemradio" aria-checked="false" hidden data-more-work-key="${escapeHtml(view.key)}" data-more-work-kind="${view.kind}" data-action="click->workspace-presentation#selectMoreWorkView"` },
       });
@@ -500,7 +479,7 @@ function renderMobileWorkViews(views: readonly WorkPaneContribution[]) {
 }
 
 function renderMobileCloser(destination: string, close: ViewCloseAction): string {
-  const item = actionItemHtml({ kind: "single", label: { kind: "text", text: "Close current view" }, leadingHtml: `<span class="popup-menu__icon">${icon("x")}</span>`, element: { tag: "button", className: "is-danger", attributesHtml: 'type="submit" role="menuitem"' } });
+  const item = actionItemHtml({ kind: "single", label: { kind: "text", text: "Close current view" }, leadingHtml: `<span class="popup-menu__icon">${Icons.Close}</span>`, element: { tag: "button", className: "is-danger", attributesHtml: 'type="submit" role="menuitem"' } });
   return `<div data-more-close-destination="${escapeHtml(destination)}" hidden>${closeForm(close, item)}</div>`;
 }
 
@@ -512,14 +491,14 @@ const mobileLauncherCommandIds = new Set(["files.create", "terminal.create", "te
 const mobileMoreAttentionHtml = '<i class="status-dot attention" aria-label="Hidden Attention" data-mobile-overflow-attention hidden></i>';
 
 function renderMobileNavigation(presentation: WorkspacePresentation): string {
-  const agentsDestination = renderMobileDestination("Agents", "agents", "agent");
+  const agentsDestination = renderMobileDestination("Agents", "agents", Icons.Agent);
   const workViews = renderMobileWorkViews(presentation.workViews);
   const launchers = (presentation.commands ?? []).filter((command) => mobileLauncherCommandIds.has(command.id)).map((command) => renderWorkLauncherCommand(command, presentation.workspace.id)).join("");
   const closers = presentation.workViews.map(renderMobileWorkViewCloser).join("");
   const moreMenuId = workViewDomId(presentation.workspace.id, "mobile_more_menu");
   const more = actionItemHtml({
     kind: "single",
-    contentHtml: `${icon("more")}<span id="${workViewDomId(presentation.workspace.id, "mobile_more_attention")}">${mobileMoreAttentionHtml}</span>`,
+    contentHtml: `${Icons.More}<span id="${workViewDomId(presentation.workspace.id, "mobile_more_attention")}">${mobileMoreAttentionHtml}</span>`,
     element: { tag: "button", className: "fixed-shell-mobile-fixed", attributesHtml: `type="button" aria-label="More" title="More" aria-haspopup="menu" aria-controls="${moreMenuId}" data-mobile-more data-action="click->workspace-presentation#toggleMore"` },
   });
   return `<nav class="fixed-shell-mobile-nav fixed-shell-resident-mobile-nav button-group" aria-label="Current workspace destinations">

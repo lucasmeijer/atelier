@@ -195,7 +195,7 @@
         <p>Shipped foundations, components, and patterns from <code>design-system.css</code>. Change the theme while the preview selector controls the responsive platform.</p>
         <div class="catalogue-toolbar">
           <div class="catalogue-field popup-menu-anchor"><span>Theme</span>
-            <button class="button secondary catalogue-theme-trigger popup-menu-trigger" type="button" aria-haspopup="menu" aria-expanded="false" aria-controls="catalogue-theme-popup"><span data-catalogue-theme-value>Nord</span><svg class="disclosure-icon" viewBox="0 0 12 12" aria-hidden="true"><path d="m3 4.5 3 3 3-3"/></svg></button>
+            <button class="button secondary catalogue-theme-trigger popup-menu-trigger" type="button" aria-haspopup="menu" aria-expanded="false" aria-controls="catalogue-theme-popup"><span data-catalogue-theme-value>Nord</span><svg class="disclosure-icon" aria-hidden="true" viewBox="0 0 24 24"><path d="m6 9 6 6 6-6"/></svg></button>
             <div class="popup-menu action-list popup-menu-anchored catalogue-theme-popup" id="catalogue-theme-popup" role="menu" aria-label="Catalogue theme" hidden>
               <button class="action-item action-item__primary" type="button" role="menuitemradio" aria-checked="false" data-theme-value=""><span class="action-item__label"><span class="action-item__label-text">Daylight</span></span></button>
               <button class="action-item action-item__primary" type="button" role="menuitemradio" aria-checked="false" data-theme-value="cappuccino"><span class="action-item__label"><span class="action-item__label-text">Cappuccino</span></span></button>
@@ -622,7 +622,7 @@ bun test</pre></div>
                     <span class="action-item__label"><span class="action-item__label-text">Gemini 2.5 Pro</span></span>
                   </button>
                 </div>
-                <button class="button secondary popup-trigger popup-menu-trigger" type="button" aria-haspopup="menu" aria-expanded="true" aria-controls="catalogue-popup"><span class="popup-brand-mark" aria-hidden="true">O</span> GPT-5.2 Codex <svg class="disclosure-icon" viewBox="0 0 12 12" aria-hidden="true"><path d="m3 4.5 3 3 3-3"/></svg></button>
+                <button class="button secondary popup-trigger popup-menu-trigger" type="button" aria-haspopup="menu" aria-expanded="true" aria-controls="catalogue-popup"><span class="popup-brand-mark" aria-hidden="true">O</span> GPT-5.2 Codex <svg class="disclosure-icon" aria-hidden="true" viewBox="0 0 24 24"><path d="m6 9 6 6 6-6"/></svg></button>
               </div>
               <p class="catalogue-note">This menu prefers to open upward like the composer, then flips horizontally or vertically whenever the preferred placement would cross a viewport edge.</p>
             </article>
@@ -635,7 +635,7 @@ bun test</pre></div>
                     <button class="action-item action-item__primary" type="button" role="menuitemradio" aria-checked="false" data-theme-value="tokyo-night"><span class="action-item__label"><span class="action-item__label-text">Tokyo Night</span></span></button>
                     <button class="action-item action-item__primary" type="button" role="menuitemradio" aria-checked="true" data-theme-value="nord"><span class="action-item__label"><span class="action-item__label-text">Nord</span></span></button>
                   </div>
-                  <button class="button secondary simple-popup-trigger popup-menu-trigger" type="button" aria-haspopup="menu" aria-expanded="true" aria-controls="simple-theme-popup">Theme: <span data-simple-popup-value>Nord</span><svg class="disclosure-icon" viewBox="0 0 12 12" aria-hidden="true"><path d="m3 4.5 3 3 3-3"/></svg></button>
+                  <button class="button secondary simple-popup-trigger popup-menu-trigger" type="button" aria-haspopup="menu" aria-expanded="true" aria-controls="simple-theme-popup">Theme: <span data-simple-popup-value>Nord</span><svg class="disclosure-icon" aria-hidden="true" viewBox="0 0 24 24"><path d="m6 9 6 6 6-6"/></svg></button>
                 </div>
               </div>
               <p class="catalogue-note">For short, familiar choices, the popup can be nothing more than a list of Action Items.</p>
@@ -720,11 +720,11 @@ bun test</pre></div>
         </section>
 
         <section class="catalogue-section" id="disclosure">
-          <div class="catalogue-section-head"><h2>Disclosure</h2><p>The disclosure icon has one orientation contract across buttons, trees, and native <code>&lt;details&gt;</code>. Closed state rotates the chevron.</p></div>
+          <div class="catalogue-section-head"><h2>Disclosure</h2><p>Pass <code>Icons.Disclosure</code> as an Action Item’s <code>leadingHtml</code> to add the canonical indicator before its label. Use a native <code>&lt;summary&gt;</code>, button, or link as the primary element so keyboard activation comes from the semantic control. Closed state rotates the chevron.</p></div>
           <article class="catalogue-card"><div class="catalogue-demo"><div class="action-stack action-list">
-            <details open><summary class="action-item action-item__primary"><svg class="disclosure-icon" viewBox="0 0 12 12" aria-hidden="true"><path d="m3 4.5 3 3 3-3"/></svg><span class="action-item__label"><span class="action-item__label-text">Expanded project</span></span></summary><p class="detail-copy">Three active workspaces</p></details>
-            <details><summary class="action-item action-item__primary"><svg class="disclosure-icon" viewBox="0 0 12 12" aria-hidden="true"><path d="m3 4.5 3 3 3-3"/></svg><span class="action-item__label"><span class="action-item__label-text">Collapsed project</span></span></summary><p class="detail-copy">Content revealed.</p></details>
-          </div></div></article>
+            <details open><summary class="action-item action-item__primary"><svg class="disclosure-icon" aria-hidden="true" viewBox="0 0 24 24"><path d="m6 9 6 6 6-6"/></svg><span class="action-item__label"><span class="action-item__label-text">Expanded project</span></span></summary><p class="detail-copy">Three active workspaces</p></details>
+            <details><summary class="action-item action-item__primary"><svg class="disclosure-icon" aria-hidden="true" viewBox="0 0 24 24"><path d="m6 9 6 6 6-6"/></svg><span class="action-item__label"><span class="action-item__label-text">Collapsed project</span></span></summary><p class="detail-copy">Content revealed.</p></details>
+          </div></div><p class="catalogue-note">The icon repository owns the indicator markup and appearance; the semantic primary element owns activation and expanded state.</p></article>
         </section>
 
       </div>

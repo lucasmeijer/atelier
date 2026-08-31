@@ -1,4 +1,5 @@
 import { actionItemHtml, type ActionItemLabel } from "@atelier/design-system/action-item";
+import { Icons } from "@atelier/design-system/icons";
 import { renderTranscriptionComposerControl, transcriptionComposerController } from "@atelier/transcription/server";
 import { isJsonObject, type JsonObject, type JsonValue } from "@atelier/core";
 import { Type, type Static, type TSchema } from "typebox";
@@ -9,7 +10,7 @@ import { parseDiffFromFile, processPatch, type FileDiffMetadata } from "@pierre/
 import { embeddedBashCommand, formatBashCommandForDisplay, highlightedBashCommandHtml } from "./embedded-code.ts";
 import { renderMarkdown, renderStreamingMarkdownSnapshot } from "@atelier/markdown";
 import { highlightCodeHtmlForPath } from "@atelier/syntax";
-import { disclosureIconHtml, domId, escapeHtml } from "./html.ts";
+import { domId, escapeHtml } from "./html.ts";
 import type { WorkspaceAgentConversationInfo } from "./session-store.ts";
 import { agentAttachmentDraftId, listStagedAttachments, type StagedAttachment } from "./attachment-drafts.ts";
 import { thinkingBlockRendererFor } from "./thinking-block-renderers.ts";
@@ -88,7 +89,7 @@ function transcriptRow(html: string): string {
 function disclosureActionItemHtml(label: ActionItemLabel, options: { leadingHtml?: string; labelId?: string } = {}): string {
   return actionItemHtml({
     kind: "single",
-    leadingHtml: `${disclosureIconHtml}${options.leadingHtml ?? ""}`,
+    leadingHtml: `${Icons.Disclosure}${options.leadingHtml ?? ""}`,
     label: { ...label, textAttributesHtml: options.labelId ? `id="${options.labelId}"` : undefined },
     element: { tag: "summary" },
   });

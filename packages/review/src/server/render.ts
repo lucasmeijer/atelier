@@ -1,4 +1,5 @@
 import { actionItemHtml, type ActionItemLabel } from "@atelier/design-system/action-item";
+import { Icons } from "@atelier/design-system/icons";
 import { preloadDiffHTML } from "@pierre/diffs/ssr";
 import { domId, escapeHtml, type WorkspaceWorkViewPresentation } from "@atelier/shared";
 import type { ReviewFile, ReviewFileStats, ReviewFileSummary, ReviewIndex } from "./diff.ts";
@@ -51,7 +52,7 @@ function renderCommentCount(count: number): string {
 function renderFileSummary(label: ActionItemLabel, metaHtml: string, title?: string): string {
   return actionItemHtml({
     kind: "single",
-    leadingHtml: '<svg class="disclosure-icon" viewBox="0 0 12 12" aria-hidden="true"><path d="m3 4.5 3 3 3-3"/></svg>',
+    leadingHtml: Icons.Disclosure,
     label: {
       ...label,
       className: "review-file-path",
@@ -111,7 +112,7 @@ export async function renderReviewFileDetails(workspaceId: string, file: ReviewF
 }
 
 function renderUnanchoredComment(workspaceId: string, comment: ReviewComment): string {
-  return `<div class="review-unanchored-entry"><div class="review-unanchored-context"><strong>${escapeHtml(comment.path)}</strong><pre>${escapeHtml(comment.snippet)}</pre></div><article class="review-inline-comment"><form method="post" action="/workspaces/${encodeURIComponent(workspaceId)}/review/comments/${encodeURIComponent(comment.id)}/delete" data-turbo="true"><button class="button secondary icon-only review-comment-close" type="submit" aria-label="Delete review comment" title="Delete review comment"><svg aria-hidden="true" viewBox="0 0 24 24"><path d="M6 6l12 12M18 6 6 18"/></svg></button></form><div class="review-comment-content"><p>${escapeHtml(comment.body)}</p></div></article></div>`;
+  return `<div class="review-unanchored-entry"><div class="review-unanchored-context"><strong>${escapeHtml(comment.path)}</strong><pre>${escapeHtml(comment.snippet)}</pre></div><article class="review-inline-comment"><form method="post" action="/workspaces/${encodeURIComponent(workspaceId)}/review/comments/${encodeURIComponent(comment.id)}/delete" data-turbo="true"><button class="button secondary icon-only review-comment-close" type="submit" aria-label="Delete review comment" title="Delete review comment">${Icons.Close}</button></form><div class="review-comment-content"><p>${escapeHtml(comment.body)}</p></div></article></div>`;
 }
 
 function reviewUnanchoredId(workspaceId: string): string {
@@ -131,28 +132,27 @@ function renderUnanchoredSlot(workspaceId: string, comments: ReviewComment[]): s
   return `<div id="${reviewUnanchoredId(workspaceId)}">${file}</div>`;
 }
 
-function iconButton(label: string, action: string, path: string): string {
-  return `<button class="button secondary icon-only" type="button" aria-label="${escapeHtml(label)}" title="${escapeHtml(label)}" data-action="${escapeHtml(action)}"><svg aria-hidden="true" viewBox="0 0 24 24"><path d="${escapeHtml(path)}"/></svg></button>`;
+function iconButton(label: string, action: string, iconHtml: string): string {
+  return `<button class="button secondary icon-only" type="button" aria-label="${escapeHtml(label)}" title="${escapeHtml(label)}" data-action="${escapeHtml(action)}">${iconHtml}</button>`;
 }
 
 function refreshForm(workspaceId: string, caption = ""): string {
-  const refreshIcon = '<svg aria-hidden="true" viewBox="0 0 24 24"><path d="M20 11a8 8 0 1 0-2.34 5.66M20 4v7h-7"/></svg>';
   return `<form method="post" action="/workspaces/${encodeURIComponent(workspaceId)}/review/refresh" data-turbo="true" data-action="submit->review#updateRefreshState turbo:submit-end->review#updateRefreshState"><button class="button secondary activity-button${caption ? "" : " icon-only"}" type="submit" data-activity-state="initial" aria-label="Refresh review" title="Refresh review">
     <svg class="activity-button__indicator" aria-hidden="true"><rect pathLength="100"/></svg>
-    <span class="activity-button__content" data-activity-content="initial">${refreshIcon}${caption}</span>
-    <span class="activity-button__content" data-activity-content="active">${refreshIcon}${caption ? "Refreshing…" : ""}</span>
+    <span class="activity-button__content" data-activity-content="initial">${Icons.Refresh}${caption}</span>
+    <span class="activity-button__content" data-activity-content="active">${Icons.Refresh}${caption ? "Refreshing…" : ""}</span>
   </button></form>`;
 }
 
 function toolbar(workspaceId: string, comments: ReviewComment[]): string {
   const commentsDisabled = comments.length === 0 ? " disabled" : "";
-  const collapse = iconButton("Collapse all files", "review#collapseAll", "M7 4l5 5 5-5M7 20l5-5 5 5");
-  const expand = iconButton("Expand all files", "review#expandAll", "M7 9l5-5 5 5M7 15l5 5 5-5");
+  const collapse = iconButton("Collapse all files", "review#collapseAll", Icons.CollapseAll);
+  const expand = iconButton("Expand all files", "review#expandAll", Icons.ExpandAll);
   return `<header class="review-toolbar">
     <div class="review-toolbar-actions button-group copy-region">
       <button class="button secondary" type="button" title="Copy review comments into composer" data-action="click->review#copyCommentsToComposer"${commentsDisabled}>Copy into composer</button>
       <button class="button secondary icon-only copy-button" type="button" data-copy-label="Copy review comments to clipboard" aria-label="Copy review comments to clipboard" title="Copy review comments to clipboard"${commentsDisabled}><span class="copy-button__icon" aria-hidden="true">⧉</span></button>
-      <form method="post" action="/workspaces/${encodeURIComponent(workspaceId)}/review/comments/delete" data-turbo="true"><button class="button danger icon-only" type="submit" aria-label="Delete all review comments" title="Delete all review comments"${commentsDisabled}><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M4 7h16M9 7V4h6v3M7 7l1 13h8l1-13M10 11v5M14 11v5"/></svg></button></form>
+      <form method="post" action="/workspaces/${encodeURIComponent(workspaceId)}/review/comments/delete" data-turbo="true"><button class="button danger icon-only" type="submit" aria-label="Delete all review comments" title="Delete all review comments"${commentsDisabled}>${Icons.Trash}</button></form>
       ${refreshForm(workspaceId)}
       ${collapse}${expand}
       <button class="button secondary review-display-toggle" type="button" title="Toggle per-word diff highlighting" aria-pressed="false" data-action="click->review#toggleWordDiff">Word diff</button>

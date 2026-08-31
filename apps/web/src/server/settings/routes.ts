@@ -1,3 +1,4 @@
+import { Icons } from "@atelier/design-system/icons";
 import { clearWorkspaceGitHubToken, hasWorkspaceGitHubToken, setWorkspaceGitHubToken } from "@atelier/proxy-egress";
 import {
   getConfiguredAgentModels,
@@ -233,7 +234,7 @@ function configuredModelRow(model: ConfiguredAgentModel, provider: ProviderSumma
       ${providerState(provider)}
       <span class="model-provider-disconnected-actions">${providerAuthenticationActions(provider, surface)}</span>
       <span class="model-provider-connected-actions"><form method="post" action="/settings/providers/${encodeURIComponent(provider.provider)}/disconnect" data-turbo="true"><button class="button danger" type="submit">Disconnect provider</button></form></span>
-      <form method="post" action="/settings/models/remove" data-turbo="true"><input type="hidden" name="model" value="${escapeHtml(modelKey(model))}"><button class="button danger icon-only" type="submit" title="Remove configured model" aria-label="Remove configured model"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M4 7h16M9 7V4h6v3M7 7l1 13h8l1-13M10 11v5M14 11v5"/></svg></button></form>
+      <form method="post" action="/settings/models/remove" data-turbo="true"><input type="hidden" name="model" value="${escapeHtml(modelKey(model))}"><button class="button danger icon-only" type="submit" title="Remove configured model" aria-label="Remove configured model">${Icons.Trash}</button></form>
     </div>
   </div>`;
 }
@@ -331,7 +332,7 @@ export async function renderSettingsDialog(_active = "theme"): Promise<string> {
   const sections = await Promise.all(contributions.map((contribution) => contribution.render()));
   return `<dialog id="settings_dialog" class="dialog dialog--sheet settings-dialog" tabindex="-1" autofocus data-controller="modal" data-modal-auto-show-value="true">
     <div class="settings-sheet">
-      <main class="settings-main"><form method="dialog"><button class="settings-close button secondary icon-only" value="close" title="Close settings" aria-label="Close settings"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M6 6l12 12M18 6L6 18"/></svg></button></form><div class="settings-title">Settings</div>${sections.join("")}<div class="settings-dev-link"><a href="/settings/development" data-turbo-frame="_top" data-turbo-stream="true">Development settings</a></div></main>
+      <main class="settings-main"><form method="dialog"><button class="settings-close button secondary icon-only" value="close" title="Close settings" aria-label="Close settings">${Icons.Close}</button></form><div class="settings-title">Settings</div>${sections.join("")}<div class="settings-dev-link"><a href="/settings/development" data-turbo-frame="_top" data-turbo-stream="true">Development settings</a></div></main>
     </div>
   </dialog>`;
 }
@@ -339,7 +340,7 @@ export async function renderSettingsDialog(_active = "theme"): Promise<string> {
 export async function renderDevelopmentSettingsDialog(): Promise<string> {
   return `<dialog id="settings_dialog" class="dialog dialog--sheet settings-dialog" tabindex="-1" autofocus data-controller="modal" data-modal-auto-show-value="true">
     <div class="settings-sheet">
-      <main class="settings-main settings-main-dev"><form method="dialog"><button class="settings-close button secondary icon-only" value="close" title="Close settings" aria-label="Close settings"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M6 6l12 12M18 6L6 18"/></svg></button></form><div class="settings-title"><a class="settings-back-link" href="/settings" data-turbo-frame="_top" data-turbo-stream="true">Settings</a></div>${await renderDevelopmentSettings()}</main>
+      <main class="settings-main settings-main-dev"><form method="dialog"><button class="settings-close button secondary icon-only" value="close" title="Close settings" aria-label="Close settings">${Icons.Close}</button></form><div class="settings-title"><a class="settings-back-link" href="/settings" data-turbo-frame="_top" data-turbo-stream="true">Settings</a></div>${await renderDevelopmentSettings()}</main>
     </div>
   </dialog>`;
 }

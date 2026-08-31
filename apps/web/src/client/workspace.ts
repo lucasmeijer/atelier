@@ -8,6 +8,7 @@ import { Value } from "typebox/value";
 import * as Turbo from "@hotwired/turbo";
 import { createHtmlAutocompleteController, PromptHistoryNavigator } from "@atelier/agent/client";
 import { actionItemElement, actionItemHtml, type ActionItemLabel } from "@atelier/design-system/action-item";
+import { Icons } from "@atelier/design-system/icons";
 import {
   atelierCableConnectionHeader,
   CableTopics,
@@ -750,7 +751,7 @@ class AtelierShortcutsController extends Controller {
       <svg class="palette-search-icon" viewBox="0 0 24 24" aria-hidden="true"><circle cx="11" cy="11" r="7"></circle><path d="m16 16 4 4"></path></svg>
       <input class="text-field palette-input" id="atelier-palette-input" type="search" role="combobox" spellcheck="false" autocomplete="off" placeholder="Search commands, workspaces, and destinations…" aria-label="Search command palette" aria-autocomplete="list" aria-controls="atelier-palette-results" aria-expanded="true">
       <kbd class="palette-shortcut" aria-hidden="true">⌘⌥K</kbd>
-      <form class="contents" method="dialog"><button class="button icon-only palette-close" aria-label="Close command palette"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M6 6l12 12M18 6 6 18"></path></svg></button></form>
+      <form class="contents" method="dialog"><button class="button icon-only palette-close" aria-label="Close command palette">${Icons.Close}</button></form>
     </header>
     <div class="dialog__body palette-body"><div class="palette-results action-list" id="atelier-palette-results" role="listbox" aria-label="Command palette results"></div></div>`;
     dialog.addEventListener("close", () => this.paletteInput?.blur());

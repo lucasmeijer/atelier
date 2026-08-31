@@ -17,6 +17,7 @@ import {
   type JsonObject,
   type JsonValue,
 } from "@atelier/core";
+import { Icons } from "@atelier/design-system/icons";
 import { discoverHostGitHubToken, hasWorkspaceGitHubToken } from "@atelier/proxy-egress";
 import {
   addProject,
@@ -421,7 +422,7 @@ ${moduleStylesHtml()}
     return `<turbo-frame id="${launchComposerFrameId}"><dialog class="launch-composer-dialog" data-controller="launch-composer-dialog submit-shortcut" data-launch-composer-dialog-discard-url-value="/agent-attachment-drafts/${encodeURIComponent(draftId)}/discard">
   <header class="launch-composer-header">
     <div class="launch-composer-title">${options.titleHtml}</div>
-    <form method="dialog"><button class="launch-composer-close button secondary icon-only" value="close" title="Close launch composer" aria-label="Close launch composer"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M6 6l12 12M18 6L6 18"/></svg></button></form>
+    <form method="dialog"><button class="launch-composer-close button secondary icon-only" value="close" title="Close launch composer" aria-label="Close launch composer">${Icons.Close}</button></form>
   </header>
   ${await renderLaunchComposer({
     action: options.action,
@@ -467,7 +468,7 @@ ${moduleStylesHtml()}
     return `<form class="project-configuration-row project-environment-row" role="row" method="post" action="/projects/${encodeURIComponent(project.id)}/environment/${encodeURIComponent(variable.id)}" data-turbo="true" data-controller="settings-autosave" data-action="change->settings-autosave#save">
     <input class="text-field" name="name" value="${escapeHtml(variable.name)}" aria-label="Name" autocomplete="off">
     <input class="text-field" name="value" value="${escapeHtml(variable.value)}" aria-label="Value" autocomplete="off">
-    <span class="project-configuration-actions"><button class="button danger icon-only" type="submit" formaction="/projects/${encodeURIComponent(project.id)}/environment/${encodeURIComponent(variable.id)}/delete" title="Remove environment variable" aria-label="Remove environment variable"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M6 6l12 12M18 6L6 18"/></svg></button></span>
+    <span class="project-configuration-actions"><button class="button danger icon-only" type="submit" formaction="/projects/${encodeURIComponent(project.id)}/environment/${encodeURIComponent(variable.id)}/delete" title="Remove environment variable" aria-label="Remove environment variable">${Icons.Close}</button></span>
   </form>`;
   }
 
@@ -480,7 +481,7 @@ ${moduleStylesHtml()}
         <form class="project-configuration-row project-environment-row new" role="row" method="post" action="/projects/${encodeURIComponent(project.id)}/environment" data-turbo="true">
           <input class="text-field" name="name" placeholder="ENV_VAR" aria-label="Name" autocomplete="off">
           <input class="text-field" name="value" placeholder="Value" aria-label="Value" autocomplete="off">
-          <button class="button primary icon-only" type="submit" title="Add environment variable" aria-label="Add environment variable"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M12 5v14M5 12h14"/></svg></button>
+          <button class="button primary icon-only" type="submit" title="Add environment variable" aria-label="Add environment variable">${Icons.Plus}</button>
         </form>
       </div>
     </section>`;
@@ -492,7 +493,7 @@ ${moduleStylesHtml()}
     <input class="text-field" name="hostPattern" value="${escapeHtml(secret.hostPattern)}" aria-label="Host" autocomplete="off">
     <input class="text-field" name="placeholder" value="${escapeHtml(secret.placeholder ?? "")}" placeholder="Automatic" aria-label="Placeholder" autocomplete="off">
     <input class="text-field" name="secretValue" type="password" placeholder="Unchanged" aria-label="Secret" autocomplete="new-password">
-    <span class="project-configuration-actions"><button class="button danger icon-only" type="submit" formaction="/projects/${encodeURIComponent(project.id)}/secrets/${encodeURIComponent(secret.id)}/delete" title="Remove secret" aria-label="Remove secret"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M6 6l12 12M18 6L6 18"/></svg></button></span>
+    <span class="project-configuration-actions"><button class="button danger icon-only" type="submit" formaction="/projects/${encodeURIComponent(project.id)}/secrets/${encodeURIComponent(secret.id)}/delete" title="Remove secret" aria-label="Remove secret">${Icons.Close}</button></span>
   </form>`;
   }
 
@@ -514,7 +515,7 @@ ${moduleStylesHtml()}
           <input class="text-field" name="hostPattern" placeholder="api.example.com or *.example.com" aria-label="Host" autocomplete="off">
           <input class="text-field" name="placeholder" placeholder="Optional token-like value" aria-label="Placeholder" autocomplete="off">
           <input class="text-field" name="secretValue" type="password" placeholder="Secret" aria-label="Secret" autocomplete="new-password">
-          <button class="button primary icon-only" type="submit" title="Add secret" aria-label="Add secret"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M12 5v14M5 12h14"/></svg></button>
+          <button class="button primary icon-only" type="submit" title="Add secret" aria-label="Add secret">${Icons.Plus}</button>
         </form>
       </div>
     </section>`;
@@ -536,7 +537,7 @@ ${moduleStylesHtml()}
     const [environment, secrets, hasSshKey] = await Promise.all([listProjectEnvironmentVariables(project.id), listProjectSecrets(project.id), hasProjectSshKey(project.id)]);
     return `<turbo-frame id="project_editor_frame" class="project-editor-frame">
       <div class="project-editor-page project-editor-detail-page">
-        <header class="project-editor-detail-head"><div><small>Project settings</small><h2>${escapeHtml(project.name)}</h2></div><button class="project-editor-close button secondary icon-only" type="button" title="Close project settings" aria-label="Close project settings" data-action="modal#close"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M6 6l12 12M18 6L6 18"/></svg></button></header>
+        <header class="project-editor-detail-head"><div><small>Project settings</small><h2>${escapeHtml(project.name)}</h2></div><button class="project-editor-close button secondary icon-only" type="button" title="Close project settings" aria-label="Close project settings" data-action="modal#close">${Icons.Close}</button></header>
         <div class="project-editor-detail-body">
           <section class="project-edit-section"><div class="project-edit-section-copy"><h3>Repository</h3><p>How this project appears and where new workspaces are cloned from.</p></div><form class="project-edit-form" aria-label="Repository" method="post" action="/projects/${encodeURIComponent(project.id)}" data-controller="settings-autosave" data-action="change->settings-autosave#save"><label class="project-edit-field"><span>Display name</span><input class="text-field" name="name" value="${escapeHtml(project.name)}" required></label><label class="project-edit-field"><span>Repository source</span><input class="text-field" name="gitUrl" value="${escapeHtml(formatProjectSpec(project))}" required></label></form></section>
           <div class="project-edit-config"><div class="project-edit-section-copy"><h3>Workspace configuration</h3><p>Applied whenever a workspace is created from this project.</p></div>${projectEnvironmentEditor(project, environment)}${projectSecretEditor(project, secrets)}${projectSshKeyEditor(project, hasSshKey)}</div>
@@ -547,7 +548,7 @@ ${moduleStylesHtml()}
   }
 
   function newProjectEditorFrame(): string {
-    return `<turbo-frame id="project_editor_frame" class="project-editor-frame"><div class="project-editor-page project-editor-detail-page"><header class="project-editor-detail-head"><div><small>Add project</small><h2>New project</h2></div><button class="project-editor-close button secondary icon-only" type="button" title="Close new project" aria-label="Close new project" data-action="modal#close"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M6 6l12 12M18 6L6 18"/></svg></button></header><form class="project-editor-new-form" aria-label="Add project" method="post" action="/projects" data-turbo="true" data-action="turbo:submit-end->modal#submitted"><div><h3>Repository source</h3><p>Save a remote URL, local path, or search for a GitHub repository.</p><div class="project-github-search" data-controller="project-github-search" data-project-github-search-url-value="/projects/github-search"><input class="text-field" name="gitUrl" placeholder="github.com/org/repo, or /path/to/repo#branch" required autofocus data-project-github-search-target="input" data-action="keydown->project-github-search#keydown input->project-github-search#input"><div class="agent-completion-menu-host project-github-search-menu" data-project-github-search-target="menu" hidden></div></div></div><footer><button class="button secondary" type="button" data-action="modal#close">Cancel</button><button class="button primary" type="submit" data-turbo-submits-with="Adding…">Add project</button></footer></form></div></turbo-frame>`;
+    return `<turbo-frame id="project_editor_frame" class="project-editor-frame"><div class="project-editor-page project-editor-detail-page"><header class="project-editor-detail-head"><div><small>Add project</small><h2>New project</h2></div><button class="project-editor-close button secondary icon-only" type="button" title="Close new project" aria-label="Close new project" data-action="modal#close">${Icons.Close}</button></header><form class="project-editor-new-form" aria-label="Add project" method="post" action="/projects" data-turbo="true" data-action="turbo:submit-end->modal#submitted"><div><h3>Repository source</h3><p>Save a remote URL, local path, or search for a GitHub repository.</p><div class="project-github-search" data-controller="project-github-search" data-project-github-search-url-value="/projects/github-search"><input class="text-field" name="gitUrl" placeholder="github.com/org/repo, or /path/to/repo#branch" required autofocus data-project-github-search-target="input" data-action="keydown->project-github-search#keydown input->project-github-search#input"><div class="agent-completion-menu-host project-github-search-menu" data-project-github-search-target="menu" hidden></div></div></div><footer><button class="button secondary" type="button" data-action="modal#close">Cancel</button><button class="button primary" type="submit" data-turbo-submits-with="Adding…">Add project</button></footer></form></div></turbo-frame>`;
   }
 
   function projectEditorModal(): string {

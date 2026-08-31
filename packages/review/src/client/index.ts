@@ -1,6 +1,7 @@
 /// <reference lib="dom" />
 
 import type { DiffLineAnnotation, FileDiff, FileDiffMetadata, SelectedLineRange } from "@pierre/diffs";
+import { Icons } from "@atelier/design-system/icons";
 import { isWorkspacePaneVisible, type WorkspaceClientModule } from "@atelier/shared";
 import { reviewCommentsPrompt, type ReviewCommentModel } from "../model.ts";
 import { reviewDiffOptions } from "../pierre.ts";
@@ -53,7 +54,7 @@ function closeButton(label: string, action: () => void): HTMLButtonElement {
   button.className = "button secondary icon-only review-comment-close";
   button.setAttribute("aria-label", label);
   button.title = label;
-  button.innerHTML = '<svg aria-hidden="true" viewBox="0 0 24 24"><path d="M6 6l12 12M18 6 6 18"/></svg>';
+  button.innerHTML = Icons.Close;
   button.addEventListener("click", action);
   return button;
 }

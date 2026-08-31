@@ -4,6 +4,7 @@ import { Application, Controller } from "@hotwired/stimulus";
 import { copyTextToClipboard } from "@atelier/shared";
 import { ActionItemController } from "@atelier/design-system/action-item/client";
 import { DestructiveConfirmationController } from "@atelier/design-system/destructive-confirmation/client";
+import { Icons } from "@atelier/design-system/icons";
 import { PopupSelectController } from "./popup-select.ts";
 
 export function createCloseButton(label: string): HTMLButtonElement {
@@ -12,13 +13,7 @@ export function createCloseButton(label: string): HTMLButtonElement {
   button.className = "button secondary icon-only";
   button.title = label;
   button.setAttribute("aria-label", label);
-  const icon = document.createElementNS("http://www.w3.org/2000/svg", "svg");
-  icon.setAttribute("aria-hidden", "true");
-  icon.setAttribute("viewBox", "0 0 24 24");
-  const path = document.createElementNS("http://www.w3.org/2000/svg", "path");
-  path.setAttribute("d", "M6 6l12 12M18 6L6 18");
-  icon.append(path);
-  button.append(icon);
+  button.innerHTML = Icons.Close;
   return button;
 }
 
