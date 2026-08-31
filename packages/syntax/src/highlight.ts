@@ -1,23 +1,35 @@
 import path from "node:path";
 import { createCssVariablesTheme, createHighlighterCoreSync } from "@shikijs/core";
 import { createJavaScriptRegexEngine } from "@shikijs/engine-javascript";
+import astro from "@shikijs/langs/astro";
 import bash from "@shikijs/langs/bash";
 import csharp from "@shikijs/langs/csharp";
 import css from "@shikijs/langs/css";
+import docker from "@shikijs/langs/docker";
 import erb from "@shikijs/langs/erb";
 import go from "@shikijs/langs/go";
+import hcl from "@shikijs/langs/hcl";
 import html from "@shikijs/langs/html";
 import java from "@shikijs/langs/java";
 import javascript from "@shikijs/langs/javascript";
 import json from "@shikijs/langs/json";
 import jsonc from "@shikijs/langs/jsonc";
+import jsx from "@shikijs/langs/jsx";
 import markdown from "@shikijs/langs/markdown";
+import php from "@shikijs/langs/php";
 import python from "@shikijs/langs/python";
 import regex from "@shikijs/langs/regex";
 import ruby from "@shikijs/langs/ruby";
 import rust from "@shikijs/langs/rust";
+import scss from "@shikijs/langs/scss";
+import sql from "@shikijs/langs/sql";
+import svelte from "@shikijs/langs/svelte";
+import terraform from "@shikijs/langs/terraform";
+import tsx from "@shikijs/langs/tsx";
 import typescript from "@shikijs/langs/typescript";
+import vue from "@shikijs/langs/vue";
 import xml from "@shikijs/langs/xml";
+import yaml from "@shikijs/langs/yaml";
 import { escapeHtml } from "@atelier/shared";
 
 const theme = createCssVariablesTheme({ name: "atelier-fragment", variablePrefix: "--syntax-", fontStyle: false });
@@ -32,19 +44,20 @@ theme.tokenColors?.push(
 const highlighter = createHighlighterCoreSync({
   engine: createJavaScriptRegexEngine(),
   themes: [theme],
-  langs: [bash, csharp, css, erb, go, html, java, javascript, json, jsonc, markdown, python, regex, ruby, rust, typescript, xml],
+  langs: [astro, bash, csharp, css, docker, erb, go, hcl, html, java, javascript, json, jsonc, jsx, markdown, php, python, regex, ruby, rust, scss, sql, svelte, terraform, tsx, typescript, vue, xml, yaml],
 });
 
 const extensionLanguages = new Map(Object.entries({
-  ts: "typescript", tsx: "typescript", js: "javascript", jsx: "javascript", mjs: "javascript", cjs: "javascript",
-  html: "html", htm: "html", erb: "erb", rhtml: "erb", xml: "xml", svg: "xml", css: "css", cs: "csharp", csx: "csharp",
-  json: "json", jsonc: "jsonc", md: "markdown", markdown: "markdown", sh: "bash", bash: "bash", zsh: "bash",
-  py: "python", rb: "ruby", rs: "rust", go: "go", java: "java", regex: "regex",
+  ts: "typescript", tsx: "tsx", js: "javascript", jsx: "jsx", mjs: "javascript", cjs: "javascript",
+  html: "html", htm: "html", erb: "erb", rhtml: "erb", xml: "xml", svg: "xml", css: "css", scss: "scss", cs: "csharp", csx: "csharp",
+  json: "json", jsonc: "jsonc", yaml: "yaml", yml: "yaml", md: "markdown", markdown: "markdown", sh: "bash", bash: "bash", zsh: "bash",
+  py: "python", rb: "ruby", rs: "rust", go: "go", java: "java", regex: "regex", sql: "sql", dockerfile: "docker",
+  vue: "vue", svelte: "svelte", astro: "astro", tf: "terraform", tfvars: "terraform", hcl: "hcl", php: "php", phtml: "php",
 }));
 const aliases = new Map(Object.entries({
-  ts: "typescript", tsx: "typescript", js: "javascript", jsx: "javascript", mjs: "javascript", cjs: "javascript",
-  htm: "html", shell: "bash", sh: "bash", zsh: "bash", cs: "csharp", csx: "csharp", md: "markdown",
-  py: "python", rb: "ruby", rs: "rust",
+  ts: "typescript", js: "javascript", mjs: "javascript", cjs: "javascript", htm: "html", yml: "yaml",
+  dockerfile: "docker", shell: "bash", sh: "bash", zsh: "bash", cs: "csharp", csx: "csharp", md: "markdown",
+  py: "python", rb: "ruby", rs: "rust", tf: "terraform",
 }));
 const supported = new Set(highlighter.getLoadedLanguages());
 const colorRole = /^var\(--syntax-(?:token-)?([\w-]+)/;
@@ -54,7 +67,9 @@ export interface HighlightedCode { html: string; language?: string }
 
 export function languageFromPath(filePath: string | undefined): string | undefined {
   if (!filePath) return undefined;
-  const extension = path.extname(filePath).slice(1).toLowerCase();
+  const basename = path.basename(filePath).toLowerCase();
+  if (basename === "dockerfile") return "docker";
+  const extension = path.extname(basename).slice(1);
   return extensionLanguages.get(extension);
 }
 
