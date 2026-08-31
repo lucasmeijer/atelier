@@ -62,7 +62,7 @@ describe("transcript rendering", () => {
     const cases = [
       { name: "active turn", item: { type: "working" as const, key: "active", startedAt: 1000, items: [{ type: "thinking" as const, key: "thought", text: "Checking files" }] }, label: "Working", open: true, active: true },
       { name: "empty active turn", item: { type: "working" as const, key: "waiting", startedAt: 1000, items: [] }, label: "Working", open: true, active: true },
-      { name: "completed turn", item: { type: "working" as const, key: "worked", startedAt: 1000, completedAt: 3500, items: [{ type: "thinking" as const, key: "thought", text: "Checking files" }] }, label: "Worked for 3s", open: false, active: false },
+      { name: "completed turn", item: { type: "working" as const, key: "worked", startedAt: 1000, completedAt: 3500, contextTokens: 23_000, items: [{ type: "thinking" as const, key: "thought", text: "Checking files" }] }, label: "Worked for 3s · 23k tokens", open: false, active: false },
       { name: "interrupted turn", item: { type: "working" as const, key: "stopped", startedAt: 1000, stoppedAt: 3500, items: [] }, label: "Stopped after 3s", open: false, active: false },
     ];
 

@@ -39,6 +39,8 @@ import { collectCacheMisses, detectCacheMiss, significantCacheMissNotice, type C
 import { AgentServiceTierState, modelRuntimeWithServiceTiers, supportsFastMode, type AgentServiceTier } from "./service-tier.ts";
 import { createWorkspaceAgentTools, workspaceAgentToolNames } from "./tools.ts";
 import {
+  addedContextTokens,
+  assistantContextUsage,
   assistantTextPhase,
   buildTranscript,
   finalAssistantText,
@@ -233,6 +235,7 @@ interface LiveState {
   textStream?: LiveTextStream;
   toolIndexByCallId: Map<string, number>;
   terminalTimers: Map<string, ReturnType<typeof setTimeout>>;
+  firstPromptTokens?: number;
 }
 
 interface LiveToolCall {
@@ -870,6 +873,14 @@ abstract class BaseAgentRuntime implements WorkspaceAgentRuntime {
     this.appendLiveItem(item, { live: true });
   }
 
+  protected liveContextUsage(message: { usage?: { input?: number; cacheRead?: number; cacheWrite?: number; output?: number } }): void {
+    const live = this.live;
+    const usage = assistantContextUsage(message);
+    if (!live || !usage) return;
+    live.firstPromptTokens ??= usage.promptTokens;
+    live.working.contextTokens = addedContextTokens(live.firstPromptTokens, usage);
+  }
+
   protected liveCacheMiss(miss: CacheMiss): void {
     const text = significantCacheMissNotice(miss);
     if (!text) return;
@@ -1070,6 +1081,7 @@ export function recordsFromSessionEntries(entries: any[], cacheMisses = new Map<
           stopReason: message.stopReason ?? "stop",
           errorMessage: message.errorMessage,
           timestamp: entryTimestamp(entry),
+          usage: assistantContextUsage(message),
         });
         const notice = significantCacheMissNotice(cacheMisses.get(message));
         if (notice && message.stopReason !== "aborted" && message.stopReason !== "error") {
@@ -1318,6 +1330,7 @@ export class RealAgentRuntime extends BaseAgentRuntime {
         if (message?.role === "user") setTimeout(() => this.syncLiveUserEntry(), 0);
         if (message?.role === "toolResult") setTimeout(() => this.syncLiveToolResult(message.toolCallId), 0);
         if (message?.role === "assistant") {
+          this.liveContextUsage(message);
           if (isFinalAssistantMessage(message.content, message.stopReason)) {
             this.liveFinal(finalAssistantText(message.content));
           } else {

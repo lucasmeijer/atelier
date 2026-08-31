@@ -38,11 +38,29 @@ export function assistantTextPhase(textSignature?: string): AssistantTextPhase |
 
 export type TranscriptRecord =
   | { kind: "user"; id: string; text: string; images: SessionImageRef[]; timestamp: number; rewindable?: boolean }
-  | { kind: "assistant"; id: string; parts: AssistantPart[]; stopReason: StopReason; errorMessage?: string; timestamp: number }
+  | { kind: "assistant"; id: string; parts: AssistantPart[]; stopReason: StopReason; errorMessage?: string; timestamp: number; usage?: AssistantContextUsage }
   | { kind: "toolResult"; callId: string; text: string; images: SessionImageRef[]; isError: boolean; timestamp: number; details?: ToolViewDetails }
   | { kind: "note"; id?: string; text: string; tone: NoteTone; timestamp?: number };
 
 export type NoteTone = "system" | "summary" | "warning" | "error";
+
+export interface AssistantContextUsage {
+  promptTokens: number;
+  outputTokens: number;
+}
+
+export function assistantContextUsage(message: { usage?: { input?: number; cacheRead?: number; cacheWrite?: number; output?: number } }): AssistantContextUsage | undefined {
+  const usage = message.usage;
+  if (!usage || !Number.isFinite(usage.input) || !Number.isFinite(usage.cacheRead) || !Number.isFinite(usage.cacheWrite) || !Number.isFinite(usage.output)) return undefined;
+  return {
+    promptTokens: usage.input! + usage.cacheRead! + usage.cacheWrite!,
+    outputTokens: usage.output!,
+  };
+}
+
+export function addedContextTokens(firstPromptTokens: number, usage: AssistantContextUsage): number {
+  return Math.max(0, usage.promptTokens - firstPromptTokens) + usage.outputTokens;
+}
 
 const toolViewDetailsSchema = Type.Object({
   aborted: Type.Optional(Type.Boolean()),
@@ -91,6 +109,7 @@ export type WorkingTranscriptItem = TranscriptItemBase & {
   startedAt: number;
   completedAt?: number;
   stoppedAt?: number;
+  contextTokens?: number;
   live?: boolean;
   items: TranscriptItem[];
 };
@@ -143,6 +162,7 @@ export function buildTranscript(records: TranscriptRecord[]): TranscriptItem[] {
   const items: TranscriptItem[] = [];
   const tools = new Map<string, ToolView>();
   let working: WorkingTranscriptItem | undefined;
+  let firstWorkingPromptTokens: number | undefined;
   let lastTimestamp = 0;
   let lastWorkingActivityAt = 0;
 
@@ -170,12 +190,17 @@ export function buildTranscript(records: TranscriptRecord[]): TranscriptItem[] {
         images: record.images,
       });
       working = { type: "working", key: `${record.id}:working`, startedAt: record.timestamp, items: [] };
+      firstWorkingPromptTokens = undefined;
       lastWorkingActivityAt = record.timestamp;
       items.push(working);
       continue;
     }
 
     if (record.kind === "assistant") {
+      if (working && record.usage) {
+        firstWorkingPromptTokens ??= record.usage.promptTokens;
+        working.contextTokens = addedContextTokens(firstWorkingPromptTokens, record.usage);
+      }
       const final = isFinalAssistantMessage(record.parts, record.stopReason);
       const hasPhasedText = record.parts.some((part) => part.type === "text" && assistantTextPhase(part.textSignature) !== undefined);
       let first = true;

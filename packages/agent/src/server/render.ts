@@ -471,12 +471,14 @@ function renderWorkingItems(ctx: AgentRenderContext, section: WorkingTranscriptI
 
 function renderWorkingSection(ctx: AgentRenderContext, section: WorkingTranscriptItem): string {
   if (section.completedAt !== undefined && section.items.length === 0) return "";
-  const label = section.completedAt !== undefined
+  const activityLabel = section.completedAt !== undefined
     ? `Worked for ${formatDuration(section.completedAt - section.startedAt)}`
     : section.stoppedAt !== undefined
       ? `Stopped after ${formatDuration(section.stoppedAt - section.startedAt)}`
       : "Working";
   const active = section.completedAt === undefined && section.stoppedAt === undefined;
+  const contextLabel = !active && section.contextTokens !== undefined ? ` · ${formatTokens(section.contextTokens)} tokens` : "";
+  const label = `${activityLabel}${contextLabel}`;
   const status = active ? '<i class="status-dot running action-item__status" aria-label="In progress"></i>' : "";
   const summary = disclosureActionItemHtml(`${status}${actionItemLabelHtml(label)}`);
   if (!active && !section.live) {
