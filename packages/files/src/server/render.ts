@@ -1,4 +1,5 @@
 import { posix } from "node:path";
+import { actionItemHtml } from "@atelier/design-system/action-item";
 import { disclosureIconHtml, domId, escapeHtml, workspaceFileOpenUrl, workspaceProxyUrl, type WorkspaceWorkViewPresentation } from "@atelier/shared";
 import { workspaceRoot } from "@atelier/workspace";
 import type { FileEntry } from "./files.ts";
@@ -63,22 +64,28 @@ function renderEntryRow(workspaceId: string, viewId: string, entry: FileEntry, e
   const icon = entry.kind === "directory"
     ? `${disclosureIconHtml}<span class="status-spinner sm files-directory-spinner"></span>`
     : entry.kind === "symlink" ? "↗" : "";
-  const label = entry.kind === "directory"
-    ? `<a class="action-item__label-text" href="${escapeHtml(directoryToggleUrl(workspaceId, viewId, entry.path, !expanded))}" data-turbo-frame="${filesDirectoryFrameId(workspaceId, viewId, entry.path)}">${escapeHtml(entry.name)}</a>`
+  const destination = entry.kind === "directory"
+    ? `href="${escapeHtml(directoryToggleUrl(workspaceId, viewId, entry.path, !expanded))}" data-turbo-frame="${filesDirectoryFrameId(workspaceId, viewId, entry.path)}"`
     : entry.openable
-      ? `<a class="action-item__label-text" href="${escapeHtml(workspaceFileOpenUrl(workspaceId, entry.path, {}, viewId))}" data-turbo-stream="true" data-action="files-view#selectFile">${escapeHtml(entry.name)}</a>`
-      : `<span class="action-item__label-text">${escapeHtml(entry.name)}</span>`;
-  const drop = entry.kind === "directory" ? ` data-files-destination="${escapeHtml(entry.directoryPath ?? entry.path)}"` : "";
-  const actions = entry.kind === "directory"
-    ? "click->files#openDirectory dragenter->files#folderDragEnter dragover->files#folderDragOver dragleave->files#folderDragLeave drop->files#folderDrop"
-    : "click->files#openFileRow";
-  const expandedAttribute = entry.kind === "directory" ? ` aria-expanded="${expanded}"` : "";
+      ? `href="${escapeHtml(workspaceFileOpenUrl(workspaceId, entry.path, {}, viewId))}" data-turbo-stream="true" data-action="files-view#selectFile"`
+      : "";
+  const directoryAttributes = entry.kind === "directory"
+    ? ` data-files-destination="${escapeHtml(entry.directoryPath ?? entry.path)}" data-action="dragenter->files#folderDragEnter dragover->files#folderDragOver dragleave->files#folderDragLeave drop->files#folderDrop" aria-expanded="${expanded}"`
+    : "";
   const selectedAttribute = entry.path === selectedPath ? ' aria-selected="true"' : "";
-  return `<div class="files-row action-item" role="treeitem" tabindex="-1" data-kind="${entry.kind}" data-action="${actions}"${drop}${expandedAttribute}${selectedAttribute}>
-    <span class="files-row-icon" aria-hidden="true">${icon}</span>
-    <span class="files-row-name action-item__label">${label}</span>
-    <span class="files-row-size">${entry.kind === "directory" ? "" : formatSize(entry.size)}</span>
-  </div>`;
+  const size = entry.kind === "directory" ? "" : `<span class="files-row-size">${formatSize(entry.size)}</span>`;
+  return actionItemHtml({
+    kind: "single",
+    primary: Boolean(destination),
+    leadingHtml: `<span class="files-row-icon" aria-hidden="true">${icon}</span>`,
+    label: { kind: "text", text: entry.name, className: "files-row-name" },
+    trailingHtml: size,
+    element: {
+      tag: destination ? "a" : "div",
+      className: "files-row",
+      attributesHtml: `role="treeitem" tabindex="-1" data-kind="${entry.kind}"${destination ? ` ${destination}` : ""}${directoryAttributes}${selectedAttribute}`,
+    },
+  });
 }
 
 function renderEntry(workspaceId: string, viewId: string, entry: FileEntry, selectedPath?: string): string {

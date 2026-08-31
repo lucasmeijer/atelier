@@ -2,7 +2,7 @@
 
 import { Application, Controller } from "@hotwired/stimulus";
 import { copyTextToClipboard } from "@atelier/shared";
-import { ActionItemsController } from "./action-items.ts";
+import { ActionItemController } from "@atelier/design-system/action-item/client";
 import { PopupSelectController } from "./popup-select.ts";
 
 export function createCloseButton(label: string): HTMLButtonElement {
@@ -365,7 +365,7 @@ function attachAutomaticBehaviors(root: ParentNode): void {
 }
 
 export function registerDesignSystemControllers(application: Pick<Application, "register">): void {
-  application.register("action-items", ActionItemsController);
+  application.register("action-items", ActionItemController);
   application.register("copy-button", CopyButtonController);
   application.register("destructive-confirmation", DestructiveConfirmationController);
   application.register("dialog", DialogController);

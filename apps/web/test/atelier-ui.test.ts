@@ -4,6 +4,7 @@ import { join } from "node:path";
 import { chromium, type Browser, type Page } from "@playwright/test";
 import { ids as agentIds, renderActiveToolContent, renderTranscriptItem, renderTranscriptItemDetailFrame, type AgentRenderContext } from "../../../packages/agent/src/server/render.ts";
 import { renderSlashCommandCatalog } from "../../../packages/agent/src/server/slash-commands.ts";
+import { actionItemHtml } from "../../../packages/design-system/src/action-item/action-item-html.ts";
 import type { ToolView, TranscriptItem } from "../../../packages/agent/src/server/transcript.ts";
 import { renderMarkdown } from "../../../packages/markdown/src/index.ts";
 import { filesEditorFrameId, renderFilesEditorFrame, renderFilesTreeFrame, renderFilesWorkViewBody } from "../../../packages/files/src/server/render.ts";
@@ -94,7 +95,8 @@ async function newShortcutTestPage(ids: readonly string[], workViews: WorkspaceP
 beforeAll(async () => {
   testAssets = await buildWebTestAssets();
   workspaceClientPath = testAssets.path("/workspace.js");
-  designSystemStyle = await Bun.file(new URL("../public/design-system.css", import.meta.url)).text();
+  const actionItemStyle = await Bun.file(new URL("../../../packages/design-system/src/action-item/action-item.css", import.meta.url)).text();
+  designSystemStyle = `${actionItemStyle}\n${await Bun.file(new URL("../public/design-system.css", import.meta.url)).text()}`;
   const shellStyle = await Bun.file(new URL("../public/style.css", import.meta.url)).text();
   workspaceStyle = `${designSystemStyle}\n${shellStyle}`;
   filesStyle = await Bun.file(new URL("../../../packages/files/src/client/style.css", import.meta.url)).text();
@@ -438,6 +440,26 @@ Comment: I don't think we need these tests`;
     expect(treeBox).not.toBeNull();
     expect(rowBox).not.toBeNull();
     expect(rowBox!.height).toBeLessThan(treeBox!.height / 2);
+    await page.close();
+  });
+
+  test("gives directory names the space reserved for file sizes", async () => {
+    const page = await newTestPage({ reducedMotion: "no-preference" });
+    const name = "a-directory-name-long-enough-to-scroll-across-the-entire-row";
+    const tree = renderFilesTreeFrame("workspace", "workspace", [{ name, path: `/work/${name}`, kind: "directory", size: 0, openable: false }]);
+    await page.setContent(`<style>${workspaceStyle}\n${filesStyle}</style><div style="width: 300px; height: 200px">${tree}</div>`);
+    await page.addScriptTag({ url: `http://atelier.test${workspaceClientPath}`, type: "module" });
+    await page.waitForFunction(() => Boolean(window.Stimulus));
+
+    const row = page.getByRole("treeitem");
+    const label = row.locator(".action-item__label");
+    const [rowBox, labelBox] = await Promise.all([row.boundingBox(), label.boundingBox()]);
+    expect(rowBox).not.toBeNull();
+    expect(labelBox).not.toBeNull();
+    expect(rowBox!.x + rowBox!.width - (labelBox!.x + labelBox!.width)).toBeLessThanOrEqual(5);
+
+    await row.hover();
+    expect(await row.evaluate((element) => element.classList.contains("is-label-scrolling"))).toBe(true);
     await page.close();
   });
 
@@ -2369,10 +2391,14 @@ Comment: I don't think we need these tests`;
 
   test("hides an inactive Work view close action after the pointer leaves its tab", async () => {
     const page = await newTestPage({ viewport: { width: 1280, height: 800 } });
-    await page.setContent(`<style>${workspaceStyle}</style><button type="button">Agent surface</button><div class="fixed-shell-work-view-selector action-item">
-      <button class="action-item__primary" type="button" role="tab" aria-selected="false" tabindex="-1" data-controller="atelier-fullscreen" data-atelier-fullscreen-mode-value="view" data-atelier-fullscreen-view-key-value="server" data-atelier-fullscreen-title-value="Server">Server</button>
-      <button class="action-item__action" type="button">Close Server</button>
-    </div>`);
+    const item = actionItemHtml({
+      kind: "compound",
+      label: { kind: "text", text: "Server" },
+      container: { className: "fixed-shell-work-view-selector" },
+      primary: { tag: "button", attributesHtml: 'type="button" role="tab" aria-selected="false" tabindex="-1" data-controller="atelier-fullscreen" data-atelier-fullscreen-mode-value="view" data-atelier-fullscreen-view-key-value="server" data-atelier-fullscreen-title-value="Server"' },
+      engagedActionsHtml: '<button type="button">Close Server</button>',
+    });
+    await page.setContent(`<style>${workspaceStyle}</style><button type="button">Agent surface</button>${item}`);
     await page.addScriptTag({ url: `http://atelier.test${workspaceClientPath}`, type: "module" });
     await page.waitForFunction(() => Boolean(window.Stimulus));
 

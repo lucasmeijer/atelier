@@ -83,13 +83,14 @@ describe("role-fixed Workspace presentation", () => {
     expect(projectHeading.indexOf("Atelier")).toBeLessThan(projectHeading.indexOf("fixed-shell-project-settings"));
     expect(projectHeading.indexOf("fixed-shell-project-settings")).toBeLessThan(projectHeading.indexOf("fixed-shell-project-add"));
     expect(html).toContain('data-project-id="__projectless__"><svg');
-    expect(html).toContain('<span class="action-item__label"><span class="action-item__label-text">Projectless</span></span></button><span class="fixed-shell-project-actions button-group"><a class="fixed-shell-project-add action-item__action button secondary icon-only" href="/launch-composer" data-turbo-frame="launch_composer" aria-label="New projectless workspace"');
+    expect(html).toContain('<span class="action-item__label"><span class="action-item__label-text">Projectless</span></span>');
+    expect(html).toContain('href="/launch-composer" data-turbo-frame="launch_composer" aria-label="New projectless workspace"');
     expect(html.indexOf('data-project-id="__projectless__"')).toBeLessThan(html.indexOf('data-project-id="__projects_drawer__"'));
     const drawerProjects = html.slice(html.indexOf('data-project-id="__projects_drawer__"'));
     expect(html).toContain('class="fixed-shell-project action-list fixed-shell-projects-drawer is-collapsed" data-project-id="__projects_drawer__"');
     expect(drawerProjects).toContain('aria-expanded="false"');
     expect(drawerProjects).toContain('<span class="action-item__label"><span class="action-item__label-text">Projects</span></span>');
-    expect(drawerProjects).toContain('<a class="fixed-shell-project-add action-item__action button secondary icon-only" href="/projects/new/editor"');
+    expect(drawerProjects).toContain('<a class="fixed-shell-project-add button secondary icon-only" href="/projects/new/editor"');
     expect(drawerProjects).toContain('<a class="fixed-shell-project-heading action-item__primary" href="/projects/project-2/launch-composer" data-turbo-frame="launch_composer" aria-label="New workspace: Empty"><span class="action-item__label"><span class="action-item__label-text">Empty</span></span></a>');
     expect(drawerProjects.match(/href="\/projects\/project-1\/launch-composer"/g)).toHaveLength(2);
     expect(drawerProjects.match(/href="\/projects\/project-2\/launch-composer"/g)).toHaveLength(2);
@@ -98,7 +99,6 @@ describe("role-fixed Workspace presentation", () => {
     expect(drawerProjects).not.toContain('fixed-shell-project-settings" href="/projects/new/editor"');
     expect(html).not.toContain("<footer>");
     expect(html).not.toContain("New Project");
-    expect(html).toContain('class="fixed-shell-workspace-row action-item action-item__primary active"');
     expect(html).not.toContain("fixed-shell-workspace-color");
     expect(html).toContain('data-workspace-attention-at="123"');
     expect(html).toContain('aria-current="page"');
@@ -162,7 +162,7 @@ describe("role-fixed Workspace presentation", () => {
     expect(workspaceSection).toContain("Projectless");
     expect(workspaceSection).toContain('href="/launch-composer"');
     expect(projectsSection).not.toContain('data-project-id="__projectless__"');
-    expect(projectsSection).toContain('class="fixed-shell-project-add action-item__action button secondary icon-only is-onboarding-target" data-empty-workspace-onboarding-destination="first-project"');
+    expect(projectsSection).toContain('class="fixed-shell-project-add button secondary icon-only is-onboarding-target" data-empty-workspace-onboarding-destination="first-project"');
     expect(projectsSection).toContain('class="fixed-shell-project action-list fixed-shell-projects-drawer is-collapsed"');
   });
 
@@ -237,7 +237,8 @@ describe("role-fixed Workspace presentation", () => {
     const desktop = html.slice(0, html.indexOf('aria-label="Current workspace destinations"'));
     expect(desktop.match(/fixed-shell-agent-conversation action-item/g)).toHaveLength(2);
     expect(desktop).toContain('class="fixed-shell-work-view-selector action-item"');
-    expect(desktop.match(/class="fixed-shell-view-close action-item__action button danger icon-only"/g)).toHaveLength(3);
+    expect(desktop.match(/class="action-item__actions action-item__actions--engaged"/g)).toHaveLength(3);
+    expect(desktop.match(/class="fixed-shell-view-close button danger icon-only"/g)).toHaveLength(3);
     const mobileMore = html.slice(html.indexOf('role="menu" aria-label="More"'));
     expect(mobileMore).toContain('role="menuitem"');
     expect(mobileMore).toContain('Close current view');

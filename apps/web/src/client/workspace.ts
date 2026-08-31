@@ -7,6 +7,7 @@ import { Value } from "typebox/value";
 // @ts-expect-error No declaration file is included in @hotwired/turbo.
 import * as Turbo from "@hotwired/turbo";
 import { createHtmlAutocompleteController, PromptHistoryNavigator } from "@atelier/agent/client";
+import { actionItemElement, actionItemHtml } from "@atelier/design-system/action-item";
 import {
   atelierCableConnectionHeader,
   CableTopics,
@@ -658,25 +659,16 @@ class AtelierShortcutsController extends Controller {
     const actions = document.createElement("div");
     actions.className = "action-list";
     for (const command of commands) {
-      const button = document.createElement("button");
-      button.className = "shortcut-overlay-item action-item action-item__primary";
-      button.type = "button";
+      const button = actionItemElement<HTMLButtonElement>({
+        kind: "single",
+        label: { kind: "text", text: command.label },
+        trailingHtml: `<kbd class="shortcut-overlay-binding popup-menu__meta">${escapeHtml(this.formatBinding(command.binding))}</kbd>`,
+        element: { tag: "button", className: "shortcut-overlay-item", attributesHtml: 'type="button"' },
+      });
       button.addEventListener("click", () => {
         this.hideShortcutOverlay();
         void command.run();
       });
-
-      const label = document.createElement("span");
-      label.className = "action-item__label";
-      const labelText = document.createElement("span");
-      labelText.className = "action-item__label-text";
-      labelText.textContent = command.label;
-      label.append(labelText);
-
-      const binding = document.createElement("kbd");
-      binding.className = "shortcut-overlay-binding popup-menu__meta";
-      binding.textContent = this.formatBinding(command.binding);
-      button.append(label, binding);
       actions.append(button);
     }
     overlay.append(actions);
@@ -820,10 +812,12 @@ class AtelierShortcutsController extends Controller {
       results.innerHTML = `<div class="empty-state palette-empty"><strong>No results found</strong><span>Try another command, workspace, or destination.</span></div>`;
       return;
     }
-    results.innerHTML = this.paletteItems.map((item, index) => `<button id="atelier-palette-option-${index}" type="button" class="action-item action-item__primary" data-palette-index="${index}" role="option" aria-selected="${index === this.paletteIndex ? "true" : "false"}">
-        <span class="action-item__label"><span class="action-item__label-text">${escapeHtml(item.title)}</span></span>
-        ${item.badge ? `<kbd class="popup-menu__meta">${escapeHtml(item.badge)}</kbd>` : ""}
-      </button>`).join("");
+    results.innerHTML = this.paletteItems.map((item, index) => actionItemHtml({
+      kind: "single",
+      label: { kind: "text", text: item.title },
+      trailingHtml: item.badge ? `<kbd class="popup-menu__meta">${escapeHtml(item.badge)}</kbd>` : "",
+      element: { tag: "button", attributesHtml: `id="atelier-palette-option-${index}" type="button" data-palette-index="${index}" role="option" aria-selected="${index === this.paletteIndex ? "true" : "false"}"` },
+    })).join("");
     const activeId = `atelier-palette-option-${this.paletteIndex}`;
     this.paletteInput!.setAttribute("aria-activedescendant", activeId);
     results.querySelector<HTMLElement>(`#${activeId}`)?.scrollIntoView({ block: "nearest" });
@@ -2299,11 +2293,11 @@ class AgentModelMenuController extends SelectPopupController {
   }
 
   protected override renderMenu(): Node[] {
-    const configure = document.createElement("button");
-    configure.type = "button";
-    configure.className = "action-item action-item__primary";
-    configure.setAttribute("role", "menuitem");
-    configure.appendChild(this.actionItemLabel("Configure models"));
+    const configure = actionItemElement<HTMLButtonElement>({
+      kind: "single",
+      label: { kind: "text", text: "Configure models" },
+      element: { tag: "button", attributesHtml: 'type="button" role="menuitem"' },
+    });
     configure.addEventListener("click", () => { this.close(); void this.openSetup(); });
     const separator = document.createElement("hr");
     separator.className = "popup-menu__separator";
@@ -2311,9 +2305,12 @@ class AgentModelMenuController extends SelectPopupController {
   }
 
   protected override renderOptionLabel(option: HTMLOptionElement): HTMLElement {
-    const label = document.createElement("span");
-    label.className = "action-item__label agent-model-option-label";
-    label.innerHTML = agentModelLabelHtml(option.dataset.provider ?? "", option.textContent ?? option.value);
+    const item = actionItemElement({
+      kind: "single",
+      label: { kind: "html", html: agentModelLabelHtml(option.dataset.provider ?? "", option.textContent ?? option.value), className: "agent-model-option-label" },
+      element: { tag: "span" },
+    });
+    const label = item.querySelector<HTMLElement>(".action-item__label")!;
     if (option.dataset.unavailableReason && option.dataset.unavailableReason !== "Provider disconnected") label.appendChild(this.description(option.dataset.unavailableReason));
     return label;
   }

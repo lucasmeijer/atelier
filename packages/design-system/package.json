@@ -1,0 +1,13 @@
+{
+  "name": "@atelier/design-system",
+  "private": true,
+  "type": "module",
+  "exports": {
+    "./action-item": "./src/action-item/action-item-html.ts",
+    "./action-item/client": "./src/action-item/action-item-controller.ts"
+  },
+  "dependencies": {
+    "@atelier/shared": "workspace:*",
+    "@hotwired/stimulus": "3.2.2"
+  }
+}

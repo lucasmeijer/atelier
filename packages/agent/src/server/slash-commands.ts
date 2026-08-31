@@ -1,3 +1,4 @@
+import { actionItemHtml } from "@atelier/design-system/action-item";
 import type { Skill } from "@earendil-works/pi-coding-agent";
 import { escapeHtml } from "./html.ts";
 import type { PromptTemplate } from "./prompt-templates.ts";
@@ -28,8 +29,15 @@ export function renderSlashCommandCatalog(templates: readonly PromptTemplate[], 
   const commands = slashCommands(templates, skills);
   return `<div class="popup-menu autocomplete-menu action-list" role="listbox" aria-label="Slash commands">${commands.map((command, index) => {
     const template = command.prompt !== undefined;
-    return `<button type="button" class="agent-completion-option action-item action-item__primary${index === 0 ? " active" : ""}" role="option" aria-selected="${index === 0 ? "true" : "false"}" data-completion-kind="${command.kind}" data-command-trigger="${escapeHtml(command.trigger)}"${command.trigger === "/tree" ? ` data-command-action="tree"` : ""}${template ? ` data-controller="atelier-fullscreen" data-atelier-fullscreen-mode-value="template" data-atelier-fullscreen-title-value="${escapeHtml(command.trigger)}"` : ""}>
-      <span class="action-item__label"><span class="action-item__label-text">${escapeHtml(command.trigger)}${command.argumentHint ? ` ${escapeHtml(command.argumentHint)}` : ""} — ${escapeHtml(command.description)}</span></span>${command.prompt !== undefined ? `<template data-atelier-fullscreen-target="content"><pre class="agent-template-preview">${escapeHtml(command.prompt)}</pre></template>` : ""}
-    </button>`;
+    return actionItemHtml({
+      kind: "single",
+      label: { kind: "html", html: `${escapeHtml(command.trigger)}${command.argumentHint ? ` ${escapeHtml(command.argumentHint)}` : ""} — ${escapeHtml(command.description)}` },
+      trailingHtml: command.prompt === undefined ? "" : `<template data-atelier-fullscreen-target="content"><pre class="agent-template-preview">${escapeHtml(command.prompt)}</pre></template>`,
+      element: {
+        tag: "button",
+        className: `agent-completion-option${index === 0 ? " active" : ""}`,
+        attributesHtml: `type="button" role="option" aria-selected="${index === 0 ? "true" : "false"}" data-completion-kind="${command.kind}" data-command-trigger="${escapeHtml(command.trigger)}"${command.trigger === "/tree" ? ` data-command-action="tree"` : ""}${template ? ` data-controller="atelier-fullscreen" data-atelier-fullscreen-mode-value="template" data-atelier-fullscreen-title-value="${escapeHtml(command.trigger)}"` : ""}`,
+      },
+    });
   }).join("")}</div>`;
 }

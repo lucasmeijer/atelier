@@ -89,18 +89,6 @@ function createFilesController(Controller: WorkspaceClientControllerConstructor)
       frame.reload();
     }
 
-    openDirectory(event: StimulusActionEvent<MouseEvent, HTMLElement>): void {
-      if (event.target instanceof Element && event.target.closest("a")) return;
-      event.preventDefault();
-      event.currentTarget.querySelector<HTMLAnchorElement>(".files-row-name > a")!.click();
-    }
-
-    openFileRow(event: StimulusActionEvent<MouseEvent, HTMLElement>): void {
-      if (event.target instanceof Element && event.target.closest(".files-row-name > a")) return;
-      event.preventDefault();
-      event.currentTarget.querySelector<HTMLAnchorElement>(".files-row-name > a")?.click();
-    }
-
     keydown(event: KeyboardEvent): void {
       const rows = [...this.element.querySelectorAll<HTMLElement>(".files-row")];
       if (rows.length === 0) return;
@@ -110,7 +98,7 @@ function createFilesController(Controller: WorkspaceClientControllerConstructor)
       else if (event.key === "ArrowUp") next = Math.max(0, current < 0 ? 0 : current - 1);
       else if (event.key === "Home") next = 0;
       else if (event.key === "End") next = rows.length - 1;
-      else if (event.key === "Enter" && current >= 0) rows[current]!.querySelector<HTMLAnchorElement>(".files-row-name > a")?.click();
+      else if (event.key === "Enter" && current >= 0 && rows[current] instanceof HTMLAnchorElement) rows[current].click();
       else return;
       event.preventDefault();
       if (next !== undefined) rows[next]!.focus();

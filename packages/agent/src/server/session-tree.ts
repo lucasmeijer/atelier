@@ -1,4 +1,5 @@
 import { AtelierCoreError } from "@atelier/core";
+import { actionItemHtml } from "@atelier/design-system/action-item";
 import { contentText } from "@earendil-works/pi-ai";
 import type { SessionEntry, SessionManager, SessionTreeNode } from "@earendil-works/pi-coding-agent";
 import { escapeHtml } from "./html.ts";
@@ -157,11 +158,17 @@ export function renderAgentTreeMenu(tree: readonly SessionTreeNode[], leafId: st
     const view = entryView(node.entry);
     const label = parseTreeLabels(node.label).map((value) => `<span class="agent-tree-label"><span>${escapeHtml(value)}</span><span class="agent-tree-label-remove" role="button" aria-label="Remove label ${escapeHtml(value)}" title="Remove label" data-tree-action="label-remove" data-tree-label="${escapeHtml(value)}">×</span></span>`).join("");
     const labelTimestamp = node.labelTimestamp && label ? `<span class="agent-tree-label-time">${escapeHtml(labelTime(node.labelTimestamp))}</span>` : "";
+    const item = actionItemHtml({
+      kind: "single",
+      contentHtml: `${renderTreeRibbon(entry)}<span class="agent-tree-copy"><span class="agent-tree-meta"><b>${escapeHtml(view.kind)}</b>${label}${labelTimestamp}${current ? `<span class="agent-tree-current">current</span>` : ""}</span><span class="agent-tree-text">${escapeHtml(view.text.trim().replace(/\s+/g, " ") || "(no text)")}</span></span>`,
+      element: {
+        tag: "button",
+        className: `agent-completion-option agent-tree-option${current ? " active" : ""}${entry.onActivePath ? " on-active-path" : ""}`,
+        attributesHtml: `type="button" role="option" aria-selected="${current}" data-completion-kind="tree-entry" data-tree-entry="${escapeHtml(node.entry.id)}"`,
+      },
+    });
     return `<div class="agent-tree-row" data-tree-entry="${escapeHtml(node.entry.id)}" style="--tree-lane:${lane}">
-      <button type="button" class="agent-completion-option action-item action-item__primary agent-tree-option${current ? " active" : ""}${entry.onActivePath ? " on-active-path" : ""}" role="option" aria-selected="${current}" data-completion-kind="tree-entry" data-tree-entry="${escapeHtml(node.entry.id)}">
-        ${renderTreeRibbon(entry)}
-        <span class="agent-tree-copy"><span class="agent-tree-meta"><b>${escapeHtml(view.kind)}</b>${label}${labelTimestamp}${current ? `<span class="agent-tree-current">current</span>` : ""}</span><span class="agent-tree-text">${escapeHtml(view.text.trim().replace(/\s+/g, " ") || "(no text)")}</span></span>
-      </button>
+      ${item}
       <span class="agent-tree-label-editor" hidden><input class="text-field" type="text" value="" placeholder="Add a label" aria-label="New node label"><button class="button" type="button" data-tree-action="label-cancel">Cancel</button><button type="button" class="button primary" data-tree-action="label-save">Add</button></span>
     </div>`;
   }).join("");
@@ -182,13 +189,25 @@ export function updateAgentSessionTreeLabel(manager: SessionManager, entryId: st
   manager.appendLabelChange(entryId, serializeTreeLabels(next));
 }
 
+function treeSummaryOptionHtml(mode: "none" | "summary" | "custom", title: string, description: string, active = false): string {
+  return actionItemHtml({
+    kind: "single",
+    contentHtml: `<b>${escapeHtml(title)}</b><span>${escapeHtml(description)}</span>`,
+    element: {
+      tag: "button",
+      className: `agent-completion-option agent-tree-summary-option${active ? " active" : ""}`,
+      attributesHtml: `type="button" role="option" aria-selected="${active}" data-completion-kind="tree-summary" data-summary-mode="${mode}"`,
+    },
+  });
+}
+
 export function renderAgentTreeSummaryMenu(entryId: string): string {
   return `<div class="agent-completion-menu agent-tree-summary-menu" role="listbox" aria-label="Branch summary choice" data-tree-entry="${escapeHtml(entryId)}">
     <header class="agent-tree-header"><span class="agent-tree-heading"><b>Continue from this point</b><span>What should happen to the branch you’re leaving?</span></span></header>
     <div class="agent-tree-summary-choices action-list">
-      <button type="button" class="agent-completion-option action-item action-item__primary agent-tree-summary-option active" role="option" aria-selected="true" data-completion-kind="tree-summary" data-summary-mode="none"><b>No summary</b><span>Switch state without carrying anything forward.</span></button>
-      <button type="button" class="agent-completion-option action-item action-item__primary agent-tree-summary-option" role="option" aria-selected="false" data-completion-kind="tree-summary" data-summary-mode="summary"><b>Summarize</b><span>Ask the agent to preserve useful context from the branch.</span></button>
-      <button type="button" class="agent-completion-option action-item action-item__primary agent-tree-summary-option" role="option" aria-selected="false" data-completion-kind="tree-summary" data-summary-mode="custom"><b>Summarize with additional instructions</b><span>Add guidance for what the summary should retain.</span></button>
+      ${treeSummaryOptionHtml("none", "No summary", "Switch state without carrying anything forward.", true)}
+      ${treeSummaryOptionHtml("summary", "Summarize", "Ask the agent to preserve useful context from the branch.")}
+      ${treeSummaryOptionHtml("custom", "Summarize with additional instructions", "Add guidance for what the summary should retain.")}
     </div>
     <div class="agent-tree-custom" hidden>
       <label for="agent-tree-custom-instructions">Additional summary instructions</label>

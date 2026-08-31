@@ -7,7 +7,7 @@ const labelSelector = ".action-item__label";
 const labelTextSelector = ".action-item__label-text";
 const scrollingClass = "is-label-scrolling";
 
-export class ActionItemsController extends Controller<HTMLElement> {
+export class ActionItemController extends Controller<HTMLElement> {
   connect(): void {
     this.element.addEventListener("mouseover", this.startLabelScroll);
     this.element.addEventListener("mouseout", this.stopPointerLabelScroll);

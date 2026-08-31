@@ -1,3 +1,4 @@
+import { actionItemHtml } from "@atelier/design-system/action-item";
 import { renderTranscriptionComposerControl, transcriptionComposerController } from "@atelier/transcription/server";
 import { isJsonObject, type JsonObject, type JsonValue } from "@atelier/core";
 import { Type, type Static, type TSchema } from "typebox";
@@ -84,12 +85,13 @@ function transcriptRow(html: string): string {
   return `<div class="agent-row">${html}</div>`;
 }
 
-function actionItemLabelHtml(content: string, id?: string): string {
-  return `<span class="action-item__label"><span${id ? ` id="${id}"` : ""} class="action-item__label-text">${content}</span></span>`;
-}
-
-function disclosureActionItemHtml(content: string): string {
-  return `<summary class="action-item action-item__primary">${disclosureIconHtml}${content}</summary>`;
+function disclosureActionItemHtml(labelHtml: string, options: { leadingHtml?: string; labelId?: string } = {}): string {
+  return actionItemHtml({
+    kind: "single",
+    leadingHtml: `${disclosureIconHtml}${options.leadingHtml ?? ""}`,
+    label: { kind: "html", html: labelHtml, textAttributesHtml: options.labelId ? `id="${options.labelId}"` : undefined },
+    element: { tag: "summary" },
+  });
 }
 
 function renderMarkdownRow(ctx: AgentRenderContext, text: string, className = "agent-md"): string {
@@ -425,8 +427,8 @@ function renderModelContextCard(ctx: AgentRenderContext, modelContext: AgentMode
   const tools = modelContext.tools;
   if (!prompt && tools.length === 0) return "";
   const meta = [prompt ? "system-prompt.md" : undefined, tools.length ? `tools.json (${tools.length})` : undefined].filter(Boolean).join(" · ");
-  const content = `${statusHtml("ok")}${actionItemLabelHtml(`<span class="agent-tool-name">model_context</span><span class="agent-tool-args">${escapeHtml(meta)}</span>`)}`;
-  return transcriptRow(`<details class="agent-tool tool-model-context" data-agent-historical-detail data-controller="agent-lazy-detail" data-action="toggle->agent-lazy-detail#load">${disclosureActionItemHtml(content)}${lazyTranscriptItemFrame(ctx, "model-context", true)}</details>`);
+  const label = `<span class="agent-tool-name">model_context</span><span class="agent-tool-args">${escapeHtml(meta)}</span>`;
+  return transcriptRow(`<details class="agent-tool tool-model-context" data-agent-historical-detail data-controller="agent-lazy-detail" data-action="toggle->agent-lazy-detail#load">${disclosureActionItemHtml(label, { leadingHtml: statusHtml("ok") })}${lazyTranscriptItemFrame(ctx, "model-context", true)}</details>`);
 }
 
 export function renderModelContextDetailFrame(ctx: AgentRenderContext, modelContext: AgentModelContextView): string {
@@ -480,7 +482,7 @@ function renderWorkingSection(ctx: AgentRenderContext, section: WorkingTranscrip
   const contextLabel = !active && section.contextTokens !== undefined ? ` · ${formatTokens(section.contextTokens)} tokens` : "";
   const label = `${activityLabel}${contextLabel}`;
   const status = active ? '<i class="status-dot running action-item__status" aria-label="In progress"></i>' : "";
-  const summary = disclosureActionItemHtml(`${status}${actionItemLabelHtml(label)}`);
+  const summary = disclosureActionItemHtml(label, { leadingHtml: status });
   if (!active && !section.live) {
     return `<details class="agent-working" id="${ids.item(ctx, section.key)}" data-controller="agent-lazy-detail" data-action="toggle->agent-lazy-detail#load mouseenter->agent-lazy-detail#load">${summary}${lazyTranscriptItemFrame(ctx, section.key)}</details>`;
   }
@@ -575,10 +577,9 @@ function tailFrameAttributes(ctx: AgentRenderContext, key: string): string {
 
 function renderToolCard(ctx: AgentRenderContext, key: string, original: ToolView, options: { open?: boolean; live?: boolean } = {}): string {
   const tool = toolForRender(original);
-  const summary = `${statusHtml(tool.status)}${actionItemLabelHtml(toolSummaryContentHtml(tool), ids.itemSummaryContent(ctx, key))}`;
+  const summaryHtml = disclosureActionItemHtml(toolSummaryContentHtml(tool), { leadingHtml: statusHtml(tool.status), labelId: ids.itemSummaryContent(ctx, key) });
   const active = tool.status === "streaming" || tool.status === "running";
   const open = Boolean(options.open || active);
-  const summaryHtml = disclosureActionItemHtml(summary);
   if (!options.live && !active) {
     return `<details class="agent-tool ${toolClass(tool.name)}${tool.status === "error" ? " error" : ""}" data-agent-historical-detail data-controller="agent-lazy-detail" data-action="toggle->agent-lazy-detail#load">${summaryHtml}${lazyTranscriptItemFrame(ctx, key, true)}</details>`;
   }

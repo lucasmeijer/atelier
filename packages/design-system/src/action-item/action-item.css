@@ -1,0 +1,43 @@
+/* Orientation-independent primary actions with optional status and auxiliary controls. */
+.action-item { min-width: 0; min-height: 28px; display: flex; align-items: center; padding-inline: 8px; border-radius: var(--radius-round); color: var(--text); }
+.action-item:not(.action-item__primary) > .action-item__primary { padding-right: 8px; }
+.action-item__primary { min-width: 0; min-height: 28px; flex: 1; display: flex; align-items: center; gap: 6px; padding-block: 4px; border: 0; border-radius: var(--radius-round); background: transparent; font: inherit; letter-spacing: inherit; text-align: left; text-decoration: none; cursor: pointer; }
+.action-item.action-item__primary { width: 100%; }
+.action-item:not(:disabled):not([aria-disabled="true"]):focus-visible,
+.action-item:not([aria-disabled="true"]):has(:focus-visible),
+.action-item.active,
+.action-item:has(> .action-item__primary:is([aria-current="page"], [aria-selected="true"], [aria-checked="true"])),
+.action-item.action-item__primary:is([aria-current="page"], [aria-selected="true"], [aria-checked="true"]) { outline: none; background: var(--accent-soft); color: var(--text-bright); }
+@media (hover: hover) {
+  .action-item:not(:disabled):not([aria-disabled="true"]):hover { background: var(--accent-soft); color: var(--text-bright); }
+}
+.action-item :is(.action-item__primary, .action-item__label-text):focus-visible { outline: none; }
+.action-item__label { min-width: 0; flex: 1; overflow: hidden; white-space: nowrap; }
+/* Attention follows its subject by default; at-edge preserves aligned list columns. */
+.action-item__primary:has(> .status-dot.attention:not(.at-edge)) > .action-item__label { flex: 0 1 auto; }
+.action-item__label-text { display: block; width: 100%; overflow: hidden; text-overflow: ellipsis; }
+.action-item.is-label-scrolling .action-item__label { mask-image: linear-gradient(to right, transparent, black 8px, black calc(100% - 6px), transparent); }
+.action-item.is-label-scrolling .action-item__label-text { width: max-content; overflow: visible; text-overflow: clip; animation: action-item-label-scroll var(--action-item-label-scroll-duration) linear infinite alternate; }
+@keyframes action-item-label-scroll {
+  0% { transform: translateX(0); }
+  85%, 100% { transform: translateX(calc(-1 * var(--action-item-label-scroll-distance))); }
+}
+.action-item__status { flex: 0 0 auto; }
+.action-item__actions { flex: 0 0 auto; display: flex; align-items: center; gap: 6px; }
+.action-item__actions > form { display: flex; margin: 0; }
+.action-item__actions--engaged { opacity: 0; pointer-events: none; }
+.action-item:is(.active, :hover, :has(:focus-visible), :has(> .action-item__primary:is([aria-current="page"], [aria-selected="true"], [aria-checked="true"]))) .action-item__actions--engaged { opacity: 1; pointer-events: auto; }
+@media (hover: none) {
+  .action-item__actions--engaged { opacity: 1; pointer-events: auto; }
+}
+.action-item__primary:disabled,
+.action-item[aria-disabled="true"] { opacity: .45; cursor: default; }
+@media (max-width: 700px) {
+  .action-item,
+  .action-item__primary { min-height: 48px; }
+  .disclosure-icon { width: 16px; height: 16px; }
+}
+@media (prefers-reduced-motion: reduce) {
+  .action-item.is-label-scrolling .action-item__label { mask-image: none; }
+  .action-item.is-label-scrolling .action-item__label-text { width: 100%; overflow: hidden; text-overflow: ellipsis; animation: none; }
+}

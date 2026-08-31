@@ -77,7 +77,7 @@ describe("Files Work view rendering", () => {
     expect(html).not.toContain('class="files-row-icon" aria-hidden="true">·');
     expect(html).toContain('aria-selected="true"');
     expect(html).toContain("data-files-destination");
-    expect(html).toContain("click->files#openDirectory");
+    expect(html).toContain('class="files-row action-item action-item__primary"');
     expect(html).toContain('<svg class="disclosure-icon" aria-hidden="true"');
     expect(html).toContain("/files-view/open?path=%2Fwork%2F.secret&amp;filesView=workspace");
     expect(html).toContain('data-turbo-stream="true"');

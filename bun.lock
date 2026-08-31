@@ -20,6 +20,7 @@
         "@atelier/agent": "workspace:*",
         "@atelier/browser": "workspace:*",
         "@atelier/core": "workspace:*",
+        "@atelier/design-system": "workspace:*",
         "@atelier/desktop": "workspace:*",
         "@atelier/files": "workspace:*",
         "@atelier/keypress-probe": "workspace:*",
@@ -43,6 +44,7 @@
       "name": "@atelier/agent",
       "dependencies": {
         "@atelier/core": "workspace:*",
+        "@atelier/design-system": "workspace:*",
         "@atelier/markdown": "workspace:*",
         "@atelier/observable-terminal": "workspace:*",
         "@atelier/projects": "workspace:*",
@@ -77,6 +79,13 @@
         "typebox": "^1.0.57",
       },
     },
+    "packages/design-system": {
+      "name": "@atelier/design-system",
+      "dependencies": {
+        "@atelier/shared": "workspace:*",
+        "@hotwired/stimulus": "3.2.2",
+      },
+    },
     "packages/desktop": {
       "name": "@atelier/desktop",
       "dependencies": {
@@ -89,6 +98,7 @@
       "name": "@atelier/files",
       "dependencies": {
         "@atelier/core": "workspace:*",
+        "@atelier/design-system": "workspace:*",
         "@atelier/markdown": "workspace:*",
         "@atelier/shared": "workspace:*",
         "@atelier/workspace": "workspace:*",
@@ -169,6 +179,7 @@
       "name": "@atelier/review",
       "dependencies": {
         "@atelier/core": "workspace:*",
+        "@atelier/design-system": "workspace:*",
         "@atelier/shared": "workspace:*",
         "@atelier/syntax": "workspace:*",
         "@atelier/workspace": "workspace:*",
@@ -265,6 +276,8 @@
     "@atelier/browser": ["@atelier/browser@workspace:packages/browser"],
 
     "@atelier/core": ["@atelier/core@workspace:packages/core"],
+
+    "@atelier/design-system": ["@atelier/design-system@workspace:packages/design-system"],
 
     "@atelier/desktop": ["@atelier/desktop@workspace:packages/desktop"],
 

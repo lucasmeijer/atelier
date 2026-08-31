@@ -1,3 +1,4 @@
+import { actionItemHtml } from "@atelier/design-system/action-item";
 import { preloadDiffHTML } from "@pierre/diffs/ssr";
 import { domId, escapeHtml, type WorkspaceWorkViewPresentation } from "@atelier/shared";
 import type { ReviewFile, ReviewSnapshot } from "./diff.ts";
@@ -47,11 +48,29 @@ function renderCommentCount(count: number): string {
   return `<span class="review-comment-count" aria-label="${count} comment${count === 1 ? "" : "s"}">${count}</span>`;
 }
 
+function renderFileSummary(labelHtml: string, metaHtml: string, title?: string): string {
+  return actionItemHtml({
+    kind: "single",
+    leadingHtml: '<svg class="disclosure-icon" viewBox="0 0 12 12" aria-hidden="true"><path d="m3 4.5 3 3 3-3"/></svg>',
+    label: {
+      kind: "html",
+      html: labelHtml,
+      className: "review-file-path",
+      attributesHtml: title ? `title="${escapeHtml(title)}"` : undefined,
+    },
+    trailingHtml: `<span class="action-item__status review-file-meta">${metaHtml}</span>`,
+    element: { tag: "summary" },
+  });
+}
+
 async function renderFile(file: ReviewFile, comments: ReviewComment[]): Promise<string> {
   const fileComments = comments.filter((comment) => comment.path === file.path);
   const body = file.kind === "text" ? await renderTextFile(file, fileComments) : renderSpecialFile(file);
+  const label = `${file.previousPath ? `<span>${escapeHtml(file.previousPath)}</span><b aria-label="renamed to">→</b>` : ""}<span>${escapeHtml(file.path)}</span>`;
+  const meta = `${renderCommentCount(fileComments.length)}<span class="review-additions">+${file.additions}</span><span class="review-deletions">−${file.deletions}</span>`;
+  const summary = renderFileSummary(label, meta, file.path);
   return `<details class="review-file" data-review-target="file" data-review-path="${escapeHtml(file.path)}" data-review-change="${file.change}" data-review-comments="${fileComments.length}">
-    <summary class="action-item action-item__primary"><svg class="disclosure-icon" viewBox="0 0 12 12" aria-hidden="true"><path d="m3 4.5 3 3 3-3"/></svg><span class="action-item__label review-file-path" title="${escapeHtml(file.path)}"><span class="action-item__label-text">${file.previousPath ? `<span>${escapeHtml(file.previousPath)}</span><b aria-label="renamed to">→</b>` : ""}<span>${escapeHtml(file.path)}</span></span></span><span class="action-item__status review-file-meta">${renderCommentCount(fileComments.length)}<span class="review-additions">+${file.additions}</span><span class="review-deletions">−${file.deletions}</span></span></summary>
+    ${summary}
     <div class="review-file-diff">${body}</div>
   </details>`;
 }
@@ -61,8 +80,9 @@ function renderUnanchoredComment(workspaceId: string, comment: ReviewComment): s
 }
 
 function renderUnanchoredFile(workspaceId: string, comments: ReviewComment[]): string {
+  const summary = renderFileSummary("Comments without anchors", renderCommentCount(comments.length));
   return `<details class="review-file" data-review-target="file" data-review-path="comments-without-anchors" data-review-comments="${comments.length}" open>
-    <summary class="action-item action-item__primary"><svg class="disclosure-icon" viewBox="0 0 12 12" aria-hidden="true"><path d="m3 4.5 3 3 3-3"/></svg><span class="action-item__label review-file-path"><span class="action-item__label-text">Comments without anchors</span></span><span class="action-item__status review-file-meta">${renderCommentCount(comments.length)}</span></summary>
+    ${summary}
     <div class="review-file-diff review-unanchored-comments">${comments.map((comment) => renderUnanchoredComment(workspaceId, comment)).join("")}</div>
   </details>`;
 }

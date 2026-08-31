@@ -1,4 +1,5 @@
 import { createHash } from "node:crypto";
+import { actionItemHtml } from "@atelier/design-system/action-item";
 import { discoverHostGitHubToken } from "@atelier/proxy-egress";
 import { escapeHtml, looksLikeProjectSpec } from "@atelier/shared";
 import { Type } from "typebox";
@@ -107,8 +108,14 @@ export function renderGitHubRepositorySearchMenu(repositories: readonly GitHubRe
   return `<div class="popup-menu autocomplete-menu action-list" role="listbox" aria-label="GitHub repositories">${repositories.map((repo, index) => {
     const description = repo.description || repo.htmlUrl;
     const visibility = repo.private ? " — Private repository" : "";
-    return `<button type="button" class="agent-completion-option action-item action-item__primary${index === 0 ? " active" : ""}" role="option" aria-selected="${index === 0 ? "true" : "false"}" data-git-url="${escapeHtml(repo.cloneUrl)}" title="${escapeHtml(repo.htmlUrl)}">
-      <span class="action-item__label"><span class="action-item__label-text">${escapeHtml(repo.fullName)} — ${escapeHtml(description)}${visibility}</span></span>
-    </button>`;
+    return actionItemHtml({
+      kind: "single",
+      label: { kind: "html", html: `${escapeHtml(repo.fullName)} — ${escapeHtml(description)}${visibility}` },
+      element: {
+        tag: "button",
+        className: `agent-completion-option${index === 0 ? " active" : ""}`,
+        attributesHtml: `type="button" role="option" aria-selected="${index === 0 ? "true" : "false"}" data-git-url="${escapeHtml(repo.cloneUrl)}" title="${escapeHtml(repo.htmlUrl)}"`,
+      },
+    });
   }).join("")}</div>`;
 }

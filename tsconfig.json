@@ -8,6 +8,8 @@
     "paths": {
       "@atelier/core": ["./packages/core/src/index.ts"],
       "@atelier/shared": ["./packages/shared/src/index.ts"],
+      "@atelier/design-system/action-item": ["./packages/design-system/src/action-item/action-item-html.ts"],
+      "@atelier/design-system/action-item/client": ["./packages/design-system/src/action-item/action-item-controller.ts"],
       "@atelier/browser/server": ["./packages/browser/src/server/index.ts"],
       "@atelier/browser/client": ["./packages/browser/src/client/index.ts"],
       "@atelier/browser": ["./packages/browser/src/server/index.ts"],
