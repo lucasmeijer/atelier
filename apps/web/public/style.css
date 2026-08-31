@@ -267,9 +267,10 @@ turbo-frame { display: contents; }
 .fixed-shell-workspace-row { padding-left: 24px; }
 .fixed-shell-workspace-warning { flex: 0 0 auto; color: var(--warning); font-style: normal; }
 .workspace-attention-status { position: relative; display: inline-grid; width: 10px; height: 10px; place-items: center; overflow: visible; }
-.workspace-attention-status > .status-dot { position: static; }
+.workspace-attention-status > .status-dot.attention.at-edge { position: static; margin-inline-start: 0; }
 .fixed-shell-workspace-row[data-workspace-preloading] > .workspace-attention-status::after {
   position: absolute;
+  inset: -2px;
   width: 14px;
   height: 14px;
   border: 1.5px solid color-mix(in srgb, var(--accent) 30%, transparent);
