@@ -53,7 +53,7 @@ interface LimitedModelLines {
 }
 
 function plainModelOutput(text: string): string {
-  return stripTerminalControls(text).trim();
+  return stripTerminalControls(text).trimEnd();
 }
 
 function limitModelLines(text: string): LimitedModelLines {

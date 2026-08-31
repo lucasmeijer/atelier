@@ -59,6 +59,15 @@ describe("tmux bash tool", () => {
     expect(result.details.exitCode).toBe(0);
   });
 
+  test("preserves leading whitespace in model and display output", async () => {
+    mockPaneOutput("   indented output\nPane is dead\n");
+
+    const result = await executeBash({ command: "printf '   indented output'" });
+
+    expect(textResult(result)).toBe("   indented output");
+    expect(result.details.displayAnsi).toBe("   indented output");
+  });
+
   test("uses tmux rendered pane output for dotnet-style terminal UI output", async () => {
     const paneText = [
       "Restore succeeded with 3 warning(s) in 1.1s",
