@@ -223,9 +223,14 @@ describe("Review presentation", () => {
     expect(html).toContain('aria-label="Refresh review"');
     expect(html).toContain('aria-label="Collapse all files"');
     expect(html).toContain('aria-label="Expand all files"');
-    expect(html).toContain('title="Toggle per-word diff highlighting" aria-pressed="false" data-action="click->review#toggleWordDiff">Word diff</button>');
-    expect(html).toContain('title="Toggle long line wrapping" aria-pressed="true" data-action="click->review#toggleLineWrapping">Wrap lines</button>');
-    expect(html.indexOf(">Word diff</button>")).toBeLessThan(html.indexOf(">Wrap lines</button>"));
+    expect(html).toContain('class="text-toggle subtle" role="group" aria-label="Diff highlighting"');
+    expect(html).toContain('aria-pressed="true" data-review-word-diff="false" data-action="click->review#setWordDiff">Lines</button>');
+    expect(html).toContain('aria-pressed="false" data-review-word-diff="true" data-action="click->review#setWordDiff">Words</button>');
+    expect(html).toContain('class="text-toggle subtle" role="group" aria-label="Long lines"');
+    expect(html).toContain('aria-pressed="false" data-review-line-wrapping="false" data-action="click->review#setLineWrapping">Scroll</button>');
+    expect(html).toContain('aria-pressed="true" data-review-line-wrapping="true" data-action="click->review#setLineWrapping">Wrap</button>');
+    expect(html.indexOf(">Lines</button>")).toBeLessThan(html.indexOf(">Words</button>"));
+    expect(html.indexOf(">Scroll</button>")).toBeLessThan(html.indexOf(">Wrap</button>"));
     expect(html).toContain('<span class="review-comment-count" aria-label="1 comment">1</span>');
     const details = await renderReviewFileDetails("workspace 1", file, [comment]);
     expect(details).toContain('role="note"');

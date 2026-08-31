@@ -155,8 +155,16 @@ function toolbar(workspaceId: string, comments: ReviewComment[]): string {
       <form method="post" action="/workspaces/${encodeURIComponent(workspaceId)}/review/comments/delete" data-turbo="true"><button class="button danger icon-only" type="submit" aria-label="Delete all review comments" title="Delete all review comments"${commentsDisabled}>${Icons.Trash}</button></form>
       ${refreshForm(workspaceId)}
       ${collapse}${expand}
-      <button class="button secondary review-display-toggle" type="button" title="Toggle per-word diff highlighting" aria-pressed="false" data-action="click->review#toggleWordDiff">Word diff</button>
-      <button class="button secondary review-display-toggle" type="button" title="Toggle long line wrapping" aria-pressed="true" data-action="click->review#toggleLineWrapping">Wrap lines</button>
+      <div class="review-display-toggles">
+        <div class="text-toggle subtle" role="group" aria-label="Diff highlighting">
+          <button class="text-toggle__option" type="button" title="Show line-level diff highlighting" aria-pressed="true" data-review-word-diff="false" data-action="click->review#setWordDiff">Lines</button>
+          <button class="text-toggle__option" type="button" title="Show per-word diff highlighting" aria-pressed="false" data-review-word-diff="true" data-action="click->review#setWordDiff">Words</button>
+        </div>
+        <div class="text-toggle subtle" role="group" aria-label="Long lines">
+          <button class="text-toggle__option" type="button" title="Scroll long lines horizontally" aria-pressed="false" data-review-line-wrapping="false" data-action="click->review#setLineWrapping">Scroll</button>
+          <button class="text-toggle__option" type="button" title="Wrap long lines" aria-pressed="true" data-review-line-wrapping="true" data-action="click->review#setLineWrapping">Wrap</button>
+        </div>
+      </div>
       <span data-copy-source hidden>${escapeHtml(reviewCommentsPrompt(comments))}</span>
     </div>
   </header>`;

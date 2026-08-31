@@ -25,11 +25,13 @@
   gap: 12px;
 }
 
+.review-toolbar-actions { display: flex; width: 100%; }
 .review-toolbar-actions > .copy-button { position: static; }
-.review-display-toggle[aria-pressed="true"] {
-  border-color: color-mix(in srgb, var(--accent) 48%, var(--line));
-  background: var(--accent-soft);
-  color: var(--text-bright);
+.review-display-toggles {
+  display: inline-flex;
+  align-items: center;
+  gap: 16px;
+  margin-left: auto;
 }
 
 .review-files { padding: 16px; }

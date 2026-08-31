@@ -128,20 +128,18 @@ function createReviewController(Controller: StimulusControllerConstructor) {
       for (const file of this.fileTargets) file.open = true;
     }
 
-    toggleWordDiff(event: Event): void {
-      if (!(event.currentTarget instanceof HTMLButtonElement)) throw new Error("Word diff toggle requires a button");
-      this.wordDiffEnabled = !this.wordDiffEnabled;
-      event.currentTarget.setAttribute("aria-pressed", String(this.wordDiffEnabled));
+    setWordDiff(event: Event): void {
+      if (!(event.currentTarget instanceof HTMLButtonElement)) throw new Error("Word diff selection requires a button");
+      this.wordDiffEnabled = event.currentTarget.dataset.reviewWordDiff === "true";
       for (const instance of this.instances) {
         instance.setOptions({ ...instance.options, lineDiffType: this.wordDiffEnabled ? "word-alt" : reviewDiffOptions.lineDiffType });
         instance.rerender();
       }
     }
 
-    toggleLineWrapping(event: Event): void {
-      if (!(event.currentTarget instanceof HTMLButtonElement)) throw new Error("Line wrapping toggle requires a button");
-      this.lineWrappingEnabled = !this.lineWrappingEnabled;
-      event.currentTarget.setAttribute("aria-pressed", String(this.lineWrappingEnabled));
+    setLineWrapping(event: Event): void {
+      if (!(event.currentTarget instanceof HTMLButtonElement)) throw new Error("Line wrapping selection requires a button");
+      this.lineWrappingEnabled = event.currentTarget.dataset.reviewLineWrapping === "true";
       for (const instance of this.instances) {
         instance.setOptions({ ...instance.options, overflow: this.lineWrappingEnabled ? "wrap" : "scroll" });
         instance.rerender();
