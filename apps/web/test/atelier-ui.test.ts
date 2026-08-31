@@ -8,8 +8,8 @@ import { actionItemHtml } from "../../../packages/design-system/src/action-item/
 import type { ToolView, TranscriptItem } from "../../../packages/agent/src/server/transcript.ts";
 import { renderMarkdown } from "../../../packages/markdown/src/index.ts";
 import { filesEditorFrameId, renderFilesEditorFrame, renderFilesTreeFrame, renderFilesWorkViewBody } from "../../../packages/files/src/server/render.ts";
-import { collectReviewSnapshot } from "../../../packages/review/src/server/diff.ts";
-import { renderReviewBody } from "../../../packages/review/src/server/render.ts";
+import { collectReviewFile, collectReviewIndex, collectReviewStats } from "../../../packages/review/src/server/diff.ts";
+import { renderReviewBody, renderReviewFileDetails, renderReviewStatsFrame } from "../../../packages/review/src/server/render.ts";
 import type { ReviewComment } from "../../../packages/review/src/server/state.ts";
 import { createReviewRepository } from "../../../packages/review/test/support/repository.ts";
 import { turboStream } from "../../../packages/shared/src/index.ts";
@@ -162,20 +162,53 @@ Comment: I don't think we need these tests`;
     await page.close();
   });
 
-  test("toggles per-word highlighting in review diffs from an off default", async () => {
+  test("loads review stats eagerly, then intent-loads and retains each diff", async () => {
     const root = await createReviewRepository();
     try {
       await writeFile(join(root, "changed.ts"), "const after = true;\n");
-      const snapshot = await collectReviewSnapshot(root);
-      if (snapshot.phase !== "ready") throw new Error("expected ready review");
-      const reviewBody = await renderReviewBody("word-diff", snapshot, []);
+      const index = await collectReviewIndex(root);
+      if (index.phase !== "ready") throw new Error("expected ready review");
+      const reviewFile = await collectReviewFile(root, "changed.ts");
+      if (!reviewFile) throw new Error("expected review file");
+      const reviewBody = renderReviewBody("word-diff", index, []);
+      const fileDetails = await renderReviewFileDetails("word-diff", reviewFile, []);
+      const statsFrame = renderReviewStatsFrame("word-diff", await collectReviewStats(root, index));
       const fixture = `<div class="workspace-detail-resident visible"><section class="fixed-shell-surface is-active" data-workspace-pane-role="work">${reviewBody}</section></div>`;
       const page = await newTestPage();
+      let detailRequests = 0;
+      let statsRequests = 0;
+      let releaseStats!: () => void;
+      const statsPending = new Promise<void>((resolve) => { releaseStats = resolve; });
       await page.route("http://atelier.test/", (route) => route.fulfill({ contentType: "text/html", body: `${fixture}<script type="module" src="${workspaceClientPath}"></script>` }));
+      await page.route("http://atelier.test/workspaces/word-diff/review/stats", async (route) => {
+        statsRequests += 1;
+        await statsPending;
+        return route.fulfill({ contentType: "text/html", body: statsFrame });
+      });
+      await page.route("http://atelier.test/workspaces/word-diff/review/files/changed.ts", (route) => {
+        detailRequests += 1;
+        return route.fulfill({ contentType: "text/html", body: fileDetails });
+      });
       await page.goto("http://atelier.test/");
 
+      const file = page.locator("details.review-file");
       const toggle = page.getByRole("button", { name: "Word diff", exact: true });
       const wordHighlights = page.locator("diffs-container").locator("[data-diff-span]");
+      expect(detailRequests).toBe(0);
+      expect(await page.locator("diffs-container").count()).toBe(0);
+      expect(await file.getByRole("status", { name: "Loading change stats" }).count()).toBe(1);
+
+      releaseStats();
+      await file.locator(".review-additions").waitFor({ state: "attached" });
+      expect(statsRequests).toBe(1);
+      expect(detailRequests).toBe(0);
+      expect(await file.getByRole("status", { name: "Loading change stats" }).count()).toBe(0);
+
+      await file.locator("summary").hover();
+      await page.locator("diffs-container").waitFor({ state: "attached" });
+      expect(detailRequests).toBe(1);
+      expect(await file.locator(".review-additions").count()).toBe(1);
+      await file.locator("summary").click();
       expect(await toggle.getAttribute("aria-pressed")).toBe("false");
       expect(await wordHighlights.count()).toBe(0);
 
@@ -187,6 +220,10 @@ Comment: I don't think we need these tests`;
       await toggle.click();
       expect(await toggle.getAttribute("aria-pressed")).toBe("false");
       await page.waitForFunction(() => document.querySelector("diffs-container")?.shadowRoot?.querySelectorAll("[data-diff-span]").length === 0);
+
+      await file.locator("summary").click();
+      await file.locator("summary").click();
+      expect(detailRequests).toBe(1);
       await page.close();
     } finally {
       await rm(root, { recursive: true, force: true });
@@ -197,14 +234,24 @@ Comment: I don't think we need these tests`;
     const root = await createReviewRepository();
     try {
       await writeFile(join(root, "changed.ts"), `const message = "${"long-content-".repeat(80)}";\n`);
-      const snapshot = await collectReviewSnapshot(root);
-      if (snapshot.phase !== "ready") throw new Error("expected ready review");
-      const reviewBody = await renderReviewBody("line-wrapping", snapshot, []);
+      const index = await collectReviewIndex(root);
+      if (index.phase !== "ready") throw new Error("expected ready review");
+      const reviewFile = await collectReviewFile(root, "changed.ts");
+      if (!reviewFile) throw new Error("expected review file");
+      const reviewBody = renderReviewBody("line-wrapping", index, []);
+      const fileDetails = await renderReviewFileDetails("line-wrapping", reviewFile, []);
+      const statsFrame = renderReviewStatsFrame("line-wrapping", await collectReviewStats(root, index));
       const fixture = `<div class="workspace-detail-resident visible"><section class="fixed-shell-surface is-active" data-workspace-pane-role="work">${reviewBody}</section></div>`;
       const page = await newTestPage();
       await page.setViewportSize({ width: 700, height: 700 });
       await page.route("http://atelier.test/", (route) => route.fulfill({ contentType: "text/html", body: `${fixture}<script type="module" src="${workspaceClientPath}"></script>` }));
+      await page.route("http://atelier.test/workspaces/line-wrapping/review/stats", (route) => route.fulfill({ contentType: "text/html", body: statsFrame }));
+      await page.route("http://atelier.test/workspaces/line-wrapping/review/files/changed.ts", (route) => route.fulfill({ contentType: "text/html", body: fileDetails }));
       await page.goto("http://atelier.test/");
+      const summary = page.locator("details.review-file summary");
+      await summary.hover();
+      await page.locator("diffs-container").waitFor({ state: "attached" });
+      await summary.click();
 
       const toggle = page.getByRole("button", { name: "Wrap lines", exact: true });
       const overflow = () => page.locator("diffs-container").locator("pre[data-diff]").getAttribute("data-overflow");

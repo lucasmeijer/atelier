@@ -74,6 +74,7 @@ function createReviewController(Controller: StimulusControllerConstructor) {
     private instances: FileDiff<AnnotationMetadata>[] = [];
     private containers = new Map<FileDiff<AnnotationMetadata>, HTMLElement>();
     private models = new Map<string, DiffModel>();
+    private hydratedHosts = new WeakSet<HTMLElement>();
     private draft?: DraftModel;
     private hydrated = false;
     private wordDiffEnabled = false;
@@ -103,13 +104,20 @@ function createReviewController(Controller: StimulusControllerConstructor) {
     async becomeVisible(): Promise<void> {
       if (this.hydrated) return;
       this.hydrated = true;
-      if (this.diffTargets.length) {
-        const { FileDiff } = await import("@pierre/diffs");
-        if (!this.element.isConnected) return;
-        for (const host of this.diffTargets) this.hydrateDiff(host, FileDiff);
-      }
-      if (this.draft && !this.models.has(this.draft.path)) this.clearDraft();
+      await Promise.all(this.diffTargets.map((host) => this.hydrateHost(host)));
+      if (this.draft && !this.fileTargets.some((file) => file.dataset.reviewPath === this.draft?.path)) this.clearDraft();
       requestAnimationFrame(() => this.restorePosition());
+    }
+
+    diffTargetConnected(host: HTMLElement): void {
+      if (this.hydrated) void this.hydrateHost(host);
+    }
+
+    requestFile(event: Event): void {
+      if (!(event.currentTarget instanceof HTMLDetailsElement)) throw new Error("Review file loading requires details");
+      if (event.type === "toggle" && !event.currentTarget.open) return;
+      const frame = event.currentTarget.querySelector<HTMLElement>(":scope > turbo-frame[data-src]")!;
+      if (!frame.hasAttribute("src")) frame.setAttribute("src", frame.dataset.src!);
     }
 
     fileTargetConnected(file: HTMLDetailsElement): void {
@@ -148,6 +156,14 @@ function createReviewController(Controller: StimulusControllerConstructor) {
         instance.setOptions({ ...instance.options, overflow: this.lineWrappingEnabled ? "wrap" : "scroll" });
         instance.rerender();
       }
+    }
+
+    private async hydrateHost(host: HTMLElement): Promise<void> {
+      if (this.hydratedHosts.has(host)) return;
+      const { FileDiff } = await import("@pierre/diffs");
+      if (!host.isConnected || this.hydratedHosts.has(host)) return;
+      this.hydratedHosts.add(host);
+      this.hydrateDiff(host, FileDiff);
     }
 
     private hydrateDiff(host: HTMLElement, FileDiffClass: FileDiffConstructor): void {

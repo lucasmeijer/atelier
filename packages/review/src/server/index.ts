@@ -4,36 +4,40 @@ import { workspaceWorkHostPath } from "@atelier/workspace";
 import { Type, type Static } from "typebox";
 import { Value } from "typebox/value";
 import { reviewCommentsPrompt, type ReviewSide } from "../model.ts";
-import { collectReviewSnapshot, reviewSnippet, type ReviewSnapshot } from "./diff.ts";
-import { renderReviewBody, reviewBodyId, reviewReference, reviewWorkViewPresentation } from "./render.ts";
-import { addReviewComment, deleteReviewComments, deleteReviewState, listReviewComments, remapReviewComments, reviewCommentsForPrompt, updateReviewComment, type ReviewComment } from "./state.ts";
+import { collectReviewFile, collectReviewIndex, collectReviewStats, reviewSnippet, type ReviewIndex } from "./diff.ts";
+import { renderReviewBody, renderReviewFileDetails, renderReviewStatsFrame, reviewBodyId, reviewFileFrameId, reviewReference, reviewWorkViewPresentation } from "./render.ts";
+import { addReviewComment, deleteReviewComments, deleteReviewState, listReviewComments, reconcileReviewComments, remapReviewFileComments, reviewCommentsForPrompt, updateReviewComment, type ReviewComment } from "./state.ts";
 
 const reviewReferenceSchema = Type.Object({ type: Type.Literal("review") });
 type ReviewReference = Static<typeof reviewReferenceSchema>;
-const snapshots = new Map<string, ReviewSnapshot>();
+const indexes = new Map<string, ReviewIndex>();
 
 function textResponse(message: string, status: number): Response {
   return new Response(message, { status, headers: { "content-type": "text/plain; charset=utf-8", "cache-control": "no-store" } });
 }
 
-async function refresh(workspaceId: string): Promise<{ snapshot: ReviewSnapshot; comments: ReviewComment[] }> {
-  const snapshot = await collectReviewSnapshot(workspaceWorkHostPath(workspaceId));
-  snapshots.set(workspaceId, snapshot);
-  return { snapshot, comments: remapReviewComments(workspaceId, snapshot) };
+function htmlResponse(html: string): Response {
+  return new Response(html, { headers: { "content-type": "text/html; charset=utf-8", "cache-control": "no-store" } });
 }
 
-async function current(workspaceId: string): Promise<{ snapshot: ReviewSnapshot; comments: ReviewComment[] }> {
-  const snapshot = snapshots.get(workspaceId);
-  return snapshot ? { snapshot, comments: listReviewComments(workspaceId) } : await refresh(workspaceId);
+async function refresh(workspaceId: string): Promise<{ index: ReviewIndex; comments: ReviewComment[] }> {
+  const index = await collectReviewIndex(workspaceWorkHostPath(workspaceId));
+  indexes.set(workspaceId, index);
+  return { index, comments: reconcileReviewComments(workspaceId, index) };
 }
 
-async function bodyStream(workspaceId: string, snapshot: ReviewSnapshot, comments: ReviewComment[]): Promise<string> {
-  return turboStream("replace", reviewBodyId(workspaceId), await renderReviewBody(workspaceId, snapshot, comments));
+async function current(workspaceId: string): Promise<{ index: ReviewIndex; comments: ReviewComment[] }> {
+  const index = indexes.get(workspaceId);
+  return index ? { index, comments: listReviewComments(workspaceId) } : await refresh(workspaceId);
+}
+
+function bodyStream(workspaceId: string, index: ReviewIndex, comments: ReviewComment[]): string {
+  return turboStream("replace", reviewBodyId(workspaceId), renderReviewBody(workspaceId, index, comments));
 }
 
 async function refreshedResponse(workspaceId: string): Promise<Response> {
-  const { snapshot, comments } = await refresh(workspaceId);
-  return turboStreamResponse(await bodyStream(workspaceId, snapshot, comments));
+  const { index, comments } = await refresh(workspaceId);
+  return turboStreamResponse(bodyStream(workspaceId, index, comments));
 }
 
 function positiveLine(value: FormDataEntryValue | null): number | undefined {
@@ -50,21 +54,21 @@ async function createComment(workspaceId: string, request: Request): Promise<Res
   const endLine = positiveLine(form.get("endLine"));
   const body = String(form.get("body") ?? "").trim();
   if (!path || !side || !startLine || !endLine || endLine < startLine || !body || body.length > 20_000) return textResponse("Invalid review comment", 422);
-  const { snapshot } = await refresh(workspaceId);
-  const file = snapshot.phase === "ready" ? snapshot.files.find((candidate) => candidate.path === path && candidate.kind === "text") : undefined;
-  if (!file) return textResponse("Review file is no longer available", 409);
+  const file = await collectReviewFile(workspaceWorkHostPath(workspaceId), path);
+  if (!file || file.kind !== "text") return textResponse("Review file is no longer available", 409);
   const snippet = reviewSnippet(file, side, startLine, endLine);
   if (!snippet && startLine !== 1) return textResponse("Review line is no longer available", 409);
   addReviewComment(workspaceId, { path, side, startLine, endLine, body, snippet });
-  return turboStreamResponse(await bodyStream(workspaceId, snapshot, listReviewComments(workspaceId)));
+  const { index } = await refresh(workspaceId);
+  return turboStreamResponse(bodyStream(workspaceId, index, listReviewComments(workspaceId)));
 }
 
 async function updateComment(workspaceId: string, id: string, request: Request): Promise<Response> {
   const body = String((await request.formData()).get("body") ?? "").trim();
   if (!body || body.length > 20_000) return textResponse("Invalid review comment", 422);
-  const { snapshot } = await current(workspaceId);
+  const { index } = await current(workspaceId);
   if (!updateReviewComment(workspaceId, id, body)) return textResponse("Review comment not found", 404);
-  return turboStreamResponse(await bodyStream(workspaceId, snapshot, listReviewComments(workspaceId)));
+  return turboStreamResponse(bodyStream(workspaceId, index, listReviewComments(workspaceId)));
 }
 
 export const reviewWorkspaceModule: WorkspaceModule = {
@@ -77,8 +81,8 @@ export const reviewWorkspaceModule: WorkspaceModule = {
     },
     identity: (_reference: ReviewReference) => "workspace",
     async render({ workspaceId }) {
-      const { snapshot, comments } = await current(workspaceId);
-      return renderReviewBody(workspaceId, snapshot, comments);
+      const { index, comments } = await current(workspaceId);
+      return renderReviewBody(workspaceId, index, comments);
     },
   }],
   commands: [{ id: "review.open", execute: () => ({ createdWorkView: reviewReference }) }],
@@ -87,15 +91,33 @@ export const reviewWorkspaceModule: WorkspaceModule = {
     async handle(request, url) {
       let match = url.pathname.match(/^\/workspaces\/([^/]+)\/review\/refresh$/);
       if (match) return request.method === "POST" ? await refreshedResponse(decodeURIComponent(match[1]!)) : textResponse("Method not allowed", 405);
+      match = url.pathname.match(/^\/workspaces\/([^/]+)\/review\/stats$/);
+      if (match) {
+        if (request.method !== "GET") return textResponse("Method not allowed", 405);
+        const workspaceId = decodeURIComponent(match[1]!);
+        const { index } = await current(workspaceId);
+        const stats = await collectReviewStats(workspaceWorkHostPath(workspaceId), index);
+        return htmlResponse(renderReviewStatsFrame(workspaceId, stats));
+      }
+      match = url.pathname.match(/^\/workspaces\/([^/]+)\/review\/files\/([^/]+)$/);
+      if (match) {
+        if (request.method !== "GET") return textResponse("Method not allowed", 405);
+        const workspaceId = decodeURIComponent(match[1]!);
+        const path = decodeURIComponent(match[2]!);
+        const file = await collectReviewFile(workspaceWorkHostPath(workspaceId), path);
+        if (!file) return htmlResponse(`<turbo-frame id="${reviewFileFrameId(workspaceId, path)}"><div class="review-file-unavailable" role="note">This change is no longer available. Refresh Review to update the file list.</div></turbo-frame>`);
+        const comments = remapReviewFileComments(workspaceId, file);
+        return htmlResponse(await renderReviewFileDetails(workspaceId, file, comments));
+      }
       match = url.pathname.match(/^\/workspaces\/([^/]+)\/review\/comments$/);
       if (match) return request.method === "POST" ? await createComment(decodeURIComponent(match[1]!), request) : textResponse("Method not allowed", 405);
       match = url.pathname.match(/^\/workspaces\/([^/]+)\/review\/comments\/delete$/);
       if (match) {
         if (request.method !== "POST") return textResponse("Method not allowed", 405);
         const workspaceId = decodeURIComponent(match[1]!);
-        const { snapshot, comments } = await current(workspaceId);
+        const { index, comments } = await current(workspaceId);
         deleteReviewComments(workspaceId, comments.map((comment) => comment.id));
-        return turboStreamResponse(await bodyStream(workspaceId, snapshot, []));
+        return turboStreamResponse(bodyStream(workspaceId, index, []));
       }
       match = url.pathname.match(/^\/workspaces\/([^/]+)\/review\/comments\/([^/]+)\/update$/);
       if (match) return request.method === "POST" ? await updateComment(decodeURIComponent(match[1]!), decodeURIComponent(match[2]!), request) : textResponse("Method not allowed", 405);
@@ -103,15 +125,15 @@ export const reviewWorkspaceModule: WorkspaceModule = {
       if (!match) return undefined;
       if (request.method !== "POST") return textResponse("Method not allowed", 405);
       const workspaceId = decodeURIComponent(match[1]!);
-      const { snapshot } = await current(workspaceId);
+      const { index } = await current(workspaceId);
       deleteReviewComments(workspaceId, [decodeURIComponent(match[2]!)]);
-      return turboStreamResponse(await bodyStream(workspaceId, snapshot, listReviewComments(workspaceId)));
+      return turboStreamResponse(bodyStream(workspaceId, index, listReviewComments(workspaceId)));
     },
   }],
   initialize(context) {
     context.events.on("workspace_agent_turn_finished", async ({ workspaceId }) => {
-      const { snapshot, comments } = await refresh(workspaceId);
-      context.broadcastWorkspace(workspaceId, await bodyStream(workspaceId, snapshot, comments));
+      const { index, comments } = await refresh(workspaceId);
+      context.broadcastWorkspace(workspaceId, bodyStream(workspaceId, index, comments));
     });
     context.events.on("workspace_agent_prompt_preparing", (event) => {
       const section = reviewCommentsPrompt(reviewCommentsForPrompt(event.workspaceId, event.reviewCommentIds));
@@ -119,11 +141,11 @@ export const reviewWorkspaceModule: WorkspaceModule = {
     });
     context.events.on("workspace_agent_prompt_submitted", async ({ workspaceId, reviewCommentIds }) => {
       deleteReviewComments(workspaceId, reviewCommentIds);
-      const { snapshot, comments } = await current(workspaceId);
-      context.broadcastWorkspace(workspaceId, await bodyStream(workspaceId, snapshot, comments));
+      const { index, comments } = await current(workspaceId);
+      context.broadcastWorkspace(workspaceId, bodyStream(workspaceId, index, comments));
     });
     context.onWorkspaceRemoved((workspaceId) => {
-      snapshots.delete(workspaceId);
+      indexes.delete(workspaceId);
       deleteReviewState(workspaceId);
     });
   },
@@ -136,4 +158,3 @@ export const reviewWorkspaceModule: WorkspaceModule = {
 };
 
 export { reviewWorkspaceModule as atelierServerModule };
-export { collectReviewSnapshot, type ReviewSnapshot } from "./diff.ts";

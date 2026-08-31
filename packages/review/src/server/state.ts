@@ -3,7 +3,7 @@ import { createWorkspaceMetadataState } from "@atelier/workspace";
 import { Type, type Static } from "typebox";
 import { Value } from "typebox/value";
 import type { ReviewSide } from "../model.ts";
-import type { ReviewFile, ReviewSnapshot } from "./diff.ts";
+import type { ReviewFile, ReviewIndex } from "./diff.ts";
 
 const reviewCommentSchema = Type.Object({
   id: Type.String(),
@@ -83,14 +83,17 @@ export function remapReviewComment(comment: ReviewComment, file: ReviewFile | un
   };
 }
 
-export function remapReviewComments(workspaceId: string, snapshot: ReviewSnapshot): ReviewComment[] {
+export function reconcileReviewComments(workspaceId: string, index: ReviewIndex): ReviewComment[] {
   const state = states.read(workspaceId);
-  if (snapshot.phase !== "ready") {
-    state.comments = state.comments.map((comment) => ({ ...comment, outdated: true }));
-  } else {
-    const files = new Map(snapshot.files.map((file) => [file.path, file]));
-    state.comments = state.comments.map((comment) => remapReviewComment(comment, files.get(comment.path)));
-  }
+  const paths = new Set(index.phase === "ready" ? index.files.map((file) => file.path) : []);
+  state.comments = state.comments.map((comment) => paths.has(comment.path) ? comment : { ...comment, outdated: true });
+  states.write(workspaceId, state);
+  return [...state.comments];
+}
+
+export function remapReviewFileComments(workspaceId: string, file: ReviewFile): ReviewComment[] {
+  const state = states.read(workspaceId);
+  state.comments = state.comments.map((comment) => comment.path === file.path ? remapReviewComment(comment, file) : comment);
   states.write(workspaceId, state);
   return [...state.comments];
 }

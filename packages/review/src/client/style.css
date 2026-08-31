@@ -44,6 +44,8 @@
 .review-file-path span { overflow: hidden; color: var(--text-muted); font-weight: 400; text-overflow: ellipsis; white-space: nowrap; }
 .review-file-meta { justify-content: flex-end; white-space: nowrap; }
 .review-comment-count { color: var(--text-bright); font-family: var(--font-sans); font-weight: var(--weight-medium); }
+.review-git-stats { display: inline-flex; align-items: center; gap: 12px; }
+.review-stats-spinner { width: 14px; height: 14px; }
 .review-additions { color: var(--success); font-family: var(--font-mono); font-weight: var(--weight-semibold); }
 .review-deletions { color: var(--danger); font-family: var(--font-mono); font-weight: var(--weight-semibold); }
 
@@ -54,6 +56,21 @@
   border-radius: var(--radius-control);
   background: var(--panel);
 }
+
+.review-file-loading,
+.review-file-unavailable {
+  min-height: 96px;
+  margin-top: 8px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 8px;
+  border: 1px solid var(--line);
+  border-radius: var(--radius-control);
+  background: var(--panel);
+  color: var(--text-muted);
+}
+.review-file-unavailable { padding: 20px; text-align: center; }
 
 .review-special-file {
   min-height: 144px;

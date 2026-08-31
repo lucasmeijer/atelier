@@ -3,8 +3,8 @@ import { mkdtemp, mkdir, rm, writeFile } from "node:fs/promises";
 import { join } from "node:path";
 import { tmpdir } from "node:os";
 import { reviewCommentsPrompt, type ReviewCommentModel } from "../src/model.ts";
-import { collectReviewSnapshot, type ReviewFile } from "../src/server/diff.ts";
-import { renderReviewBody, reviewWorkViewPresentation } from "../src/server/render.ts";
+import { collectReviewFile, collectReviewIndex, collectReviewStats, type ReviewFile, type ReviewFileStats } from "../src/server/diff.ts";
+import { renderReviewBody, renderReviewFileDetails, renderReviewStatsFrame, reviewWorkViewPresentation } from "../src/server/render.ts";
 import { addReviewComment, deleteReviewState, listReviewComments, remapReviewComment, updateReviewComment, type ReviewComment } from "../src/server/state.ts";
 import { command, createReviewRepository } from "./support/repository.ts";
 
@@ -20,26 +20,49 @@ async function repository(): Promise<string> {
   return root;
 }
 
-describe("Review snapshot", () => {
+async function reviewFiles(root: string): Promise<ReviewFile[]> {
+  const index = await collectReviewIndex(root);
+  if (index.phase !== "ready") throw new Error("expected ready review");
+  const files = await Promise.all(index.files.map((file) => collectReviewFile(root, file.path)));
+  return files.filter((file): file is ReviewFile => file !== undefined);
+}
+
+describe("Review collection", () => {
   test("reports a non-repository without throwing", async () => {
     const root = await mkdtemp(join(tmpdir(), "atelier-review-not-git-"));
     roots.push(root);
-    expect((await collectReviewSnapshot(root)).phase).toBe("not-git");
+    expect((await collectReviewIndex(root)).phase).toBe("not-git");
   });
 
-  test("combines tracked and untracked working changes while excluding ignored files", async () => {
+  test("lists tracked and untracked changes without collecting file details", async () => {
     const root = await repository();
     await writeFile(join(root, "changed.ts"), "const after = true;\nconst added = 1;\n");
     await writeFile(join(root, "untracked.ts"), "export const newFile = true;\n");
     await writeFile(join(root, "ignored.txt"), "not reviewed\n");
 
-    const snapshot = await collectReviewSnapshot(root);
-    expect(snapshot.phase).toBe("ready");
-    if (snapshot.phase !== "ready") throw new Error("expected ready review");
-    expect(snapshot.files.map((file) => file.path)).toEqual(["changed.ts", "untracked.ts"]);
-    expect(snapshot.files[0]!.additions).toBe(2);
-    expect(snapshot.files[0]!.deletions).toBe(1);
-    expect(snapshot.files[1]!.kind).toBe("text");
+    const index = await collectReviewIndex(root);
+    expect(index).toEqual({ phase: "ready", files: [
+      { path: "changed.ts", change: "modified" },
+      { path: "untracked.ts", change: "added", untracked: true },
+    ] });
+    expect(await collectReviewStats(root, index)).toEqual([
+      { path: "changed.ts", change: "modified", additions: 2, deletions: 1 },
+      { path: "untracked.ts", change: "added", untracked: true, additions: 1, deletions: 0 },
+    ]);
+
+    const files = await reviewFiles(root);
+    expect(files.map((file) => file.path)).toEqual(["changed.ts", "untracked.ts"]);
+    expect(files[1]!.kind).toBe("text");
+  });
+
+  test("collects stats before the repository has its first commit", async () => {
+    const root = await mkdtemp(join(tmpdir(), "atelier-review-unborn-"));
+    roots.push(root);
+    await command(root, "git", "init");
+    await writeFile(join(root, "first.ts"), "export const first = true;\n");
+    await command(root, "git", "add", "first.ts");
+    const index = await collectReviewIndex(root);
+    expect(await collectReviewStats(root, index)).toEqual([{ path: "first.ts", change: "added", additions: 1, deletions: 0 }]);
   });
 
   test("classifies whole-file additions and removals", async () => {
@@ -47,9 +70,9 @@ describe("Review snapshot", () => {
     await writeFile(join(root, "added.ts"), "export const added = true;\n");
     await rm(join(root, "changed.ts"));
 
-    const snapshot = await collectReviewSnapshot(root);
-    if (snapshot.phase !== "ready") throw new Error("expected ready review");
-    expect(snapshot.files.map(({ path, change }) => ({ path, change }))).toEqual([
+    const index = await collectReviewIndex(root);
+    if (index.phase !== "ready") throw new Error("expected ready review");
+    expect(index.files.map(({ path, change }) => ({ path, change }))).toEqual([
       { path: "added.ts", change: "added" },
       { path: "changed.ts", change: "removed" },
     ]);
@@ -58,12 +81,13 @@ describe("Review snapshot", () => {
   test("keeps empty files and rename metadata", async () => {
     const root = await repository();
     await command(root, "git", "mv", "empty.txt", "renamed.txt");
-    const snapshot = await collectReviewSnapshot(root);
-    if (snapshot.phase !== "ready") throw new Error("expected ready review");
-    expect(snapshot.files).toHaveLength(1);
-    expect(snapshot.files[0]!.path).toBe("renamed.txt");
-    expect(snapshot.files[0]!.previousPath).toBe("empty.txt");
-    expect(snapshot.files[0]!.detail).toBe("File renamed");
+    const index = await collectReviewIndex(root);
+    expect(await collectReviewStats(root, index)).toEqual([{ path: "renamed.txt", previousPath: "empty.txt", change: "modified", additions: 0, deletions: 0 }]);
+    const files = await reviewFiles(root);
+    expect(files).toHaveLength(1);
+    expect(files[0]!.path).toBe("renamed.txt");
+    expect(files[0]!.previousPath).toBe("empty.txt");
+    expect(files[0]!.detail).toBe("File renamed");
   });
 
   test("omits a staged addition deleted again before review", async () => {
@@ -72,17 +96,13 @@ describe("Review snapshot", () => {
     await writeFile(transient, "temporary\n");
     await command(root, "git", "add", "transient.ts");
     await rm(transient);
-    const snapshot = await collectReviewSnapshot(root);
-    if (snapshot.phase !== "ready") throw new Error("expected ready review");
-    expect(snapshot.files).toEqual([]);
+    expect(await reviewFiles(root)).toEqual([]);
   });
 
   test("classifies binary changes without rendering them as text", async () => {
     const root = await repository();
     await writeFile(join(root, "asset.bin"), new Uint8Array([0, 1, 2, 3]));
-    const snapshot = await collectReviewSnapshot(root);
-    if (snapshot.phase !== "ready") throw new Error("expected ready review");
-    expect(snapshot.files[0]!.kind).toBe("binary");
+    expect((await reviewFiles(root))[0]!.kind).toBe("binary");
   });
 });
 
@@ -114,7 +134,7 @@ describe("Review comment anchors", () => {
   };
 
   function file(contents: string): ReviewFile {
-    return { path: comment.path, change: "modified", kind: "text", newContents: contents, additions: 1, deletions: 1 };
+    return { path: comment.path, change: "modified", kind: "text", newContents: contents };
   }
 
   test("keeps exact anchors, remaps one exact match, and marks ambiguous matches outdated", () => {
@@ -160,25 +180,40 @@ describe("Review presentation", () => {
     expect(notGit).toContain("Not a git repository");
   });
 
-  test("encapsulates server-rendered diff styles in a declarative shadow root", async () => {
+  test("defers the server-rendered diff until its file frame is requested", async () => {
     const root = await repository();
     await writeFile(join(root, "changed.ts"), "const after = true;\n");
-    const snapshot = await collectReviewSnapshot(root);
-    if (snapshot.phase !== "ready") throw new Error("expected ready review");
+    const index = await collectReviewIndex(root);
+    if (index.phase !== "ready") throw new Error("expected ready review");
+    const file = await collectReviewFile(root, "changed.ts");
+    if (!file) throw new Error("expected review file");
 
-    const html = await renderReviewBody("workspace 1", snapshot, []);
+    const body = renderReviewBody("workspace 1", index, []);
+    expect(body).toContain('data-src="/workspaces/workspace%201/review/files/changed.ts"');
+    expect(body).toContain('src="/workspaces/workspace%201/review/stats"');
+    expect(body).toContain('aria-label="Loading change stats"');
+    expect(body).not.toContain("<diffs-container>");
+    expect(body).not.toContain("review-additions");
 
-    expect(html).toMatch(/<diffs-container><template shadowrootmode="open">[\s\S]*<style data-core-css="">[\s\S]*<\/template><\/diffs-container>/);
+    const stats = renderReviewStatsFrame("workspace 1", await collectReviewStats(root, index));
+    expect(stats).toContain("review-additions\">+1");
+    expect(stats).not.toContain("Loading change stats");
+
+    const details = await renderReviewFileDetails("workspace 1", file, []);
+    expect(details).toMatch(/<diffs-container><template shadowrootmode="open">[\s\S]*<style data-core-css="">[\s\S]*<\/template><\/diffs-container>/);
+    expect(details).not.toContain("review-additions");
   });
 
-  test("renders file grouping and explicit review comment actions", async () => {
+  test("renders file grouping collapsed by default with explicit review comment actions", async () => {
     const comment: ReviewComment = { id: "comment-1", path: "src/example.ts", side: "additions", startLine: 2, endLine: 2, body: "Keep this lazy", snippet: "target" };
-    const file: ReviewFile = { path: "src/example.ts", change: "modified", kind: "binary", additions: 1, deletions: 0, detail: "Binary file changed" };
-    const html = await renderReviewBody("workspace 1", { phase: "ready", files: [file] }, [comment]);
+    const file: ReviewFile = { path: "src/example.ts", change: "modified", kind: "binary", detail: "Binary file changed" };
+    const html = renderReviewBody("workspace 1", { phase: "ready", files: [file] }, [comment]);
 
     expect(html).toContain('class="review-files action-list"');
-    expect(html).toContain('<details class="review-file" data-review-target="file" data-review-path="src/example.ts" data-review-change="modified" data-review-comments="1">');
-    expect(html).not.toContain('data-review-comments="1" open');
+    expect(html).toContain('<details class="review-file" data-review-target="file" data-review-path="src/example.ts" data-review-change="modified" data-review-comments="1" data-action="pointerenter->review#requestFile pointerdown->review#requestFile focusin->review#requestFile toggle->review#requestFile">');
+    expect([...html.matchAll(/<details class="review-file"[^>]*>/g)].every(([details]) => !details.includes(" open"))).toBe(true);
+    expect(html).toContain('data-src="/workspaces/workspace%201/review/files/src%2Fexample.ts"');
+    expect(html).not.toContain("Binary file changed");
     expect(html).toContain("Copy into composer");
     expect(html).toContain('data-action="click->review#copyCommentsToComposer"');
     expect(html).toContain('class="button secondary icon-only copy-button"');
@@ -192,9 +227,10 @@ describe("Review presentation", () => {
     expect(html).toContain('title="Toggle long line wrapping" aria-pressed="true" data-action="click->review#toggleLineWrapping">Wrap lines</button>');
     expect(html.indexOf(">Word diff</button>")).toBeLessThan(html.indexOf(">Wrap lines</button>"));
     expect(html).toContain('<span class="review-comment-count" aria-label="1 comment">1</span>');
-    expect(html).toContain('role="note"');
-    expect(html).toContain("Binary file changed");
-    expect(html).toContain("Content preview isn’t available for binary files.");
+    const details = await renderReviewFileDetails("workspace 1", file, [comment]);
+    expect(details).toContain('role="note"');
+    expect(details).toContain("Binary file changed");
+    expect(details).toContain("Content preview isn’t available for binary files.");
     expect(html.indexOf("Copy into composer")).toBeLessThan(html.indexOf('aria-label="Copy review comments to clipboard"'));
     expect(html.indexOf('aria-label="Copy review comments to clipboard"')).toBeLessThan(html.indexOf('aria-label="Delete all review comments"'));
     expect(html.indexOf('aria-label="Delete all review comments"')).toBeLessThan(html.indexOf('aria-label="Refresh review"'));
@@ -204,12 +240,24 @@ describe("Review presentation", () => {
     expect(html).not.toContain('name="reviewComment"');
   });
 
-  test("renders zero deletion stats for added files", async () => {
-    const file: ReviewFile = { path: "new.ts", change: "added", kind: "binary", additions: 1, deletions: 0 };
-    const html = await renderReviewBody("workspace 1", { phase: "ready", files: [file] }, []);
+  test("loads zero deletion stats for added files without an untracked label", () => {
+    const files: ReviewFile[] = [
+      { path: "changed.ts", change: "modified", kind: "binary" },
+      { path: "new.ts", change: "added", kind: "binary" },
+    ];
+    const fileStats: ReviewFileStats[] = [
+      { path: "changed.ts", change: "modified", additions: 1, deletions: 1 },
+      { path: "new.ts", change: "added", untracked: true, additions: 1, deletions: 0 },
+    ];
 
-    expect(html).toContain('<span class="review-additions">+1</span>');
-    expect(html).toContain('<span class="review-deletions">−0</span>');
+    const html = renderReviewBody("workspace 1", { phase: "ready", files }, []);
+    expect(html.match(/Loading change stats/g)).toHaveLength(2);
+    expect(html).not.toContain("Untracked");
+    expect(html).not.toContain("review-additions");
+
+    const stats = renderReviewStatsFrame("workspace 1", fileStats);
+    expect(stats).toContain('<span class="review-deletions">−1</span>');
+    expect(stats).toContain('<span class="review-deletions">−0</span>');
   });
 
   test("groups comments whose anchors disappeared in an open pseudo-file", async () => {
