@@ -191,6 +191,37 @@ Comment: I don't think we need these tests`;
     }
   });
 
+  test("toggles long review lines between horizontal scrolling and wrapping", async () => {
+    const root = await createReviewRepository();
+    try {
+      await writeFile(join(root, "changed.ts"), `const message = "${"long-content-".repeat(80)}";\n`);
+      const snapshot = await collectReviewSnapshot(root);
+      if (snapshot.phase !== "ready") throw new Error("expected ready review");
+      const reviewBody = await renderReviewBody("line-wrapping", snapshot, []);
+      const fixture = `<div class="workspace-detail-resident visible"><section class="fixed-shell-surface is-active" data-workspace-pane-role="work">${reviewBody}</section></div>`;
+      const page = await newTestPage();
+      await page.setViewportSize({ width: 700, height: 700 });
+      await page.route("http://atelier.test/", (route) => route.fulfill({ contentType: "text/html", body: `${fixture}<script type="module" src="${workspaceClientPath}"></script>` }));
+      await page.goto("http://atelier.test/");
+
+      const toggle = page.getByRole("button", { name: "Wrap lines", exact: true });
+      const overflow = () => page.locator("diffs-container").locator("pre[data-diff]").getAttribute("data-overflow");
+      expect(await toggle.getAttribute("aria-pressed")).toBe("true");
+      expect(await overflow()).toBe("wrap");
+
+      await toggle.click();
+      expect(await toggle.getAttribute("aria-pressed")).toBe("false");
+      expect(await overflow()).toBe("scroll");
+
+      await toggle.click();
+      expect(await toggle.getAttribute("aria-pressed")).toBe("true");
+      expect(await overflow()).toBe("wrap");
+      await page.close();
+    } finally {
+      await rm(root, { recursive: true, force: true });
+    }
+  });
+
   test("switches the design catalogue between responsive preview platforms", async () => {
     const serveCatalogue = async (page: Page) => {
       await page.route("http://catalogue.test/design-system-catalogue.html**", (route) => route.fulfill({ contentType: "text/html", body: catalogueHtml }));

@@ -22,7 +22,7 @@ function diffOptions(presentation: "review" | "tool") {
     theme: atelierPierreTheme,
     themeType: "dark" as const,
     diffStyle: "unified" as const,
-    overflow: "scroll" as const,
+    overflow: review ? "wrap" as const : "scroll" as const,
     disableLineNumbers: true,
     disableFileHeader: true,
     hunkSeparators: review ? "line-info" as const : "simple" as const,

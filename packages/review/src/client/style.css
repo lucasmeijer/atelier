@@ -26,7 +26,7 @@
 }
 
 .review-toolbar-actions > .copy-button { position: static; }
-.review-word-diff-toggle[aria-pressed="true"] {
+.review-display-toggle[aria-pressed="true"] {
   border-color: color-mix(in srgb, var(--accent) 48%, var(--line));
   background: var(--accent-soft);
   color: var(--text-bright);

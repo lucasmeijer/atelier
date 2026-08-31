@@ -177,6 +177,8 @@ describe("Review presentation", () => {
     expect(html).toContain('aria-label="Collapse all files"');
     expect(html).toContain('aria-label="Expand all files"');
     expect(html).toContain('title="Toggle per-word diff highlighting" aria-pressed="false" data-action="click->review#toggleWordDiff">Word diff</button>');
+    expect(html).toContain('title="Toggle long line wrapping" aria-pressed="true" data-action="click->review#toggleLineWrapping">Wrap lines</button>');
+    expect(html.indexOf(">Word diff</button>")).toBeLessThan(html.indexOf(">Wrap lines</button>"));
     expect(html).toContain('<span class="review-comment-count" aria-label="1 comment">1</span>');
     expect(html).toContain('role="note"');
     expect(html).toContain("Binary file changed");

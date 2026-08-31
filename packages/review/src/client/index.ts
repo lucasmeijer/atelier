@@ -77,6 +77,7 @@ function createReviewController(Controller: StimulusControllerConstructor) {
     private draft?: DraftModel;
     private hydrated = false;
     private wordDiffEnabled = false;
+    private lineWrappingEnabled = true;
     private pane!: HTMLElement;
     private resident!: HTMLElement;
     private readonly becameVisible = (): void => { void this.becomeVisible(); };
@@ -139,6 +140,16 @@ function createReviewController(Controller: StimulusControllerConstructor) {
       }
     }
 
+    toggleLineWrapping(event: Event): void {
+      if (!(event.currentTarget instanceof HTMLButtonElement)) throw new Error("Line wrapping toggle requires a button");
+      this.lineWrappingEnabled = !this.lineWrappingEnabled;
+      event.currentTarget.setAttribute("aria-pressed", String(this.lineWrappingEnabled));
+      for (const instance of this.instances) {
+        instance.setOptions({ ...instance.options, overflow: this.lineWrappingEnabled ? "wrap" : "scroll" });
+        instance.rerender();
+      }
+    }
+
     private hydrateDiff(host: HTMLElement, FileDiffClass: FileDiffConstructor): void {
       const script = host.querySelector<HTMLScriptElement>("script[data-review-model]")!;
       // SAFETY: The server emits this private JSON script from a DiffModel and no external input can write it.
@@ -153,6 +164,7 @@ function createReviewController(Controller: StimulusControllerConstructor) {
       instance = new FileDiffClass<AnnotationMetadata>({
         ...reviewDiffOptions,
         lineDiffType: this.wordDiffEnabled ? "word-alt" : reviewDiffOptions.lineDiffType,
+        overflow: this.lineWrappingEnabled ? "wrap" : "scroll",
         renderAnnotation: (item) => this.renderAnnotation(item.metadata!, instance),
         onPostRender: () => this.decorateExpansionControls(container),
       });
