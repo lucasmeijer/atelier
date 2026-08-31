@@ -125,7 +125,7 @@ function reviewCommentsModelId(workspaceId: string): string {
 
 function renderUnanchoredSlot(workspaceId: string, comments: ReviewComment[]): string {
   const summary = renderFileSummary({ kind: "text", text: "Comments without anchors" }, renderCommentCount(comments.length));
-  const file = comments.length ? `<details class="review-file" data-review-target="file" data-review-path="comments-without-anchors" data-review-comments="${comments.length}" open>
+  const file = comments.length ? `<details class="review-file" data-review-target="file" data-review-path="comments-without-anchors" data-review-comments="${comments.length}">
     ${summary}
     <div class="review-file-diff review-unanchored-comments">${comments.map((comment) => renderUnanchoredComment(workspaceId, comment)).join("")}</div>
   </details>` : "";

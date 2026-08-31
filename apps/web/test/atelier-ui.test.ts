@@ -191,12 +191,14 @@ Comment: I don't think we need these tests`;
         detailRequests += 1;
         return route.fulfill({ contentType: "text/html", body: fileDetails });
       });
+      await page.addInitScript(() => localStorage.setItem("atelier.review.collapsed:word-diff", "[]"));
       await page.goto("http://atelier.test/");
 
       const file = page.locator("details.review-file");
       const toggle = page.getByRole("button", { name: "Word diff", exact: true });
       const wordHighlights = page.locator("diffs-container").locator("[data-diff-span]");
       expect(detailRequests).toBe(0);
+      expect(await file.getAttribute("open")).toBeNull();
       expect(await page.locator("diffs-container").count()).toBe(0);
       expect(await file.getByRole("status", { name: "Loading change stats" }).count()).toBe(1);
 

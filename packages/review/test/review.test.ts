@@ -260,11 +260,11 @@ describe("Review presentation", () => {
     expect(stats).toContain('<span class="review-deletions">−0</span>');
   });
 
-  test("groups comments whose anchors disappeared in an open pseudo-file", async () => {
+  test("groups comments whose anchors disappeared in a collapsed pseudo-file", async () => {
     const comment: ReviewComment = { id: "comment-1", path: "src/removed.ts", side: "deletions", startLine: 4, endLine: 4, body: "Keep this behavior", snippet: "removed()", outdated: true };
     const html = await renderReviewBody("workspace 1", { phase: "ready", files: [] }, [comment]);
 
-    expect(html).toContain('<details class="review-file" data-review-target="file" data-review-path="comments-without-anchors" data-review-comments="1" open>');
+    expect(html).toContain('<details class="review-file" data-review-target="file" data-review-path="comments-without-anchors" data-review-comments="1">');
     expect(html).toContain("Comments without anchors");
     expect(html).toContain("src/removed.ts");
     expect(html).toContain("removed()");

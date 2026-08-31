@@ -85,7 +85,6 @@ function createReviewController(Controller: StimulusControllerConstructor) {
     private readonly becameVisible = (): void => { void this.becomeVisible(); };
 
     connect(): void {
-      this.restoreCollapseState();
       this.restoreDraft();
       this.pane = this.element.closest<HTMLElement>('[data-workspace-pane-role="work"]')!;
       this.resident = this.element.closest<HTMLElement>(".workspace-detail-resident")!;
@@ -121,22 +120,12 @@ function createReviewController(Controller: StimulusControllerConstructor) {
       if (!frame.hasAttribute("src")) frame.setAttribute("src", frame.dataset.src!);
     }
 
-    fileTargetConnected(file: HTMLDetailsElement): void {
-      file.addEventListener("toggle", this.saveCollapseState);
-    }
-
-    fileTargetDisconnected(file: HTMLDetailsElement): void {
-      file.removeEventListener("toggle", this.saveCollapseState);
-    }
-
     collapseAll(): void {
       for (const file of this.fileTargets) file.open = false;
-      this.saveCollapseState();
     }
 
     expandAll(): void {
       for (const file of this.fileTargets) file.open = true;
-      this.saveCollapseState();
     }
 
     toggleWordDiff(event: Event): void {
@@ -461,19 +450,6 @@ function createReviewController(Controller: StimulusControllerConstructor) {
       scroller.scrollTop += anchor.getBoundingClientRect().top - scroller.getBoundingClientRect().top - saved.offset;
     }
 
-    private saveCollapseState = (): void => {
-      const collapsed = this.fileTargets.filter((file) => !file.open).map((file) => file.dataset.reviewPath!);
-      localStorage.setItem(this.collapseKey, JSON.stringify(collapsed));
-    };
-
-    private restoreCollapseState(): void {
-      const raw = localStorage.getItem(this.collapseKey);
-      if (!raw) return;
-      // SAFETY: saveCollapseState writes this browser-owned value as a string array.
-      const collapsed = new Set(JSON.parse(raw) as string[]);
-      for (const file of this.fileTargets) file.open = Number(file.dataset.reviewComments) > 0 || !collapsed.has(file.dataset.reviewPath!);
-    }
-
     private persistDraft(): void {
       sessionStorage.setItem(this.draftKey, JSON.stringify(this.draft));
     }
@@ -490,7 +466,6 @@ function createReviewController(Controller: StimulusControllerConstructor) {
       this.draft = JSON.parse(raw) as DraftModel;
     }
 
-    private get collapseKey(): string { return `atelier.review.collapsed:${this.workspaceIdValue}`; }
     private get positionKey(): string { return `atelier.review.position:${this.workspaceIdValue}`; }
     private get draftKey(): string { return `atelier.review.draft:${this.workspaceIdValue}`; }
   };
