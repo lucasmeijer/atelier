@@ -3,6 +3,7 @@
 import { Application, Controller } from "@hotwired/stimulus";
 import { copyTextToClipboard } from "@atelier/shared";
 import { ActionItemController } from "@atelier/design-system/action-item/client";
+import { DestructiveConfirmationController } from "@atelier/design-system/destructive-confirmation/client";
 import { PopupSelectController } from "./popup-select.ts";
 
 export function createCloseButton(label: string): HTMLButtonElement {
@@ -98,95 +99,6 @@ class CopyButtonController extends Controller<HTMLButtonElement> {
     }, 1000);
     await copyTextToClipboard(text);
   }
-}
-
-const destructiveConfirmationPointerTravel = 14;
-
-class DestructiveConfirmationController extends Controller<HTMLElement> {
-  private trigger!: HTMLElement;
-  private triggerButton!: HTMLButtonElement;
-  private decision!: HTMLElement;
-  private action!: HTMLButtonElement;
-  private cancelButton!: HTMLButtonElement;
-  private resizeObserver!: ResizeObserver;
-  private pointerOrigin?: { x: number; y: number };
-
-  connect(): void {
-    this.trigger = this.element.querySelector<HTMLElement>(".destructive-confirmation__trigger")!;
-    this.triggerButton = this.trigger.querySelector<HTMLButtonElement>("button")!;
-    this.decision = this.element.querySelector<HTMLElement>(".destructive-confirmation__decision")!;
-    this.action = this.element.querySelector<HTMLButtonElement>(".destructive-confirmation__action")!;
-    this.cancelButton = this.element.querySelector<HTMLButtonElement>(".destructive-confirmation__cancel")!;
-    this.trigger.addEventListener("click", this.arm);
-    this.cancelButton.addEventListener("click", this.cancel);
-    this.element.addEventListener("keydown", this.keydown);
-    this.resizeObserver = new ResizeObserver(this.measure);
-    this.resizeObserver.observe(this.triggerButton);
-    this.resizeObserver.observe(this.decision);
-    this.measure();
-    this.reset();
-  }
-
-  disconnect(): void {
-    this.trigger.removeEventListener("click", this.arm);
-    this.cancelButton.removeEventListener("click", this.cancel);
-    this.element.removeEventListener("keydown", this.keydown);
-    this.resizeObserver.disconnect();
-    this.stopTrackingPointer();
-  }
-
-  private readonly measure = (): void => {
-    this.element.style.setProperty("--destructive-confirmation-initial-width", `${this.triggerButton.offsetWidth}px`);
-    this.element.style.setProperty("--destructive-confirmation-expanded-width", `${this.decision.offsetWidth}px`);
-    this.element.style.setProperty("--destructive-confirmation-control-height", `${Math.max(this.triggerButton.offsetHeight, this.decision.offsetHeight)}px`);
-  };
-
-  private reset(focus = false): void {
-    this.element.dataset.destructiveConfirmationState = "initial";
-    this.action.disabled = true;
-    this.decision.inert = true;
-    this.trigger.inert = false;
-    this.stopTrackingPointer();
-    if (focus) this.triggerButton.focus();
-  }
-
-  private readonly arm = (event: MouseEvent): void => {
-    this.measure();
-    this.element.dataset.destructiveConfirmationState = "confirming";
-    this.decision.inert = false;
-    this.trigger.inert = true;
-    this.action.disabled = event.detail !== 0;
-    if (event.detail === 0) {
-      this.cancelButton.focus();
-      return;
-    }
-    this.pointerOrigin = { x: event.clientX, y: event.clientY };
-    document.addEventListener("pointermove", this.unlockFromPointerTravel);
-    document.addEventListener("pointerdown", this.unlockFromPointerTravel, true);
-  };
-
-  private readonly cancel = (): void => {
-    this.reset(true);
-  };
-
-  private stopTrackingPointer(): void {
-    this.pointerOrigin = undefined;
-    document.removeEventListener("pointermove", this.unlockFromPointerTravel);
-    document.removeEventListener("pointerdown", this.unlockFromPointerTravel, true);
-  }
-
-  private readonly unlockFromPointerTravel = (event: PointerEvent): void => {
-    const origin = this.pointerOrigin!;
-    if (Math.hypot(event.clientX - origin.x, event.clientY - origin.y) < destructiveConfirmationPointerTravel) return;
-    this.action.disabled = false;
-    this.stopTrackingPointer();
-  };
-
-  private readonly keydown = (event: KeyboardEvent): void => {
-    if (event.key !== "Escape" || this.element.dataset.destructiveConfirmationState !== "confirming") return;
-    event.preventDefault();
-    this.reset(true);
-  };
 }
 
 class ToggleController extends Controller<HTMLElement> {

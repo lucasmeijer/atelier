@@ -474,7 +474,7 @@ bun test</pre></div>
         <section class="catalogue-section" id="destructive-confirmation">
           <div class="catalogue-section-head">
             <h2>Destructive confirmation</h2>
-            <p>A pointer-safe inline confirmation for compact destructive actions. The trigger grows toward inline-start, Cancel takes its exact pointer position, and the destructive action unlocks only after deliberate pointer travel.</p>
+            <p>An inline confirmation for compact destructive actions. Cancel takes the trigger’s pointer position while the confirmation grows toward inline-start.</p>
           </div>
           <div class="catalogue-grid">
             <article class="catalogue-card wide">
@@ -483,7 +483,7 @@ bun test</pre></div>
                 <div class="destructive-confirmation-toolbar">
                   <span class="destructive-confirmation-toolbar__title">confirmation-lab</span>
                   <button class="button secondary icon-only" type="button" aria-label="Park workspace" title="Park workspace"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M17.5 15.5A7 7 0 0 1 8.5 6.5a7 7 0 1 0 9 9z"/></svg></button>
-                  <div class="destructive-confirmation" data-catalogue-destructive-confirmation>
+                  <div class="destructive-confirmation">
                     <div class="destructive-confirmation__trigger">
                       <button class="button danger icon-only" type="button" aria-label="Delete workspace" title="Delete workspace"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M4 7h16M9 7V4h6v3M7 7l1 14h8l1-14M10 11v6M14 11v6"/></svg></button>
                     </div>
@@ -493,9 +493,9 @@ bun test</pre></div>
                     </div>
                   </div>
                 </div>
-                <span class="button-demo__status">A stationary second click cancels · move 14px to unlock Delete</span>
+                <span class="button-demo__status">A stationary second click cancels · Delete remains immediately available</span>
               </div>
-              <p class="catalogue-note">The danger action uses the shipped <code>.button.danger</code> treatment unchanged. Keyboard activation focuses Cancel and makes Delete available through deliberate focus navigation.</p>
+              <p class="catalogue-note">The danger action uses the shipped <code>.button.danger</code> treatment unchanged. Keyboard activation focuses Cancel; pointer activation leaves both choices immediately available.</p>
             </article>
             <article class="catalogue-card wide">
               <div class="catalogue-card-title"><span>Interface</span><code>automatic behavior</code></div>
@@ -507,7 +507,7 @@ bun test</pre></div>
   confirmCaption: "Delete workspace",
   cancelCaption: "Keep workspace",
 })</pre>
-              <p class="catalogue-note">The caller supplies the complete trigger button and both decision captions. The trigger must be a <code>type="button"</code> button. The controller owns action availability, pointer travel, Escape, sizing, and focus restoration while preserving the confirmation action’s native form submission.</p>
+              <p class="catalogue-note">The caller supplies the complete trigger button and both decision captions. The trigger must be a <code>type="button"</code> button. The controller owns Escape, sizing, and focus restoration while preserving the confirmation action’s native form submission.</p>
             </article>
           </div>
         </section>

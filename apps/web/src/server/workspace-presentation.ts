@@ -1,4 +1,5 @@
 import { actionItemHtml } from "@atelier/design-system/action-item";
+import { destructiveConfirmationHtml } from "@atelier/design-system/destructive-confirmation";
 import { disclosureIconHtml, domId, escapeHtml, turboStream } from "@atelier/shared";
 import type { WorkspaceDeletionState } from "./workspace-registry.ts";
 
@@ -109,20 +110,22 @@ function topBarButton(label: string, action: string, iconName: Parameters<typeof
   return `<button type="button" class="button secondary icon-only" title="${escapeHtml(label)}" aria-label="${escapeHtml(label)}" data-action="${action}" ${attributes}>${icon(iconName)}</button>`;
 }
 
-function closeForm(close: ViewCloseAction, buttonHtml: string, attributes = ""): string {
-  return `<form${attributes} data-turbo="true" method="post" action="${escapeHtml(close.action)}" data-close-label="${escapeHtml(close.label)}" data-action="submit->workspace-presentation#confirmClose">${buttonHtml}</form>`;
+function closeForm(close: ViewCloseAction, buttonHtml: string): string {
+  return `<form data-turbo="true" method="post" action="${escapeHtml(close.action)}" data-close-label="${escapeHtml(close.label)}" data-action="submit->workspace-presentation#confirmClose">${buttonHtml}</form>`;
 }
 
 function fullscreenViewAttributes(key: string, title: string): string {
   return `data-controller="atelier-fullscreen" data-atelier-fullscreen-mode-value="view" data-atelier-fullscreen-view-key-value="${escapeHtml(key)}" data-atelier-fullscreen-title-value="${escapeHtml(title)}"`;
 }
 
-function selectorCloseButton(close: ViewCloseAction): string {
-  return `<button class="fixed-shell-view-close button danger icon-only" type="submit" title="Close ${escapeHtml(close.label)}" aria-label="Close ${escapeHtml(close.label)}">${icon("x")}</button>`;
-}
-
 function selectorCloseForm(close: ViewCloseAction): string {
-  return closeForm(close, selectorCloseButton(close));
+  const label = escapeHtml(`Close ${close.label}`);
+  const confirmation = destructiveConfirmationHtml({
+    buttonHtml: `<button class="fixed-shell-view-close button danger icon-only" type="button" title="${label}" aria-label="${label}">${icon("x")}</button>`,
+    confirmCaption: "Yes, close",
+    cancelCaption: "Oops",
+  });
+  return `<form data-turbo="true" method="post" action="${escapeHtml(close.action)}">${confirmation}</form>`;
 }
 
 function renderWorkspaceRowStatus(workspace: WorkspacePaneEntry): string {
@@ -336,7 +339,12 @@ function renderAgentPaneSlot(workspaceId: string, agent: AgentPaneContribution):
 function renderAgentActions(presentation: WorkspacePresentation): string {
   const agentActions = (presentation.commands ?? []).filter((command) => command.placement === "agent-action").map((command) => `<form data-turbo="true" method="post" action="/workspaces/${encodeURIComponent(presentation.workspace.id)}/commands/${encodeURIComponent(command.id)}"><button class="button secondary icon-only" type="submit" title="${escapeHtml(command.label)}" aria-label="${escapeHtml(command.label)}">${icon("plus")}</button></form>`).join("");
   const parkWorkspace = `<form class="fixed-shell-park-workspace" method="post" action="/workspaces/${encodeURIComponent(presentation.workspace.id)}/park" data-action="submit->workspace-navigation#parkWorkspace"><button class="button secondary icon-only" type="submit" title="Park workspace" aria-label="Park workspace">${icon("park")}</button></form>`;
-  const deleteWorkspace = `<form class="fixed-shell-delete-workspace" data-turbo="true" method="post" action="/workspaces/${encodeURIComponent(presentation.workspace.id)}/delete"><button class="button danger icon-only" type="submit" title="Delete workspace" aria-label="Delete workspace">${icon("trash")}</button></form>`;
+  const deleteConfirmation = destructiveConfirmationHtml({
+    buttonHtml: `<button class="button danger icon-only" type="button" title="Delete workspace" aria-label="Delete workspace">${icon("trash")}</button>`,
+    confirmCaption: "Yes, delete",
+    cancelCaption: "Oops",
+  });
+  const deleteWorkspace = `<form class="fixed-shell-delete-workspace" data-turbo="true" method="post" action="/workspaces/${encodeURIComponent(presentation.workspace.id)}/delete">${deleteConfirmation}</form>`;
   return `${agentActions}${parkWorkspace}${deleteWorkspace}${topBarButton("Show Work pane", "click->workspace-presentation#toggleWorkPane", "panel", "data-show-work-pane")}`;
 }
 

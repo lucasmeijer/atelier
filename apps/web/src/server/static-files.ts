@@ -27,6 +27,7 @@ export const fingerprintedStaticFiles: StaticFileRegistry = {
   "/service-worker.js": { url: new URL("../client/service-worker.js", import.meta.url), contentType: "text/javascript; charset=utf-8" },
   "/design-system.css": { url: new URL("../../public/design-system.css", import.meta.url), contentType: "text/css; charset=utf-8" },
   "/action-item.css": { url: new URL("../../../../packages/design-system/src/action-item/action-item.css", import.meta.url), contentType: "text/css; charset=utf-8" },
+  "/destructive-confirmation.css": { url: new URL("../../../../packages/design-system/src/destructive-confirmation/destructive-confirmation.css", import.meta.url), contentType: "text/css; charset=utf-8" },
   "/fonts/jetbrains-mono-latin-400-normal.woff2": { url: new URL(import.meta.resolve("@fontsource/jetbrains-mono/files/jetbrains-mono-latin-400-normal.woff2")), contentType: "font/woff2" },
   "/style.css": { url: new URL("../../public/style.css", import.meta.url), contentType: "text/css; charset=utf-8" },
   ...workspaceProvisioningStaticFiles,

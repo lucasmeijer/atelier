@@ -10,22 +10,6 @@ export function escapeHtml(value: string | number): string {
     .replaceAll("'", "&#39;");
 }
 
-interface DestructiveConfirmationOptions {
-  /** A caller-owned `type="button"` button, including its styling, content, and accessible name. */
-  buttonHtml: string;
-  confirmCaption: string;
-  cancelCaption: string;
-  variant?: "primary" | "danger";
-  formAction?: string;
-}
-
-/** Adds a pointer-safe consequential-action confirmation to a caller-owned button inside a caller-owned form. */
-export function destructiveConfirmationHtml(options: DestructiveConfirmationOptions): string {
-  const formAction = options.formAction ? ` formaction="${escapeHtml(options.formAction)}"` : "";
-  const variant = options.variant ?? "danger";
-  return `<div class="destructive-confirmation"><div class="destructive-confirmation__trigger">${options.buttonHtml}</div><div class="destructive-confirmation__decision" inert><button class="button ${variant} destructive-confirmation__action" type="submit"${formAction}>${escapeHtml(options.confirmCaption)}</button><button class="button secondary destructive-confirmation__cancel" type="button">${escapeHtml(options.cancelCaption)}</button></div></div>`;
-}
-
 interface ProgressButtonBase {
   initialHtml: string;
   inProgressHtml: string;

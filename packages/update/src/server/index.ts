@@ -1,4 +1,5 @@
-import { activityButtonHtml, destructiveConfirmationHtml, escapeHtml, progressButtonHtml, turboStream, turboStreamResponse, type SettingsContribution, type WorkspaceModule, type WorkspaceServerModuleContext } from "@atelier/shared";
+import { destructiveConfirmationHtml } from "@atelier/design-system/destructive-confirmation";
+import { activityButtonHtml, escapeHtml, progressButtonHtml, turboStream, turboStreamResponse, type SettingsContribution, type WorkspaceModule, type WorkspaceServerModuleContext } from "@atelier/shared";
 import { pollIntervalMs, updaterPort, updateSidebarContributionId } from "./constants.ts";
 import { targetImageForChannel, type ReleaseChannel } from "./channels.ts";
 import { detectSelfUpdateRuntime, dockerExec, pullChannelImage, type DockerExec, type PullProgress, type SelfUpdateRuntime } from "./docker.ts";

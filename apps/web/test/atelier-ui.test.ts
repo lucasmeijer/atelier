@@ -5,6 +5,7 @@ import { chromium, type Browser, type Page } from "@playwright/test";
 import { ids as agentIds, renderActiveToolContent, renderTranscriptItem, renderTranscriptItemDetailFrame, type AgentRenderContext } from "../../../packages/agent/src/server/render.ts";
 import { renderSlashCommandCatalog } from "../../../packages/agent/src/server/slash-commands.ts";
 import { actionItemHtml } from "../../../packages/design-system/src/action-item/action-item-html.ts";
+import { destructiveConfirmationHtml } from "../../../packages/design-system/src/destructive-confirmation/destructive-confirmation-html.ts";
 import type { ToolView, TranscriptItem } from "../../../packages/agent/src/server/transcript.ts";
 import { renderMarkdown } from "../../../packages/markdown/src/index.ts";
 import { filesEditorFrameId, renderFilesEditorFrame, renderFilesTreeFrame, renderFilesWorkViewBody } from "../../../packages/files/src/server/render.ts";
@@ -96,7 +97,8 @@ beforeAll(async () => {
   testAssets = await buildWebTestAssets();
   workspaceClientPath = testAssets.path("/workspace.js");
   const actionItemStyle = await Bun.file(new URL("../../../packages/design-system/src/action-item/action-item.css", import.meta.url)).text();
-  designSystemStyle = `${actionItemStyle}\n${await Bun.file(new URL("../public/design-system.css", import.meta.url)).text()}`;
+  const destructiveConfirmationStyle = await Bun.file(new URL("../../../packages/design-system/src/destructive-confirmation/destructive-confirmation.css", import.meta.url)).text();
+  designSystemStyle = `${actionItemStyle}\n${destructiveConfirmationStyle}\n${await Bun.file(new URL("../public/design-system.css", import.meta.url)).text()}`;
   const shellStyle = await Bun.file(new URL("../public/style.css", import.meta.url)).text();
   workspaceStyle = `${designSystemStyle}\n${shellStyle}`;
   filesStyle = await Bun.file(new URL("../../../packages/files/src/client/style.css", import.meta.url)).text();
@@ -2461,6 +2463,60 @@ Comment: I don't think we need these tests`;
 
     expect(await agentSurface.evaluate((button) => button.matches(":focus"))).toBe(true);
     expect(await close.evaluate((button) => getComputedStyle(button).pointerEvents)).toBe("none");
+    await page.close();
+  });
+
+  test("grows an armed Work view tab toward inline-start and keeps it visible", async () => {
+    const page = await newTestPage({ viewport: { width: 1280, height: 800 }, reducedMotion: "reduce" });
+    let closeRequests = 0;
+    await page.route("http://atelier.test/close-server", (route) => {
+      closeRequests += 1;
+      return route.fulfill({ status: 204 });
+    });
+    const confirmation = destructiveConfirmationHtml({
+      buttonHtml: '<button class="fixed-shell-view-close button danger icon-only" type="button" aria-label="Close Server">×</button>',
+      confirmCaption: "Yes, close",
+      cancelCaption: "Oops",
+    });
+    const item = actionItemHtml({
+      kind: "compound",
+      label: { kind: "text", text: "Server" },
+      container: { className: "fixed-shell-work-view-selector" },
+      primary: { tag: "button", attributesHtml: 'type="button" role="tab" aria-selected="true"' },
+      engagedActionsHtml: `<form method="post" action="/close-server" data-turbo="true">${confirmation}</form>`,
+    });
+    await page.setContent(`<base href="http://atelier.test/"><style>${workspaceStyle}</style><div style="display:flex;width:110px;margin-left:200px">${item}</div>`);
+    await page.addScriptTag({ url: `http://atelier.test${workspaceClientPath}`, type: "module" });
+    await page.waitForFunction(() => document.querySelector(".destructive-confirmation")?.getAttribute("data-controller") === "destructive-confirmation");
+
+    const close = page.getByRole("button", { name: "Close Server" });
+    const tabBox = (await page.getByRole("tab", { name: "Server" }).locator("..").boundingBox())!;
+    const closeBox = (await close.boundingBox())!;
+    const pointer = { x: closeBox.x + closeBox.width / 2, y: closeBox.y + closeBox.height / 2 };
+    await page.mouse.click(pointer.x, pointer.y);
+    await page.waitForFunction(() => document.querySelector(".destructive-confirmation")?.getAttribute("data-destructive-confirmation-state") === "confirming");
+
+    const decision = page.locator(".destructive-confirmation__decision");
+    const decisionBox = (await decision.boundingBox())!;
+    const armedTabBox = (await page.getByRole("tab", { name: "Server" }).locator("..").boundingBox())!;
+    expect(armedTabBox.width).toBeGreaterThan(tabBox.width);
+    expect(decisionBox.x).toBeGreaterThanOrEqual(armedTabBox.x);
+    expect(decisionBox.x + decisionBox.width).toBeLessThanOrEqual(armedTabBox.x + armedTabBox.width);
+    expect(Math.abs((armedTabBox.x + armedTabBox.width) - (tabBox.x + tabBox.width))).toBeLessThanOrEqual(1);
+    const cancelBox = (await page.getByRole("button", { name: "Oops" }).boundingBox())!;
+    expect(pointer.x).toBeGreaterThanOrEqual(cancelBox.x);
+    expect(pointer.x).toBeLessThanOrEqual(cancelBox.x + cancelBox.width);
+    expect(pointer.y).toBeGreaterThanOrEqual(cancelBox.y);
+    expect(pointer.y).toBeLessThanOrEqual(cancelBox.y + cancelBox.height);
+    await page.mouse.click(pointer.x, pointer.y);
+    expect(closeRequests).toBe(0);
+
+    await close.click();
+    await page.mouse.move(640, 400);
+    const closeRequest = page.waitForRequest("http://atelier.test/close-server");
+    await page.getByRole("button", { name: "Yes, close" }).click();
+    await closeRequest;
+    expect(closeRequests).toBe(1);
     await page.close();
   });
 

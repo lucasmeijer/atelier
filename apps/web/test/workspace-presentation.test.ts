@@ -185,7 +185,9 @@ describe("role-fixed Workspace presentation", () => {
     expect(header.indexOf('class="fixed-shell-park-workspace"')).toBeLessThan(header.indexOf('class="fixed-shell-delete-workspace"'));
     expect(header).toContain('class="fixed-shell-delete-workspace"');
     expect(header).toContain('action="/workspaces/workspace-1/delete"');
-    expect(header).toContain('class="button danger icon-only" type="submit" title="Delete workspace" aria-label="Delete workspace"');
+    expect(header).toContain('class="button danger icon-only" type="button" title="Delete workspace" aria-label="Delete workspace"');
+    expect(header).toContain('class="button danger destructive-confirmation__action" type="submit">Yes, delete</button>');
+    expect(header).toContain('class="button secondary destructive-confirmation__cancel" type="button">Oops</button>');
     expect(header).toContain('class="button secondary icon-only" title="Show Work pane" aria-label="Show Work pane"');
     expect(html).toContain('class="button primary icon-only popup-menu-trigger" type="button" title="Open Work view" aria-label="Open Work view" aria-haspopup="menu"');
     expect(html).toContain('class="button secondary icon-only" title="Collapse Work pane" aria-label="Collapse Work pane"');
@@ -239,6 +241,9 @@ describe("role-fixed Workspace presentation", () => {
     expect(desktop).toContain('class="fixed-shell-work-view-selector action-item"');
     expect(desktop.match(/class="action-item__actions action-item__actions--engaged"/g)).toHaveLength(3);
     expect(desktop.match(/class="fixed-shell-view-close button danger icon-only"/g)).toHaveLength(3);
+    expect(desktop.match(/class="destructive-confirmation"/g)).toHaveLength(4);
+    expect(desktop.match(/>Yes, close<\/button>/g)).toHaveLength(3);
+    expect(desktop.match(/>Oops<\/button>/g)).toHaveLength(4);
     const mobileMore = html.slice(html.indexOf('role="menu" aria-label="More"'));
     expect(mobileMore).toContain('role="menuitem"');
     expect(mobileMore).toContain('Close current view');

@@ -4,7 +4,9 @@
   "type": "module",
   "exports": {
     "./action-item": "./src/action-item/action-item-html.ts",
-    "./action-item/client": "./src/action-item/action-item-controller.ts"
+    "./action-item/client": "./src/action-item/action-item-controller.ts",
+    "./destructive-confirmation": "./src/destructive-confirmation/destructive-confirmation-html.ts",
+    "./destructive-confirmation/client": "./src/destructive-confirmation/destructive-confirmation-controller.ts"
   },
   "dependencies": {
     "@atelier/shared": "workspace:*",
