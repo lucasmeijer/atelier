@@ -27,8 +27,10 @@ let filesStyle: string;
 let agentStyle: string;
 let catalogueHtml: string;
 
-async function newTestPage(options: { viewport?: { width: number; height: number }; reducedMotion?: "reduce" | "no-preference" } = {}): Promise<Page> {
-  const page = await browser.newPage();
+async function newTestPage(options: { viewport?: { width: number; height: number }; reducedMotion?: "reduce" | "no-preference"; mobile?: boolean } = {}): Promise<Page> {
+  const page = options.mobile
+    ? await browser.newPage({ viewport: options.viewport, isMobile: true, hasTouch: true })
+    : await browser.newPage();
   await testAssets.serve(page);
   await page.route(/\/workspaces\/([^/]+)\/agents\/([^/]+)\/body$/, (route) => {
     const match = new URL(route.request().url()).pathname.match(/^\/workspaces\/([^/]+)\/agents\/([^/]+)\/body$/)!;
@@ -36,7 +38,7 @@ async function newTestPage(options: { viewport?: { width: number; height: number
     const conversationId = decodeURIComponent(match[2]!);
     return route.fulfill({ contentType: "text/html", body: renderAgentBodyFrame(workspaceId, conversationId, `<p>Agent ${conversationId}</p>`) });
   });
-  if (options.viewport) await page.setViewportSize(options.viewport);
+  if (options.viewport && !options.mobile) await page.setViewportSize(options.viewport);
   if (options.reducedMotion) await page.emulateMedia({ reducedMotion: options.reducedMotion });
   return page;
 }
@@ -3158,6 +3160,24 @@ Comment: I don't think we need these tests`;
 
     expect(await moreMenu.isHidden()).toBe(true);
     expect(await moreButton.getAttribute("aria-expanded")).toBe("false");
+    await page.close();
+  });
+
+  test("keeps the single-pane phone layout in landscape", async () => {
+    const presentation: WorkspacePresentation = {
+      workspace: { id: "landscape-phone", title: "Landscape phone" },
+      agentConversations: [agentConversation("landscape-phone", "agent-1")],
+      workViews: [{ key: "browser:preview", label: "Browser", kind: "resource", availability: { phase: "live" }, bodyHtml: "<p>Browser</p>" }],
+    };
+    const page = await newTestPage({ viewport: { width: 844, height: 390 }, mobile: true });
+    await page.route("http://atelier.test/workspaces/landscape-phone", (route) => route.fulfill({ contentType: "text/html", body: `<style>${workspaceStyle}</style>${renderShellFixture(presentation, { projects: [] })}<script type="module" src="${workspaceClientPath}"></script>` }));
+    await page.goto("http://atelier.test/workspaces/landscape-phone");
+    await page.waitForFunction(() => document.querySelector(".fixed-workspace-presentation")?.getAttribute("data-navigation-ready") === "true");
+
+    await page.locator(".fixed-workspace-presentation .fixed-shell-mobile-nav").waitFor({ state: "visible" });
+    await page.locator(".fixed-shell-agent-pane").waitFor({ state: "visible" });
+    expect(await page.locator(".fixed-shell-workspace-pane").isVisible()).toBe(false);
+    expect(await page.locator(".fixed-shell-work-pane").isVisible()).toBe(false);
     await page.close();
   });
 
