@@ -10,8 +10,10 @@ export interface DialogOptions {
     /** Caller-owned attributes. Attribute values containing external input must be escaped. */
     attributesHtml?: string;
   };
-  /** Trusted, already-escaped title contents. */
-  titleHtml: string;
+  /** Trusted, already-escaped decorative icon. */
+  iconHtml: string;
+  /** Plain-text title caption. */
+  titleCaption: string;
   /** Trusted, already-escaped body contents. */
   bodyHtml: string;
   /** Trusted, already-escaped footer contents. Omit when the dialog has no footer actions. */
@@ -27,7 +29,7 @@ export function dialogHtml(options: DialogOptions): string {
   const closeLabel = escapeHtml(options.closeLabel ?? "Close dialog");
   const panel = panelHtml({
     element: { tag: "div", className: "dialog__panel" },
-    headerHtml: `<h2 class="title dialog__title">${options.titleHtml}</h2><form class="dialog__close-form" method="dialog"><button class="dialog__close button secondary icon-only" value="close" title="${closeLabel}" aria-label="${closeLabel}">${Icons.Close}</button></form>`,
+    headerHtml: `<h2 class="panel__title dialog__title">${options.iconHtml}<span>${escapeHtml(options.titleCaption)}</span></h2><form class="dialog__close-form" method="dialog"><button class="dialog__close button secondary icon-only" value="close" title="${closeLabel}" aria-label="${closeLabel}">${Icons.Close}</button></form>`,
     bodyHtml: options.bodyHtml,
     footerHtml: options.footerHtml,
   });

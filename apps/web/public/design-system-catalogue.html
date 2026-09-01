@@ -127,7 +127,6 @@
     .truncate-demo { width: 230px; }
     .catalogue-panel { width: min(520px, 100%); height: 240px; margin: 0 auto; }
     .catalogue-panel .panel__header { justify-content: space-between; }
-    .catalogue-panel-title { color: var(--text-bright); font-weight: var(--weight-semibold); }
     .catalogue-panel-body { padding: 16px; overflow: auto; }
     .catalogue-dialog { position: static; width: min(520px, 100%); }
 
@@ -594,7 +593,7 @@ bun test</pre></div>
           <div class="catalogue-section-head"><h2>Panel</h2><p>A bounded application surface with fixed chrome around a flexible body. Panel establishes structure and clipping; its content decides where scrolling belongs.</p></div>
           <article class="catalogue-card wide"><div class="catalogue-card-title"><span>Workspace surface</span><code>panelHtml()</code></div><div class="catalogue-demo">
             <aside class="panel catalogue-panel" aria-label="Example workspace panel">
-              <header class="panel__header"><strong class="catalogue-panel-title">Atelier</strong><button class="button secondary icon-only" type="button" aria-label="Panel action"><svg aria-hidden="true" viewBox="0 0 24 24"><path d="M12 5v14M5 12h14"/></svg></button></header>
+              <header class="panel__header"><strong class="panel__title">Atelier</strong><button class="button secondary icon-only" type="button" aria-label="Panel action"><svg aria-hidden="true" viewBox="0 0 24 24"><path d="M12 5v14M5 12h14"/></svg></button></header>
               <div class="panel__body catalogue-panel-body"><p>The body is flexible and clipped by default. A workspace list, transcript layout, or work-view host can choose its own scroll owner.</p></div>
             </aside>
           </div><p class="catalogue-note">The header inherits the panel background. Its divider establishes hierarchy without introducing another surface color.</p></article>
@@ -605,7 +604,7 @@ bun test</pre></div>
           <article class="catalogue-card wide"><div class="catalogue-card-title"><span>Task dialog</span><code>.dialog</code></div><div class="catalogue-demo">
             <dialog class="dialog dialog--panel catalogue-dialog" open>
               <div class="panel dialog__panel">
-                <header class="panel__header"><h2 class="title dialog__title">Connect Anthropic</h2><form class="dialog__close-form" method="dialog"><button class="dialog__close button secondary icon-only" aria-label="Close dialog"><svg aria-hidden="true" viewBox="0 0 24 24" width="17" height="17" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"><path d="M6 6l12 12M18 6L6 18"/></svg></button></form></header>
+                <header class="panel__header"><h2 class="panel__title dialog__title"><svg aria-hidden="true" viewBox="0 0 24 24" width="17" height="17" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="3"/><path d="M12 3v3M12 18v3M3 12h3M18 12h3"/></svg><span>Connect Anthropic</span></h2><form class="dialog__close-form" method="dialog"><button class="dialog__close button secondary icon-only" aria-label="Close dialog"><svg aria-hidden="true" viewBox="0 0 24 24" width="17" height="17" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"><path d="M6 6l12 12M18 6L6 18"/></svg></button></form></header>
                 <div class="panel__body dialog__body"><label for="catalogue-dialog-filter">API key</label><input class="text-field" id="catalogue-dialog-filter" placeholder="sk-ant-…"></div>
                 <footer class="panel__footer"><button class="button secondary" type="button">Cancel</button><button class="button primary" type="button">Connect</button></footer>
               </div>

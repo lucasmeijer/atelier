@@ -73,10 +73,6 @@ function providerIcon(provider: string, label = provider, className = "settings-
   return `<div class="${className}" style="--provider-color:${providerBrandColor(provider)}">${providerBrandIconHtml(provider, label)}</div>`;
 }
 
-function settingsSection(id: string, title: string, body: string, subtitle = ""): string {
-  return `<section class="settings-sec" id="settings-sec-${escapeHtml(id)}"><h2>${escapeHtml(title)}</h2>${subtitle ? `<p class="settings-sub">${escapeHtml(subtitle)}</p>` : ""}${body}</section>`;
-}
-
 function managedList(items: string, filter?: { label: string; placeholder: string; emptyMessage: string; autofocus?: boolean }): string {
   if (!filter) return `<div class="managed-list">${items}</div>`;
   return `<div class="managed-list"><div class="managed-list__filter"><input class="text-field" type="search" placeholder="${escapeHtml(filter.placeholder)}" aria-label="${escapeHtml(filter.label)}" autocomplete="off"${filter.autofocus ? " autofocus" : ""}></div><div class="managed-list__items">${items}</div><div class="managed-list__empty"${items ? " hidden" : ""}>${escapeHtml(filter.emptyMessage)}</div></div>`;
@@ -164,7 +160,7 @@ async function renderDevelopmentSettings(): Promise<string> {
   const forceDeleteWorkspaces = devSettingsEnabled() ? `<form class="settings-reset-form" method="post" action="/settings/workspaces/force-delete/flow" data-turbo="true"><button class="settings-reset-link danger" type="submit">force delete all workspaces</button></form>` : "";
   const keypressProbeSettings = await listSettingsContributions().find((contribution) => contribution.id === "keypress-probe")?.render() ?? "";
   const resetSettings = `<form class="settings-reset-form" method="post" action="/settings/reset" data-turbo="true"><button class="settings-reset-link" type="submit" onclick="return confirm('Delete stored git identity, GitHub token, and all stored model provider credentials?')">delete all settings</button></form>`;
-  return `${settingsSection("development", "Development settings", "")}${keypressProbeSettings}<div class="settings-dev-actions">${resetSettings}${forceDeleteWorkspaces}</div>`;
+  return `${keypressProbeSettings}<div class="settings-dev-actions">${resetSettings}${forceDeleteWorkspaces}</div>`;
 }
 
 function modelKey(model: { provider: string; id: string }): string {
@@ -348,14 +344,15 @@ for (const module of workspaceModules) {
   for (const contribution of module.settingsContributions ?? []) registerSettingsContribution(contribution);
 }
 
-function settingsDialogHtml(titleHtml: string, bodyHtml: string): string {
+function settingsDialogHtml(titleCaption: string, bodyHtml: string): string {
   return dialogHtml({
     element: {
       id: "settings_dialog",
       className: "dialog--sheet settings-dialog",
       attributesHtml: 'aria-label="Settings" data-dialog-auto-show',
     },
-    titleHtml,
+    iconHtml: Icons.Settings,
+    titleCaption,
     bodyHtml,
     closeLabel: "Close settings",
   });
@@ -368,7 +365,8 @@ export async function renderSettingsDialog(_active = "theme"): Promise<string> {
 }
 
 export async function renderDevelopmentSettingsDialog(): Promise<string> {
-  return settingsDialogHtml(`<a class="settings-back-link" href="/settings" data-turbo-frame="_top" data-turbo-stream="true">Settings</a>`, `<main class="settings-main settings-main-dev">${await renderDevelopmentSettings()}</main>`);
+  const backLink = '<div class="settings-development-back"><a class="settings-back-link" href="/settings" data-turbo-frame="_top" data-turbo-stream="true">Settings</a></div>';
+  return settingsDialogHtml("Development settings", `<main class="settings-main settings-main-dev">${backLink}${await renderDevelopmentSettings()}</main>`);
 }
 
 function forceDeleteAllWorkspacesModal(error = ""): string {

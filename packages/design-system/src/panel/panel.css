@@ -21,6 +21,17 @@
   border-bottom: 1px solid var(--line);
 }
 
+.panel__title {
+  min-width: 0;
+  flex: 1;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  margin: 0;
+  color: var(--text-bright);
+  font: var(--weight-semibold) var(--text-body)/var(--leading-standard) var(--font-sans);
+}
+
 .panel__body {
   min-width: 0;
   flex: 1 1 auto;

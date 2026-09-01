@@ -248,7 +248,7 @@ export function renderWorkspacePane(presentation: WorkspacePanePresentation, sid
   const settings = `<a class="button secondary icon-only" href="/settings" title="Settings" aria-label="Settings" data-controller="settings-prefetch" data-action="pointerenter->settings-prefetch#prefetch focus->settings-prefetch#prefetch click->settings-prefetch#open">${Icons.Settings}</a>`;
   return panelHtml({
     element: { tag: "aside", className: "fixed-shell-workspace-pane", attributesHtml: 'aria-label="Workspaces"' },
-    headerHtml: `<strong>${Icons.Atelier}Atelier</strong><div class="button-group">${settings}${topBarButton("Collapse Workspace pane", "click->workspace-navigation#toggleDesktopWorkspacePane", Icons.Panel, "data-collapse-workspace-pane")}</div>`,
+    headerHtml: `<strong class="panel__title">${Icons.Atelier}Atelier</strong><div class="button-group">${settings}${topBarButton("Collapse Workspace pane", "click->workspace-navigation#toggleDesktopWorkspacePane", Icons.Panel, "data-collapse-workspace-pane")}</div>`,
     bodyHtml: renderWorkspacePaneCollections(presentation, sidebarContributionsHtml),
   });
 }

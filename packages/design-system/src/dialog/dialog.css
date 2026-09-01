@@ -45,12 +45,6 @@
   box-shadow: 0 10px 28px color-mix(in srgb, #000 16%, transparent);
 }
 
-.dialog__title {
-  min-width: 0;
-  flex: 1;
-  padding-inline: 8px;
-}
-
 .dialog__close-form {
   flex: 0 0 auto;
   margin: 0 0 0 auto;
