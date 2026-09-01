@@ -1,5 +1,6 @@
 /// <reference lib="dom" />
 
+import { setActivityButtonState } from "@atelier/design-system/activity-button/client";
 import { atelierObservableTerminalTheme, createObservableTerminalViewer, observableWebSocketUrl, type ObservableTerminalTheme, type ObservableTerminalViewer } from "@atelier/observable-terminal/client";
 import { CableTopics, composerSubmitKey, copyTextToClipboard, notifyInputListeners, phoneViewportMediaQuery, recentWorkspaceProjectStorageKey, setTextInputValue, workspaceProxyUrl, type AtelierCableClient, type CableIdentifier, type CableSubscriptionOptions, type WorkspaceClientController, type WorkspaceClientModule } from "@atelier/shared";
 import { agentTreeOwnsMenu, handleAgentTreeKeydown, handleAgentTreeMenuEvent, selectAgentTreeOption } from "./session-tree.ts";
@@ -188,6 +189,7 @@ function createAgentPaneController(Controller: StimulusControllerConstructor) {
     declare readonly transcriptNavTarget: HTMLButtonElement;
     declare readonly inputTarget: HTMLTextAreaElement;
     declare readonly formTarget: HTMLFormElement;
+    declare readonly sendStopTarget: HTMLButtonElement;
 
     private stuck = true;
     private logicallyVisible = false;
@@ -252,7 +254,7 @@ function createAgentPaneController(Controller: StimulusControllerConstructor) {
       this.reconcileConnection();
     };
     private readonly positionForSelection = (): void => {
-      const busy = this.element.querySelector<HTMLElement>(".agent-sendstop")!.dataset.agentBusy === "true";
+      const busy = this.sendStopTarget.dataset.agentBusy === "true";
       this.stuck = busy;
       this.clearTranscriptFollowingSuspension();
       this.selectionPosition = { busy };
@@ -499,27 +501,24 @@ function createAgentPaneController(Controller: StimulusControllerConstructor) {
     }
 
     updateSendStopButton(): void {
-      const button = this.formTarget.querySelector<HTMLButtonElement>(".agent-sendstop");
-      if (!button) return;
+      const button = this.sendStopTarget;
       const busy = button.dataset.agentBusy === "true";
       const action = agentComposerPrimaryAction(busy, this.inputTarget.value, this.formTarget.querySelectorAll('input[name="attachment"]').length);
       if (action === "abort") {
-        button.dataset.activityState = "active";
+        setActivityButtonState(button, "active");
         button.type = "submit";
         button.removeAttribute("name");
         button.removeAttribute("value");
         button.setAttribute("form", button.dataset.agentAbortFormId ?? "");
-        button.setAttribute("aria-busy", "true");
         button.title = "Agent is working — click to stop";
         button.setAttribute("aria-label", button.title);
         return;
       }
-      button.dataset.activityState = "initial";
+      setActivityButtonState(button, "initial");
       button.type = "submit";
       button.name = "mode";
       button.value = action;
       button.removeAttribute("form");
-      button.removeAttribute("aria-busy");
       button.title = busy ? "Deliver a steering note while the agent keeps working" : "Send prompt";
       button.setAttribute("aria-label", button.title);
     }

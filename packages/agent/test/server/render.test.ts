@@ -35,7 +35,8 @@ describe("transcript rendering", () => {
 
   test("busy composers expose an actionable indeterminate stop button", () => {
     const active = renderPromptActions(ctx, true);
-    expect(active).toContain('type="submit" name="mode" value="steer"');
+    expect(active).toContain('type="submit"');
+    expect(active).toContain('name="mode" value="steer"');
     expect(active).toContain('data-activity-state="active"');
     expect(active).toContain('aria-label="Agent is working — click to stop"');
     expect(active).toContain('aria-busy="true"');

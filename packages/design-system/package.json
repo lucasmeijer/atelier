@@ -5,6 +5,8 @@
   "exports": {
     "./action-item": "./src/action-item/action-item-html.ts",
     "./action-item/client": "./src/action-item/action-item-controller.ts",
+    "./activity-button": "./src/activity-button/activity-button-html.ts",
+    "./activity-button/client": "./src/activity-button/activity-button-client.ts",
     "./copy-button": "./src/copy-button/copy-button-html.ts",
     "./copy-button/client": "./src/copy-button/copy-button-controller.ts",
     "./destructive-confirmation": "./src/destructive-confirmation/destructive-confirmation-html.ts",

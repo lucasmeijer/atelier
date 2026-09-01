@@ -1,0 +1,17 @@
+/* An indeterminate long-running button stays actionable so its active content can cancel the work. */
+.activity-button[data-activity-state="initial"] .activity-button__content[data-activity-content="initial"],
+.activity-button[data-activity-state="active"] .activity-button__content[data-activity-content="active"] {
+  visibility: visible;
+  pointer-events: auto;
+}
+.activity-button[data-activity-state="active"] { cursor: pointer; }
+.activity-button__indicator { opacity: 0; }
+.activity-button[data-activity-state="active"] .activity-button__indicator { opacity: 1; }
+.button .activity-button__indicator rect {
+  stroke: currentColor;
+  stroke-dasharray: 18 82;
+  animation: perimeter-button-orbit 900ms linear infinite;
+}
+@media (prefers-reduced-motion: reduce) {
+  .activity-button__indicator rect { animation: none !important; stroke-dasharray: 40 60; }
+}

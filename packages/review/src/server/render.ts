@@ -1,4 +1,5 @@
 import { actionItemHtml, type ActionItemLabel } from "@atelier/design-system/action-item";
+import { activityButtonHtml } from "@atelier/design-system/activity-button";
 import { copyButtonHtml } from "@atelier/design-system/copy-button";
 import { Icons } from "@atelier/design-system/icons";
 import { toggleHtml } from "@atelier/design-system/toggle";
@@ -139,11 +140,17 @@ function iconButton(label: string, action: string, iconHtml: string): string {
 }
 
 function refreshForm(workspaceId: string, caption = ""): string {
-  return `<form method="post" action="/workspaces/${encodeURIComponent(workspaceId)}/review/refresh" data-turbo="true" data-action="submit->review#updateRefreshState turbo:submit-end->review#updateRefreshState"><button class="button secondary activity-button${caption ? "" : " icon-only"}" type="submit" data-activity-state="initial" aria-label="Refresh review" title="Refresh review">
-    <svg class="activity-button__indicator" aria-hidden="true"><rect pathLength="100"/></svg>
-    <span class="activity-button__content" data-activity-content="initial">${Icons.Refresh}${caption}</span>
-    <span class="activity-button__content" data-activity-content="active">${Icons.Refresh}${caption ? "Refreshing…" : ""}</span>
-  </button></form>`;
+  const content = {
+    variant: "secondary" as const,
+    type: "submit" as const,
+    state: "initial" as const,
+    initialContent: { kind: "html" as const, html: `${Icons.Refresh}${caption}` },
+    activeContent: { kind: "html" as const, html: `${Icons.Refresh}${caption ? "Refreshing…" : ""}` },
+  };
+  const button = caption
+    ? activityButtonHtml(content)
+    : activityButtonHtml({ ...content, iconOnly: true, label: "Refresh review" });
+  return `<form method="post" action="/workspaces/${encodeURIComponent(workspaceId)}/review/refresh" data-turbo="true" data-action="submit->review#updateRefreshState turbo:submit-end->review#updateRefreshState">${button}</form>`;
 }
 
 function toolbar(workspaceId: string, comments: ReviewComment[]): string {

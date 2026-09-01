@@ -1,5 +1,5 @@
-import { escapeHtml } from "@atelier/shared";
-import { attributesHtml, classNames, htmlContent, type HtmlContent } from "../html.ts";
+import { type HtmlContent } from "../html.ts";
+import { perimeterButtonHtml } from "../perimeter-button/perimeter-button-html.ts";
 
 export type ProgressButtonContent = HtmlContent;
 
@@ -19,14 +19,10 @@ export type ProgressButtonOptions =
   | (ProgressButtonBase & { state: "initial" })
   | (ProgressButtonBase & { state: "in-progress"; progress?: number });
 
-function stateContent(kind: "initial" | "in-progress", content: ProgressButtonContent): string {
-  return `<span class="progress-button__content" data-progress-content="${kind}">${htmlContent(content)}</span>`;
-}
-
 /**
  * Renders a long-running action whose perimeter communicates progress.
  *
- * In-progress buttons are always disabled: use an activity control instead when
+ * In-progress buttons are always disabled: use an activity button instead when
  * the active control must remain available to stop or cancel the operation.
  * Omitting progress renders an indeterminate perimeter.
  */
@@ -35,13 +31,25 @@ export function progressButtonHtml(options: ProgressButtonOptions): string {
     throw new RangeError("Progress button progress must be between 0 and 100");
   }
 
-  const className = escapeHtml(classNames("button", options.className, "progress-button"));
-  const id = options.id ? ` id="${escapeHtml(options.id)}"` : "";
   const inProgress = options.state === "in-progress";
-  const disabled = options.disabled || inProgress ? " disabled" : "";
-  const busy = inProgress ? ' aria-busy="true"' : "";
-  const progressKind = inProgress && options.progress === undefined ? ' data-progress-kind="indeterminate"' : "";
-  const progressStyle = inProgress && options.progress !== undefined ? ` style="--button-progress:${options.progress}"` : "";
+  const ownedAttributes = [
+    inProgress && options.progress === undefined ? 'data-progress-kind="indeterminate"' : undefined,
+    inProgress && options.progress !== undefined ? `style="--button-progress:${options.progress}"` : undefined,
+    inProgress ? 'aria-busy="true"' : undefined,
+  ].filter(Boolean).join(" ");
 
-  return `<button${id} class="${className}" type="${options.type ?? "button"}" data-progress-state="${options.state}"${progressKind}${progressStyle}${attributesHtml(options.attributesHtml)}${disabled}${busy}><svg class="progress-button__perimeter" aria-hidden="true"><rect pathLength="100"/></svg>${stateContent("initial", options.initialContent)}${stateContent("in-progress", options.progressContent)}</button>`;
+  return perimeterButtonHtml({
+    component: "progress-button",
+    state: options.state,
+    states: [
+      { name: "initial", content: options.initialContent },
+      { name: "in-progress", content: options.progressContent },
+    ],
+    className: options.className,
+    attributesHtml: options.attributesHtml,
+    ownedAttributesHtml: ownedAttributes,
+    type: options.type,
+    disabled: options.disabled || inProgress,
+    id: options.id,
+  });
 }

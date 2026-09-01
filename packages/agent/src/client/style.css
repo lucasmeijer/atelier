@@ -220,8 +220,8 @@
 }
 .composer-actions > * { pointer-events: auto; }
 .composer-actions .spacer { display: block; flex: 1; }
-.composer-actions .agent-sendstop { position: absolute; right: 0; top: 0; translate: 0 calc(-50% + 9px); padding: 0; border-radius: var(--radius-round); overflow: visible; }
-.composer-actions .agent-sendstop .activity-button__content { padding: 0; }
+.composer-actions .activity-button { position: absolute; right: 0; top: 0; translate: 0 calc(-50% + 9px); padding: 0; border-radius: var(--radius-round); overflow: visible; }
+.composer-actions .activity-button__content { padding: 0; }
 
 .agent-completion-menu-host { position: absolute; z-index: 20; }
 .agent-pane-composer-overlays .agent-completion-menu-host { position: static; width: auto; margin-inline: var(--agent-inline-gutter); pointer-events: auto; }

@@ -111,9 +111,11 @@ Bun.serve({
     if (url.pathname === "/state") return Response.json({ failed, redirect: steps.find((s) => s.id === "redirect")?.status === "running" ? options.returnUrl : undefined, steps });
     if (url.pathname === "/design-system.css") return new Response(Bun.file("/app/apps/web/public/design-system.css"), { headers: { "content-type": "text/css; charset=utf-8" } });
     if (url.pathname === "/action-item.css") return new Response(Bun.file("/app/packages/design-system/src/action-item/action-item.css"), { headers: { "content-type": "text/css; charset=utf-8" } });
+    if (url.pathname === "/activity-button.css") return new Response(Bun.file("/app/packages/design-system/src/activity-button/activity-button.css"), { headers: { "content-type": "text/css; charset=utf-8" } });
     if (url.pathname === "/copy-button.css") return new Response(Bun.file("/app/packages/design-system/src/copy-button/copy-button.css"), { headers: { "content-type": "text/css; charset=utf-8" } });
     if (url.pathname === "/destructive-confirmation.css") return new Response(Bun.file("/app/packages/design-system/src/destructive-confirmation/destructive-confirmation.css"), { headers: { "content-type": "text/css; charset=utf-8" } });
     if (url.pathname === "/icons.css") return new Response(Bun.file("/app/packages/design-system/src/icons/icons.css"), { headers: { "content-type": "text/css; charset=utf-8" } });
+    if (url.pathname === "/perimeter-button.css") return new Response(Bun.file("/app/packages/design-system/src/perimeter-button/perimeter-button.css"), { headers: { "content-type": "text/css; charset=utf-8" } });
     if (url.pathname === "/progress-button.css") return new Response(Bun.file("/app/packages/design-system/src/progress-button/progress-button.css"), { headers: { "content-type": "text/css; charset=utf-8" } });
     if (url.pathname === "/transient-feedback.css") return new Response(Bun.file("/app/packages/design-system/src/transient-feedback/transient-feedback.css"), { headers: { "content-type": "text/css; charset=utf-8" } });
     if (url.pathname === "/toggle.css") return new Response(Bun.file("/app/packages/design-system/src/toggle/toggle.css"), { headers: { "content-type": "text/css; charset=utf-8" } });

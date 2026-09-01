@@ -1,0 +1,46 @@
+/* Shared stable-width structure for stateful buttons with a perimeter indicator. */
+.button:is(.activity-button, .progress-button) {
+  position: relative;
+  display: inline-grid;
+  grid-template-areas: "content";
+  padding-inline: 0;
+}
+:is(.activity-button__content, .progress-button__content) {
+  grid-area: content;
+  justify-self: center;
+  height: 100%;
+  box-sizing: border-box;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 6px;
+  padding-inline: 12px;
+  visibility: hidden;
+  pointer-events: none;
+}
+:is(.activity-button, .progress-button).icon-only :is(.activity-button__content, .progress-button__content) { padding-inline: 0; }
+.button :is(.activity-button__indicator, .progress-button__perimeter) {
+  position: absolute;
+  z-index: 1;
+  inset: -1px;
+  width: calc(100% + 2px);
+  height: calc(100% + 2px);
+  overflow: visible;
+  pointer-events: none;
+}
+.button :is(.activity-button__indicator, .progress-button__perimeter) rect {
+  x: 1px;
+  y: 1px;
+  width: calc(100% - 2px);
+  height: calc(100% - 2px);
+  rx: 13px;
+  fill: none;
+  stroke-width: 1.5;
+  stroke-linecap: round;
+  vector-effect: non-scaling-stroke;
+}
+@keyframes perimeter-button-orbit { to { stroke-dashoffset: -100; } }
+@media (max-width: 700px) {
+  :is(.activity-button, .progress-button):not(.icon-only) :is(.activity-button__content, .progress-button__content) { padding-inline: 16px; }
+  .button :is(.activity-button__indicator, .progress-button__perimeter) rect { rx: 22px; }
+}

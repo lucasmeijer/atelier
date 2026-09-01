@@ -1,8 +1,10 @@
 @import "/icons.css";
 @import "/action-item.css";
+@import "/perimeter-button.css";
+@import "/activity-button.css";
+@import "/progress-button.css";
 @import "/copy-button.css";
 @import "/destructive-confirmation.css";
-@import "/progress-button.css";
 @import "/transient-feedback.css";
 @import "/toggle.css";
 
@@ -359,68 +361,6 @@
   .button svg { width: 20px; height: 20px; }
 }
 
-/* An indeterminate long-running button stays actionable so its active content can cancel the work. */
-.activity-button {
-  position: relative;
-  display: inline-grid;
-  grid-template-areas: "content";
-  padding-inline: 0;
-}
-.activity-button__content {
-  grid-area: content;
-  justify-self: center;
-  height: 100%;
-  padding-inline: 12px;
-  box-sizing: border-box;
-  display: inline-flex;
-  align-items: center;
-  justify-content: center;
-  gap: 6px;
-  visibility: hidden;
-  pointer-events: none;
-}
-.activity-button[data-activity-state="initial"] .activity-button__content[data-activity-content="initial"],
-.activity-button[data-activity-state="active"] .activity-button__content[data-activity-content="active"] {
-  visibility: visible;
-  pointer-events: auto;
-}
-.activity-button.icon-only .activity-button__content { padding-inline: 0; }
-@media (max-width: 700px) {
-  .activity-button:not(.icon-only) .activity-button__content { padding-inline: 16px; }
-}
-.activity-button[data-activity-state="active"] { cursor: pointer; }
-.button .activity-button__indicator {
-  position: absolute;
-  z-index: 1;
-  inset: -1px;
-  width: calc(100% + 2px);
-  height: calc(100% + 2px);
-  overflow: visible;
-  pointer-events: none;
-  opacity: 0;
-}
-.activity-button[data-activity-state="active"] .activity-button__indicator { opacity: 1; }
-.button .activity-button__indicator rect {
-  x: 1px;
-  y: 1px;
-  width: calc(100% - 2px);
-  height: calc(100% - 2px);
-  rx: 13px;
-  fill: none;
-  stroke: currentColor;
-  stroke-width: 1.5;
-  stroke-dasharray: 18 82;
-  stroke-linecap: round;
-  vector-effect: non-scaling-stroke;
-}
-.activity-button[data-activity-state="active"] .activity-button__indicator rect {
-  animation: activity-button-orbit 900ms linear infinite;
-}
-@media (max-width: 700px) {
-  .button .activity-button__indicator rect { rx: 22px; }
-}
-@keyframes activity-button-orbit { to { stroke-dashoffset: -100; } }
-
 .activity-spinner {
   width: 14px;
   height: 14px;
@@ -606,7 +546,6 @@
   .button,
   .text-field,
   .textarea { transition-duration: 1ms; }
-  .activity-button__indicator rect,
   .activity-spinner,
   .status-dot.running,
   .status-list__item[aria-busy="true"] .status-list__marker { animation: none !important; }

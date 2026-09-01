@@ -1,6 +1,7 @@
 /// <reference lib="dom" />
 
 import type { DiffLineAnnotation, FileDiff, FileDiffMetadata, SelectedLineRange } from "@pierre/diffs";
+import { setActivityButtonState } from "@atelier/design-system/activity-button/client";
 import { Icons } from "@atelier/design-system/icons";
 import type { ToggleChangeEvent } from "@atelier/design-system/toggle/client";
 import { isWorkspacePaneVisible, type WorkspaceClientModule } from "@atelier/shared";
@@ -404,9 +405,7 @@ function createReviewController(Controller: StimulusControllerConstructor) {
       const button = event.currentTarget.querySelector<HTMLButtonElement>(".activity-button")!;
       const active = event.type === "submit";
       if (active) this.rememberPosition();
-      button.dataset.activityState = active ? "active" : "initial";
-      if (active) button.setAttribute("aria-busy", "true");
-      else button.removeAttribute("aria-busy");
+      setActivityButtonState(button, active ? "active" : "initial");
     }
 
     rememberPosition(): void {

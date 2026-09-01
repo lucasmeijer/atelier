@@ -30,7 +30,8 @@ describe("progressButtonHtml", () => {
 
     expect(html).toContain('data-progress-state="in-progress"');
     expect(html).toContain('style="--button-progress:43"');
-    expect(html).toContain(' disabled aria-busy="true"');
+    expect(html).toContain(" disabled");
+    expect(html).toContain('aria-busy="true"');
     expect(html).not.toContain('data-progress-kind="indeterminate"');
   });
 

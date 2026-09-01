@@ -1,4 +1,5 @@
 import { actionItemHtml, type ActionItemLabel } from "@atelier/design-system/action-item";
+import { activityButtonHtml } from "@atelier/design-system/activity-button";
 import { copyButtonHtml } from "@atelier/design-system/copy-button";
 import { Icons } from "@atelier/design-system/icons";
 import { toggleHtml } from "@atelier/design-system/toggle";
@@ -369,9 +370,18 @@ function renderPromptActionButton(busy: boolean, ctx?: AgentRenderContext): stri
   const title = busy ? "Agent is working — click to stop" : "Send prompt";
   const state = busy ? "active" : "initial";
   const paneAttrs = ctx
-    ? ` data-agent-pane-target="sendStop" data-agent-busy="${busy}"${busy ? ` data-agent-abort-form-id="${ids.abortForm(ctx)}" aria-busy="true"` : ""}`
+    ? ` data-agent-pane-target="sendStop" data-agent-busy="${busy}"${busy ? ` data-agent-abort-form-id="${ids.abortForm(ctx)}"` : ""}`
     : "";
-  return `<button class="button primary icon-only activity-button agent-sendstop" type="submit" name="mode" value="${value}" title="${title}" aria-label="${title}" data-activity-state="${state}"${paneAttrs}><svg class="activity-button__indicator" aria-hidden="true"><rect pathLength="100"/></svg><span class="activity-button__content" data-activity-content="initial"><svg viewBox="0 0 20 20" aria-hidden="true"><path d="M10 15V5m-4 4 4-4 4 4"/></svg></span><span class="activity-button__content" data-activity-content="active"><svg viewBox="0 0 20 20" aria-hidden="true"><rect x="6" y="6" width="8" height="8" rx="1.5" fill="currentColor" stroke="none"/></svg></span></button>`;
+  return activityButtonHtml({
+    variant: "primary",
+    iconOnly: true,
+    label: title,
+    type: "submit",
+    state,
+    initialContent: { kind: "html", html: '<svg viewBox="0 0 20 20" aria-hidden="true"><path d="M10 15V5m-4 4 4-4 4 4"/></svg>' },
+    activeContent: { kind: "html", html: '<svg viewBox="0 0 20 20" aria-hidden="true"><rect x="6" y="6" width="8" height="8" rx="1.5" fill="currentColor" stroke="none"/></svg>' },
+    attributesHtml: `name="mode" value="${value}"${paneAttrs}`,
+  });
 }
 
 export function renderPromptActions(ctx: AgentRenderContext, busy: boolean): string {
