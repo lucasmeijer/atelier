@@ -412,11 +412,13 @@ describe("update routes", () => {
     expect(await response!.text()).toContain('data-transient-feedback-state-value="feedback"');
   });
 
-  test("renders a Workspace pane button only while an update needs action", () => {
+  test("renders a Workspace pane message and control only while an update needs action", () => {
     const snapshot = { selfUpdatable: true, releaseChannel: "stable" as const, compatibilityMismatch: false };
     expect(renderSidebarRow({ ...snapshot, state: "idle" })).toBe("");
     expect(renderSidebarRow({ ...snapshot, state: "checking" })).toBe("");
-    expect(renderSidebarRow({ ...snapshot, state: "available" })).toContain(">Download Update</span>");
+    const available = renderSidebarRow({ ...snapshot, state: "available" });
+    expect(available).toContain("<p>There's a new version of Atelier!</p>");
+    expect(available).toContain(">Download Update</span>");
     const restart = renderSidebarRow({ ...snapshot, state: "ready_to_restart" });
     expect(restart).toContain('method="post" action="/update/restart"');
     expect(restart).toContain('class="destructive-confirmation"');

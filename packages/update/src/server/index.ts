@@ -283,7 +283,7 @@ const updateSettingsContribution: SettingsContribution = {
 
 export function renderSidebarRow(snapshot: StateSnapshot): string {
   if (!snapshot.selfUpdatable || snapshot.state === "idle" || snapshot.state === "checking") return "";
-  return `<section class="update-sidebar-section"><div id="update_sidebar_row" class="update-sidebar-row">${renderUpdateControl(snapshot)}</div></section>`;
+  return `<section class="update-sidebar-section"><div id="update_sidebar_row" class="update-sidebar-row"><p>There's a new version of Atelier!</p>${renderUpdateControl(snapshot)}</div></section>`;
 }
 
 function renderRestartErrorModal(message: string): string {
