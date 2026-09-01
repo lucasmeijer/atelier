@@ -534,7 +534,7 @@ export function renderWorkspaceDeletionPresentation(workspaceId: string, deletio
   } else {
     content = `<div class="workspace-deletion-heading"><h1>Workspace deletion failed</h1><p class="workspace-deletion-error">${escapeHtml(deletion.error)}</p></div><footer class="workspace-deletion-actions"><form method="post" action="/workspaces/${id}/delete/cancel" data-turbo="true"><button class="button secondary" type="submit">Cancel deletion</button></form><form method="post" action="/workspaces/${id}/delete/retry" data-turbo="true"><button class="button danger" type="submit">Retry deletion</button></form></footer>`;
   }
-  return `<div id="${domId("fixed_workspace", workspaceId)}" class="fixed-workspace-presentation workspace-deletion-presentation" data-workspace-id="${escapeHtml(workspaceId)}"><main class="workspace-deletion-state" data-deletion-status="${deletion.status}" role="${deletion.status === "failed" ? "alert" : "status"}">${content}</main></div>`;
+  return `<div id="${domId("fixed_workspace", workspaceId)}" class="fixed-workspace-presentation workspace-deletion-presentation" data-workspace-id="${escapeHtml(workspaceId)}" data-workspace-commands="[]"><main class="workspace-deletion-state" data-deletion-status="${deletion.status}" role="${deletion.status === "failed" ? "alert" : "status"}">${content}</main></div>`;
 }
 
 export function renderWorkspacePresentation(presentation: WorkspacePresentation): string {
