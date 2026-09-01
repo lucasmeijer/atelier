@@ -26,8 +26,9 @@
     .catalogue-preview[data-platform="desktop"] { width: min(1024px, 100%); }
 
     .catalogue-preview[data-platform="mobile"] .button { height: 44px; padding-inline: 16px; }
-    .catalogue-preview[data-platform="mobile"] .button.icon-only { width: 44px; padding: 0; }
+    .catalogue-preview[data-platform="mobile"] .button.icon-only { width: 50px; height: 50px; padding: 0; }
     .catalogue-preview[data-platform="mobile"] .button svg { width: 20px; height: 20px; }
+    .catalogue-preview[data-platform="mobile"] .button.icon-only svg { width: 21px; height: 21px; }
     .catalogue-preview[data-platform="mobile"] .button-toggle__option { height: 44px; padding-inline: 16px; }
     .catalogue-preview[data-platform="mobile"] .destructive-confirmation { --destructive-confirmation-control-size: 44px; }
     .catalogue-preview[data-platform="mobile"] .progress-button:not(.icon-only) .progress-button__content,
@@ -35,8 +36,7 @@
     .catalogue-preview[data-platform="mobile"] .button :is(.progress-button__perimeter, .activity-button__indicator) rect { rx: 22px; }
     .catalogue-preview[data-platform="mobile"] .text-field { height: 44px; }
     .catalogue-preview[data-platform="mobile"] .managed-list__item { min-height: 56px; padding-inline: 8px; }
-    .catalogue-preview[data-platform="mobile"] :is(.action-item, .action-item__primary) { min-height: 48px; }
-    .catalogue-preview[data-platform="mobile"] .disclosure-icon { width: 16px; height: 16px; }
+    .catalogue-preview[data-platform="mobile"] :is(.action-item, .action-item__primary) { min-height: 50px; }
 
     .catalogue-shell { display: grid; grid-template-columns: 228px minmax(0, 1fr); min-height: 100vh; }
     .catalogue-nav { position: sticky; top: 0; height: 100vh; padding: 24px 16px; border-right: 1px solid var(--line); background: var(--panel); }

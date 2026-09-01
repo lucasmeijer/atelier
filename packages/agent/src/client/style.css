@@ -216,6 +216,7 @@
 }
 .composer-actions { position: absolute; left: 10px; right: 10px; bottom: 38px; display: flex; align-items: center; gap: 6px; padding: 0; pointer-events: none; }
 @media (max-width: 700px) {
+  .agent-pane .composer-input { min-height: calc(1.5em * 4 + 30px); }
   .composer-actions { bottom: 44px; }
 }
 .composer-actions > * { pointer-events: auto; }

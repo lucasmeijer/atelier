@@ -1,11 +1,7 @@
 /* Canonical indicator for controls that disclose and conceal content. */
-.disclosure-icon { display: block; width: 12px; height: 12px; flex: 0 0 auto; fill: none; stroke: currentColor; stroke-width: 1.7; stroke-linecap: round; stroke-linejoin: round; transition: transform 150ms ease; }
+.disclosure-icon { display: block; width: 14px; height: 14px; flex: 0 0 auto; fill: none; stroke: currentColor; stroke-width: 1.7; stroke-linecap: round; stroke-linejoin: round; transition: transform 150ms ease; }
 :where(button, [role="treeitem"])[aria-expanded="false"] .disclosure-icon,
 details:not([open]) > summary .disclosure-icon { transform: rotate(-90deg); }
-
-@media (max-width: 700px) {
-  .disclosure-icon { width: 16px; height: 16px; }
-}
 
 @media (prefers-reduced-motion: reduce) {
   .disclosure-icon { transition-duration: 1ms; }

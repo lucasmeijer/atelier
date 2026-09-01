@@ -34,7 +34,7 @@
 .action-item[aria-disabled="true"] { opacity: .45; cursor: default; }
 @media (max-width: 700px) {
   .action-item,
-  .action-item__primary { min-height: 48px; }
+  .action-item__primary { min-height: 50px; }
 }
 @media (prefers-reduced-motion: reduce) {
   .action-item.is-label-scrolling .action-item__label { mask-image: none; }
