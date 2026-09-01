@@ -29,7 +29,7 @@ export function renderBrowserFrame(workspaceId: string, view: WorkspaceBrowserVi
   const initialPath = proxy ? `${proxy.pathname}${proxy.search}${proxy.hash}` : "";
   const appKey = view.key;
   const frameControllerAttributes = target && workspaceLocal
-    ? ` data-controller="workspace-app-frame" data-workspace-app-frame-workspace-id-value="${escapeHtml(workspaceId)}" data-workspace-app-frame-app-key-value="${escapeHtml(appKey)}" data-workspace-app-frame-initial-path-value="${escapeHtml(initialPath)}"`
+    ? ` data-controller="workspace-app-frame" data-workspace-app-frame-workspace-id-value="${escapeHtml(workspaceId)}" data-workspace-app-frame-app-key-value="${escapeHtml(appKey)}" data-workspace-app-frame-initial-path-value="${escapeHtml(initialPath)}" allow="microphone"`
     : target ? ` src="${escapeHtml(target.toString())}"` : "";
   const externalLinkAttributes = target ? ` href="${escapeHtml(target.toString())}"` : ` aria-disabled="true"`;
   return `<turbo-frame id="${browserFrameId(workspaceId, appKey)}" class="browser-frame">

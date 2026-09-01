@@ -1,6 +1,6 @@
 import { expect, test } from "bun:test";
 import { renderBrowserFrame } from "../src/server/render.ts";
-import { createWorkspaceBrowserView } from "../src/server/state.ts";
+import { createWorkspaceBrowserView, setWorkspaceBrowserTarget } from "../src/server/state.ts";
 
 test("browser navigation uses the shared Button Group interface", () => {
   const workspaceId = `render_${crypto.randomUUID()}`;
@@ -11,4 +11,15 @@ test("browser navigation uses the shared Button Group interface", () => {
   expect(navigation.match(/class="browser-nav-button button secondary icon-only"/g)).toHaveLength(3);
   expect(navigation.match(/aria-label="(Back|Forward)" disabled/g)).toHaveLength(2);
   expect(navigation).toContain('data-action="browser-address#reload"');
+});
+
+test("workspace previews can request microphone permission without delegating it to external sites", () => {
+  const workspaceId = `render_${crypto.randomUUID()}`;
+  const view = createWorkspaceBrowserView(workspaceId);
+
+  setWorkspaceBrowserTarget(workspaceId, view.key, "http://localhost:3000/");
+  expect(renderBrowserFrame(workspaceId, view)).toContain('allow="microphone"');
+
+  setWorkspaceBrowserTarget(workspaceId, view.key, "https://example.com/");
+  expect(renderBrowserFrame(workspaceId, view)).not.toContain('allow="microphone"');
 });
