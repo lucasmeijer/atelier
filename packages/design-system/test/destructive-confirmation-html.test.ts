@@ -15,6 +15,17 @@ describe("destructiveConfirmationHtml", () => {
     expect(html).toContain('<button class="button secondary destructive-confirmation__cancel" type="button">Oops &amp; stay</button>');
   });
 
+  test("supports a distinct confirmation form action", () => {
+    const html = destructiveConfirmationHtml({
+      buttonHtml: '<button type="button">Remove</button>',
+      confirmCaption: "Remove",
+      cancelCaption: "Cancel",
+      confirmFormAction: '/items/one/delete?returnTo=a&b="quoted"',
+    });
+
+    expect(html).toContain('formaction="/items/one/delete?returnTo=a&amp;b=&quot;quoted&quot;"');
+  });
+
   test("supports primary consequential actions", () => {
     const html = destructiveConfirmationHtml({
       buttonHtml: '<button class="button primary" type="button">Restart</button>',

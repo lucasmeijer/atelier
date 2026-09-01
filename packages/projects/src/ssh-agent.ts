@@ -4,7 +4,7 @@ import { join } from "node:path";
 import { AtelierCoreError, atelierDataPath, dockerHostAtelierDataPath, getAtelierRuntimeContext, type AtelierEventBus } from "@atelier/core";
 import { listWorkspaces } from "@atelier/workspace";
 import { isGitProjectInit, type GitProjectInitInstruction } from "./project.ts";
-import { revealProjectSshKey } from "./ssh-keys.ts";
+import { revealProjectSshKeys } from "./ssh-keys.ts";
 
 const containerAgentDir = "/run/atelier-ssh-agent";
 const containerAgentSocket = `${containerAgentDir}/agent.sock`;
@@ -42,8 +42,8 @@ async function addPrivateKey(socketPath: string, privateKey: string): Promise<vo
 
 async function startAgent(workspaceId: string, init: GitProjectInitInstruction): Promise<boolean> {
   if (agents.has(workspaceId)) return true;
-  const privateKey = await revealProjectSshKey(init.projectId);
-  if (!privateKey) return false;
+  const privateKeys = await revealProjectSshKeys(init.projectId);
+  if (privateKeys.length === 0) return false;
 
   const dir = agentDir(workspaceId);
   const socketPath = join(dir, "agent.sock");
@@ -56,7 +56,7 @@ async function startAgent(workspaceId: string, init: GitProjectInitInstruction):
   child.stderr!.on("data", (chunk) => { stderr += chunk; });
   await waitForSocket(socketPath, child, () => stderr);
   try {
-    await addPrivateKey(socketPath, privateKey);
+    for (const privateKey of privateKeys) await addPrivateKey(socketPath, privateKey);
   } catch (error) {
     child.kill("SIGTERM");
     await rm(socketPath, { force: true });

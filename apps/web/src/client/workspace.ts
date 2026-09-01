@@ -2064,6 +2064,12 @@ class SettingsAutosaveController extends Controller {
     void this.save();
   }
 
+  saveWhenLeaving(event: FocusEvent): void {
+    if (event.relatedTarget instanceof Node && this.element.contains(event.relatedTarget)) return;
+    if (!this.element.checkValidity()) return;
+    void this.save();
+  }
+
   async save(): Promise<void> {
     const response = await fetch(this.element.action, {
       method: this.element.method || "POST",

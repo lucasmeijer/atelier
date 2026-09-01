@@ -1,4 +1,4 @@
-import { mkdtemp, rm } from "node:fs/promises";
+import { mkdtemp, readFile, rm } from "node:fs/promises";
 import { join } from "node:path";
 import { tmpdir } from "node:os";
 import { afterEach, beforeEach, describe, expect, test } from "bun:test";
@@ -10,7 +10,7 @@ import { workViewBodyFrameId } from "../src/server/workspace-presentation.ts";
 import { createWorkspaceRegistry } from "../src/server/workspace-registry.ts";
 import { createPiModelRuntime, getConfiguredAgentModels, setPickerAgentModels } from "@atelier/agent/server";
 import { setWorkspaceGitHubToken } from "@atelier/proxy-egress";
-import { addProject, getGitIdentity, isGitProjectInit, listProjectEnvironmentVariables, listProjects, projectWorkspaceInit, revealProjectSecrets, type WorkspaceDeleteBlockedDetails } from "@atelier/projects";
+import { addProject, createProjectSecret, getGitIdentity, isGitProjectInit, listProjectEnvironmentVariables, listProjects, projectWorkspaceInit, revealProjectSecrets, createProjectSshKey, type WorkspaceDeleteBlockedDetails } from "@atelier/projects";
 
 function deferred<T = void>() {
   let resolve!: (value: T) => void;
@@ -730,6 +730,12 @@ describe("web app contracts", () => {
       const home = await (await app.fetch(new Request("http://test.local/"))).text();
       const editor = await (await app.fetch(new Request(`http://test.local/projects/${project.id}/editor`))).text();
       const newProject = await (await app.fetch(new Request("http://test.local/projects/new/editor"))).text();
+      await createProjectSecret(project.id, { envName: "API_TOKEN", hostPattern: "api.example.com", secretValue: "secret" });
+      const configuredEditor = await (await app.fetch(new Request(`http://test.local/projects/${project.id}/editor`))).text();
+      const keyPath = join(await mkdtemp(join(tmpdir(), "atelier-web-ssh-key-")), "id_ed25519");
+      expect(await Bun.spawn(["ssh-keygen", "-q", "-t", "ed25519", "-N", "", "-f", keyPath]).exited).toBe(0);
+      await createProjectSshKey(project.id, await readFile(keyPath, "utf8"));
+      const sshConfiguredEditor = await (await app.fetch(new Request(`http://test.local/projects/${project.id}/editor`))).text();
       const removedPicker = await app.fetch(new Request("http://test.local/projects/picker"));
 
       expect(removedPicker.status).toBe(404);
@@ -745,31 +751,27 @@ describe("web app contracts", () => {
       expect(home).not.toContain('class="sidebar-host-repos"');
       expect(home).toContain('data-modal-opener-target-id-value="project-editor-modal"');
       expect(newProject).toContain('aria-label="Add project"');
-      expect(newProject).toContain('class="project-editor-close button secondary icon-only"');
-      expect(newProject).toContain('<button class="button secondary" type="button" data-action="modal#close">Cancel</button>');
+      expect(home).toContain('class="dialog dialog--panel dialog--sheet project-editor-modal"');
+      expect(home).toContain('aria-label="Close project settings"');
+      expect(newProject).toContain('<button class="button secondary" type="button" data-action="dialog#close">Cancel</button>');
       expect(newProject).toContain('<button class="button primary" type="submit" data-turbo-submits-with="Adding…">Add project</button>');
-      expect(newProject).toContain('data-action="turbo:submit-end->modal#submitted"');
-      expect(newProject).not.toContain('aria-label="Back"');
+      expect(newProject).toContain('data-action="turbo:submit-end->dialog#submitted"');
       expect(editor).toContain('aria-label="Repository"');
-      expect(editor).not.toContain('aria-label="Back"');
-      expect(editor).toContain("project-environment");
+      expect(editor).toContain("Configure environment variables");
       expect(editor).toContain(`action="/projects/${project.id}/environment"`);
-      expect(editor).toContain("project-secrets");
-      expect(editor).toContain("GH_TOKEN");
-      expect(editor).toContain("api.github.com");
-      expect(editor).toContain("Injected automatically");
-      expect(editor).toContain("Optional token-like value");
-      expect(editor).toContain('name="placeholder"');
-      expect(editor).toContain('name="secretValue"');
+      expect(editor).toContain("focusout->settings-autosave#saveWhenLeaving");
+      expect(editor).toContain("Configure secrets");
       expect(editor).toContain(`aria-label="Add secret" method="post" action="/projects/${project.id}/secrets"`);
-      expect(editor).toContain("The private key stays on the Atelier host");
-      expect(editor).toContain(`action="/projects/${project.id}/ssh-key"`);
+      expect(configuredEditor).toContain("API_TOKEN");
+      expect(configuredEditor).not.toContain('aria-label="Add secret"');
+      expect(editor).toContain(`action="/projects/${project.id}/ssh-keys"`);
       expect(editor).toContain('name="privateKey"');
-      expect(editor).toContain("BEGIN OPENSSH PRIVATE KEY");
-      expect(editor).toContain("ssh-keygen -t ed25519");
-      expect(editor).toContain("authorized_keys");
-      expect(home).toContain(`id="delete_project_modal_${project.id}"`);
-      expect(home).toContain(`action="/projects/${project.id}/delete"`);
+      expect(sshConfiguredEditor).toContain("Configure SSH keys");
+      expect(sshConfiguredEditor).toContain("ssh-ed25519");
+      expect(sshConfiguredEditor).toContain("SHA256:");
+      expect(editor).toContain("<h3>Danger zone</h3>");
+      expect(editor).toContain(`action="/projects/${project.id}/delete"`);
+      expect(editor).toContain("destructive-confirmation__decision");
     });
   });
 
@@ -812,7 +814,7 @@ describe("web app contracts", () => {
 
       expect(response.headers.get("content-type")).toContain("text/vnd.turbo-stream.html");
       expect(await listProjectEnvironmentVariables(project.id)).toMatchObject([{ name: "API_URL", value: "https://api.example.com" }]);
-      expect(await response.text()).toContain(`target="project_environment_${project.id}"`);
+      expect(await response.text()).toContain(`target="project_environment_fields_${project.id}"`);
     });
   });
 
@@ -832,7 +834,6 @@ describe("web app contracts", () => {
       expect(response.headers.get("content-type")).toContain("text/vnd.turbo-stream.html");
       expect((await listProjects()).projects).toHaveLength(1);
       expect(body).toContain('target="project_editor_frame"');
-      expect(body).toContain('target="project_modals"');
       expect(updatesWorkspacePaneCollections(body)).toBe(true);
       expect(body).toContain("sample-project");
       expect(repeatedBody).toContain('target="project_editor_frame"');
@@ -852,7 +853,7 @@ describe("web app contracts", () => {
       expect(response.status).toBe(200);
       expect((await listProjects()).projects).toEqual([]);
       expect(body).toContain('target="project_editor_frame"');
-      expect(body).toContain('target="project_modals"');
+      expect(body).toContain('target="workspace_command_modal_host"');
       expect(body).not.toContain("sample-project");
     });
   });
@@ -869,8 +870,8 @@ describe("web app contracts", () => {
       expect(response.status).toBe(200);
       expect(body).toContain("Project is in use");
       expect(body).toContain("A");
-      expect(body).toContain('target="project_modals"');
-      expect(body).toContain(`id="delete_project_modal_${project.id}"`);
+      expect(body).toContain('target="workspace_command_modal_host"');
+      expect(body).not.toContain(`id="delete_project_modal_${project.id}"`);
       expect(body).not.toContain(`action="remove" target="delete_project_modal_${project.id}"`);
       expect((await listProjects()).projects).toEqual([project]);
     });

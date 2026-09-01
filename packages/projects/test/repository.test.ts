@@ -2,7 +2,7 @@ import { mkdtemp, readFile, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { describe, expect, test } from "bun:test";
-import { addProject, createProjectEnvironmentVariable, createProjectSecret, deleteProject, deleteProjectEnvironmentVariable, getGitIdentity, getStoredGitIdentity, gitIdentitySettingsFile, hasGitIdentity, hasProjectSshKey, listProjectEnvironmentVariables, listProjects, parseProjectSpec, revealProjectSecrets, revealProjectSshKey, setGitIdentity, setProjectSshKey, updateProject, updateProjectEnvironmentVariable, updateProjectSecret } from "@atelier/projects";
+import { addProject, createProjectEnvironmentVariable, createProjectSecret, deleteProject, deleteProjectEnvironmentVariable, getGitIdentity, getStoredGitIdentity, gitIdentitySettingsFile, hasGitIdentity, createProjectSshKey, listProjectEnvironmentVariables, listProjectSshKeys, listProjects, parseProjectSpec, revealProjectSecrets, revealProjectSshKeys, setGitIdentity, updateProject, updateProjectEnvironmentVariable, updateProjectSecret } from "@atelier/projects";
 
 describe("projects", () => {
   test("parseProjectSpec supports an optional #branch suffix", () => {
@@ -61,13 +61,16 @@ describe("projects", () => {
     const file = join(dir, "projects.json");
     const keyFile = join(dir, "project-secrets.key");
     const project = (await addProject("git@example.com:org/repo.git", file)).project;
-    const privateKey = "-----BEGIN OPENSSH PRIVATE KEY-----\ntest-private-material\n-----END OPENSSH PRIVATE KEY-----";
+    const privateKeyPath = join(dir, "id_ed25519");
+    expect(await Bun.spawn(["ssh-keygen", "-q", "-t", "ed25519", "-N", "", "-f", privateKeyPath]).exited).toBe(0);
+    const privateKey = await readFile(privateKeyPath, "utf8");
 
-    await setProjectSshKey(project.id, privateKey, file, keyFile);
+    const first = await createProjectSshKey(project.id, privateKey, file, keyFile);
+    const second = await createProjectSshKey(project.id, privateKey, file, keyFile);
 
-    expect(await hasProjectSshKey(project.id, file)).toBe(true);
-    expect(await readFile(file, "utf8")).not.toContain("test-private-material");
-    expect(await revealProjectSshKey(project.id, file, keyFile)).toBe(privateKey);
+    expect(await listProjectSshKeys(project.id, file)).toEqual([first, second]);
+    expect(await readFile(file, "utf8")).not.toContain("OPENSSH PRIVATE KEY");
+    expect(await revealProjectSshKeys(project.id, file, keyFile)).toEqual([privateKey, privateKey]);
     expect((await listProjects(file)).projects[0]).toEqual(project);
   });
 

@@ -21,15 +21,16 @@ export {
   type ProjectEnvironmentVariable,
   type ProjectListResult,
   type ProjectSecretSummary,
+  type ProjectSshKeySummary,
   type ProjectSummary,
   type UpdateProjectResult,
 } from "./project.ts";
 
 export {
+  createProjectSshKey,
   deleteProjectSshKey,
-  hasProjectSshKey,
-  revealProjectSshKey,
-  setProjectSshKey,
+  listProjectSshKeys,
+  revealProjectSshKeys,
 } from "./ssh-keys.ts";
 
 export {

@@ -17,11 +17,15 @@ import {
   type JsonObject,
   type JsonValue,
 } from "@atelier/core";
+import { actionItemHtml } from "@atelier/design-system/action-item";
+import { dialogHtml } from "@atelier/design-system/dialog";
+import { destructiveConfirmationHtml } from "@atelier/design-system/destructive-confirmation";
 import { Icons } from "@atelier/design-system/icons";
 import { discoverHostGitHubToken, hasWorkspaceGitHubToken } from "@atelier/proxy-egress";
 import {
   addProject,
   createProjectEnvironmentVariable,
+  createProjectSshKey,
   createProjectSecret,
   deleteProject,
   deleteProjectEnvironmentVariable,
@@ -31,16 +35,16 @@ import {
   isGitProjectInit,
   listProjectEnvironmentVariables,
   listProjectSecrets,
-  hasProjectSshKey,
+  listProjectSshKeys,
   listProjects,
   parseProjectSpec,
   projectWorkspaceInit,
   updateProject,
   updateProjectEnvironmentVariable,
   updateProjectSecret,
-  setProjectSshKey,
   type ProjectEnvironmentVariable,
   type ProjectSecretSummary,
+  type ProjectSshKeySummary,
   type ProjectSummary,
   type WorkspaceDeleteBlockedDetails,
 } from "@atelier/projects";
@@ -452,107 +456,120 @@ ${moduleStylesHtml()}
     });
   }
 
-  function deleteProjectModal(project: ProjectSummary): string {
-    return `<dialog id="${domId("delete_project_modal", project.id)}" class="dialog dialog--compact project-delete-modal" data-controller="modal">
-  <form class="dialog__form" method="post" action="/projects/${encodeURIComponent(project.id)}/delete" data-action="turbo:submit-end->modal#submitted">
-    <header class="dialog__header"><h2 class="title project-delete-title">Delete ${repoSwatch(project.id)} ${escapeHtml(project.name)}?</h2></header>
-    <footer class="dialog__actions">
-      <button class="button secondary" type="button" data-action="modal#close">Cancel</button>
-      <button class="button danger" type="submit">Delete</button>
-    </footer>
-  </form>
-</dialog>`;
-  }
-
   function projectEnvironmentRow(project: ProjectSummary, variable: ProjectEnvironmentVariable): string {
-    return `<form class="project-configuration-row project-environment-row" role="row" method="post" action="/projects/${encodeURIComponent(project.id)}/environment/${encodeURIComponent(variable.id)}" data-turbo="true" data-controller="settings-autosave" data-action="change->settings-autosave#save">
+    return `<form class="project-configuration-row project-environment-row" method="post" action="/projects/${encodeURIComponent(project.id)}/environment/${encodeURIComponent(variable.id)}" data-turbo="true" data-controller="settings-autosave" data-action="focusout->settings-autosave#saveWhenLeaving">
     <input class="text-field" name="name" value="${escapeHtml(variable.name)}" aria-label="Name" autocomplete="off">
     <input class="text-field" name="value" value="${escapeHtml(variable.value)}" aria-label="Value" autocomplete="off">
     <span class="project-configuration-actions"><button class="button danger icon-only" type="submit" formaction="/projects/${encodeURIComponent(project.id)}/environment/${encodeURIComponent(variable.id)}/delete" title="Remove environment variable" aria-label="Remove environment variable">${Icons.Close}</button></span>
   </form>`;
   }
 
+  function projectEnvironmentFields(project: ProjectSummary, environment: ProjectEnvironmentVariable[]): string {
+    return `<div class="project-configuration-grid" id="${domId("project_environment_fields", project.id)}" aria-label="Environment variables">
+      ${environment.map((variable) => projectEnvironmentRow(project, variable)).join("")}
+      <form class="project-configuration-row project-environment-row new" method="post" action="/projects/${encodeURIComponent(project.id)}/environment" data-turbo="true" data-controller="settings-autosave" data-action="focusout->settings-autosave#saveWhenLeaving submit->settings-autosave#submit">
+        <input class="text-field" name="name" placeholder="TELEGRAM_CHANNEL_ID" aria-label="Name" autocomplete="off" required>
+        <input class="text-field" name="value" placeholder="-1001234567890" aria-label="Value" autocomplete="off">
+        <span></span>
+      </form>
+    </div>`;
+  }
+
+  function projectConfigurationDisclosure(label: string, fieldsHtml: string): string {
+    const summary = actionItemHtml({ kind: "single", label: { kind: "text", text: label }, leadingHtml: Icons.Disclosure, element: { tag: "summary" } });
+    return `<details class="project-configuration-disclosure">${summary}${fieldsHtml}</details>`;
+  }
+
   function projectEnvironmentEditor(project: ProjectSummary, environment: ProjectEnvironmentVariable[]): string {
     return `<section class="project-configuration-list project-environment" id="${domId("project_environment", project.id)}">
-      <div class="project-configuration-head"><h3>Environment</h3><p>These variables are added to every new workspace container created for this project.</p></div>
-      <div class="project-configuration-grid" role="table" aria-label="Environment variables">
-        <div class="project-configuration-row project-environment-row head" role="row"><span>Name</span><span>Value</span><span></span></div>
-        ${environment.map((variable) => projectEnvironmentRow(project, variable)).join("")}
-        <form class="project-configuration-row project-environment-row new" role="row" method="post" action="/projects/${encodeURIComponent(project.id)}/environment" data-turbo="true">
-          <input class="text-field" name="name" placeholder="ENV_VAR" aria-label="Name" autocomplete="off">
-          <input class="text-field" name="value" placeholder="Value" aria-label="Value" autocomplete="off">
-          <button class="button primary icon-only" type="submit" title="Add environment variable" aria-label="Add environment variable">${Icons.Plus}</button>
-        </form>
-      </div>
+      <div class="project-configuration-head"><h3>Environment variables</h3><p>These variables are added to every new workspace container created for this project.</p></div>
+      ${projectConfigurationDisclosure("Configure environment variables", projectEnvironmentFields(project, environment))}
     </section>`;
   }
 
   function projectSecretRow(project: ProjectSummary, secret: ProjectSecretSummary): string {
-    return `<form class="project-configuration-row project-secret-row" role="row" method="post" action="/projects/${encodeURIComponent(project.id)}/secrets/${encodeURIComponent(secret.id)}" data-turbo="true" data-controller="settings-autosave" data-action="change->settings-autosave#save">
-    <input class="text-field" name="envName" value="${escapeHtml(secret.envName)}" aria-label="Env" autocomplete="off">
-    <input class="text-field" name="hostPattern" value="${escapeHtml(secret.hostPattern)}" aria-label="Host" autocomplete="off">
-    <input class="text-field" name="placeholder" value="${escapeHtml(secret.placeholder ?? "")}" placeholder="Automatic" aria-label="Placeholder" autocomplete="off">
-    <input class="text-field" name="secretValue" type="password" placeholder="Unchanged" aria-label="Secret" autocomplete="new-password">
-    <span class="project-configuration-actions"><button class="button danger icon-only" type="submit" formaction="/projects/${encodeURIComponent(project.id)}/secrets/${encodeURIComponent(secret.id)}/delete" title="Remove secret" aria-label="Remove secret">${Icons.Close}</button></span>
-  </form>`;
+    const secretPath = `/projects/${encodeURIComponent(project.id)}/secrets/${encodeURIComponent(secret.id)}`;
+    const deleteButton = destructiveConfirmationHtml({
+      buttonHtml: `<button class="button danger icon-only" type="button" title="Remove secret" aria-label="Remove secret">${Icons.Close}</button>`,
+      confirmCaption: "Remove secret",
+      cancelCaption: "Cancel",
+      confirmFormAction: `${secretPath}/delete`,
+    });
+    return `<form class="project-secret" aria-label="Secret" method="post" action="${secretPath}" data-turbo="true" data-controller="settings-autosave" data-action="focusout->settings-autosave#saveWhenLeaving">
+      <label><span>Environment variable</span><input class="text-field" name="envName" value="${escapeHtml(secret.envName)}" autocomplete="off"></label>
+      <label><span>Host</span><input class="text-field" name="hostPattern" value="${escapeHtml(secret.hostPattern)}" autocomplete="off"></label>
+      <label><span>Secret</span><input class="text-field" name="secretValue" type="password" placeholder="Unchanged" autocomplete="new-password"></label>
+      <label><span>Placeholder</span><input class="text-field" name="placeholder" value="${escapeHtml(secret.placeholder ?? "")}" placeholder="You rarely need to fill this in" autocomplete="off"></label>
+      <div class="project-secret-actions">${deleteButton}</div>
+    </form>`;
+  }
+
+  function projectSecretFields(project: ProjectSummary, secrets: ProjectSecretSummary[]): string {
+    return `<div class="project-secrets-list" id="${domId("project_secret_fields", project.id)}" aria-label="Secrets">
+      ${secrets.map((secret) => projectSecretRow(project, secret)).join("")}
+      ${secrets.length === 0 ? `<form class="project-secret new" aria-label="Add secret" method="post" action="/projects/${encodeURIComponent(project.id)}/secrets" data-turbo="true" data-controller="settings-autosave" data-action="focusout->settings-autosave#saveWhenLeaving submit->settings-autosave#submit">
+        <label><span>Environment variable</span><input class="text-field" name="envName" placeholder="GOOGLE_MAPS_API_KEY" autocomplete="off" required></label>
+        <label><span>Host</span><input class="text-field" name="hostPattern" placeholder="maps.googleapis.com" autocomplete="off" required></label>
+        <label><span>Secret</span><input class="text-field" name="secretValue" type="password" placeholder="AIzaSyExampleKey1234567890" autocomplete="new-password" required></label>
+        <label><span>Placeholder</span><input class="text-field" name="placeholder" placeholder="You rarely need to fill this in" autocomplete="off"></label>
+      </form>` : ""}
+    </div>`;
   }
 
   function projectSecretEditor(project: ProjectSummary, secrets: ProjectSecretSummary[]): string {
     return `<section class="project-configuration-list project-secrets" id="${domId("project_secrets", project.id)}">
-      <div class="project-configuration-head"><h3>Secrets</h3><p>Atelier injects a placeholder for ENV into workspaces, then replaces it with SECRET for matching HTTPS hosts. Set a custom placeholder when an API requires token-like values; leave it blank to generate one automatically.</p></div>
-      <div class="project-configuration-grid" role="table" aria-label="Secrets">
-        <div class="project-configuration-row project-secret-row head" role="row"><span>Env</span><span>Host</span><span>Placeholder</span><span>Secret</span><span></span></div>
-        <div class="project-configuration-row project-secret-row readonly" role="row" aria-label="GitHub token injected automatically">
-          <span class="project-builtin-token"><code>GH_TOKEN</code><small>Built in</small></span>
-          <code>api.github.com</code>
-          <span class="project-automatic-value">Automatic</span>
-          <span class="project-automatic-value">Injected automatically</span>
-          <span></span>
-        </div>
-        ${secrets.map((secret) => projectSecretRow(project, secret)).join("")}
-        <form class="project-configuration-row project-secret-row new" role="row" aria-label="Add secret" method="post" action="/projects/${encodeURIComponent(project.id)}/secrets" data-turbo="true">
-          <input class="text-field" name="envName" placeholder="ENV_VAR" aria-label="Env" autocomplete="off">
-          <input class="text-field" name="hostPattern" placeholder="api.example.com or *.example.com" aria-label="Host" autocomplete="off">
-          <input class="text-field" name="placeholder" placeholder="Optional token-like value" aria-label="Placeholder" autocomplete="off">
-          <input class="text-field" name="secretValue" type="password" placeholder="Secret" aria-label="Secret" autocomplete="new-password">
-          <button class="button primary icon-only" type="submit" title="Add secret" aria-label="Add secret">${Icons.Plus}</button>
-        </form>
-      </div>
+      <div class="project-configuration-head"><h3>Secrets</h3><p>Atelier lets you use secrets without exposing them to agents. Your encrypted secret stays outside agent sandboxes. Agents receive a placeholder that Atelier replaces with the real secret in matching network requests.</p></div>
+      ${projectConfigurationDisclosure("Configure secrets", projectSecretFields(project, secrets))}
     </section>`;
   }
 
-  function projectSshKeyEditor(project: ProjectSummary, configured: boolean): string {
-    const action = `/projects/${encodeURIComponent(project.id)}/ssh-key`;
+  function projectSshKeyFields(project: ProjectSummary, keys: ProjectSshKeySummary[]): string {
+    const projectPath = `/projects/${encodeURIComponent(project.id)}`;
+    const configuredKeys = keys.map((key) => {
+      const removeButton = destructiveConfirmationHtml({
+        buttonHtml: '<button class="button danger" type="button">Remove SSH key</button>',
+        confirmCaption: "Remove SSH key",
+        cancelCaption: "Cancel",
+      });
+      return `<form class="project-ssh-key-configured" method="post" action="${projectPath}/ssh-keys/${encodeURIComponent(key.id)}/delete" data-turbo="true"><span title="${escapeHtml(`${key.keyType} ${key.fingerprint}`)}"><code>${escapeHtml(key.keyType)}</code> <code>${escapeHtml(key.fingerprint)}</code></span>${removeButton}</form>`;
+    }).join("");
+    return `<div class="project-ssh-key-fields" id="${domId("project_ssh_key_fields", project.id)}">${configuredKeys}<form class="project-ssh-key-form" method="post" action="${projectPath}/ssh-keys" data-turbo="true" data-controller="settings-autosave" data-action="focusout->settings-autosave#saveWhenLeaving submit->settings-autosave#submit">
+      <label><span>Private key</span><textarea class="textarea" name="privateKey" placeholder="-----BEGIN OPENSSH PRIVATE KEY-----\nb3BlbnNzaC1rZXktdjEAAAAA…\n-----END OPENSSH PRIVATE KEY-----" autocomplete="off" required></textarea></label>
+    </form></div>`;
+  }
+
+  function projectSshKeyEditor(project: ProjectSummary, keys: ProjectSshKeySummary[]): string {
     return `<section class="project-configuration-list project-ssh-key" id="${domId("project_ssh_key", project.id)}">
-      <div class="project-configuration-head"><h3>SSH key</h3><p>The private key stays on the Atelier host. Workspaces receive only an SSH agent socket, so <code>ssh</code> can authenticate to servers that list the public key in <code>authorized_keys</code> without exposing the private key.</p></div>
-      <form class="project-ssh-key-form form-section" method="post" action="${action}" data-turbo="true">
-        <label><span>${configured ? "Replace private key" : "Private key"}</span><textarea class="textarea" name="privateKey" placeholder="${configured ? "Leave blank to keep the current key" : "-----BEGIN OPENSSH PRIVATE KEY-----\nb3BlbnNzaC1rZXktdjEAAAAA…\n-----END OPENSSH PRIVATE KEY-----"}" autocomplete="off"${configured ? "" : " required"}></textarea></label>
-        <div class="project-ssh-key-command"><span>Create an unencrypted Ed25519 key:</span><code>ssh-keygen -t ed25519 -f ~/.ssh/atelier_deploy -N '' -C atelier-deploy</code><span>Paste <code>~/.ssh/atelier_deploy</code> here and add <code>~/.ssh/atelier_deploy.pub</code> to the server’s <code>authorized_keys</code>.</span></div>
-        <div class="project-ssh-key-actions form-actions"><small>The private key is encrypted at rest.</small><button class="button primary" type="submit">${configured ? "Save" : "Add SSH key"}</button>${configured ? `<button class="button danger" type="submit" formaction="${action}/delete">Remove</button>` : ""}</div>
-      </form>
+      <div class="project-configuration-head"><h3>SSH key</h3><p>If you want to have your agent ssh into a remote machine, but you do not want to expose the required ssh key to the agent, you can paste your private ssh key below. It will be stored and encrypted outside of the agent sandbox. The agent will be given an ssh socket that they can use to do their work, without getting access to the private key.</p></div>
+      ${projectConfigurationDisclosure(keys.length === 0 ? "Add SSH key" : "Configure SSH keys", projectSshKeyFields(project, keys))}
     </section>`;
   }
 
   async function projectEditorFrame(project: ProjectSummary): Promise<string> {
-    const [environment, secrets, hasSshKey] = await Promise.all([listProjectEnvironmentVariables(project.id), listProjectSecrets(project.id), hasProjectSshKey(project.id)]);
+    const [environment, secrets, sshKeys] = await Promise.all([listProjectEnvironmentVariables(project.id), listProjectSecrets(project.id), listProjectSshKeys(project.id)]);
     return `<turbo-frame id="project_editor_frame" class="project-editor-frame">
       <div class="project-editor-page project-editor-detail-page">
-        <header class="project-editor-detail-head"><div><small>Project settings</small><h2>${escapeHtml(project.name)}</h2></div><button class="project-editor-close button secondary icon-only" type="button" title="Close project settings" aria-label="Close project settings" data-action="modal#close">${Icons.Close}</button></header>
         <div class="project-editor-detail-body">
-          <section class="project-edit-section"><div class="project-edit-section-copy"><h3>Repository</h3><p>How this project appears and where new workspaces are cloned from.</p></div><form class="project-edit-form" aria-label="Repository" method="post" action="/projects/${encodeURIComponent(project.id)}" data-controller="settings-autosave" data-action="change->settings-autosave#save"><label class="project-edit-field"><span>Display name</span><input class="text-field" name="name" value="${escapeHtml(project.name)}" required></label><label class="project-edit-field"><span>Repository source</span><input class="text-field" name="gitUrl" value="${escapeHtml(formatProjectSpec(project))}" required></label></form></section>
-          <div class="project-edit-config"><div class="project-edit-section-copy"><h3>Workspace configuration</h3><p>Applied whenever a workspace is created from this project.</p></div>${projectEnvironmentEditor(project, environment)}${projectSecretEditor(project, secrets)}${projectSshKeyEditor(project, hasSshKey)}</div>
-          <section class="project-edit-danger"><div><h3>Delete project</h3><p>Existing workspaces must be deleted first.</p></div><button class="button danger" type="button" data-controller="modal-opener" data-action="modal#close modal-opener#open" data-modal-opener-target-id-value="${domId("delete_project_modal", project.id)}">Delete project</button></section>
+          <section class="project-edit-section"><form class="project-edit-form" aria-label="Repository" method="post" action="/projects/${encodeURIComponent(project.id)}" data-controller="settings-autosave" data-action="change->settings-autosave#save"><label class="project-edit-field"><span>Display name</span><input class="text-field" name="name" value="${escapeHtml(project.name)}" required></label><label class="project-edit-field"><span>Repository</span><input class="text-field" name="gitUrl" value="${escapeHtml(formatProjectSpec(project))}" required></label></form></section>
+          <div class="project-edit-config">${projectSecretEditor(project, secrets)}${projectSshKeyEditor(project, sshKeys)}${projectEnvironmentEditor(project, environment)}</div>
+          <section class="project-edit-danger-zone"><h3>Danger zone</h3><div class="project-edit-danger"><form method="post" action="/projects/${encodeURIComponent(project.id)}/delete" data-turbo="true" data-action="turbo:submit-end->dialog#submitted">${destructiveConfirmationHtml({ buttonHtml: '<button class="button danger" type="button">Delete project</button>', confirmCaption: "Delete project", cancelCaption: "Cancel" })}</form></div></section>
         </div>
       </div>
     </turbo-frame>`;
   }
 
   function newProjectEditorFrame(): string {
-    return `<turbo-frame id="project_editor_frame" class="project-editor-frame"><div class="project-editor-page project-editor-detail-page"><header class="project-editor-detail-head"><div><small>Add project</small><h2>New project</h2></div><button class="project-editor-close button secondary icon-only" type="button" title="Close new project" aria-label="Close new project" data-action="modal#close">${Icons.Close}</button></header><form class="project-editor-new-form" aria-label="Add project" method="post" action="/projects" data-turbo="true" data-action="turbo:submit-end->modal#submitted"><div><h3>Repository source</h3><p>Save a remote URL, local path, or search for a GitHub repository.</p><div class="project-github-search" data-controller="project-github-search" data-project-github-search-url-value="/projects/github-search"><input class="text-field" name="gitUrl" placeholder="github.com/org/repo, or /path/to/repo#branch" required autofocus data-project-github-search-target="input" data-action="keydown->project-github-search#keydown input->project-github-search#input"><div class="agent-completion-menu-host project-github-search-menu" data-project-github-search-target="menu" hidden></div></div></div><footer><button class="button secondary" type="button" data-action="modal#close">Cancel</button><button class="button primary" type="submit" data-turbo-submits-with="Adding…">Add project</button></footer></form></div></turbo-frame>`;
+    return `<turbo-frame id="project_editor_frame" class="project-editor-frame"><div class="project-editor-page project-editor-detail-page"><form class="project-editor-new-form" aria-label="Add project" method="post" action="/projects" data-turbo="true" data-action="turbo:submit-end->dialog#submitted"><div><h3>Repository source</h3><p>Save a remote URL, local path, or search for a GitHub repository.</p><div class="project-github-search" data-controller="project-github-search" data-project-github-search-url-value="/projects/github-search"><input class="text-field" name="gitUrl" placeholder="github.com/org/repo, or /path/to/repo#branch" required autofocus data-project-github-search-target="input" data-action="keydown->project-github-search#keydown input->project-github-search#input"><div class="agent-completion-menu-host project-github-search-menu" data-project-github-search-target="menu" hidden></div></div></div><footer><button class="button secondary" type="button" data-action="dialog#close">Cancel</button><button class="button primary" type="submit" data-turbo-submits-with="Adding…">Add project</button></footer></form></div></turbo-frame>`;
   }
 
   function projectEditorModal(): string {
-    return `<dialog id="project-editor-modal" class="dialog dialog--sheet project-editor-modal" data-controller="modal"><turbo-frame id="project_editor_frame" class="project-editor-frame"></turbo-frame></dialog>`;
+    return dialogHtml({
+      element: { id: "project-editor-modal", className: "dialog--sheet project-editor-modal", attributesHtml: 'aria-label="Project settings"' },
+      iconHtml: Icons.Settings,
+      titleCaption: "Project settings",
+      bodyHtml: '<turbo-frame id="project_editor_frame" class="project-editor-frame"></turbo-frame>',
+      closeLabel: "Close project settings",
+    });
   }
 
   function isGitHubRemoteUrl(gitUrl: string): boolean {
@@ -791,11 +808,6 @@ ${moduleStylesHtml()}
     return project;
   }
 
-  async function renderProjectModals(): Promise<string> {
-    const { projects } = await listProjects();
-    return projects.map((project) => deleteProjectModal(project)).join("");
-  }
-
   async function renderWorkspaceShell(selectedId?: string, options: { mainHtml?: string; showWhatsNew?: boolean } = {}): Promise<string> {
     const pane = await workspacePaneCollections(selectedId ?? "");
     return `<div class="app fixed-shell-app" data-controller="atelier-shortcuts workspace-navigation">
@@ -808,8 +820,7 @@ ${moduleStylesHtml()}
   <div id="settings_modal_host"></div>
   <div id="onboarding_modal_host">${await renderOnboardingDialogIfNeeded()}</div>
   <div id="${workspaceCommandModalHostId}"></div>
-  <turbo-frame id="${launchComposerFrameId}"></turbo-frame>
-  <div id="project_modals">${await renderProjectModals()}</div>`;
+  <turbo-frame id="${launchComposerFrameId}"></turbo-frame>`;
   }
 
   async function homePage(): Promise<Response> {
@@ -1280,10 +1291,6 @@ ${moduleStylesHtml()}
   // Projects
   // ---------------------------------------------------------------------------
 
-  async function renderProjectModalStreams(options: { clearCommandModal?: boolean } = {}): Promise<string> {
-    return `${turboUpdateStream("project_modals", await renderProjectModals())}${options.clearCommandModal ? turboUpdateStream(workspaceCommandModalHostId, "") : ""}`;
-  }
-
   function jsonString(body: JsonObject, field: string): string {
     const value = body[field];
     if (!Value.Check(jsonStringSchema, value)) throw invalidArguments(`${field} is required`);
@@ -1328,7 +1335,7 @@ ${moduleStylesHtml()}
     }
     const paneStream = await refreshWorkspacePaneCollections();
     if (json) return jsonResponse({ project });
-    if (wantsTurboStream(request)) return turboStreamResponse(`${await renderProjectModalStreams()}${turboUpdateStream("project_editor_frame", "")}${paneStream}`);
+    if (wantsTurboStream(request)) return turboStreamResponse(`${turboUpdateStream("project_editor_frame", "")}${paneStream}`);
     return Response.redirect(new URL("/", url).toString(), 303);
   }
 
@@ -1347,12 +1354,12 @@ ${moduleStylesHtml()}
     }
     const { project } = await updateProject(projectId, { name, spec });
     const paneStream = await refreshWorkspacePaneCollections();
-    return json ? jsonResponse({ project }) : turboStreamResponse(`${await renderProjectModalStreams()}${paneStream}`);
+    return json ? jsonResponse({ project }) : turboStreamResponse(paneStream);
   }
 
   async function renderProjectEnvironmentStreams(projectId: string): Promise<string> {
     const project = await projectById(projectId);
-    return turboReplaceStream(domId("project_environment", projectId), projectEnvironmentEditor(project, await listProjectEnvironmentVariables(projectId)));
+    return turboReplaceStream(domId("project_environment_fields", projectId), projectEnvironmentFields(project, await listProjectEnvironmentVariables(projectId)));
   }
 
   async function projectEnvironmentVariableValues(request: Request): Promise<{ name: string; value: string }> {
@@ -1385,7 +1392,7 @@ ${moduleStylesHtml()}
 
   async function renderProjectSecretStreams(projectId: string): Promise<string> {
     const project = await projectById(projectId);
-    return turboReplaceStream(domId("project_secrets", projectId), projectSecretEditor(project, await listProjectSecrets(projectId)));
+    return turboReplaceStream(domId("project_secret_fields", projectId), projectSecretFields(project, await listProjectSecrets(projectId)));
   }
 
   type ProjectSecretValues = { envName: string; hostPattern: string; placeholder?: string; secretValue?: string };
@@ -1431,20 +1438,17 @@ ${moduleStylesHtml()}
 
   async function renderProjectSshKeyStreams(projectId: string): Promise<string> {
     const project = await projectById(projectId);
-    return turboReplaceStream(domId("project_ssh_key", projectId), projectSshKeyEditor(project, await hasProjectSshKey(projectId)));
+    return turboReplaceStream(domId("project_ssh_key_fields", projectId), projectSshKeyFields(project, await listProjectSshKeys(projectId)));
   }
 
-  async function saveProjectSshKeyFromForm(projectId: string, request: Request): Promise<Response> {
-    await projectById(projectId);
+  async function createProjectSshKeyFromForm(projectId: string, request: Request): Promise<Response> {
     const formData = await request.formData();
-    const privateKey = String(formData.get("privateKey") ?? "");
-    if (privateKey) await setProjectSshKey(projectId, privateKey);
+    await createProjectSshKey(projectId, String(formData.get("privateKey") ?? ""));
     return turboStreamResponse(await renderProjectSshKeyStreams(projectId));
   }
 
-  async function deleteProjectSshKeyFromForm(projectId: string): Promise<Response> {
-    await projectById(projectId);
-    await deleteProjectSshKey(projectId);
+  async function deleteProjectSshKeyFromForm(projectId: string, keyId: string): Promise<Response> {
+    await deleteProjectSshKey(projectId, keyId);
     return turboStreamResponse(await renderProjectSshKeyStreams(projectId));
   }
 
@@ -1483,12 +1487,12 @@ ${moduleStylesHtml()}
         blocked: true,
         references: references.map((entry) => ({ workspaceId: entry.id, title: workspaceTitle(entry) })),
       });
-      return turboStreamResponse(`${turboUpdateStream("project_modals", await renderProjectModals())}${turboUpdateStream(workspaceCommandModalHostId, deleteProjectBlockedModal(project, references))}`);
+      return turboStreamResponse(turboUpdateStream(workspaceCommandModalHostId, deleteProjectBlockedModal(project, references)));
     }
     await deleteProject(projectId);
     const paneStream = await refreshWorkspacePaneCollections();
     if (json) return jsonResponse({ deleted: true, blocked: false, project });
-    return turboStreamResponse(`${await renderProjectModalStreams({ clearCommandModal: true })}${turboUpdateStream("project_editor_frame", "")}${paneStream}`);
+    return turboStreamResponse(`${turboUpdateStream(workspaceCommandModalHostId, "")}${turboUpdateStream("project_editor_frame", "")}${paneStream}`);
   }
 
   async function githubRepositorySearchEndpoint(url: URL): Promise<Response> {
@@ -1778,8 +1782,8 @@ ${moduleStylesHtml()}
     if ((params = match(/^\/projects\/([^/]+)\/secrets$/)) && request.method === "POST") return await createProjectSecretEndpoint(params[0], request);
     if ((params = match(/^\/projects\/([^/]+)\/secrets\/([^/]+)$/)) && request.method === "POST") return await updateProjectSecretEndpoint(params[0], params[1], request);
     if ((params = match(/^\/projects\/([^/]+)\/secrets\/([^/]+)\/delete$/)) && request.method === "POST") return await deleteProjectSecretEndpoint(params[0], params[1], request);
-    if ((params = match(/^\/projects\/([^/]+)\/ssh-key$/)) && request.method === "POST") return await saveProjectSshKeyFromForm(params[0], request);
-    if ((params = match(/^\/projects\/([^/]+)\/ssh-key\/delete$/)) && request.method === "POST") return await deleteProjectSshKeyFromForm(params[0]);
+    if ((params = match(/^\/projects\/([^/]+)\/ssh-keys$/)) && request.method === "POST") return await createProjectSshKeyFromForm(params[0], request);
+    if ((params = match(/^\/projects\/([^/]+)\/ssh-keys\/([^/]+)\/delete$/)) && request.method === "POST") return await deleteProjectSshKeyFromForm(params[0], params[1]);
     if ((params = match(/^\/projects\/([^/]+)\/delete$/)) && request.method === "POST") return await deleteProjectEndpoint(params[0], request);
 
     if (url.pathname === "/agent-workspaces" && request.method === "POST") return await createEmptyAgentWorkspaceEndpoint(request);

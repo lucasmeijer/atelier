@@ -45,7 +45,15 @@ export interface StoredProjectSecret extends ProjectSecretSummary {
   encryptedSecret: string;
 }
 
-export interface StoredProjectSshKey {
+export interface ProjectSshKeySummary {
+  id: string;
+  projectId: string;
+  keyType: string;
+  fingerprint: string;
+  createdAt: string;
+}
+
+export interface StoredProjectSshKey extends ProjectSshKeySummary {
   encryptedPrivateKey: string;
 }
 
@@ -60,7 +68,7 @@ export interface ProjectEnvironmentVariable {
 
 export interface ProjectRecord extends ProjectSummary {
   secrets?: StoredProjectSecret[];
-  sshKey?: StoredProjectSshKey;
+  sshKeys?: StoredProjectSshKey[];
   environment?: ProjectEnvironmentVariable[];
   neverOfferPreparation?: boolean;
 }
@@ -113,7 +121,14 @@ const projectStoreSchema = Type.Object({
     branch: Type.Union([Type.String(), Type.Null()]),
     sessionShareKey: Type.String(),
     secrets: Type.Optional(Type.Array(storedProjectSecretSchema)),
-    sshKey: Type.Optional(Type.Object({ encryptedPrivateKey: Type.String() })),
+    sshKeys: Type.Optional(Type.Array(Type.Object({
+      id: Type.String(),
+      projectId: Type.String(),
+      keyType: Type.String(),
+      fingerprint: Type.String(),
+      createdAt: Type.String(),
+      encryptedPrivateKey: Type.String(),
+    }))),
     environment: Type.Optional(Type.Array(projectEnvironmentVariableSchema)),
     neverOfferPreparation: Type.Optional(Type.Boolean()),
   })),
