@@ -4,9 +4,10 @@ import { observableWebSocketUrl } from "@atelier/observable-terminal/client";
 import { setTextInputValue, type WorkspaceClientControllerConstructor } from "@atelier/shared";
 import { Type, type Static } from "typebox";
 import { Value } from "typebox/value";
+import { type MicrophoneLease, SharedMicrophone } from "./microphone.ts";
 
 type TranscriptionState = "idle" | "loading" | "recording" | "finishing" | "error";
-type AudioCapture = { media: MediaStream; context: AudioContext; processor: ScriptProcessorNode; analyser: AnalyserNode };
+type AudioCapture = { microphone: MicrophoneLease; context: AudioContext; processor: ScriptProcessorNode; analyser: AnalyserNode };
 const transcriptionEventSchema = Type.Object({
   type: Type.String(),
   status: Type.Optional(Type.Union([Type.Literal("loading"), Type.Literal("error")])),
@@ -24,7 +25,7 @@ function joinedTranscript(prefix: string, committed: string, partial: string): s
   return `${prefix} ${spoken}`;
 }
 
-export function createTranscriptionComposerController(Controller: WorkspaceClientControllerConstructor) {
+export function createTranscriptionComposerController(Controller: WorkspaceClientControllerConstructor, microphoneSource: SharedMicrophone) {
   return class TranscriptionComposerController extends Controller {
     static targets = ["button", "waveform", "status"];
 
@@ -126,12 +127,9 @@ export function createTranscriptionComposerController(Controller: WorkspaceClien
 
     private async startCapture(): Promise<void> {
       try {
-        const media = await navigator.mediaDevices.getUserMedia({
-          audio: { channelCount: 1, echoCancellation: true, noiseSuppression: true },
-          video: false,
-        });
+        const microphone = await microphoneSource.acquire();
         const context = new AudioContext();
-        const source = context.createMediaStreamSource(media);
+        const source = context.createMediaStreamSource(microphone.stream);
         const processor = context.createScriptProcessor(4096, 1, 1);
         const analyser = context.createAnalyser();
         const sink = context.createGain();
@@ -151,7 +149,7 @@ export function createTranscriptionComposerController(Controller: WorkspaceClien
         analyser.connect(processor);
         processor.connect(sink);
         sink.connect(context.destination);
-        this.capture = { media, context, processor, analyser };
+        this.capture = { microphone, context, processor, analyser };
         this.socket?.send(JSON.stringify({
           type: "session.update",
           session: { sample_rate: context.sampleRate, language: "auto", automatic_punctuation: true },
@@ -187,7 +185,7 @@ export function createTranscriptionComposerController(Controller: WorkspaceClien
 
     private stopCapture(): void {
       if (this.waveformFrame !== undefined) cancelAnimationFrame(this.waveformFrame);
-      this.capture?.media.getTracks().forEach((track) => track.stop());
+      this.capture?.microphone.release();
       if (this.capture) {
         this.capture.processor.onaudioprocess = null;
         if (this.capture.context.state !== "closed") void this.capture.context.close();
