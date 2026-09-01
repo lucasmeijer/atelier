@@ -252,7 +252,7 @@ turbo-frame { display: contents; }
 .fixed-workspace-presentation:not(.is-work-pane-open) [data-collapse-work-pane],
 .fixed-shell-app:not(.is-workspace-pane-collapsed) [data-show-workspace-pane],
 .fixed-shell-app.is-workspace-pane-collapsed [data-collapse-workspace-pane] { display: none; }
-.fixed-shell-workspace-scroll { min-height: 0; flex: 1; overflow: auto; padding: 8px 8px; scrollbar-gutter: stable; }
+.fixed-shell-workspace-scroll { min-height: 0; flex: 1; overflow: auto; padding: 8px; }
 .fixed-shell-project { margin-bottom: 8px; }
 .fixed-shell-project-heading { gap: 4px; margin: 0; }
 .fixed-shell-project-actions { flex: 0 0 auto; }
