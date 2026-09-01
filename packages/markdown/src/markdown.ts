@@ -36,9 +36,8 @@ markdown.renderer.rules.fence = (tokens, index) => {
   ].filter(Boolean).join(" ");
   const label = rawLang ? `Copy ${escapeHtml(rawLang)} code to clipboard` : "Copy code to clipboard";
   const title = filename ?? (rawLang ? `${rawLang} code` : "Code");
-  const headerLabel = filename ?? rawLang;
-  const header = headerLabel
-    ? `<div class="agent-code-block-header"${filename ? ` title="${escapeHtml(filename)}"` : ""}>${escapeHtml(headerLabel)}</div>`
+  const header = filename
+    ? `<div class="agent-code-block-header" title="${escapeHtml(filename)}">${escapeHtml(filename)}</div>`
     : "";
   const preOpen = `<pre${attrs ? ` ${attrs}` : ""}>`;
   const inlineCode = `${preOpen}<code data-agent-code-copy-target="code">${highlighted.html}</code></pre>`;

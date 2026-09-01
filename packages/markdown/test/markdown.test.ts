@@ -21,14 +21,14 @@ describe("renderMarkdown", () => {
     expect(html).toContain(`data-atelier-fullscreen-mode-value="template"`);
     expect(html).toContain(`data-atelier-fullscreen-title-value="bash code"`);
     expect(html).toContain(`data-action="agent-code-copy#copy"`);
-    expect(html).toContain(`<div class="agent-code-block-header">bash</div>`);
+    expect(html).not.toContain("agent-code-block-header");
     expect(html).toContain(`<pre data-lang="bash" class="language-bash"><code data-agent-code-copy-target="code">`);
     expect(html).toContain(`<template data-atelier-fullscreen-target="content"><div class="agent-code-block"><pre data-lang="bash" class="language-bash"><code>`);
     expect(html).toContain("/work");
     expect(html).not.toContain("<strong>");
   });
 
-  test("fenced code blocks show filenames and use them as fullscreen titles", () => {
+  test("fenced code blocks show filenames but not languages and use filenames as fullscreen titles", () => {
     const html = renderMarkdown("work 1", "```typescript src/hello.ts\nexport const hello = 'world';\n```");
     expect(html.startsWith(`<div class="agent-code-block"`)).toBe(true);
     expect(html).toContain(`data-atelier-fullscreen-title-value="src/hello.ts"`);
