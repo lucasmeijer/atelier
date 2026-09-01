@@ -177,6 +177,19 @@ export class PromptHistoryNavigator {
   }
 }
 
+function createAgentComposerController(Controller: StimulusControllerConstructor) {
+  return class AgentComposerController extends Controller {
+    static targets = ["primaryAction"];
+    declare readonly primaryActionTarget: HTMLButtonElement;
+
+    primaryActionPointerdown(event: PointerEvent): void {
+      if (!isPhoneViewport() || event.pointerType !== "touch" || event.button !== 0) return;
+      event.preventDefault();
+      this.primaryActionTarget.form!.requestSubmit(this.primaryActionTarget);
+    }
+  };
+}
+
 function createAgentPaneController(Controller: StimulusControllerConstructor) {
   return class AgentPaneController extends Controller implements AgentPaneControllerInstance {
     static values = { workspaceId: String, conversationId: String };
@@ -1667,6 +1680,7 @@ function createAgentEditDiffController(Controller: StimulusControllerConstructor
 export const agentClientModule: WorkspaceClientModule = {
   id: "agent",
   install({ application, Controller, hooks }) {
+    application.register("agent-composer", createAgentComposerController(Controller));
     application.register("agent-pane", createAgentPaneController(Controller));
     application.register("agent-attachments", createAgentAttachmentsController(Controller));
     application.register("composer-selection-autosubmit", createComposerSelectionAutosubmitController(Controller));

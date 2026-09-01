@@ -55,6 +55,11 @@ export function createTranscriptionComposerController(Controller: WorkspaceClien
 
     submit(event: SubmitEvent): void {
       if (this.state === "idle" || this.state === "error") return;
+      if (this.state === "loading" && this.input.value.trim()) {
+        this.socket?.close();
+        this.setState("idle", "Dictate");
+        return;
+      }
       event.preventDefault();
       event.stopImmediatePropagation();
       this.submitPending = true;

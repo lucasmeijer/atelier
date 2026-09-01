@@ -117,7 +117,7 @@ describe("transcription composer browser behavior", () => {
     let submissions = 0;
     await page.route("http://atelier.test/", (route) => route.fulfill({
       contentType: "text/html",
-      body: `<main data-controller="atelier-shortcuts"><button type="button" autofocus>Outside Composer</button><div data-controller="transcription-composer"><form method="post" action="/send" data-controller="submit-shortcut" data-action="submit->transcription-composer#submit keydown->submit-shortcut#keydown submit->submit-shortcut#submit"><textarea name="text" aria-label="Message">Existing</textarea>${renderTranscriptionComposerControl()}<button type="submit">Send</button></form></div></main><script type="module" src="${workspaceClientPath}"></script>`,
+      body: `<main data-controller="atelier-shortcuts"><button type="button" autofocus>Outside Composer</button><div data-controller="transcription-composer"><form method="post" action="/send" data-controller="submit-shortcut" data-action="submit->transcription-composer#submit keydown->submit-shortcut#keydown submit->submit-shortcut#submit"><textarea name="text" aria-label="Message"></textarea>${renderTranscriptionComposerControl()}<button type="submit">Send</button></form></div></main><script type="module" src="${workspaceClientPath}"></script>`,
     }));
     await page.route("http://atelier.test/send", (route) => {
       submissions += 1;
@@ -153,48 +153,32 @@ describe("transcription composer browser behavior", () => {
       window.dispatchEvent(new Event("fake-transcription-message"));
     });
     expect((await submission).method()).toBe("POST");
-    expect(await page.getByRole("textbox", { name: "Message" }).inputValue()).toBe("Existing final words");
+    expect(await page.getByRole("textbox", { name: "Message" }).inputValue()).toBe("final words");
     expect(await page.getByRole("textbox", { name: "Message" }).evaluate((input: HTMLTextAreaElement) => input.readOnly)).toBe(false);
     await page.close();
   });
 
-  test("finishes an active transcription before submitting", async () => {
+  test("sends an already typed prompt while the transcription model is still loading", async () => {
     const page = await browserContext.newPage();
     await testAssets.serve(page);
     await installFakeTranscriptionSocket(page);
-    let submissions = 0;
     await page.route("http://atelier.test/", (route) => route.fulfill({
       contentType: "text/html",
-      body: `<div data-controller="transcription-composer"><form method="post" action="/send" data-action="submit->transcription-composer#submit"><textarea name="text">Existing</textarea>${renderTranscriptionComposerControl()}<button type="submit">Send</button></form></div><script type="module" src="${workspaceClientPath}"></script>`,
+      body: `<div data-controller="transcription-composer"><form method="post" action="/send" data-action="submit->transcription-composer#submit"><textarea name="text">Typed prompt</textarea>${renderTranscriptionComposerControl()}<button type="submit">Send</button></form></div><script type="module" src="${workspaceClientPath}"></script>`,
     }));
-    await page.route("http://atelier.test/send", (route) => {
-      submissions += 1;
-      return route.fulfill({ status: 204 });
-    });
+    await page.route("http://atelier.test/send", (route) => route.fulfill({ status: 204 }));
     await page.goto("http://atelier.test/");
 
     await page.getByRole("button", { name: "Dictate with microphone" }).click();
-    await page.getByRole("button", { name: "Send" }).click();
-    expect(submissions).toBe(0);
-
-    await page.evaluate(() => {
-      document.body.dataset.transcriptionEvent = JSON.stringify({ type: "session.created" });
-      window.dispatchEvent(new Event("fake-transcription-message"));
-      document.body.dataset.transcriptionEvent = JSON.stringify({ type: "input_audio_buffer.committed" });
-      window.dispatchEvent(new Event("fake-transcription-message"));
-    });
-    expect(submissions).toBe(0);
+    await page.waitForFunction(() => document.querySelector(".transcription-button")?.getAttribute("data-state") === "loading");
 
     const submission = page.waitForRequest("http://atelier.test/send");
-    await page.evaluate(() => {
-      document.body.dataset.transcriptionEvent = JSON.stringify({
-        type: "conversation.item.input_audio_transcription.completed",
-        transcript: "final words",
-      });
-      window.dispatchEvent(new Event("fake-transcription-message"));
-    });
-    expect((await submission).method()).toBe("POST");
-    expect(await page.getByRole("textbox").inputValue()).toBe("Existing final words");
+    await page.getByRole("button", { name: "Send" }).click();
+
+    const request = await submission;
+    expect(request.method()).toBe("POST");
+    expect(request.postData()).toContain("text=Typed+prompt");
+    expect(await page.getByRole("button", { name: "Dictate with microphone" }).getAttribute("data-state")).toBe("idle");
     await page.close();
   });
 });

@@ -2636,6 +2636,45 @@ Comment: I don't think we need these tests`;
     await page.close();
   });
 
+  test("submits the focused phone Composer on the send button's first touch", async () => {
+    const agentBody = `<div class="agent-pane" data-controller="agent-pane" data-agent-pane-workspace-id-value="phone-touch-send" data-agent-pane-conversation-id-value="agent-1">
+      <div class="agent-transcript" data-agent-pane-target="transcript"></div>
+      <div class="composer agent-pane-composer" data-controller="agent-composer" data-mobile-editing-region>
+        <form method="post" action="/send" data-agent-pane-target="form">
+          <textarea class="composer-input" name="text" aria-label="Agent prompt" data-agent-pane-target="input">Send from one touch</textarea>
+          <button type="submit" name="mode" value="send" data-agent-composer-target="primaryAction" data-agent-pane-target="sendStop" data-agent-busy="false" data-action="pointerdown->agent-composer#primaryActionPointerdown">Send</button>
+        </form>
+      </div>
+    </div>`;
+    const presentation: WorkspacePresentation = {
+      workspace: { id: "phone-touch-send", title: "Phone touch send" },
+      agentConversations: [agentConversation("phone-touch-send", "agent-1")],
+      workViews: [],
+    };
+    const pane: WorkspacePanePresentation = { projects: [], projectlessWorkspaces: [{ id: "phone-touch-send", title: "Phone touch send", active: true }] };
+    const page = await newTestPage({ viewport: { width: 390, height: 844 }, mobile: true });
+    await page.route("http://atelier.test/workspaces/phone-touch-send", (route) => route.fulfill({ contentType: "text/html", body: `${renderShellFixture(presentation, pane)}<script type="module" src="${workspaceClientPath}"></script>` }));
+    await page.route("**/workspaces/phone-touch-send/agents/agent-1/body", (route) => route.fulfill({ contentType: "text/html", body: renderAgentBodyFrame("phone-touch-send", "agent-1", agentBody) }));
+    await page.route("**/workspaces/phone-touch-send/active", (route) => route.fulfill({ status: 204 }));
+    let sendRequests = 0;
+    await page.route("**/send", (route) => {
+      sendRequests += 1;
+      return route.fulfill({ status: 204 });
+    });
+    await page.goto("http://atelier.test/workspaces/phone-touch-send");
+
+    const input = page.getByRole("textbox", { name: "Agent prompt" });
+    await input.focus();
+    expect(await input.evaluate((element) => element === document.activeElement)).toBe(true);
+
+    const sendRequest = page.waitForRequest((request) => new URL(request.url()).pathname === "/send");
+    await page.getByRole("button", { name: "Send prompt" }).tap();
+
+    expect((await sendRequest).postData()).toContain("text=Send+from+one+touch");
+    expect(sendRequests).toBe(1);
+    await page.close();
+  });
+
   test("uses the phone keyboard Send key to submit a completed slash command without restoring composer focus", async () => {
     const agentBody = `<div class="agent-pane" data-controller="agent-pane agent-completions" data-agent-pane-workspace-id-value="phone-send" data-agent-pane-label-value="Agent" data-agent-completions-url-value="/workspaces/phone-send/agents/agent-1/completions">
       <div class="agent-transcript" data-agent-pane-target="transcript"></div>
@@ -3345,31 +3384,38 @@ Comment: I don't think we need these tests`;
     await page.close();
   });
 
-  test("closes the LaunchComposer as soon as its prompt is submitted", async () => {
-    const page = await newTestPage({ viewport: { width: 390, height: 844 } });
+  test("submits and closes the focused LaunchComposer on the first phone touch", async () => {
+    const page = await newTestPage({ viewport: { width: 390, height: 844 }, mobile: true });
     let finishRequest!: () => void;
     const requestMayFinish = new Promise<void>((resolve) => { finishRequest = resolve; });
     let discardRequests = 0;
     await page.route("http://atelier.test/", (route) => route.fulfill({
       contentType: "text/html",
-      body: `<turbo-frame id="launch_composer"><dialog class="launch-composer-dialog" data-controller="launch-composer-dialog" data-launch-composer-dialog-discard-url-value="/draft/discard"><form method="post" action="/launch" data-action="submit->launch-composer-dialog#submit"><textarea name="text">Mobile prompt</textarea><button type="submit">Send prompt</button></form></dialog></turbo-frame><script type="module" src="${workspaceClientPath}"></script>`,
+      body: `<turbo-frame id="launch_composer"><dialog class="launch-composer-dialog" data-controller="launch-composer-dialog" data-launch-composer-dialog-discard-url-value="/draft/discard"><div data-controller="agent-composer"><form method="post" action="/launch" data-action="submit->launch-composer-dialog#submit"><textarea name="text">Mobile prompt</textarea><button type="submit" data-agent-composer-target="primaryAction" data-action="pointerdown->agent-composer#primaryActionPointerdown">Send prompt</button></form></div></dialog></turbo-frame><script type="module" src="${workspaceClientPath}"></script>`,
     }));
     await page.route("http://atelier.test/draft/discard", (route) => {
       discardRequests += 1;
       return route.fulfill({ status: 204 });
     });
+    let launchRequests = 0;
     await page.route("http://atelier.test/launch", async (route) => {
+      launchRequests += 1;
       await requestMayFinish;
       await route.fulfill({ contentType: "text/vnd.turbo-stream.html", body: '<turbo-stream action="update" target="launch_composer"><template></template></turbo-stream>' });
     });
 
     await page.goto("http://atelier.test/");
     const dialog = page.locator(".launch-composer-dialog");
+    const input = page.getByRole("textbox");
     await dialog.waitFor({ state: "visible" });
-    await page.getByRole("button", { name: "Send prompt" }).click();
+    await input.focus();
+    const launchRequest = page.waitForRequest("http://atelier.test/launch");
+    await page.getByRole("button", { name: "Send prompt" }).tap();
 
+    expect((await launchRequest).postData()).toContain("text=Mobile+prompt");
     expect(await dialog.evaluate((element: HTMLDialogElement) => element.open)).toBe(false);
     expect(discardRequests).toBe(0);
+    expect(launchRequests).toBe(1);
     finishRequest();
     await dialog.waitFor({ state: "detached" });
     await page.close();

@@ -259,7 +259,7 @@ async function renderSharedComposer(options: SharedComposerRenderOptions): Promi
     : `<div class="composer-footer">${await renderLaunchComposerSettings({ ...options.launchComposerSettings!, formId })}</div>`;
   const turboAttr = options.formTurbo === undefined ? "" : ` data-turbo="${options.formTurbo ? "true" : "false"}"`;
   const dropTarget = options.dropTarget ?? true;
-  const promptControllers = [dropTarget ? "agent-attachments" : "", completionsEnabled ? "agent-completions" : "", transcriptionComposerController].filter(Boolean).join(" ");
+  const promptControllers = ["agent-composer", dropTarget ? "agent-attachments" : "", completionsEnabled ? "agent-completions" : "", transcriptionComposerController].filter(Boolean).join(" ");
   const promptAttrs = [
     `data-controller="${promptControllers}"`,
     dropTarget ? agentAttachmentDropAttrs(uploadUrl) : "",
@@ -380,7 +380,7 @@ function renderPromptActionButton(busy: boolean, ctx?: AgentRenderContext): stri
     state,
     initialContent: { kind: "html", html: '<svg viewBox="0 0 20 20" aria-hidden="true"><path d="M10 15V5m-4 4 4-4 4 4"/></svg>' },
     activeContent: { kind: "html", html: '<svg viewBox="0 0 20 20" aria-hidden="true"><rect x="6" y="6" width="8" height="8" rx="1.5" fill="currentColor" stroke="none"/></svg>' },
-    attributesHtml: `name="mode" value="${value}"${paneAttrs}`,
+    attributesHtml: `name="mode" value="${value}" data-agent-composer-target="primaryAction" data-action="pointerdown->agent-composer#primaryActionPointerdown"${paneAttrs}`,
   });
 }
 
