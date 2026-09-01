@@ -1,7 +1,7 @@
 /// <reference lib="dom" />
 
 import { observableWebSocketUrl } from "@atelier/observable-terminal/client";
-import { setTextInputValue, type WorkspaceClientControllerConstructor } from "@atelier/shared";
+import { composerSubmitKey, setTextInputValue, type WorkspaceClientControllerConstructor } from "@atelier/shared";
 import { Type, type Static } from "typebox";
 import { Value } from "typebox/value";
 import { type MicrophoneLease, SharedMicrophone } from "./microphone.ts";
@@ -49,10 +49,24 @@ export function createTranscriptionComposerController(Controller: WorkspaceClien
     private submitPending = false;
     private pendingSubmitter?: HTMLButtonElement | HTMLInputElement;
 
+    connect(): void {
+      window.addEventListener("keydown", this.keydown);
+    }
+
     disconnect(): void {
+      window.removeEventListener("keydown", this.keydown);
       this.stopCapture();
       this.socket?.close();
     }
+
+    private readonly keydown = (event: KeyboardEvent): void => {
+      if (event.defaultPrevented || composerSubmitKey(event) !== "shortcut") return;
+      if (this.state === "idle" || this.state === "error") return;
+      event.preventDefault();
+      const form = this.element.querySelector<HTMLFormElement>("form")!;
+      const submitter = form.querySelector<HTMLButtonElement | HTMLInputElement>('button[type="submit"], button:not([type]), input[type="submit"]');
+      form.requestSubmit(submitter ?? undefined);
+    };
 
     submit(event: SubmitEvent): void {
       if (this.state === "idle" || this.state === "error") return;

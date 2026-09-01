@@ -110,7 +110,7 @@ describe("transcription composer browser behavior", () => {
     await page.close();
   });
 
-  test("starts from anywhere with Command-Option-Backslash without focusing the Composer", async () => {
+  test("starts from anywhere and sends with Command-Enter without focusing the Composer", async () => {
     const page = await browserContext.newPage();
     await testAssets.serve(page);
     await installFakeTranscriptionSocket(page);
@@ -135,9 +135,8 @@ describe("transcription composer browser behavior", () => {
       readOnly: input.readOnly,
     }))).toEqual({ focused: false, readOnly: true });
 
-    await page.getByRole("textbox", { name: "Message" }).dispatchEvent("keydown", {
-      key: "Enter", code: "Enter", metaKey: true, altKey: true, bubbles: true, cancelable: true,
-    });
+    expect(await page.getByRole("button", { name: "Outside Composer" }).evaluate((button) => document.activeElement === button)).toBe(true);
+    await page.keyboard.press("Meta+Enter");
     await page.waitForFunction(() => document.querySelector(".transcription-button")?.getAttribute("data-state") === "finishing");
     expect(await page.getByRole("button", { name: "Dictate with microphone" }).getAttribute("data-state")).toBe("finishing");
     expect(submissions).toBe(0);
