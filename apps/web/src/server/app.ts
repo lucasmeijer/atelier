@@ -885,6 +885,7 @@ ${moduleStylesHtml()}
         await deps.provisionWorkspace(id, { init: options.init, context: options.context, fork: options.fork });
         if (options.title) await setWorkspaceTitle(id, options.title);
         registry.setPhase(id, "ready");
+        if (options.context?.agent && !options.context.agent.initialPrompt?.trim()) registry.markViewAttention(id, "workspace");
         await broadcastWorkspaceReady(id);
       } catch (error) {
         const message = error instanceof Error ? error.message : String(error);
