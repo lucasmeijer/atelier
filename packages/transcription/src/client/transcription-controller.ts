@@ -75,8 +75,7 @@ export function createTranscriptionComposerController(Controller: WorkspaceClien
     }
 
     private start(): void {
-      this.input.focus();
-      this.input.setSelectionRange(this.input.value.length, this.input.value.length);
+      this.input.blur();
       this.prefix = this.input.value;
       this.committed = "";
       this.partial = "";
@@ -250,6 +249,7 @@ export function createTranscriptionComposerController(Controller: WorkspaceClien
       this.buttonTarget.ariaPressed = state === "recording" || state === "finishing" ? "true" : "false";
       this.buttonTarget.title = label;
       this.statusTarget.textContent = label;
+      this.input.readOnly = state === "loading" || state === "recording" || state === "finishing";
       if (state === "finishing") this.setProgress(100);
       else if (!working) this.setProgress(0);
     }

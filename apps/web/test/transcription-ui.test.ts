@@ -86,7 +86,13 @@ describe("transcription composer browser behavior", () => {
     }));
     await page.goto("http://atelier.test/");
 
+    const composer = page.getByRole("textbox", { name: "Message" });
+    await composer.focus();
     await page.getByRole("button", { name: "Dictate with microphone" }).click();
+    expect(await composer.evaluate((input: HTMLTextAreaElement) => ({
+      focused: document.activeElement === input,
+      readOnly: input.readOnly,
+    }))).toEqual({ focused: false, readOnly: true });
     await page.evaluate(() => {
       document.body.dataset.transcriptionEvent = JSON.stringify({
         type: "conversation.item.input_audio_transcription.delta",
@@ -95,7 +101,7 @@ describe("transcription composer browser behavior", () => {
       window.dispatchEvent(new Event("fake-transcription-message"));
     });
 
-    const scroll = await page.getByRole("textbox", { name: "Message" }).evaluate((input: HTMLTextAreaElement) => ({
+    const scroll = await composer.evaluate((input: HTMLTextAreaElement) => ({
       top: input.scrollTop,
       maximum: input.scrollHeight - input.clientHeight,
     }));
@@ -104,7 +110,7 @@ describe("transcription composer browser behavior", () => {
     await page.close();
   });
 
-  test("starts from anywhere with Command-Option-Backslash and focuses the Composer for sending", async () => {
+  test("starts from anywhere with Command-Option-Backslash without focusing the Composer", async () => {
     const page = await browserContext.newPage();
     await testAssets.serve(page);
     await installFakeTranscriptionSocket(page);
@@ -124,7 +130,10 @@ describe("transcription composer browser behavior", () => {
     });
     await page.waitForFunction(() => document.querySelector(".transcription-button")?.getAttribute("data-state") === "loading");
     expect(await page.getByRole("button", { name: "Dictate with microphone" }).getAttribute("data-state")).toBe("loading");
-    expect(await page.getByRole("textbox", { name: "Message" }).evaluate((input) => document.activeElement === input)).toBe(true);
+    expect(await page.getByRole("textbox", { name: "Message" }).evaluate((input: HTMLTextAreaElement) => ({
+      focused: document.activeElement === input,
+      readOnly: input.readOnly,
+    }))).toEqual({ focused: false, readOnly: true });
 
     await page.getByRole("textbox", { name: "Message" }).dispatchEvent("keydown", {
       key: "Enter", code: "Enter", metaKey: true, altKey: true, bubbles: true, cancelable: true,
@@ -145,6 +154,7 @@ describe("transcription composer browser behavior", () => {
     });
     expect((await submission).method()).toBe("POST");
     expect(await page.getByRole("textbox", { name: "Message" }).inputValue()).toBe("Existing final words");
+    expect(await page.getByRole("textbox", { name: "Message" }).evaluate((input: HTMLTextAreaElement) => input.readOnly)).toBe(false);
     await page.close();
   });
 
