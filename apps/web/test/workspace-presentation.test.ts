@@ -49,7 +49,7 @@ describe("role-fixed Workspace presentation", () => {
     expect(html).toContain('data-controller="workspace-presentation"');
     expect(html).not.toContain('class="fixed-shell-workspace-pane"');
     expect(html).toContain('class="panel fixed-shell-agent-pane"');
-    expect(html).toContain('class="fixed-shell-work-pane"');
+    expect(html).toContain('class="panel fixed-shell-work-pane"');
     expect(html).not.toContain("workspace-group");
     expect(html).not.toContain("visibleTab");
     expect(html).not.toContain('aria-selected="true"');
