@@ -265,10 +265,8 @@ async function renderSharedComposer(options: SharedComposerRenderOptions): Promi
     dropTarget ? agentAttachmentDropAttrs(uploadUrl) : "",
     options.ctx ? `data-agent-completions-url-value="${escapeHtml(agentPath(options.ctx, "/completions"))}"` : "",
   ].filter(Boolean).join(" ");
-  const composerOverlays = [
-    completionsEnabled ? `<div class="agent-completion-menu-host" data-agent-completions-target="menu" hidden></div>` : "",
-    options.includePaneActions && options.ctx ? renderTranscriptNavigation() : "",
-  ].filter(Boolean).join("");
+  const composerOverlays = options.includePaneActions && options.ctx ? renderTranscriptNavigation() : "";
+  const completionMenu = completionsEnabled ? `<div class="agent-completion-menu-host" data-agent-completions-target="menu" hidden></div>` : "";
   const textarea = options.ctx && options.formTarget
     ? renderAgentPanePromptInput(options.ctx, options.initialText ?? "")
     : `<textarea${options.inputId ? ` id="${escapeHtml(options.inputId)}"` : ""} class="composer-input" name="text" rows="${options.rows ?? 2}" enterkeyhint="send" placeholder="${escapeHtml(options.placeholder)}" aria-label="${escapeHtml(options.placeholder)}"${inputTarget ? ` ${inputTarget}` : ""}${inputActions}>${escapeHtml(options.initialText ?? "")}</textarea>`;
@@ -289,6 +287,7 @@ async function renderSharedComposer(options: SharedComposerRenderOptions): Promi
               ${actions}
             </div>
           </form>
+          ${completionMenu}
           ${options.includePaneActions && options.ctx ? `<form id="${ids.abortForm(options.ctx)}" method="post" action="${escapeHtml(agentPath(options.ctx, "/abort"))}" hidden></form>` : ""}
           ${footer}
         </div>

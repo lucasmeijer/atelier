@@ -2784,8 +2784,8 @@ Comment: I don't think we need these tests`;
       body: `<button type="button" aria-label="Outside composer">Outside</button><div class="agent-pane" data-controller="agent-pane" data-agent-pane-workspace-id-value="quick" data-agent-pane-conversation-id-value="agent-1">
         <div class="agent-transcript" data-agent-pane-target="transcript"></div>
         <div class="composer agent-pane-composer" data-controller="agent-completions" data-agent-completions-url-value="/workspaces/quick/agents/agent-1/completions">
-          <div class="agent-pane-composer-overlays"><div class="agent-completion-menu-host" data-agent-completions-target="menu" hidden></div><button type="button" data-agent-pane-target="transcriptNav" disabled></button></div>
-          <div class="composer-surface"><form method="post" action="/send" tabindex="-1" data-agent-pane-target="form" data-action="keydown->agent-completions#keydown keydown->agent-pane#inputKeydown"><textarea aria-label="Agent prompt" name="text" data-agent-pane-target="input" data-agent-completions-target="input" data-action="input->agent-completions#input input->agent-pane#promptChanged"></textarea><button type="submit" name="mode" value="send" data-agent-pane-target="sendStop" data-agent-busy="false">Send</button></form></div>
+          <div class="agent-pane-composer-overlays"><button type="button" data-agent-pane-target="transcriptNav" disabled></button></div>
+          <div class="composer-surface"><form method="post" action="/send" tabindex="-1" data-agent-pane-target="form" data-action="keydown->agent-completions#keydown keydown->agent-pane#inputKeydown"><textarea aria-label="Agent prompt" name="text" data-agent-pane-target="input" data-agent-completions-target="input" data-action="input->agent-completions#input input->agent-pane#promptChanged"></textarea><button type="submit" name="mode" value="send" data-agent-pane-target="sendStop" data-agent-busy="false">Send</button></form><div class="agent-completion-menu-host" data-agent-completions-target="menu" hidden></div></div>
         </div>
       </div><script type="module" src="${workspaceClientPath}"></script>`,
     }));

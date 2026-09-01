@@ -188,6 +188,7 @@
 /* The AgentPaneComposer is the pane's bottom edge rather than a nested card. */
 .agent-pane > .composer { padding: 0; }
 .agent-pane > .composer > .composer-surface {
+  overflow: visible;
   border: 0;
   border-top: 1px solid var(--line-strong);
   border-radius: 0;
@@ -226,7 +227,13 @@
 .composer-actions .activity-button__content { padding: 0; }
 
 .agent-completion-menu-host { position: absolute; z-index: 20; }
-.agent-pane-composer-overlays .agent-completion-menu-host { position: static; width: auto; margin-inline: var(--agent-inline-gutter); pointer-events: auto; }
+.composer-surface > .agent-completion-menu-host {
+  right: var(--agent-inline-gutter); bottom: calc(100% + 4px); left: var(--agent-inline-gutter);
+  pointer-events: auto;
+}
+.composer-surface > .agent-completion-menu-host:has(> .agent-quick-launches) {
+  right: var(--composer-control-inset); bottom: calc(var(--composer-footer-height) + 8px); left: var(--composer-control-inset);
+}
 .agent-completion-menu-host[hidden] { display: none; }
 .agent-quick-launches { display: flex; flex-wrap: wrap; gap: 6px; }
 .agent-quick-launch { font-family: var(--font-mono); }
