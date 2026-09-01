@@ -603,10 +603,12 @@ bun test</pre></div>
         <section class="catalogue-section" id="dialog">
           <div class="catalogue-section-head"><h2>Dialog</h2><p>A modal task surface with shared header, body, and action regions. Auto-show, initial focus, native Escape dismissal, and focus restoration ship with the element.</p></div>
           <article class="catalogue-card wide"><div class="catalogue-card-title"><span>Task dialog</span><code>.dialog</code></div><div class="catalogue-demo">
-            <dialog class="dialog catalogue-dialog" open>
-              <header class="dialog__header"><h3 class="title">Connect Anthropic</h3></header>
-              <div class="dialog__body"><label for="catalogue-dialog-filter">API key</label><input class="text-field" id="catalogue-dialog-filter" placeholder="sk-ant-…"></div>
-              <footer class="dialog__actions"><button class="button secondary" type="button">Cancel</button><button class="button primary" type="button">Connect</button></footer>
+            <dialog class="dialog dialog--panel catalogue-dialog" open>
+              <div class="panel dialog__panel">
+                <header class="panel__header"><h2 class="title dialog__title">Connect Anthropic</h2><form class="dialog__close-form" method="dialog"><button class="dialog__close button secondary icon-only" aria-label="Close dialog"><svg aria-hidden="true" viewBox="0 0 24 24" width="17" height="17" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"><path d="M6 6l12 12M18 6L6 18"/></svg></button></form></header>
+                <div class="panel__body dialog__body"><label for="catalogue-dialog-filter">API key</label><input class="text-field" id="catalogue-dialog-filter" placeholder="sk-ant-…"></div>
+                <footer class="panel__footer"><button class="button secondary" type="button">Cancel</button><button class="button primary" type="button">Connect</button></footer>
+              </div>
             </dialog>
           </div><p class="catalogue-note">Add <code>data-dialog-auto-show</code> when a newly inserted dialog should open immediately. Prefer native <code>method="dialog"</code> forms for closing actions.</p></article>
         </section>

@@ -12,10 +12,13 @@ export interface PanelOptions {
   headerHtml: string;
   /** Trusted, already-escaped body contents. */
   bodyHtml: string;
+  /** Trusted, already-escaped footer contents. Omit when the surface has no footer actions. */
+  footerHtml?: string;
 }
 
-/** Renders a bounded surface with fixed header chrome around a flexible body. */
+/** Renders a bounded surface with fixed chrome around a flexible body. */
 export function panelHtml(options: PanelOptions): string {
   const { element } = options;
-  return `<${element.tag} class="${escapeHtml(classNames("panel", element.className))}"${attributesHtml(element.attributesHtml)}><header class="panel__header">${options.headerHtml}</header><div class="panel__body">${options.bodyHtml}</div></${element.tag}>`;
+  const footer = options.footerHtml === undefined ? "" : `<footer class="panel__footer">${options.footerHtml}</footer>`;
+  return `<${element.tag} class="${escapeHtml(classNames("panel", element.className))}"${attributesHtml(element.attributesHtml)}><header class="panel__header">${options.headerHtml}</header><div class="panel__body">${options.bodyHtml}</div>${footer}</${element.tag}>`;
 }

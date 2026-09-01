@@ -247,8 +247,11 @@ describe("web app contracts", () => {
       expect(body).toContain('class="managed-list__actions ');
       expect(body).toContain('action="/settings/models/add"');
       expect(body).toContain('action="/settings/models/remove"');
-      expect(body).toContain("Disconnect provider");
+      expect(body).toContain("Disconnect</button>");
+      expect(body).toContain("Remove model");
       expect(body).toContain("Add API key");
+      expect(body).toContain("Git user name");
+      expect(body).toContain("Git email");
       expect(body).not.toContain("settings-btn");
       expect(body).not.toContain("settings-button");
       expect(body.match(/class="managed-list__item" data-search-text=/g)?.length).toBe(50);
@@ -1195,7 +1198,8 @@ describe("web app contracts", () => {
 
         expect(response.headers.get("content-type")).toContain("text/vnd.turbo-stream.html");
         expect(body).toContain('target="settings_dialog"');
-        expect(body).toContain("Connected");
+        expect(body).not.toContain('class="managed-list__meta">Connected</span>');
+        expect(body).toContain("Disconnect GitHub");
         expect(body).toContain('target="settings_flow_dialog"');
         expect(await getGitIdentity()).toEqual({ name: "Mona Lisa", email: "octocat@github.com" });
       } finally {

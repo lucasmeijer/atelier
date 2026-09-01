@@ -1,0 +1,67 @@
+/* Native modal behavior and anatomy shared by server-rendered task surfaces. */
+.dialog {
+  width: min(760px, calc(100vw - 32px));
+  max-height: min(92vh, 720px);
+  margin: auto;
+  padding: 0;
+  overflow: hidden;
+  border: 1px solid var(--line-strong);
+  border-radius: var(--radius-overlay);
+  background: var(--panel);
+  color: var(--text-bright);
+  box-shadow: 0 10px 28px color-mix(in srgb, #000 16%, transparent);
+}
+
+.dialog::backdrop {
+  background: color-mix(in srgb, #000 50%, transparent);
+  backdrop-filter: blur(4px);
+}
+
+.dialog:focus { outline: none; }
+.dialog__form { display: contents; }
+.dialog__header { display: flex; align-items: center; gap: 8px; padding: 16px; }
+.dialog__body { max-height: calc(92vh - 128px); padding: 16px; overflow: auto; color: var(--text); }
+.dialog__body > * + * { margin-top: 12px; }
+.dialog__actions { display: flex; justify-content: flex-end; gap: 8px; padding: 0 16px 16px; }
+.dialog__actions > form { display: flex; margin: 0; }
+.dialog--compact { width: min(560px, calc(100vw - 32px)); }
+.dialog--compact .dialog__body { padding-bottom: 12px; }
+.dialog--sheet { max-height: min(92vh, 860px); }
+
+/* Panel-backed dialogs delegate their visible surface and regions to Panel. */
+.dialog.dialog--panel {
+  max-width: none;
+  max-height: min(92vh, 860px);
+  overflow: visible;
+  border: 0;
+  background: transparent;
+  box-shadow: none;
+}
+
+.dialog.dialog--panel > .dialog__panel {
+  width: 100%;
+  max-height: min(92vh, 860px);
+  border-color: var(--line-strong);
+  box-shadow: 0 10px 28px color-mix(in srgb, #000 16%, transparent);
+}
+
+.dialog__title {
+  min-width: 0;
+  flex: 1;
+  padding-inline: 8px;
+}
+
+.dialog__close-form {
+  flex: 0 0 auto;
+  margin: 0 0 0 auto;
+}
+
+.dialog.dialog--panel > .dialog__panel > .panel__body {
+  overflow: auto;
+  color: var(--text);
+  font: var(--text-body)/var(--leading-standard) var(--font-sans);
+}
+
+@media (max-width: 700px) {
+  .dialog { width: min(760px, calc(100vw - 16px)); }
+}

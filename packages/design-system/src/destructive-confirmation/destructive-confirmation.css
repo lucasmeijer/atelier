@@ -3,6 +3,7 @@
   --destructive-confirmation-control-size: 26px;
   position: relative;
   z-index: 1;
+  align-self: center;
   width: var(--destructive-confirmation-trigger-width, var(--destructive-confirmation-control-size));
   height: var(--destructive-confirmation-control-height, var(--destructive-confirmation-control-size));
   flex: none;

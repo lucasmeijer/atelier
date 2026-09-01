@@ -1,4 +1,6 @@
 import { copyButtonHtml } from "@atelier/design-system/copy-button";
+import { destructiveConfirmationHtml } from "@atelier/design-system/destructive-confirmation";
+import { dialogHtml } from "@atelier/design-system/dialog";
 import { Icons } from "@atelier/design-system/icons";
 import { clearWorkspaceGitHubToken, hasWorkspaceGitHubToken, setWorkspaceGitHubToken } from "@atelier/proxy-egress";
 import {
@@ -84,6 +86,24 @@ function dialogHeader(title: string, visual = ""): string {
   return `<header class="dialog__header">${visual}<h2 class="title">${escapeHtml(title)}</h2></header>`;
 }
 
+const githubDisconnectConfirmation = destructiveConfirmationHtml({
+  buttonHtml: '<button class="button danger" type="button">Disconnect</button>',
+  confirmCaption: "Disconnect GitHub",
+  cancelCaption: "Cancel",
+});
+
+const providerDisconnectConfirmation = destructiveConfirmationHtml({
+  buttonHtml: '<button class="button danger" type="button">Disconnect</button>',
+  confirmCaption: "Disconnect",
+  cancelCaption: "Cancel",
+});
+
+const modelRemovalConfirmation = destructiveConfirmationHtml({
+  buttonHtml: `<button class="button danger icon-only" type="button" title="Remove configured model" aria-label="Remove configured model">${Icons.Trash}</button>`,
+  confirmCaption: "Remove model",
+  cancelCaption: "Cancel",
+});
+
 function githubRow(surface: "settings" | "onboarding" = "settings"): string {
   const connected = hasWorkspaceGitHubToken();
   const flowAction = surface === "onboarding" ? "/settings/github/flow?surface=onboarding" : "/settings/github/flow";
@@ -91,9 +111,9 @@ function githubRow(surface: "settings" | "onboarding" = "settings"): string {
   return `<div class="managed-list"><div class="managed-list__item" id="${domId(surface, "provider", "github")}">
     ${providerIcon("github", "GitHub", "settings-provider-icon managed-list__visual")}
     <div class="managed-list__content"><div class="managed-list__label"><span class="managed-list__label-text">GitHub</span></div><div class="managed-list__description">Atelier securely injects your token into workspace GitHub requests without exposing it to the coding agent.</div></div>
-    <span class="managed-list__meta">${connected ? "Connected" : "Not connected"}</span>
+    ${connected ? "" : '<span class="managed-list__meta">Not connected</span>'}
     <div class="managed-list__actions">${connected
-      ? `<form method="post" action="${disconnectAction}" data-turbo="true"><button class="button danger" type="submit">Disconnect</button></form>`
+      ? `<form method="post" action="${disconnectAction}" data-turbo="true">${githubDisconnectConfirmation}</form>`
       : `<form method="post" action="${flowAction}" data-turbo="true"><button class="button primary" type="submit">Connect</button></form>`}</div>
   </div></div>`;
 }
@@ -116,24 +136,24 @@ async function providerSummaries(): Promise<ProviderSummary[]> {
 
 async function renderThemeSettings(): Promise<string> {
   const themes = [["daylight", "Daylight"], ["cappuccino", "Cappuccino"], ["tokyo-night", "Tokyo Night"], ["midnight", "Midnight"], ["nord", "Nord"]];
-  return `<section class="settings-sec settings-sec-inline" id="settings-sec-theme"><h2>Theme</h2><select class="settings-select popup-select" data-controller="theme-select" aria-label="Theme">${themes.map(([value, label]) => `<option value="${value}">${label}</option>`).join("")}</select></section>`;
+  return `<section class="settings-sec settings-sec-inline settings-sec-theme" id="settings-sec-theme"><h2>Theme</h2><select class="settings-select popup-select" data-controller="theme-select" aria-label="Theme">${themes.map(([value, label]) => `<option value="${value}">${label}</option>`).join("")}</select></section>`;
 }
 
 async function renderGitIdentityForm(error = ""): Promise<string> {
   const identity = await getGitIdentity();
   return `<form id="settings_git_identity" class="settings-git-identity" method="post" action="/settings/git-identity" data-controller="git-identity" data-action="input->git-identity#queue change->git-identity#save submit->git-identity#submit">
     ${error ? `<p class="settings-error">${escapeHtml(error)}</p>` : ""}
-    <div class="settings-field"><div><b>Git user name</b><p>Used as <code>user.name</code> in new workspace containers.</p></div><input class="settings-input text-field" name="name" value="${escapeHtml(identity?.name ?? "")}" placeholder="Ada Lovelace" autocomplete="name" required></div>
-    <div class="settings-field"><div><b>Git email</b><p>Used as <code>user.email</code> when commits are created.</p></div><input class="settings-input text-field" type="email" name="email" value="${escapeHtml(identity?.email ?? "")}" placeholder="ada@example.com" autocomplete="email" required></div>
+    <label class="settings-field"><span class="settings-field-label">Git user name</span><input class="settings-input text-field" name="name" value="${escapeHtml(identity?.name ?? "")}" placeholder="Ada Lovelace" autocomplete="name" required></label>
+    <label class="settings-field"><span class="settings-field-label">Git email</span><input class="settings-input text-field" type="email" name="email" value="${escapeHtml(identity?.email ?? "")}" placeholder="ada@example.com" autocomplete="email" required></label>
   </form>`;
 }
 
 async function renderGitIdentitySettings(): Promise<string> {
-  return settingsSection("git-identity", "Git identity", await renderGitIdentityForm());
+  return `<section class="settings-sec" id="settings-sec-git-identity">${await renderGitIdentityForm()}</section>`;
 }
 
 async function renderGitHubSettings(): Promise<string> {
-  return settingsSection("github", "GitHub", githubRow());
+  return `<section class="settings-sec settings-sec-github" id="settings-sec-github">${githubRow()}</section>`;
 }
 
 async function renderModelSetupSettings(): Promise<string> {
@@ -234,8 +254,8 @@ function configuredModelRow(model: ConfiguredAgentModel, provider: ProviderSumma
     <div class="managed-list__actions model-provider-actions">
       ${providerState(provider)}
       <span class="model-provider-disconnected-actions">${providerAuthenticationActions(provider, surface)}</span>
-      <span class="model-provider-connected-actions"><form method="post" action="/settings/providers/${encodeURIComponent(provider.provider)}/disconnect" data-turbo="true"><button class="button danger" type="submit">Disconnect provider</button></form></span>
-      <form method="post" action="/settings/models/remove" data-turbo="true"><input type="hidden" name="model" value="${escapeHtml(modelKey(model))}"><button class="button danger icon-only" type="submit" title="Remove configured model" aria-label="Remove configured model">${Icons.Trash}</button></form>
+      <span class="model-provider-connected-actions"><form method="post" action="/settings/providers/${encodeURIComponent(provider.provider)}/disconnect" data-turbo="true">${providerDisconnectConfirmation}</form></span>
+      <form method="post" action="/settings/models/remove" data-turbo="true"><input type="hidden" name="model" value="${escapeHtml(modelKey(model))}">${modelRemovalConfirmation}</form>
     </div>
   </div>`;
 }
@@ -328,22 +348,27 @@ for (const module of workspaceModules) {
   for (const contribution of module.settingsContributions ?? []) registerSettingsContribution(contribution);
 }
 
+function settingsDialogHtml(titleHtml: string, bodyHtml: string): string {
+  return dialogHtml({
+    element: {
+      id: "settings_dialog",
+      className: "dialog--sheet settings-dialog",
+      attributesHtml: 'aria-label="Settings" data-dialog-auto-show',
+    },
+    titleHtml,
+    bodyHtml,
+    closeLabel: "Close settings",
+  });
+}
+
 export async function renderSettingsDialog(_active = "theme"): Promise<string> {
   const contributions = listSettingsContributions().filter((contribution) => contribution.id !== "keypress-probe");
   const sections = await Promise.all(contributions.map((contribution) => contribution.render()));
-  return `<dialog id="settings_dialog" class="dialog dialog--sheet settings-dialog" tabindex="-1" autofocus data-controller="modal" data-modal-auto-show-value="true">
-    <div class="settings-sheet">
-      <main class="settings-main"><form method="dialog"><button class="settings-close button secondary icon-only" value="close" title="Close settings" aria-label="Close settings">${Icons.Close}</button></form><div class="settings-title">Settings</div>${sections.join("")}<div class="settings-dev-link"><a href="/settings/development" data-turbo-frame="_top" data-turbo-stream="true">Development settings</a></div></main>
-    </div>
-  </dialog>`;
+  return settingsDialogHtml("Settings", `<main class="settings-main">${sections.join("")}<div class="settings-dev-link"><a href="/settings/development" data-turbo-frame="_top" data-turbo-stream="true">Development settings</a></div></main>`);
 }
 
 export async function renderDevelopmentSettingsDialog(): Promise<string> {
-  return `<dialog id="settings_dialog" class="dialog dialog--sheet settings-dialog" tabindex="-1" autofocus data-controller="modal" data-modal-auto-show-value="true">
-    <div class="settings-sheet">
-      <main class="settings-main settings-main-dev"><form method="dialog"><button class="settings-close button secondary icon-only" value="close" title="Close settings" aria-label="Close settings">${Icons.Close}</button></form><div class="settings-title"><a class="settings-back-link" href="/settings" data-turbo-frame="_top" data-turbo-stream="true">Settings</a></div>${await renderDevelopmentSettings()}</main>
-    </div>
-  </dialog>`;
+  return settingsDialogHtml(`<a class="settings-back-link" href="/settings" data-turbo-frame="_top" data-turbo-stream="true">Settings</a>`, `<main class="settings-main settings-main-dev">${await renderDevelopmentSettings()}</main>`);
 }
 
 function forceDeleteAllWorkspacesModal(error = ""): string {

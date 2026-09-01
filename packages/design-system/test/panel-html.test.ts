@@ -12,6 +12,17 @@ describe("panelHtml", () => {
     expect(html).toBe('<aside class="panel workspace-pane" aria-label="Workspaces"><header class="panel__header"><strong>Atelier</strong></header><div class="panel__body"><nav>Workspaces</nav></div></aside>');
   });
 
+  test("renders an optional fixed footer", () => {
+    const html = panelHtml({
+      element: { tag: "div" },
+      headerHtml: "Settings",
+      bodyHtml: "Configuration",
+      footerHtml: "<button>Save</button>",
+    });
+
+    expect(html).toContain('<footer class="panel__footer"><button>Save</button></footer>');
+  });
+
   test("escapes caller-owned class names", () => {
     const html = panelHtml({
       element: { tag: "section", className: 'settings\" data-unsafe="true' },

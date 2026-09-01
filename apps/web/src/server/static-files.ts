@@ -30,6 +30,7 @@ export const fingerprintedStaticFiles: StaticFileRegistry = {
   "/activity-button.css": { url: new URL("../../../../packages/design-system/src/activity-button/activity-button.css", import.meta.url), contentType: "text/css; charset=utf-8" },
   "/copy-button.css": { url: new URL("../../../../packages/design-system/src/copy-button/copy-button.css", import.meta.url), contentType: "text/css; charset=utf-8" },
   "/destructive-confirmation.css": { url: new URL("../../../../packages/design-system/src/destructive-confirmation/destructive-confirmation.css", import.meta.url), contentType: "text/css; charset=utf-8" },
+  "/dialog.css": { url: new URL("../../../../packages/design-system/src/dialog/dialog.css", import.meta.url), contentType: "text/css; charset=utf-8" },
   "/icons.css": { url: new URL("../../../../packages/design-system/src/icons/icons.css", import.meta.url), contentType: "text/css; charset=utf-8" },
   "/panel.css": { url: new URL("../../../../packages/design-system/src/panel/panel.css", import.meta.url), contentType: "text/css; charset=utf-8" },
   "/perimeter-button.css": { url: new URL("../../../../packages/design-system/src/perimeter-button/perimeter-button.css", import.meta.url), contentType: "text/css; charset=utf-8" },

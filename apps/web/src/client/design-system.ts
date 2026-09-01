@@ -4,6 +4,7 @@ import { Application, Controller } from "@hotwired/stimulus";
 import { ActionItemController } from "@atelier/design-system/action-item/client";
 import { CopyButtonController } from "@atelier/design-system/copy-button/client";
 import { DestructiveConfirmationController } from "@atelier/design-system/destructive-confirmation/client";
+import { DialogController } from "@atelier/design-system/dialog/client";
 import { Icons } from "@atelier/design-system/icons";
 import { LinearNavigationController } from "@atelier/design-system/linear-navigation/client";
 import { TransientFeedbackController } from "@atelier/design-system/transient-feedback/client";
@@ -18,27 +19,6 @@ export function createCloseButton(label: string): HTMLButtonElement {
   button.setAttribute("aria-label", label);
   button.innerHTML = Icons.Close;
   return button;
-}
-
-class DialogController extends Controller<HTMLDialogElement> {
-  private opener?: HTMLElement;
-
-  connect(): void {
-    this.opener = document.activeElement instanceof HTMLElement ? document.activeElement : undefined;
-    this.element.addEventListener("close", this.restoreFocus);
-    if (this.element.hasAttribute("data-dialog-auto-show") && !this.element.open) {
-      this.element.showModal();
-      requestAnimationFrame(() => this.element.querySelector<HTMLElement>("[autofocus], button, input, select, textarea")?.focus());
-    }
-  }
-
-  disconnect(): void {
-    this.element.removeEventListener("close", this.restoreFocus);
-  }
-
-  private readonly restoreFocus = (): void => {
-    this.opener?.focus();
-  };
 }
 
 class ManagedListController extends Controller<HTMLElement> {

@@ -11,6 +11,8 @@
     "./copy-button/client": "./src/copy-button/copy-button-controller.ts",
     "./destructive-confirmation": "./src/destructive-confirmation/destructive-confirmation-html.ts",
     "./destructive-confirmation/client": "./src/destructive-confirmation/destructive-confirmation-controller.ts",
+    "./dialog": "./src/dialog/dialog-html.ts",
+    "./dialog/client": "./src/dialog/dialog-controller.ts",
     "./icons": "./src/icons/icons-html.ts",
     "./linear-navigation/client": "./src/linear-navigation/linear-navigation-controller.ts",
     "./panel": "./src/panel/panel-html.ts",
