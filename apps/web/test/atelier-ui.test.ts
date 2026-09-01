@@ -216,6 +216,42 @@ Comment: I don't think we need these tests`;
     }
   });
 
+  test("focuses a fresh review and navigates or expands its files with arrow keys", async () => {
+    const reviewBody = renderReviewBody("keyboard-review", {
+      phase: "ready",
+      files: [
+        { path: "alpha.ts", change: "modified" },
+        { path: "bravo.ts", change: "added" },
+        { path: "charlie.ts", change: "removed" },
+      ],
+    }, []);
+    const fixture = `<div class="workspace-detail-resident visible"><section class="fixed-shell-surface is-active" data-workspace-pane-role="work">${reviewBody}</section></div>`;
+    const page = await newTestPage();
+    await page.route("http://atelier.test/", (route) => route.fulfill({ contentType: "text/html", body: `${fixture}<script type="module" src="${workspaceClientPath}"></script>` }));
+    await page.route("http://atelier.test/workspaces/keyboard-review/review/**", (route) => route.fulfill({ status: 204 }));
+    await page.goto("http://atelier.test/");
+
+    const files = page.locator(".review-file");
+    const summaries = files.locator(":scope > summary");
+    await page.waitForFunction(() => document.querySelector(".review-file > summary") === document.activeElement);
+    expect(await summaries.nth(0).getAttribute("class")).toContain("active");
+    await summaries.nth(0).press("ArrowRight");
+    expect(await files.nth(0).getAttribute("open")).not.toBeNull();
+    await summaries.nth(0).press("ArrowLeft");
+    expect(await files.nth(0).getAttribute("open")).toBeNull();
+    await summaries.nth(0).press("ArrowDown");
+    expect(await summaries.nth(0).getAttribute("class")).not.toContain("active");
+    expect(await summaries.nth(1).getAttribute("class")).toContain("active");
+    expect(await summaries.nth(1).evaluate((summary) => summary === document.activeElement)).toBe(true);
+    await summaries.nth(1).press("ArrowDown");
+    expect(await summaries.nth(2).evaluate((summary) => summary === document.activeElement)).toBe(true);
+    await summaries.nth(2).press("ArrowDown");
+    expect(await summaries.nth(2).evaluate((summary) => summary === document.activeElement)).toBe(true);
+    await summaries.nth(2).press("ArrowUp");
+    expect(await summaries.nth(1).evaluate((summary) => summary === document.activeElement)).toBe(true);
+    await page.close();
+  });
+
   test("loads review stats eagerly, then intent-loads and retains each diff", async () => {
     const root = await createReviewRepository();
     try {
@@ -251,19 +287,19 @@ Comment: I don't think we need these tests`;
       const lines = highlighting.getByRole("button", { name: "Lines", exact: true });
       const words = highlighting.getByRole("button", { name: "Words", exact: true });
       const wordHighlights = page.locator("diffs-container").locator("[data-diff-span]");
-      expect(detailRequests).toBe(0);
+      await page.locator("diffs-container").waitFor({ state: "attached" });
+      expect(detailRequests).toBe(1);
       expect(await file.getAttribute("open")).toBeNull();
-      expect(await page.locator("diffs-container").count()).toBe(0);
+      expect(await file.locator("summary").evaluate((summary) => summary === document.activeElement)).toBe(true);
       expect(await file.getByRole("status", { name: "Loading change stats" }).count()).toBe(1);
 
       releaseStats();
       await file.locator(".review-additions").waitFor({ state: "attached" });
       expect(statsRequests).toBe(1);
-      expect(detailRequests).toBe(0);
+      expect(detailRequests).toBe(1);
       expect(await file.getByRole("status", { name: "Loading change stats" }).count()).toBe(0);
 
       await file.locator("summary").hover();
-      await page.locator("diffs-container").waitFor({ state: "attached" });
       expect(detailRequests).toBe(1);
       expect(await file.locator(".review-additions").count()).toBe(1);
       await file.locator("summary").click();

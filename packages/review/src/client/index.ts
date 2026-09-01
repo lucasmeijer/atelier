@@ -108,7 +108,9 @@ function createReviewController(Controller: StimulusControllerConstructor) {
       this.hydrated = true;
       await Promise.all(this.diffTargets.map((host) => this.hydrateHost(host)));
       if (this.draft && !this.fileTargets.some((file) => file.dataset.reviewPath === this.draft?.path)) this.clearDraft();
-      requestAnimationFrame(() => this.restorePosition());
+      requestAnimationFrame(() => {
+        if (!this.restorePosition()) this.fileTargets[0]?.querySelector<HTMLElement>(":scope > summary")!.focus();
+      });
     }
 
     diffTargetConnected(host: HTMLElement): void {
@@ -120,6 +122,25 @@ function createReviewController(Controller: StimulusControllerConstructor) {
       if (event.type === "toggle" && !event.currentTarget.open) return;
       const frame = event.currentTarget.querySelector<HTMLElement>(":scope > turbo-frame[data-src]")!;
       if (!frame.hasAttribute("src")) frame.setAttribute("src", frame.dataset.src!);
+    }
+
+    changeFileDisclosure(event: KeyboardEvent): void {
+      if ((event.key !== "ArrowRight" && event.key !== "ArrowLeft") || !(event.target instanceof HTMLElement)) return;
+      const summary = event.target.closest(".review-file > summary");
+      if (!(summary instanceof HTMLElement) || event.target !== summary) return;
+      event.preventDefault();
+      summary.closest<HTMLDetailsElement>(".review-file")!.open = event.key === "ArrowRight";
+    }
+
+    selectFile(event: FocusEvent): void {
+      if (!(event.currentTarget instanceof HTMLDetailsElement)) throw new Error("Review file selection requires details");
+      event.currentTarget.querySelector<HTMLElement>(":scope > summary")!.classList.add("active");
+    }
+
+    deselectFile(event: FocusEvent): void {
+      if (!(event.currentTarget instanceof HTMLDetailsElement)) throw new Error("Review file selection requires details");
+      if (event.relatedTarget instanceof Node && event.currentTarget.contains(event.relatedTarget)) return;
+      event.currentTarget.querySelector<HTMLElement>(":scope > summary")!.classList.remove("active");
     }
 
     collapseAll(): void {
@@ -432,15 +453,15 @@ function createReviewController(Controller: StimulusControllerConstructor) {
 
     }
 
-    private restorePosition(): void {
+    private restorePosition(): boolean {
       const raw = sessionStorage.getItem(this.positionKey);
       sessionStorage.removeItem(this.positionKey);
-      if (!raw) return;
+      if (!raw) return false;
       // SAFETY: rememberPosition writes this browser-owned value with this exact shape.
       const saved = JSON.parse(raw) as SavedReviewPosition;
       for (const candidate of this.fileTargets) candidate.open = saved.openPaths.includes(candidate.dataset.reviewPath!);
       const file = this.fileTargets.find((candidate) => candidate.dataset.reviewPath === saved.path);
-      if (!file) return;
+      if (!file) return false;
       const scroller = this.element;
       let anchor: HTMLElement = file;
       if (saved.line !== undefined) {
@@ -449,6 +470,7 @@ function createReviewController(Controller: StimulusControllerConstructor) {
         anchor = candidates.find((candidate) => candidate.dataset.lineType === saved.lineType) ?? candidates[0] ?? file;
       }
       scroller.scrollTop += anchor.getBoundingClientRect().top - scroller.getBoundingClientRect().top - saved.offset;
+      return true;
     }
 
     private persistDraft(): void {

@@ -62,7 +62,7 @@ function renderFileSummary(label: ActionItemLabel, metaHtml: string, title?: str
       attributesHtml: title ? `title="${escapeHtml(title)}"` : undefined,
     },
     trailingHtml: `<span class="action-item__status review-file-meta">${metaHtml}</span>`,
-    element: { tag: "summary" },
+    element: { tag: "summary", attributesHtml: 'data-linear-navigation-target="item"' },
   });
 }
 
@@ -100,7 +100,7 @@ function renderFile(workspaceId: string, file: ReviewFileSummary, comments: Revi
   const detailUrl = `/workspaces/${encodeURIComponent(workspaceId)}/review/files/${encodeURIComponent(file.path)}`;
   const label = `${file.previousPath ? `<span>${escapeHtml(file.previousPath)}</span><b aria-label="renamed to">→</b>` : ""}<span>${escapeHtml(file.path)}</span>`;
   const summary = renderFileSummary({ kind: "html", html: label }, `${renderCommentCount(fileComments.length)}${renderGitStats(workspaceId, file)}`, file.path);
-  return `<details class="review-file" data-review-target="file" data-review-path="${escapeHtml(file.path)}" data-review-change="${file.change}" data-review-comments="${fileComments.length}" data-action="pointerenter->review#requestFile pointerdown->review#requestFile focusin->review#requestFile toggle->review#requestFile">
+  return `<details class="review-file" data-review-target="file" data-review-path="${escapeHtml(file.path)}" data-review-change="${file.change}" data-review-comments="${fileComments.length}" data-action="pointerenter->review#requestFile pointerdown->review#requestFile focusin->review#requestFile focusin->review#selectFile focusout->review#deselectFile toggle->review#requestFile">
     ${summary}
     <turbo-frame id="${frameId}" data-src="${escapeHtml(detailUrl)}"><div class="review-file-loading" role="status"><span class="status-spinner" aria-hidden="true"></span> Loading changes…</div></turbo-frame>
   </details>`;
@@ -128,7 +128,7 @@ function reviewCommentsModelId(workspaceId: string): string {
 
 function renderUnanchoredSlot(workspaceId: string, comments: ReviewComment[]): string {
   const summary = renderFileSummary({ kind: "text", text: "Comments without anchors" }, renderCommentCount(comments.length));
-  const file = comments.length ? `<details class="review-file" data-review-target="file" data-review-path="comments-without-anchors" data-review-comments="${comments.length}">
+  const file = comments.length ? `<details class="review-file" data-review-target="file" data-review-path="comments-without-anchors" data-review-comments="${comments.length}" data-action="focusin->review#selectFile focusout->review#deselectFile">
     ${summary}
     <div class="review-file-diff review-unanchored-comments">${comments.map((comment) => renderUnanchoredComment(workspaceId, comment)).join("")}</div>
   </details>` : "";
@@ -198,7 +198,7 @@ export function renderReviewBody(workspaceId: string, index: ReviewIndex, commen
   const unanchoredComments = comments.filter((comment) => comment.outdated);
   const renderedFiles = index.files.map((file) => renderFile(workspaceId, file, comments));
   const content = renderedFiles.length || unanchoredComments.length
-    ? `<div class="review-files action-list">${renderedFiles.join("")}${renderUnanchoredSlot(workspaceId, unanchoredComments)}</div>`
+    ? `<div class="review-files action-list" data-controller="linear-navigation" data-action="keydown->review#changeFileDisclosure">${renderedFiles.join("")}${renderUnanchoredSlot(workspaceId, unanchoredComments)}</div>`
     : `<div class="review-no-changes"><h2>No changes to review</h2><p>The working tree matches HEAD.</p></div>`;
   const commentModels = comments.map(commentModel);
   const statsUrl = `/workspaces/${encodeURIComponent(workspaceId)}/review/stats`;

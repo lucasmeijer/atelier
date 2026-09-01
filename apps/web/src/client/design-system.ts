@@ -5,6 +5,7 @@ import { ActionItemController } from "@atelier/design-system/action-item/client"
 import { CopyButtonController } from "@atelier/design-system/copy-button/client";
 import { DestructiveConfirmationController } from "@atelier/design-system/destructive-confirmation/client";
 import { Icons } from "@atelier/design-system/icons";
+import { LinearNavigationController } from "@atelier/design-system/linear-navigation/client";
 import { TransientFeedbackController } from "@atelier/design-system/transient-feedback/client";
 import { ToggleController } from "@atelier/design-system/toggle/client";
 import { PopupSelectController } from "./popup-select.ts";
@@ -189,6 +190,7 @@ export function registerDesignSystemControllers(application: Pick<Application, "
   application.register("copy-button", CopyButtonController);
   application.register("destructive-confirmation", DestructiveConfirmationController);
   application.register("dialog", DialogController);
+  application.register("linear-navigation", LinearNavigationController);
   application.register("managed-list", ManagedListController);
   application.register("popup-menu", PopupMenuController);
   application.register("popup-select", PopupSelectController);

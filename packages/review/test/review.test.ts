@@ -209,8 +209,9 @@ describe("Review presentation", () => {
     const file: ReviewFile = { path: "src/example.ts", change: "modified", kind: "binary", detail: "Binary file changed" };
     const html = renderReviewBody("workspace 1", { phase: "ready", files: [file] }, [comment]);
 
-    expect(html).toContain('class="review-files action-list"');
-    expect(html).toContain('<details class="review-file" data-review-target="file" data-review-path="src/example.ts" data-review-change="modified" data-review-comments="1" data-action="pointerenter->review#requestFile pointerdown->review#requestFile focusin->review#requestFile toggle->review#requestFile">');
+    expect(html).toContain('class="review-files action-list" data-controller="linear-navigation" data-action="keydown->review#changeFileDisclosure"');
+    expect(html).toContain('class="action-item action-item__primary" data-linear-navigation-target="item"');
+    expect(html).toContain('<details class="review-file" data-review-target="file" data-review-path="src/example.ts" data-review-change="modified" data-review-comments="1" data-action="pointerenter->review#requestFile pointerdown->review#requestFile focusin->review#requestFile focusin->review#selectFile focusout->review#deselectFile toggle->review#requestFile">');
     expect([...html.matchAll(/<details class="review-file"[^>]*>/g)].every(([details]) => !details.includes(" open"))).toBe(true);
     expect(html).toContain('data-src="/workspaces/workspace%201/review/files/src%2Fexample.ts"');
     expect(html).not.toContain("Binary file changed");
@@ -268,7 +269,7 @@ describe("Review presentation", () => {
     const comment: ReviewComment = { id: "comment-1", path: "src/removed.ts", side: "deletions", startLine: 4, endLine: 4, body: "Keep this behavior", snippet: "removed()", outdated: true };
     const html = await renderReviewBody("workspace 1", { phase: "ready", files: [] }, [comment]);
 
-    expect(html).toContain('<details class="review-file" data-review-target="file" data-review-path="comments-without-anchors" data-review-comments="1">');
+    expect(html).toContain('<details class="review-file" data-review-target="file" data-review-path="comments-without-anchors" data-review-comments="1" data-action="focusin->review#selectFile focusout->review#deselectFile">');
     expect(html).toContain("Comments without anchors");
     expect(html).toContain("src/removed.ts");
     expect(html).toContain("removed()");
