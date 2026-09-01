@@ -266,6 +266,7 @@ describe("transcript rendering", () => {
     const html = renderBash("echo one\necho two", { resultText: "plain", details: { exitCode: 0, displayAnsi: "\u001b[31mred\u001b[0m" }, durationMs: 2000 });
     expect(html).toContain("Command");
     expect(html).toContain("Result");
+    expect(html).toContain("As emitted");
     expect(html).toContain("As seen by model");
     expect(html).toContain('aria-label="Copy command to clipboard"');
     expect(html).toContain('aria-label="Copy colored result to clipboard"');
