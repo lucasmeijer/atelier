@@ -48,7 +48,7 @@ describe("role-fixed Workspace presentation", () => {
 
     expect(html).toContain('data-controller="workspace-presentation"');
     expect(html).not.toContain('class="fixed-shell-workspace-pane"');
-    expect(html).toContain('class="fixed-shell-agent-pane"');
+    expect(html).toContain('class="panel fixed-shell-agent-pane"');
     expect(html).toContain('class="fixed-shell-work-pane"');
     expect(html).not.toContain("workspace-group");
     expect(html).not.toContain("visibleTab");
@@ -174,7 +174,7 @@ describe("role-fixed Workspace presentation", () => {
         { id: "browser.create", label: "New Browser", scope: "workspace", placement: "work-launcher" },
       ],
     }));
-    const header = html.slice(html.indexOf('<section class="fixed-shell-agent-pane"'), html.indexOf('<div class="fixed-shell-agent-bodies"'));
+    const header = html.slice(html.indexOf('<section class="panel fixed-shell-agent-pane"'), html.indexOf('<div class="fixed-shell-agent-bodies"'));
 
     expect(header).toContain("Typed shell");
     expect(header).not.toContain("Atelier");
@@ -204,7 +204,7 @@ describe("role-fixed Workspace presentation", () => {
     expect(agentTabs.indexOf('class="fixed-shell-agent-icon"')).toBeLessThan(agentTabs.indexOf('class="action-item__label-text">First'));
 
     const single = renderWorkspacePresentation(fixture({ agentConversations: [{ id: firstConversationId, title: "Agent", bodyUrl: agentBodyUrl(firstConversationId) }] }));
-    const singleHeader = single.slice(single.indexOf('<section class="fixed-shell-agent-pane"'), single.indexOf('</header>', single.indexOf('<section class="fixed-shell-agent-pane"')));
+    const singleHeader = single.slice(single.indexOf('<section class="panel fixed-shell-agent-pane"'), single.indexOf('</header>', single.indexOf('<section class="panel fixed-shell-agent-pane"')));
     expect(singleHeader.match(/class="fixed-shell-agent-icon"/g)).toHaveLength(1);
     expect(singleHeader.indexOf('class="fixed-shell-agent-icon"')).toBeLessThan(singleHeader.indexOf("Typed shell"));
   });
