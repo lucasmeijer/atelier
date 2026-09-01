@@ -290,10 +290,17 @@ function createAgentPaneController(Controller: StimulusControllerConstructor) {
       if (isPhoneViewport() && document.activeElement === this.inputTarget) this.inputTarget.blur();
     }
     private readonly submitting = (): void => {
+      const submittedText = this.inputTarget.value;
+      const submittedRevision = this.composerRevision;
       this.submittedComposer = {
-        revision: this.composerRevision,
+        revision: submittedRevision,
         attachmentIds: new FormData(this.formTarget).getAll("attachment").map(String),
       };
+      if (/^\/compact(?:\s|$)/.test(submittedText.trim())) {
+        queueMicrotask(() => {
+          if (this.composerRevision === submittedRevision) this.setInputValue("");
+        });
+      }
       this.stuck = true;
       this.clearTranscriptFollowingSuspension();
       this.transcriptLayoutChanged();
@@ -1142,12 +1149,18 @@ function promptTemplateTriggerForHotkey(html: string, hotkey: string): string | 
   return container.content.querySelector<HTMLElement>(`[data-prompt-template-hotkey="${hotkey}"]`)?.dataset.commandTrigger;
 }
 
-function filterSlashCompletionCatalog(html: string, query: string): string {
+function filterSlashCompletionCatalog(html: string, query: string, compactAvailable: boolean): string {
   const container = document.createElement("template");
   container.innerHTML = html.trim();
   const menu = container.content.querySelector<HTMLElement>(".autocomplete-menu")!;
+  const compact = menu.querySelector<HTMLButtonElement>('[data-command-trigger="/compact"]');
+  if (compact && !compactAvailable) {
+    compact.disabled = true;
+    compact.setAttribute("aria-disabled", "true");
+    compact.querySelector<HTMLElement>(".action-item__label-text")!.textContent = "/compact [instructions] — Available after more conversation history.";
+  }
   const normalized = query.toLowerCase();
-  const options = [...menu.querySelectorAll<HTMLElement>(".agent-completion-option")]
+  const options = [...menu.querySelectorAll<HTMLButtonElement>(".agent-completion-option")]
     .filter((option) => option.dataset.commandTrigger!.slice(1).toLowerCase().includes(normalized))
     .sort((a, b) => {
       const aName = a.dataset.commandTrigger!.slice(1).toLowerCase();
@@ -1158,9 +1171,10 @@ function filterSlashCompletionCatalog(html: string, query: string): string {
 
   if (options.length === 0) return `<div class="popup-menu autocomplete-menu autocomplete-empty">No matching commands</div>`;
   menu.replaceChildren(...options);
-  for (const [index, option] of options.entries()) {
-    option.classList.toggle("active", index === 0);
-    option.setAttribute("aria-selected", index === 0 ? "true" : "false");
+  const active = options.find((option) => !option.disabled);
+  for (const option of options) {
+    option.classList.toggle("active", option === active);
+    option.setAttribute("aria-selected", option === active ? "true" : "false");
   }
   return menu.outerHTML;
 }
@@ -1180,8 +1194,8 @@ async function commandCatalogHtml(url: URL, interaction: HtmlAutocompleteInterac
   return catalog;
 }
 
-async function slashCompletionHtml(url: URL, interaction: HtmlAutocompleteInteraction, query: string): Promise<string> {
-  return filterSlashCompletionCatalog(await commandCatalogHtml(url, interaction), query);
+async function slashCompletionHtml(url: URL, interaction: HtmlAutocompleteInteraction, query: string, compactAvailable: boolean): Promise<string> {
+  return filterSlashCompletionCatalog(await commandCatalogHtml(url, interaction), query, compactAvailable);
 }
 
 async function quickLaunchHtml(url: URL, interaction: HtmlAutocompleteInteraction): Promise<string> {
@@ -1199,7 +1213,7 @@ async function expandedPromptTemplate(url: string, text: string): Promise<string
 
 function createAgentCompletionsController(Controller: StimulusControllerConstructor) {
   const HtmlAutocompleteController = createHtmlAutocompleteController(Controller, {
-    optionSelector: ".agent-completion-option:not([hidden])",
+    optionSelector: ".agent-completion-option:not([hidden]):not(:disabled)",
     loadingHtml: `<div class="popup-menu autocomplete-menu autocomplete-empty" role="status"><span class="agent-completion-spinner" aria-hidden="true"></span>Loading completions…</div>`,
     triggerKeysWhenClosed: ["/", "@"],
     fullscreenShortcut: (option) => option.dataset.completionKind === "prompt-template",
@@ -1214,11 +1228,15 @@ function createAgentCompletionsController(Controller: StimulusControllerConstruc
       }
       const params: CompletionRequestParams = { kind: completion.kind };
       if (completion.mode) params["mode"] = completion.mode;
+      if (completion.kind === "slash-command") {
+        const availability = input.closest(".agent-pane")?.querySelector<HTMLElement>("[data-agent-compact-available]");
+        params["compactAvailable"] = String(availability?.dataset.agentCompactAvailable !== "false");
+      }
       return { query: completion.query, params, debounceMs: completion.kind === "file" ? 70 : 0 };
     },
     loadHtml(request, url, interaction) {
       if (request.params?.kind === "quick-launch") return quickLaunchHtml(url, interaction);
-      if (request.params?.kind === "slash-command") return slashCompletionHtml(url, interaction, request.query);
+      if (request.params?.kind === "slash-command") return slashCompletionHtml(url, interaction, request.query, request.params.compactAvailable !== "false");
     },
     select(option, input, url) {
       if (selectAgentTreeOption(option, input)) return false;

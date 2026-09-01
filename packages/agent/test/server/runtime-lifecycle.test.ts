@@ -76,6 +76,7 @@ function fakeSession(navigation: Deferred<{ editorText?: string; cancelled?: boo
 
 const emptyStats: AgentStatsView = {
   contextPercent: null,
+  compactAvailable: false,
   inputTokens: 0,
   outputTokens: 0,
   cost: 0,

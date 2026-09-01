@@ -2644,6 +2644,69 @@ Comment: I don't think we need these tests`;
     await page.close();
   });
 
+  test("explains and disables compact completion until enough history exists", async () => {
+    const page = await newTestPage();
+    await page.route("http://atelier.test/", (route) => route.fulfill({
+      contentType: "text/html",
+      body: `<div class="agent-pane" data-controller="agent-completions" data-agent-completions-url-value="/workspaces/demo/agents/agent-1/completions">
+        <span data-agent-compact-available="false" hidden></span>
+        <div data-agent-completions-target="menu" hidden></div>
+        <textarea data-agent-completions-target="input" data-action="input->agent-completions#input keydown->agent-completions#keydown"></textarea>
+      </div><script type="module" src="${workspaceClientPath}"></script>`,
+    }));
+    await page.route("**/workspaces/demo/completion-catalog", (route) => route.fulfill({
+      contentType: "text/html",
+      body: renderSlashCommandCatalog([{ name: "compact", trigger: "/compact", description: "Compact context", argumentHint: "[instructions]", prompt: "/compact", preserveArguments: true }], []),
+    }));
+    await page.goto("http://atelier.test/");
+
+    const input = page.locator("textarea");
+    await input.fill("/comp");
+    const compact = page.getByRole("option", { name: "/compact [instructions] — Available after more conversation history." });
+    await compact.waitFor();
+    expect(await compact.isDisabled()).toBe(true);
+    await compact.click({ force: true });
+    expect(await input.inputValue()).toBe("/comp");
+    await page.close();
+  });
+
+  test("clears a submitted compact command while compaction remains in flight", async () => {
+    const page = await newTestPage();
+    let releaseResponse!: () => void;
+    const responseReleased = new Promise<void>((resolve) => { releaseResponse = resolve; });
+    let markRequestStarted!: () => void;
+    const requestStarted = new Promise<void>((resolve) => { markRequestStarted = resolve; });
+    await page.route("http://atelier.test/", (route) => route.fulfill({
+      contentType: "text/html",
+      body: `<div class="agent-pane" data-controller="agent-pane" data-agent-pane-workspace-id-value="demo" data-agent-pane-conversation-id-value="agent-1">
+        <div class="agent-transcript" data-agent-pane-target="transcript"></div>
+        <div class="composer"><div class="agent-pane-composer-overlays"><button type="button" data-agent-pane-target="transcriptNav"></button></div><div class="composer-surface">
+          <form method="post" action="/messages" data-agent-pane-target="form" data-action="keydown->agent-pane#inputKeydown turbo:submit-end->agent-pane#submitted">
+            <textarea class="composer-input" name="text" data-agent-pane-target="input" data-action="input->agent-pane#promptChanged"></textarea>
+            <button class="agent-sendstop" type="submit" name="mode" value="send" data-agent-pane-target="sendStop" data-agent-busy="false"></button>
+          </form>
+        </div></div>
+      </div><script type="module" src="${workspaceClientPath}"></script>`,
+    }));
+    await page.route("**/messages", async (route) => {
+      markRequestStarted();
+      await responseReleased;
+      await route.fulfill({ status: 200, contentType: "text/vnd.turbo-stream.html", body: "" });
+    });
+    await page.goto("http://atelier.test/");
+
+    const input = page.locator("textarea");
+    await input.fill("/compact Preserve exact test commands.");
+    await input.press("Control+Enter");
+    await requestStarted;
+    await page.waitForFunction(() => document.querySelector<HTMLTextAreaElement>("textarea")?.value === "");
+    await input.fill("Next prompt");
+    releaseResponse();
+    await page.waitForTimeout(50);
+    expect(await input.inputValue()).toBe("Next prompt");
+    await page.close();
+  });
+
   test("hides an inactive Work view close action after the pointer leaves its tab", async () => {
     const page = await newTestPage({ viewport: { width: 1280, height: 800 } });
     const item = actionItemHtml({

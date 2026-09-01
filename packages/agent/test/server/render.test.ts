@@ -15,7 +15,7 @@ const firstEditModel = (html: string): Array<{ name: string; hunks: Array<{ coll
 
 describe("transcript rendering", () => {
   test("server-rendered panes and routes use immutable conversation identity", async () => {
-    const stats = { contextPercent: null, inputTokens: 0, outputTokens: 0, cost: 0, modelName: undefined, thinkingLevel: "off", thinkingLevels: [], models: [] };
+    const stats = { contextPercent: null, compactAvailable: false, inputTokens: 0, outputTokens: 0, cost: 0, modelName: undefined, thinkingLevel: "off", thinkingLevels: [], models: [] };
     const html = await renderAgentPane(ctx, agent, { transcriptHtml: "ready", busy: false, stats });
     expect(html).toContain(`data-agent-pane-conversation-id-value="${agent.conversationId}"`);
     expect(html).toContain(`/agents/${agent.conversationId}/messages`);
@@ -23,7 +23,7 @@ describe("transcript rendering", () => {
   });
 
   test("AgentPaneComposer runs completion shortcuts before prompt submission", async () => {
-    const html = await renderAgentPaneComposer({ action: "/messages", placeholder: "Ask", draftId: "draft", ctx, formTarget: true, includePaneActions: true, stats: { contextPercent: null, inputTokens: 0, outputTokens: 0, cost: 0, modelName: undefined, thinkingLevel: "off", thinkingLevels: [], models: [] } });
+    const html = await renderAgentPaneComposer({ action: "/messages", placeholder: "Ask", draftId: "draft", ctx, formTarget: true, includePaneActions: true, stats: { contextPercent: null, compactAvailable: false, inputTokens: 0, outputTokens: 0, cost: 0, modelName: undefined, thinkingLevel: "off", thinkingLevels: [], models: [] } });
     expect(html).toContain('data-controller="agent-composer ');
     expect(html).toContain("agent-completions");
     expect(html).toContain('tabindex="-1" data-action="keydown-&gt;agent-completions#keydown keydown-&gt;agent-pane#inputKeydown submit-&gt;transcription-composer#submit turbo:submit-end-&gt;agent-pane#submitted click-&gt;agent-pane#focusInput"');
@@ -56,7 +56,8 @@ describe("transcript rendering", () => {
   });
 
   test("composers omit Fast mode", () => {
-    const html = renderAgentPaneComposerFooter(ctx, { contextPercent: null, inputTokens: 0, outputTokens: 0, cost: 0, modelName: "GPT", thinkingLevel: "high", thinkingLevels: ["high"], models: [] });
+    const html = renderAgentPaneComposerFooter(ctx, { contextPercent: null, compactAvailable: false, inputTokens: 0, outputTokens: 0, cost: 0, modelName: "GPT", thinkingLevel: "high", thinkingLevels: ["high"], models: [] });
+    expect(html).toContain('data-agent-compact-available="false"');
     expect(html).not.toContain('aria-label="Fast mode"');
     expect(html).not.toContain("/service-tier");
   });

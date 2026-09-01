@@ -48,7 +48,7 @@ describe("Agent attachment drafts", () => {
     const html = await renderAgentPane(
       { workspaceId: "workspace-1", conversationId },
       { workspaceId: "workspace-1", conversationId, label: "Agent 1", title: "Untitled", path: "/tmp/session.jsonl" },
-      { transcriptHtml: "", busy: false, stats: { contextPercent: null, inputTokens: 0, outputTokens: 0, cost: 0, modelName: undefined, thinkingLevel: "off", thinkingLevels: [], models: [] } },
+      { transcriptHtml: "", busy: false, stats: { contextPercent: null, compactAvailable: false, inputTokens: 0, outputTokens: 0, cost: 0, modelName: undefined, thinkingLevel: "off", thinkingLevels: [], models: [] } },
     );
     expect(html).toContain(`name="attachmentDraft" value="${draftId}"`);
     expect(html).toContain(`name="attachment" value="${staged.id}"`);

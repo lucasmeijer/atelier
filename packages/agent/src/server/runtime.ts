@@ -78,6 +78,16 @@ export function subscribeWorkspaceViewBusy(listener: WorkspaceViewBusyListener):
   return () => workspaceViewBusyListeners.delete(listener);
 }
 
+export function manualCompactionAvailable(contextTokens: number | null | undefined, latestEntryType: string | undefined): boolean {
+  return latestEntryType !== "compaction" && contextTokens !== null && contextTokens !== undefined && contextTokens > compactionKeepRecentTokens;
+}
+
+export function terminalCompactionNotice(event: { errorMessage?: string; aborted?: boolean }): { level: "info" | "error"; message: string } | undefined {
+  if (event.errorMessage) return { level: "error", message: event.errorMessage };
+  if (event.aborted) return { level: "info", message: "Compaction cancelled" };
+  return undefined;
+}
+
 export type SubmitMode = "send" | "steer";
 
 interface SubmitOptions {
@@ -1221,7 +1231,8 @@ export class RealAgentRuntime extends BaseAgentRuntime {
     const context = this.session.getContextUsage?.();
     const model = this.session.model;
     const estimate = this.postCompactionEstimate;
-    const latestCompactionEntryId = this.latestCompactionEntry()?.id;
+    const branch = this.session.sessionManager.getBranch();
+    const latestCompactionEntryId = branch.findLast((entry: any) => entry.type === "compaction")?.id;
     const thinkingLevel = this.currentThinkingLevel();
     const thinkingLevels = this.availableThinkingLevels();
     const configuredModels = await this.configuredModelOptions();
@@ -1243,6 +1254,7 @@ export class RealAgentRuntime extends BaseAgentRuntime {
     }
     return {
       contextPercent,
+      compactAvailable: manualCompactionAvailable(context?.tokens, branch.at(-1)?.type),
       inputTokens: stats?.tokens?.input ?? 0,
       outputTokens: stats?.tokens?.output ?? 0,
       cost: stats?.cost ?? 0,
@@ -1368,10 +1380,8 @@ export class RealAgentRuntime extends BaseAgentRuntime {
         if (event.reason === "manual" && !event.willRetry) await this.emitTurnFinished();
         await this.refreshTranscript();
         await this.refreshStats();
-        this.notice(
-          event.errorMessage ? "error" : "info",
-          event.errorMessage ?? (event.aborted ? "Compaction cancelled" : "Context compacted"),
-        );
+        const notice = terminalCompactionNotice(event);
+        if (notice) this.notice(notice.level, notice.message);
         break;
       }
       case "auto_retry_start":

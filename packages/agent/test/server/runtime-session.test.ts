@@ -2,7 +2,7 @@ import { mkdtemp, readFile, rm, writeFile } from "node:fs/promises";
 import { join } from "node:path";
 import { tmpdir } from "node:os";
 import { afterEach, describe, expect, test } from "bun:test";
-import { contextUsagePercent, discardBootstrapOnlySession, getWorkspaceAgentRuntime, removeWorkspaceAgentRuntime, removeWorkspaceAgentRuntimes } from "../../src/server/runtime.ts";
+import { contextUsagePercent, discardBootstrapOnlySession, getWorkspaceAgentRuntime, manualCompactionAvailable, removeWorkspaceAgentRuntime, removeWorkspaceAgentRuntimes, terminalCompactionNotice } from "../../src/server/runtime.ts";
 
 let dir: string | undefined;
 
@@ -22,6 +22,19 @@ describe("contextUsagePercent", () => {
     expect(contextUsagePercent(undefined, undefined, 128_000)).toBeNull();
     expect(contextUsagePercent(12.5, 8_000, 128_000)).toBe(12.5);
   });
+});
+
+test("manual compaction is available only when history exceeds the retained context", () => {
+  expect(manualCompactionAvailable(6_001, "message")).toBe(true);
+  expect(manualCompactionAvailable(6_000, "message")).toBe(false);
+  expect(manualCompactionAvailable(null, "message")).toBe(false);
+  expect(manualCompactionAvailable(8_000, "compaction")).toBe(false);
+});
+
+test("successful compaction relies on its durable transcript entry instead of a duplicate notice", () => {
+  expect(terminalCompactionNotice({})).toBeUndefined();
+  expect(terminalCompactionNotice({ aborted: true })).toEqual({ level: "info", message: "Compaction cancelled" });
+  expect(terminalCompactionNotice({ errorMessage: "Nothing to compact" })).toEqual({ level: "error", message: "Nothing to compact" });
 });
 
 test("removed Workspace runtimes cannot be recreated by stale Agent requests", async () => {

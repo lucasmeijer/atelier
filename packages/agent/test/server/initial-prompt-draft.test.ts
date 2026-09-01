@@ -27,7 +27,7 @@ async function useTemporaryDataDir(): Promise<void> {
 const emptyPaneState = {
   transcriptHtml: "",
   busy: false,
-  stats: { contextPercent: null, inputTokens: 0, outputTokens: 0, cost: 0, modelName: undefined, thinkingLevel: "off", thinkingLevels: [], models: [] },
+  stats: { contextPercent: null, compactAvailable: false, inputTokens: 0, outputTokens: 0, cost: 0, modelName: undefined, thinkingLevel: "off", thinkingLevels: [], models: [] },
 };
 
 describe("initial Agent prompt drafts", () => {
