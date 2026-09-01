@@ -1,6 +1,7 @@
 import { actionItemHtml, type ActionItemLabel } from "@atelier/design-system/action-item";
 import { copyButtonHtml } from "@atelier/design-system/copy-button";
 import { Icons } from "@atelier/design-system/icons";
+import { toggleHtml } from "@atelier/design-system/toggle";
 import { preloadDiffHTML } from "@pierre/diffs/ssr";
 import { domId, escapeHtml, type WorkspaceWorkViewPresentation } from "@atelier/shared";
 import type { ReviewFile, ReviewFileStats, ReviewFileSummary, ReviewIndex } from "./diff.ts";
@@ -153,6 +154,22 @@ function toolbar(workspaceId: string, comments: ReviewComment[]): string {
     label: "Copy review comments to clipboard",
     disabled: comments.length === 0,
   });
+  const diffHighlighting = toggleHtml({
+    variant: "text-subtle",
+    label: "Diff highlighting",
+    name: "review-word-diff",
+    value: "false",
+    element: { dataAction: "change->review#setWordDiff" },
+    options: [{ label: "Lines", value: "false" }, { label: "Words", value: "true" }],
+  });
+  const longLines = toggleHtml({
+    variant: "text-subtle",
+    label: "Long lines",
+    name: "review-line-wrapping",
+    value: "true",
+    element: { dataAction: "change->review#setLineWrapping" },
+    options: [{ label: "Scroll", value: "false" }, { label: "Wrap", value: "true" }],
+  });
   return `<header class="review-toolbar">
     <div class="review-toolbar-actions button-group copy-region">
       <button class="button secondary" type="button" title="Copy review comments into composer" data-action="click->review#copyCommentsToComposer"${commentsDisabled}>Copy into composer</button>
@@ -160,16 +177,7 @@ function toolbar(workspaceId: string, comments: ReviewComment[]): string {
       <form method="post" action="/workspaces/${encodeURIComponent(workspaceId)}/review/comments/delete" data-turbo="true"><button class="button danger icon-only" type="submit" aria-label="Delete all review comments" title="Delete all review comments"${commentsDisabled}>${Icons.Trash}</button></form>
       ${refreshForm(workspaceId)}
       ${collapse}${expand}
-      <div class="review-display-toggles">
-        <div class="text-toggle subtle" role="group" aria-label="Diff highlighting">
-          <button class="text-toggle__option" type="button" title="Show line-level diff highlighting" aria-pressed="true" data-review-word-diff="false" data-action="click->review#setWordDiff">Lines</button>
-          <button class="text-toggle__option" type="button" title="Show per-word diff highlighting" aria-pressed="false" data-review-word-diff="true" data-action="click->review#setWordDiff">Words</button>
-        </div>
-        <div class="text-toggle subtle" role="group" aria-label="Long lines">
-          <button class="text-toggle__option" type="button" title="Scroll long lines horizontally" aria-pressed="false" data-review-line-wrapping="false" data-action="click->review#setLineWrapping">Scroll</button>
-          <button class="text-toggle__option" type="button" title="Wrap long lines" aria-pressed="true" data-review-line-wrapping="true" data-action="click->review#setLineWrapping">Wrap</button>
-        </div>
-      </div>
+      <div class="review-display-toggles">${diffHighlighting}${longLines}</div>
       <span data-copy-source hidden>${escapeHtml(reviewCommentsPrompt(comments))}</span>
     </div>
   </header>`;

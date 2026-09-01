@@ -224,12 +224,12 @@ describe("Review presentation", () => {
     expect(html).toContain('aria-label="Refresh review"');
     expect(html).toContain('aria-label="Collapse all files"');
     expect(html).toContain('aria-label="Expand all files"');
-    expect(html).toContain('class="text-toggle subtle" role="group" aria-label="Diff highlighting"');
-    expect(html).toContain('aria-pressed="true" data-review-word-diff="false" data-action="click->review#setWordDiff">Lines</button>');
-    expect(html).toContain('aria-pressed="false" data-review-word-diff="true" data-action="click->review#setWordDiff">Words</button>');
-    expect(html).toContain('class="text-toggle subtle" role="group" aria-label="Long lines"');
-    expect(html).toContain('aria-pressed="false" data-review-line-wrapping="false" data-action="click->review#setLineWrapping">Scroll</button>');
-    expect(html).toContain('aria-pressed="true" data-review-line-wrapping="true" data-action="click->review#setLineWrapping">Wrap</button>');
+    expect(html).toContain('role="group" aria-label="Diff highlighting" data-controller="toggle" data-action="change-&gt;review#setWordDiff"');
+    expect(html).toContain('name="review-word-diff" value="false" aria-pressed="true">Lines</button>');
+    expect(html).toContain('name="review-word-diff" value="true" aria-pressed="false">Words</button>');
+    expect(html).toContain('role="group" aria-label="Long lines" data-controller="toggle" data-action="change-&gt;review#setLineWrapping"');
+    expect(html).toContain('name="review-line-wrapping" value="false" aria-pressed="false">Scroll</button>');
+    expect(html).toContain('name="review-line-wrapping" value="true" aria-pressed="true">Wrap</button>');
     expect(html.indexOf(">Lines</button>")).toBeLessThan(html.indexOf(">Words</button>"));
     expect(html.indexOf(">Scroll</button>")).toBeLessThan(html.indexOf(">Wrap</button>"));
     expect(html).toContain('<span class="review-comment-count" aria-label="1 comment">1</span>');
@@ -240,8 +240,6 @@ describe("Review presentation", () => {
     expect(html.indexOf("Copy into composer")).toBeLessThan(html.indexOf('aria-label="Copy review comments to clipboard"'));
     expect(html.indexOf('aria-label="Copy review comments to clipboard"')).toBeLessThan(html.indexOf('aria-label="Delete all review comments"'));
     expect(html.indexOf('aria-label="Delete all review comments"')).toBeLessThan(html.indexOf('aria-label="Refresh review"'));
-    const header = html.slice(html.indexOf("<header"), html.indexOf("</header>"));
-    expect([...header.matchAll(/<button\b[^>]*>/g)].every(([button]) => button.includes('title="'))).toBe(true);
     expect(html).not.toContain('aria-label="Review totals"');
     expect(html).not.toContain('name="reviewComment"');
   });

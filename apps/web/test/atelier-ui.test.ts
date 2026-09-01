@@ -201,7 +201,9 @@ Comment: I don't think we need these tests`;
       await page.goto("http://atelier.test/");
 
       const file = page.locator("details.review-file");
-      const toggle = page.getByRole("button", { name: "Word diff", exact: true });
+      const highlighting = page.getByRole("group", { name: "Diff highlighting", exact: true });
+      const lines = highlighting.getByRole("button", { name: "Lines", exact: true });
+      const words = highlighting.getByRole("button", { name: "Words", exact: true });
       const wordHighlights = page.locator("diffs-container").locator("[data-diff-span]");
       expect(detailRequests).toBe(0);
       expect(await file.getAttribute("open")).toBeNull();
@@ -219,16 +221,19 @@ Comment: I don't think we need these tests`;
       expect(detailRequests).toBe(1);
       expect(await file.locator(".review-additions").count()).toBe(1);
       await file.locator("summary").click();
-      expect(await toggle.getAttribute("aria-pressed")).toBe("false");
+      expect(await lines.getAttribute("aria-pressed")).toBe("true");
+      expect(await words.getAttribute("aria-pressed")).toBe("false");
       expect(await wordHighlights.count()).toBe(0);
 
-      await toggle.click();
-      expect(await toggle.getAttribute("aria-pressed")).toBe("true");
+      await words.click();
+      expect(await lines.getAttribute("aria-pressed")).toBe("false");
+      expect(await words.getAttribute("aria-pressed")).toBe("true");
       await wordHighlights.first().waitFor({ state: "attached" });
       expect(await wordHighlights.first().evaluate((highlight) => getComputedStyle(highlight).backgroundColor)).not.toBe("rgba(0, 0, 0, 0)");
 
-      await toggle.click();
-      expect(await toggle.getAttribute("aria-pressed")).toBe("false");
+      await lines.click();
+      expect(await lines.getAttribute("aria-pressed")).toBe("true");
+      expect(await words.getAttribute("aria-pressed")).toBe("false");
       await page.waitForFunction(() => document.querySelector("diffs-container")?.shadowRoot?.querySelectorAll("[data-diff-span]").length === 0);
 
       await file.locator("summary").click();
@@ -263,17 +268,22 @@ Comment: I don't think we need these tests`;
       await page.locator("diffs-container").waitFor({ state: "attached" });
       await summary.click();
 
-      const toggle = page.getByRole("button", { name: "Wrap lines", exact: true });
+      const longLines = page.getByRole("group", { name: "Long lines", exact: true });
+      const scroll = longLines.getByRole("button", { name: "Scroll", exact: true });
+      const wrap = longLines.getByRole("button", { name: "Wrap", exact: true });
       const overflow = () => page.locator("diffs-container").locator("pre[data-diff]").getAttribute("data-overflow");
-      expect(await toggle.getAttribute("aria-pressed")).toBe("true");
+      expect(await scroll.getAttribute("aria-pressed")).toBe("false");
+      expect(await wrap.getAttribute("aria-pressed")).toBe("true");
       expect(await overflow()).toBe("wrap");
 
-      await toggle.click();
-      expect(await toggle.getAttribute("aria-pressed")).toBe("false");
+      await scroll.click();
+      expect(await scroll.getAttribute("aria-pressed")).toBe("true");
+      expect(await wrap.getAttribute("aria-pressed")).toBe("false");
       expect(await overflow()).toBe("scroll");
 
-      await toggle.click();
-      expect(await toggle.getAttribute("aria-pressed")).toBe("true");
+      await wrap.click();
+      expect(await scroll.getAttribute("aria-pressed")).toBe("false");
+      expect(await wrap.getAttribute("aria-pressed")).toBe("true");
       expect(await overflow()).toBe("wrap");
       await page.close();
     } finally {

@@ -2,6 +2,7 @@
 
 import type { DiffLineAnnotation, FileDiff, FileDiffMetadata, SelectedLineRange } from "@pierre/diffs";
 import { Icons } from "@atelier/design-system/icons";
+import type { ToggleChangeEvent } from "@atelier/design-system/toggle/client";
 import { isWorkspacePaneVisible, type WorkspaceClientModule } from "@atelier/shared";
 import { reviewCommentsPrompt, type ReviewCommentModel } from "../model.ts";
 import { reviewDiffOptions } from "../pierre.ts";
@@ -128,18 +129,16 @@ function createReviewController(Controller: StimulusControllerConstructor) {
       for (const file of this.fileTargets) file.open = true;
     }
 
-    setWordDiff(event: Event): void {
-      if (!(event.currentTarget instanceof HTMLButtonElement)) throw new Error("Word diff selection requires a button");
-      this.wordDiffEnabled = event.currentTarget.dataset.reviewWordDiff === "true";
+    setWordDiff(event: ToggleChangeEvent): void {
+      this.wordDiffEnabled = event.detail.value === "true";
       for (const instance of this.instances) {
         instance.setOptions({ ...instance.options, lineDiffType: this.wordDiffEnabled ? "word-alt" : reviewDiffOptions.lineDiffType });
         instance.rerender();
       }
     }
 
-    setLineWrapping(event: Event): void {
-      if (!(event.currentTarget instanceof HTMLButtonElement)) throw new Error("Line wrapping selection requires a button");
-      this.lineWrappingEnabled = event.currentTarget.dataset.reviewLineWrapping === "true";
+    setLineWrapping(event: ToggleChangeEvent): void {
+      this.lineWrappingEnabled = event.detail.value === "true";
       for (const instance of this.instances) {
         instance.setOptions({ ...instance.options, overflow: this.lineWrappingEnabled ? "wrap" : "scroll" });
         instance.rerender();
