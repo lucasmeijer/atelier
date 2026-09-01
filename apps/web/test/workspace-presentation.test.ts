@@ -168,7 +168,7 @@ describe("role-fixed Workspace presentation", () => {
 
   test("shows the workspace name and delete action in a single-conversation Agent header", () => {
     const html = renderWorkspacePresentation(fixture({
-      agentConversations: [{ id: firstConversationId, title: "Agent", bodyUrl: agentBodyUrl(firstConversationId) }],
+      agentConversations: [{ id: firstConversationId, title: "Untitled", bodyUrl: agentBodyUrl(firstConversationId) }],
       commands: [
         { id: "agent.create", label: "New Agent", scope: "workspace", placement: "agent-action" },
         { id: "browser.create", label: "New Browser", scope: "workspace", placement: "work-launcher" },
@@ -193,6 +193,14 @@ describe("role-fixed Workspace presentation", () => {
     expect(html).toContain('class="button secondary icon-only" title="Collapse Work pane" aria-label="Collapse Work pane"');
   });
 
+  test("shows a named single Agent conversation in its header", () => {
+    const html = renderWorkspacePresentation(fixture({ agentConversations: [{ id: firstConversationId, title: "investigate-name-command", bodyUrl: agentBodyUrl(firstConversationId) }] }));
+    const header = html.slice(html.indexOf('<section class="panel fixed-shell-agent-pane"'), html.indexOf('<div class="fixed-shell-agent-bodies"'));
+
+    expect(header).toContain("investigate-name-command");
+    expect(header).not.toContain("Typed shell");
+  });
+
   test("shows robot icons and fullscreen wiring on Agent tabs", () => {
     const multiple = renderWorkspacePresentation(fixture());
     const agentTabs = multiple.slice(multiple.indexOf('aria-label="Agent conversations"'), multiple.indexOf('</header>', multiple.indexOf('aria-label="Agent conversations"')));
@@ -203,7 +211,7 @@ describe("role-fixed Workspace presentation", () => {
     expect(multiple).toContain(`data-atelier-fullscreen-view-key="${firstConversationId}"`);
     expect(agentTabs.indexOf('class="fixed-shell-agent-icon"')).toBeLessThan(agentTabs.indexOf('class="action-item__label-text">First'));
 
-    const single = renderWorkspacePresentation(fixture({ agentConversations: [{ id: firstConversationId, title: "Agent", bodyUrl: agentBodyUrl(firstConversationId) }] }));
+    const single = renderWorkspacePresentation(fixture({ agentConversations: [{ id: firstConversationId, title: "Untitled", bodyUrl: agentBodyUrl(firstConversationId) }] }));
     const singleHeader = single.slice(single.indexOf('<section class="panel fixed-shell-agent-pane"'), single.indexOf('</header>', single.indexOf('<section class="panel fixed-shell-agent-pane"')));
     expect(singleHeader.match(/class="fixed-shell-agent-icon"/g)).toHaveLength(1);
     expect(singleHeader.indexOf('class="fixed-shell-agent-icon"')).toBeLessThan(singleHeader.indexOf("Typed shell"));

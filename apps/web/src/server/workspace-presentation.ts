@@ -1,3 +1,4 @@
+import { untitledAgentConversationTitle } from "@atelier/agent/server";
 import { actionItemHtml } from "@atelier/design-system/action-item";
 import { destructiveConfirmationHtml } from "@atelier/design-system/destructive-confirmation";
 import { Icons } from "@atelier/design-system/icons";
@@ -306,9 +307,10 @@ function renderAgentTab(workspaceId: string, agent: AgentPaneContribution): stri
 
 function renderAgentNavigation(presentation: WorkspacePresentation): string {
   const multiple = presentation.agentConversations.length > 1;
-  return multiple
-    ? `<div id="${agentTabListDomId(presentation.workspace.id)}" class="fixed-shell-agent-conversations" role="tablist" aria-label="Agent conversations">${presentation.agentConversations.map((agent) => renderAgentTab(presentation.workspace.id, agent)).join("")}</div>`
-    : `<div class="fixed-shell-workspace-title"><span class="fixed-shell-agent-icon">${Icons.Agent}</span><strong>${escapeHtml(presentation.workspace.title)}</strong></div>`;
+  if (multiple) return `<div id="${agentTabListDomId(presentation.workspace.id)}" class="fixed-shell-agent-conversations" role="tablist" aria-label="Agent conversations">${presentation.agentConversations.map((agent) => renderAgentTab(presentation.workspace.id, agent)).join("")}</div>`;
+  const agent = presentation.agentConversations[0];
+  const title = agent && agent.title !== untitledAgentConversationTitle ? agent.title : presentation.workspace.title;
+  return `<div class="fixed-shell-workspace-title"><span class="fixed-shell-agent-icon">${Icons.Agent}</span><strong>${escapeHtml(title)}</strong></div>`;
 }
 
 function renderAgentPaneSlot(workspaceId: string, agent: AgentPaneContribution): string {

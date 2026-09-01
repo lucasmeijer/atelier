@@ -8,6 +8,7 @@ export {
   sessionShareKeySlug,
   sessionShareMountPath,
   setWorkspaceAgentConversationTitle,
+  untitledAgentConversationTitle,
   type WorkspaceAgentConversationInfo,
 } from "./session-store.ts";
 export {

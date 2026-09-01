@@ -39,9 +39,10 @@ function normalizeSlug(value: string): string | undefined {
   return slug || undefined;
 }
 
-async function workspaceIsUnnamed(workspaceId: string): Promise<boolean> {
+async function workspaceShouldFollowAgentTitle(workspaceId: string, agentTitle: string): Promise<boolean> {
   const { workspaces } = await listWorkspaces();
-  return workspaces.find((workspace) => workspace.id === workspaceId)?.title === null;
+  const workspace = workspaces.find((candidate) => candidate.id === workspaceId);
+  return workspace?.title === null || workspace?.title === agentTitle;
 }
 
 async function serializeTitleOperation<Result>(workspaceId: string, operation: () => Promise<Result>): Promise<Result> {
@@ -58,7 +59,7 @@ async function serializeTitleOperation<Result>(workspaceId: string, operation: (
 interface AgentSessionTitleStore {
   listConversations(workspaceId: string): Promise<WorkspaceAgentConversationInfo[]>;
   setConversationTitle(agent: WorkspaceAgentConversationInfo, title: string): Promise<WorkspaceAgentConversationInfo>;
-  workspaceIsUnnamed(workspaceId: string): Promise<boolean>;
+  workspaceShouldFollowAgentTitle(workspaceId: string, agentTitle: string): Promise<boolean>;
   setWorkspaceTitle(workspaceId: string, title: string): Promise<void>;
 }
 
@@ -69,9 +70,9 @@ export function createAgentSessionTitleSetter(store: AgentSessionTitleStore) {
       if (!current) throw new Error(`Agent conversation not found: ${agent.conversationId}`);
       if (options.onlyIfUnnamed && current.title !== untitledAgentConversationTitle) return { agent: current, changed: false, workspaceNamed: false };
       const renamed = await store.setConversationTitle(current, title);
-      const workspaceNamed = await store.workspaceIsUnnamed(agent.workspaceId);
-      if (workspaceNamed) await store.setWorkspaceTitle(agent.workspaceId, title);
-      return { agent: renamed, changed: true, workspaceNamed };
+      const workspaceShouldFollow = await store.workspaceShouldFollowAgentTitle(agent.workspaceId, current.title);
+      if (workspaceShouldFollow) await store.setWorkspaceTitle(agent.workspaceId, title);
+      return { agent: renamed, changed: true, workspaceNamed: workspaceShouldFollow };
     });
     if (!result.changed) return result.agent;
     await options.events?.emit("workspace_agent_conversation_title_changed", { workspaceId: agent.workspaceId, conversationId: agent.conversationId, title });
@@ -83,7 +84,7 @@ export function createAgentSessionTitleSetter(store: AgentSessionTitleStore) {
 export const setAgentSessionTitle = createAgentSessionTitleSetter({
   listConversations: listWorkspaceAgentConversations,
   setConversationTitle: setWorkspaceAgentConversationTitle,
-  workspaceIsUnnamed,
+  workspaceShouldFollowAgentTitle,
   setWorkspaceTitle: async (workspaceId, title) => { await setWorkspaceTitle(workspaceId, title); },
 });
 

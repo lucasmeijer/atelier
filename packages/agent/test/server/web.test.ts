@@ -225,6 +225,26 @@ describe("Workspace Agent-tab provider", () => {
     expect(parked).toEqual(["workspace-1"]);
   });
 
+  test("renames the current Agent conversation when /name has a title", async () => {
+    await dataDir();
+    const conversation = await ensureDefaultWorkspaceAgentConversation("workspace-1");
+    const events = createAtelierEventBus();
+    const renamed: string[] = [];
+    events.on("workspace_agent_conversation_title_changed", ({ title }) => { renamed.push(title); });
+    const request = new Request(`http://atelier.test/workspaces/workspace-1/agents/${conversation.conversationId}/messages`, {
+      method: "POST",
+      headers: { accept: "application/json", "content-type": "application/json" },
+      body: JSON.stringify({ text: "/name investigate-name-command" }),
+    });
+
+    const response = await handleAgentRequest(request, new URL(request.url), { events });
+
+    expect(response?.status).toBe(200);
+    expect(await response?.json()).toEqual({ agent: { conversationId: conversation.conversationId, state: "idle" } });
+    expect((await listWorkspaceAgentConversations("workspace-1"))[0]?.title).toBe("investigate-name-command");
+    expect(renamed).toEqual(["investigate-name-command"]);
+  });
+
   test("accepts a message with the exact Agent draft and removes the prompt suggestion in the response", async () => {
     await dataDir();
     const conversation = await ensureDefaultWorkspaceAgentConversation("workspace-1");
