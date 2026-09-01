@@ -523,8 +523,6 @@ function createAgentPaneController(Controller: StimulusControllerConstructor) {
         button.removeAttribute("name");
         button.removeAttribute("value");
         button.setAttribute("form", button.dataset.agentAbortFormId ?? "");
-        button.title = "Agent is working — click to stop";
-        button.setAttribute("aria-label", button.title);
         return;
       }
       setActivityButtonState(button, "initial");
@@ -532,8 +530,6 @@ function createAgentPaneController(Controller: StimulusControllerConstructor) {
       button.name = "mode";
       button.value = action;
       button.removeAttribute("form");
-      button.title = busy ? "Deliver a steering note while the agent keeps working" : "Send prompt";
-      button.setAttribute("aria-label", button.title);
     }
 
     submitted(event: TurboSubmitEndEvent): void {

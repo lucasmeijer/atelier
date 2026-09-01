@@ -580,6 +580,24 @@ Comment: I don't think we need these tests`;
     await page.close();
   });
 
+  test("keeps an icon-only activity indicator on the mobile button perimeter", async () => {
+    const page = await newTestPage({ viewport: { width: 390, height: 844 } });
+    await page.setContent(`<style>${workspaceStyle}</style>
+      <button id="activity" class="button primary icon-only activity-button" data-activity-state="active" aria-label="Stop">
+        <svg class="activity-button__indicator" aria-hidden="true"><rect pathLength="100"/></svg>
+        <span class="activity-button__content" data-activity-content="initial"><svg viewBox="0 0 20 20"><path d="M10 15V5"/></svg></span>
+        <span class="activity-button__content" data-activity-content="active"><svg viewBox="0 0 20 20"><rect x="6" y="6" width="8" height="8"/></svg></span>
+      </button>`);
+    const buttonBox = await page.locator("#activity").boundingBox();
+    const indicatorBox = await page.locator(".activity-button__indicator").boundingBox();
+
+    expect(buttonBox).not.toBeNull();
+    expect(indicatorBox).not.toBeNull();
+    expect({ width: indicatorBox!.width, height: indicatorBox!.height }).toEqual({ width: buttonBox!.width, height: buttonBox!.height });
+    expect({ x: indicatorBox!.x, y: indicatorBox!.y }).toEqual({ x: buttonBox!.x, y: buttonBox!.y });
+    await page.close();
+  });
+
   test("opens the next and previous workspace with keyboard shortcuts", async () => {
     const page = await newShortcutTestPage(["first", "second", "third"]);
 
@@ -2642,7 +2660,7 @@ Comment: I don't think we need these tests`;
       <div class="composer agent-pane-composer" data-controller="agent-composer" data-mobile-editing-region>
         <form method="post" action="/send" data-agent-pane-target="form">
           <textarea class="composer-input" name="text" aria-label="Agent prompt" data-agent-pane-target="input">Send from one touch</textarea>
-          <button type="submit" name="mode" value="send" data-agent-composer-target="primaryAction" data-agent-pane-target="sendStop" data-agent-busy="false" data-action="pointerdown->agent-composer#primaryActionPointerdown">Send</button>
+          <button type="submit" name="mode" value="send" aria-label="Send prompt" data-agent-composer-target="primaryAction" data-agent-pane-target="sendStop" data-agent-busy="false" data-action="pointerdown->agent-composer#primaryActionPointerdown">Send</button>
         </form>
       </div>
     </div>`;

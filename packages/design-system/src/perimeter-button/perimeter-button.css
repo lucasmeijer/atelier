@@ -19,7 +19,7 @@
   pointer-events: none;
 }
 :is(.activity-button, .progress-button).icon-only :is(.activity-button__content, .progress-button__content) { padding-inline: 0; }
-.button :is(.activity-button__indicator, .progress-button__perimeter) {
+:is(.button.activity-button > .activity-button__indicator, .button.progress-button > .progress-button__perimeter) {
   position: absolute;
   z-index: 1;
   inset: -1px;
@@ -28,7 +28,7 @@
   overflow: visible;
   pointer-events: none;
 }
-.button :is(.activity-button__indicator, .progress-button__perimeter) rect {
+:is(.button.activity-button > .activity-button__indicator, .button.progress-button > .progress-button__perimeter) rect {
   x: 1px;
   y: 1px;
   width: calc(100% - 2px);
@@ -42,5 +42,5 @@
 @keyframes perimeter-button-orbit { to { stroke-dashoffset: -100; } }
 @media (max-width: 700px) {
   :is(.activity-button, .progress-button):not(.icon-only) :is(.activity-button__content, .progress-button__content) { padding-inline: 16px; }
-  .button :is(.activity-button__indicator, .progress-button__perimeter) rect { rx: 22px; }
+  :is(.button.activity-button > .activity-button__indicator, .button.progress-button > .progress-button__perimeter) rect { rx: 22px; }
 }

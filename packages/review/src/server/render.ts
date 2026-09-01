@@ -149,7 +149,7 @@ function refreshForm(workspaceId: string, caption = ""): string {
   };
   const button = caption
     ? activityButtonHtml(content)
-    : activityButtonHtml({ ...content, iconOnly: true, label: "Refresh review" });
+    : activityButtonHtml({ ...content, iconOnly: true, initialLabel: "Refresh review", activeLabel: "Refreshing review" });
   return `<form method="post" action="/workspaces/${encodeURIComponent(workspaceId)}/review/refresh" data-turbo="true" data-action="submit->review#updateRefreshState turbo:submit-end->review#updateRefreshState">${button}</form>`;
 }
 

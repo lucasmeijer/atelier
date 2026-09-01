@@ -2,9 +2,23 @@
 
 import type { ActivityButtonState } from "./activity-button-html.ts";
 
-/** Updates the activity state and its corresponding busy semantics. */
-export function setActivityButtonState(button: HTMLButtonElement, state: ActivityButtonState): void {
+interface ActivityButtonElement {
+  dataset: DOMStringMap;
+  classList: { contains(token: string): boolean };
+  title: string;
+  setAttribute(name: string, value: string): void;
+  removeAttribute(name: string): void;
+}
+
+/** Updates the activity state and its corresponding busy and accessible-name semantics. */
+export function setActivityButtonState(button: ActivityButtonElement, state: ActivityButtonState): void {
   button.dataset.activityState = state;
   if (state === "active") button.setAttribute("aria-busy", "true");
   else button.removeAttribute("aria-busy");
+
+  if (button.classList.contains("icon-only")) {
+    const label = state === "active" ? button.dataset.activityActiveLabel! : button.dataset.activityInitialLabel!;
+    button.title = label;
+    button.setAttribute("aria-label", label);
+  }
 }

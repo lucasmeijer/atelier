@@ -19,8 +19,8 @@ interface ActivityButtonBase {
 }
 
 export type ActivityButtonOptions = ActivityButtonBase & (
-  | { iconOnly: true; label: string }
-  | { iconOnly?: false; label?: never }
+  | { iconOnly: true; initialLabel: string; activeLabel: string }
+  | { iconOnly?: false; initialLabel?: never; activeLabel?: never }
 );
 
 /**
@@ -28,9 +28,12 @@ export type ActivityButtonOptions = ActivityButtonBase & (
  * active operation. Both states participate in sizing, so captions do not shift.
  */
 export function activityButtonHtml(options: ActivityButtonOptions): string {
+  const label = options.iconOnly
+    ? options.state === "active" ? options.activeLabel : options.initialLabel
+    : undefined;
   const ownedAttributes = [
     options.state === "active" ? 'aria-busy="true"' : undefined,
-    options.iconOnly ? `title="${escapeHtml(options.label)}" aria-label="${escapeHtml(options.label)}"` : undefined,
+    options.iconOnly ? `title="${escapeHtml(label!)}" aria-label="${escapeHtml(label!)}" data-activity-initial-label="${escapeHtml(options.initialLabel)}" data-activity-active-label="${escapeHtml(options.activeLabel)}"` : undefined,
   ].filter(Boolean).join(" ");
 
   return perimeterButtonHtml({

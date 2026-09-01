@@ -367,7 +367,8 @@ function renderTranscriptNavigation(): string {
 
 function renderPromptActionButton(busy: boolean, ctx?: AgentRenderContext): string {
   const value = busy ? "steer" : "send";
-  const title = busy ? "Agent is working — click to stop" : "Send prompt";
+  const initialLabel = busy ? "Deliver a steering note while the agent keeps working" : "Send prompt";
+  const activeLabel = "Agent is working — click to stop";
   const state = busy ? "active" : "initial";
   const paneAttrs = ctx
     ? ` data-agent-pane-target="sendStop" data-agent-busy="${busy}"${busy ? ` data-agent-abort-form-id="${ids.abortForm(ctx)}"` : ""}`
@@ -375,7 +376,8 @@ function renderPromptActionButton(busy: boolean, ctx?: AgentRenderContext): stri
   return activityButtonHtml({
     variant: "primary",
     iconOnly: true,
-    label: title,
+    initialLabel,
+    activeLabel,
     type: "submit",
     state,
     initialContent: { kind: "html", html: '<svg viewBox="0 0 20 20" aria-hidden="true"><path d="M10 15V5m-4 4 4-4 4 4"/></svg>' },

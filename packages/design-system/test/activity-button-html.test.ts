@@ -33,10 +33,13 @@ describe("activityButtonHtml", () => {
     expect(html).not.toContain(" disabled");
   });
 
-  test("owns icon-only geometry and accessible naming", () => {
-    const html = activityButtonHtml({ ...content, variant: "danger", state: "initial", iconOnly: true, label: "Stop sync" });
+  test("owns icon-only geometry and state-specific accessible naming", () => {
+    const initial = activityButtonHtml({ ...content, variant: "danger", state: "initial", iconOnly: true, initialLabel: "Start sync", activeLabel: "Stop sync" });
+    const active = activityButtonHtml({ ...content, variant: "danger", state: "active", iconOnly: true, initialLabel: "Start sync", activeLabel: "Stop sync" });
 
-    expect(html).toContain('class="button danger icon-only activity-button"');
-    expect(html).toContain('title="Stop sync" aria-label="Stop sync"');
+    expect(initial).toContain('class="button danger icon-only activity-button"');
+    expect(initial).toContain('title="Start sync" aria-label="Start sync"');
+    expect(initial).toContain('data-activity-initial-label="Start sync" data-activity-active-label="Stop sync"');
+    expect(active).toContain('title="Stop sync" aria-label="Stop sync"');
   });
 });
