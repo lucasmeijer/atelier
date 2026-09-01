@@ -39,7 +39,7 @@ import { createAtelierCableClient } from "./cable.ts";
 import { createCloseButton, registerDesignSystemControllers } from "./design-system.ts";
 import { SelectPopupController } from "./popup-select.ts";
 import { createWorkspacePresentationController, installWorkspacePresentationTurboStream, markActiveWorkspaceRow } from "./workspace-presentation.ts";
-import { oldestAttentionFirst, retainedWorkspaceIds, type AttentionWorkspace, type WorkspaceRetentionCandidate } from "./workspace-residency-policy.ts";
+import { oldestAttentionFirst, prioritizedWorkspacePreloads, retainedWorkspaceIds, type AttentionWorkspace, type WorkspacePreloadCandidate, type WorkspaceRetentionCandidate } from "./workspace-residency-policy.ts";
 
 declare global {
   interface Window {
@@ -1667,12 +1667,29 @@ class WorkspaceResidencyController extends Controller {
     })));
   }
 
-  private preparationCandidates(): AttentionWorkspace[] {
-    const candidates = new Map(this.attentionWorkspaces().map((workspace) => [workspace.workspaceId, workspace]));
-    for (const [workspaceId, attentionAt] of this.requestedPreparationAt) {
-      if (!candidates.has(workspaceId)) candidates.set(workspaceId, { workspaceId, attentionAt });
+  private preparationCandidates(): Array<{ workspaceId: string }> {
+    const candidates = new Map<string, WorkspacePreloadCandidate>([...document.querySelectorAll<HTMLElement>(".fixed-shell-workspace-row[data-workspace-entry-id]")]
+      .filter((entry) => !entry.closest(".fixed-shell-parked"))
+      .map((entry) => [entry.dataset.workspaceEntryId!, {
+        workspaceId: entry.dataset.workspaceEntryId!,
+        lastActivityAt: Number(entry.dataset.workspaceLastActivityAt ?? 0),
+      }]));
+    for (const { workspaceId, attentionAt } of this.attentionWorkspaces()) {
+      const candidate = candidates.get(workspaceId) ?? { workspaceId, lastActivityAt: this.workspaceLastActivityAt(workspaceId) };
+      candidate.attentionAt = attentionAt;
+      candidates.set(workspaceId, candidate);
     }
-    return oldestAttentionFirst([...candidates.values()]);
+    for (const [workspaceId, requestedAt] of this.requestedPreparationAt) {
+      const candidate = candidates.get(workspaceId) ?? { workspaceId, lastActivityAt: this.workspaceLastActivityAt(workspaceId) };
+      candidate.requestedAt = requestedAt;
+      candidates.set(workspaceId, candidate);
+    }
+    return prioritizedWorkspacePreloads([...candidates.values()]);
+  }
+
+  private workspaceLastActivityAt(workspaceId: string): number {
+    const row = document.querySelector<HTMLElement>(`.fixed-shell-workspace-row[data-workspace-entry-id="${CSS.escape(workspaceId)}"]`);
+    return Number(row?.dataset.workspaceLastActivityAt ?? 0);
   }
 
   private retentionCandidates(extraWorkspaceId?: string, protectExtra = false): WorkspaceRetentionCandidate[] {
@@ -1689,12 +1706,12 @@ class WorkspaceResidencyController extends Controller {
         prepared: this.prepared.has(workspaceId),
         preparing: operation ? this.preparationIsCurrent(operation) : false,
         attentionAt: attentionAt.get(workspaceId),
-        lastActivatedAt: Number(resident.dataset.lastActivatedAt ?? 0),
+        lastActivatedAt: Math.max(Number(resident.dataset.lastActivatedAt ?? 0), this.workspaceLastActivityAt(workspaceId)),
         protected: operation?.priority === "foreground",
       };
     });
     if (extraWorkspaceId && !candidates.some((candidate) => candidate.workspaceId === extraWorkspaceId)) {
-      candidates.push({ workspaceId: extraWorkspaceId, visible: false, prepared: false, preparing: true, attentionAt: attentionAt.get(extraWorkspaceId), lastActivatedAt: 0, protected: protectExtra });
+      candidates.push({ workspaceId: extraWorkspaceId, visible: false, prepared: false, preparing: true, attentionAt: attentionAt.get(extraWorkspaceId), lastActivatedAt: this.workspaceLastActivityAt(extraWorkspaceId), protected: protectExtra });
     }
     return candidates;
   }

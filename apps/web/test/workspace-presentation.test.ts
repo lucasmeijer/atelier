@@ -62,7 +62,7 @@ describe("role-fixed Workspace presentation", () => {
 
   test("server-renders the Workspace pane once at the shell seam", () => {
     const html = renderWorkspacePane({ projects: [{ id: "project-1", title: "Atelier", workspaces: [
-      { id: "workspace-1", title: "Typed shell", active: true, attention: true, attentionAt: 123 },
+      { id: "workspace-1", title: "Typed shell", active: true, attention: true, attentionAt: 123, lastActivityAt: 456 },
       { id: "workspace-2", title: "Working", state: "deleting" },
     ] }], emptyProjects: [{ id: "project-2", title: "Empty" }], projectlessWorkspaces: [{ id: "workspace-3", title: "Scratch" }] }, '<button data-update-probe>Restart to update</button>');
 
@@ -101,6 +101,7 @@ describe("role-fixed Workspace presentation", () => {
     expect(html).not.toContain("New Project");
     expect(html).not.toContain("fixed-shell-workspace-color");
     expect(html).toContain('data-workspace-attention-at="123"');
+    expect(html).toContain('data-workspace-last-activity-at="456"');
     expect(html).toContain('aria-current="page"');
     expect(html).toContain('class="fixed-shell-workspace-status action-item__status"><i class="status-spinner sm fixed-shell-workspace-busy" aria-label="Workspace deleting"');
     expect(html).toContain('<section id="global_sidebar_contributions"><button data-update-probe>Restart to update</button></section>');

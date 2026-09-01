@@ -1963,14 +1963,16 @@ Comment: I don't think we need these tests`;
     await page.close();
   });
 
-  test("retains at most five residents while preparing one background Workspace at a time", async () => {
+  test("fills the preload budget with recently interacted read Workspaces after unread Workspaces", async () => {
     const workspaceIds = ["a", "b", "c", "d", "e", "f", "g"];
+    const activity = new Map([["a", 700], ["b", 100], ["c", 600], ["d", 200], ["e", 500], ["f", 400], ["g", 300]]);
     const pane: WorkspacePanePresentation = { projects: [], projectlessWorkspaces: workspaceIds.map((id, index) => ({
       id,
       title: `Workspace ${id}`,
       active: index === 0,
-      attention: index !== 0,
-      attentionAt: index === 0 ? undefined : index,
+      attention: id === "b" || id === "d",
+      attentionAt: id === "b" ? 1 : id === "d" ? 2 : undefined,
+      lastActivityAt: activity.get(id),
     })) };
     const requested: string[] = [];
     let activeRequests = 0;
@@ -1996,10 +1998,10 @@ Comment: I don't think we need these tests`;
     await page.goto("http://atelier.test/workspaces/a");
 
     await page.waitForFunction(() => document.querySelectorAll(".workspace-detail-resident").length === 5 && !document.querySelector("[data-workspace-preloading]"));
-    expect(requested).toEqual(["b", "c", "d", "e"]);
+    expect(requested).toEqual(["b", "d", "c", "e"]);
     expect(maximumActiveRequests).toBe(1);
     expect(await page.locator(".workspace-detail-resident").count()).toBe(5);
-    expect(await page.locator(".workspace-detail-resident").evaluateAll((residents) => residents.map((resident) => resident.getAttribute("data-workspace-id")))).toEqual(["a", "b", "c", "d", "e"]);
+    expect(await page.locator(".workspace-detail-resident").evaluateAll((residents) => residents.map((resident) => resident.getAttribute("data-workspace-id")))).toEqual(["a", "b", "d", "c", "e"]);
     await page.close();
   });
 

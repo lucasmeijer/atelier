@@ -22,6 +22,7 @@ export interface WorkspacePaneEntry {
   attention?: boolean;
   attentionAt?: number;
   attentionTokens?: Record<string, number>;
+  lastActivityAt?: number;
   busyViewKeys?: readonly string[];
   outdated?: boolean;
 }
@@ -132,6 +133,7 @@ function renderWorkspaceRowStatus(workspace: WorkspacePaneEntry): string {
 function renderWorkspaceRow(workspace: WorkspacePaneEntry, projectId?: string, options: { unpark?: boolean } = {}): string {
   const attentionAt = workspace.attentionAt === undefined ? "" : ` data-workspace-attention-at="${workspace.attentionAt}"`;
   const attentionTokens = workspace.attentionTokens === undefined ? "" : ` data-workspace-attention-tokens="${escapeHtml(JSON.stringify(workspace.attentionTokens))}"`;
+  const lastActivityAt = workspace.lastActivityAt === undefined ? "" : ` data-workspace-last-activity-at="${workspace.lastActivityAt}"`;
   const project = projectId ? ` data-project-id="${escapeHtml(projectId)}"` : "";
   const busyViews = workspace.busyViewKeys?.length ? ` data-workspace-busy-views="${escapeHtml(JSON.stringify(workspace.busyViewKeys))}"` : "";
   const label = options.unpark ? `Unpark and open ${workspace.title}` : workspace.title;
@@ -142,7 +144,7 @@ function renderWorkspaceRow(workspace: WorkspacePaneEntry, projectId?: string, o
     element: {
       tag: "button",
       className: `fixed-shell-workspace-row${workspace.active ? " active" : ""}`,
-      attributesHtml: `type="${options.unpark ? "submit" : "button"}" title="${escapeHtml(label)}" aria-label="${escapeHtml(label)}"${workspace.active ? ' aria-current="page"' : ""} data-workspace-entry-id="${escapeHtml(workspace.id)}"${attentionAt}${attentionTokens}${busyViews}${project}${options.unpark ? "" : ' data-action="click->workspace-navigation#selectWorkspace"'}`,
+      attributesHtml: `type="${options.unpark ? "submit" : "button"}" title="${escapeHtml(label)}" aria-label="${escapeHtml(label)}"${workspace.active ? ' aria-current="page"' : ""} data-workspace-entry-id="${escapeHtml(workspace.id)}"${attentionAt}${attentionTokens}${lastActivityAt}${busyViews}${project}${options.unpark ? "" : ' data-action="click->workspace-navigation#selectWorkspace"'}`,
     },
   });
 }

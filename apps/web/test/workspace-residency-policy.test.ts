@@ -1,5 +1,5 @@
 import { describe, expect, test } from "bun:test";
-import { oldestAttentionFirst, retainedWorkspaceIds } from "../src/client/workspace-residency-policy.ts";
+import { oldestAttentionFirst, prioritizedWorkspacePreloads, retainedWorkspaceIds } from "../src/client/workspace-residency-policy.ts";
 
 describe("Workspace residency policy", () => {
   test("retains the visible Workspace, then oldest Attention, then most recently used inactive residents", () => {
@@ -49,6 +49,22 @@ describe("Workspace residency policy", () => {
     ], 1);
 
     expect([...retained]).toEqual(["incoming-ready"]);
+  });
+
+  test("prioritizes unread Workspaces, then explicit requests, then recent interaction", () => {
+    expect(prioritizedWorkspacePreloads([
+      { workspaceId: "stale-read", lastActivityAt: 10 },
+      { workspaceId: "recent-read", lastActivityAt: 30 },
+      { workspaceId: "requested", lastActivityAt: 0, requestedAt: 20 },
+      { workspaceId: "newer-unread", lastActivityAt: 0, attentionAt: 2 },
+      { workspaceId: "older-unread", lastActivityAt: 0, attentionAt: 1 },
+    ]).map(({ workspaceId }) => workspaceId)).toEqual([
+      "older-unread",
+      "newer-unread",
+      "requested",
+      "recent-read",
+      "stale-read",
+    ]);
   });
 
   test("orders ready Workspaces by their first Attention time with a stable tie break", () => {

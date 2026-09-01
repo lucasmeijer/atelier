@@ -37,3 +37,22 @@ export interface AttentionWorkspace {
 export function oldestAttentionFirst(workspaces: readonly AttentionWorkspace[]): AttentionWorkspace[] {
   return [...workspaces].sort((left, right) => left.attentionAt - right.attentionAt || left.workspaceId.localeCompare(right.workspaceId));
 }
+
+export interface WorkspacePreloadCandidate {
+  workspaceId: string;
+  lastActivityAt: number;
+  attentionAt?: number;
+  requestedAt?: number;
+}
+
+export function prioritizedWorkspacePreloads(candidates: readonly WorkspacePreloadCandidate[]): WorkspacePreloadCandidate[] {
+  return [...candidates].sort((left, right) => {
+    if (left.attentionAt !== undefined && right.attentionAt !== undefined) return left.attentionAt - right.attentionAt || left.workspaceId.localeCompare(right.workspaceId);
+    if (left.attentionAt !== undefined) return -1;
+    if (right.attentionAt !== undefined) return 1;
+    if (left.requestedAt !== undefined && right.requestedAt !== undefined) return left.requestedAt - right.requestedAt || left.workspaceId.localeCompare(right.workspaceId);
+    if (left.requestedAt !== undefined) return -1;
+    if (right.requestedAt !== undefined) return 1;
+    return right.lastActivityAt - left.lastActivityAt || left.workspaceId.localeCompare(right.workspaceId);
+  });
+}

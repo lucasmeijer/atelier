@@ -655,6 +655,7 @@ ${moduleStylesHtml()}
               ? "requires_delete_confirmation"
               : "idle",
         attention: registry.hasAttention(entry.id),
+        lastActivityAt: entry.lastActivityAt,
         busyViewKeys: registry.busyViews(entry.id),
         outdated: entry.imageOutdated,
       };
