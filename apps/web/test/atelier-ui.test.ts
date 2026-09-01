@@ -2899,21 +2899,22 @@ Comment: I don't think we need these tests`;
     await page.close();
   });
 
-  test("keeps quick launches available for an empty Agent composer and expands the selected template", async () => {
+  test("submits a prompt-template shortcut while quick-launch clicks only expand it", async () => {
     const page = await newTestPage();
     const catalog = renderSlashCommandCatalog([
       { name: "simplify", trigger: "/simplify", description: "Simplify the current changes", prompt: "Simplify", quickLaunch: true, hotkey: "s" },
+      { name: "launch-vscode", trigger: "/launch-vscode", description: "Conflicts with Atelier", prompt: "This must not send", quickLaunch: true, hotkey: "v" },
       { name: "review", trigger: "/review", description: "Review the current changes", prompt: "Review" },
     ], []);
     await page.route("http://atelier.test/quick-launch", (route) => route.fulfill({
       contentType: "text/html",
-      body: `<style>${agentStyle}</style><button type="button" aria-label="Outside composer">Outside</button><div class="agent-pane" data-controller="agent-pane" data-agent-pane-workspace-id-value="quick" data-agent-pane-conversation-id-value="agent-1">
+      body: `<style>${agentStyle}</style><div class="fixed-workspace-presentation" data-workspace-commands='[{"label":"Open VS Code","binding":"Meta+Alt+KeyV"}]'><button type="button" aria-label="Outside composer">Outside</button><div class="agent-pane" data-controller="agent-pane" data-agent-pane-workspace-id-value="quick" data-agent-pane-conversation-id-value="agent-1">
         <div class="agent-transcript" data-agent-pane-target="transcript"></div>
         <div class="composer agent-pane-composer" data-controller="agent-completions" data-agent-completions-url-value="/workspaces/quick/agents/agent-1/completions">
           <div class="agent-pane-composer-overlays"><button type="button" data-agent-pane-target="transcriptNav" disabled></button></div>
           <div class="composer-surface"><form method="post" action="/send" tabindex="-1" data-agent-pane-target="form" data-action="keydown->agent-completions#keydown keydown->agent-pane#inputKeydown"><textarea aria-label="Agent prompt" name="text" data-agent-pane-target="input" data-agent-completions-target="input" data-action="input->agent-completions#input input->agent-pane#promptChanged"></textarea><button type="submit" name="mode" value="send" data-agent-pane-target="sendStop" data-agent-busy="false">Send</button></form><div class="agent-completion-menu-host" data-agent-completions-target="menu" hidden></div></div>
         </div>
-      </div><script type="module" src="${workspaceClientPath}"></script>`,
+      </div></div><script type="module" src="${workspaceClientPath}"></script>`,
     }));
     await page.route("**/workspaces/quick/completion-catalog", (route) => route.fulfill({ contentType: "text/html", body: catalog }));
     await page.route("**/workspaces/quick/agents/agent-1/completions/prompt-template-expand", (route) => route.fulfill({ contentType: "text/plain", body: "Review and simplify all current changes." }));
@@ -2932,13 +2933,22 @@ Comment: I don't think we need these tests`;
     const quickLaunchShortcut = quickLaunch.locator("kbd");
     expect(await quickLaunchShortcut.textContent()).toBe("⌘⌥S");
     expect(await quickLaunchShortcut.isVisible()).toBe(true);
+    const conflictingQuickLaunch = page.getByRole("button", { name: /\/launch-vscode.*Shortcut unavailable.*Open VS Code/ });
+    expect(await conflictingQuickLaunch.locator("kbd").textContent()).toBe("⌘⌥V used by Open VS Code");
+    expect(await conflictingQuickLaunch.getAttribute("aria-keyshortcuts")).toBeNull();
+    await pressCommandOptionShortcut(page, "v", "KeyV");
+    await page.waitForTimeout(50);
+    expect(submissions).toBe(0);
     await page.setViewportSize({ width: 390, height: 844 });
     expect(await quickLaunchShortcut.isVisible()).toBe(false);
     await page.setViewportSize({ width: 1280, height: 720 });
 
+    const shortcutSendRequest = page.waitForRequest((request) => new URL(request.url()).pathname === "/send");
+    const shortcutSendResponse = page.waitForResponse((response) => new URL(response.url()).pathname === "/send");
     await pressCommandOptionShortcut(page, "s", "KeyS");
-    await page.waitForFunction(() => document.querySelector<HTMLTextAreaElement>("textarea[name='text']")?.value === "Review and simplify all current changes.");
-    expect(submissions).toBe(0);
+    expect((await shortcutSendRequest).postData()).toContain("text=Review+and+simplify+all+current+changes.");
+    await shortcutSendResponse;
+    expect(submissions).toBe(1);
     await input.fill("");
     await quickLaunch.waitFor();
 
@@ -2968,11 +2978,11 @@ Comment: I don't think we need these tests`;
     expect(await input.inputValue()).toBe("Review and simplify all current changes.");
     const form = page.locator("form[action='/send']");
     expect(await form.evaluate((element) => document.activeElement === element)).toBe(true);
-    expect(submissions).toBe(0);
-    const sendRequest = page.waitForRequest((request) => new URL(request.url()).pathname === "/send");
-    await form.press("Control+Enter");
-    await sendRequest;
     expect(submissions).toBe(1);
+    const sendResponse = page.waitForResponse((response) => new URL(response.url()).pathname === "/send");
+    await form.press("Control+Enter");
+    await sendResponse;
+    expect(submissions).toBe(2);
     await page.close();
   });
 

@@ -394,7 +394,6 @@ type WorkspaceCommandRegistration = Omit<WorkspaceClientCommand, "run">;
 
 class AtelierShortcutsController extends Controller {
   declare readonly element: HTMLElement;
-  private readonly commands = new Map<string, CommandRegistration>();
   private shortcutOverlayTimer: ReturnType<typeof setTimeout> | undefined;
   private shortcutOverlay: HTMLElement | undefined;
   private shortcutOverlayPointerInside = false;
@@ -475,54 +474,50 @@ class AtelierShortcutsController extends Controller {
     this.hideShortcutOverlay();
   };
 
-  private registerCommand(command: CommandRegistration): void {
-    this.commands.set(command.id, command);
-  }
-
   private registerBuiltinCommands(): void {
-    this.registerCommand({
+    clientHooks.registerCommand({
       id: "workspace.open-previous",
       label: "Open previous workspace",
       scope: "global",
       binding: "Meta+Alt+Comma",
       run: () => this.openAdjacentWorkspace(-1),
     });
-    this.registerCommand({
+    clientHooks.registerCommand({
       id: "workspace.open-next",
       label: "Open next workspace",
       scope: "global",
       binding: "Meta+Alt+Period",
       run: () => this.openAdjacentWorkspace(1),
     });
-    this.registerCommand({
+    clientHooks.registerCommand({
       id: "workspace.open-oldest-unread",
       label: "Open oldest workspace needing attention",
       scope: "global",
       binding: "Meta+Alt+Slash",
       run: () => this.openOldestAttentionWorkspace(),
     });
-    this.registerCommand({
+    clientHooks.registerCommand({
       id: "work-view.open-previous",
       label: "Open previous Work view",
       scope: "workspace",
       binding: "Meta+Alt+BracketLeft",
       run: () => this.openAdjacentWorkView(-1),
     });
-    this.registerCommand({
+    clientHooks.registerCommand({
       id: "work-view.open-next",
       label: "Open next Work view",
       scope: "workspace",
       binding: "Meta+Alt+BracketRight",
       run: () => this.openAdjacentWorkView(1),
     });
-    this.registerCommand({
+    clientHooks.registerCommand({
       id: "atelier.open-palette",
       label: "Open palette",
       scope: "global",
       binding: "Meta+Alt+KeyK",
       run: () => this.openPalette(),
     });
-    this.registerCommand({
+    clientHooks.registerCommand({
       id: "atelier.open-settings",
       label: "Open settings",
       scope: "global",
@@ -531,10 +526,9 @@ class AtelierShortcutsController extends Controller {
   }
 
   private currentCommands(): CommandRegistration[] {
-    const commands = new Map<string, CommandRegistration>([
-      ...this.commands,
-      ...clientHooks.registeredCommands().map((command) => [command.id, command] as const),
-    ]);
+    const commands = new Map<string, CommandRegistration>(
+      clientHooks.registeredCommands().map((command) => [command.id, command] as const),
+    );
     for (const command of this.visibleWorkspaceDeleteCommands()) commands.set(command.id, command);
     for (const command of this.workspaceCommands()) {
       if (!commands.has(command.id)) {

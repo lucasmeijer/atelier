@@ -428,6 +428,7 @@ export interface WorkspaceClientHooks {
   onWorkspaceAppFrameRefresh(handler: (context: { appKey: string; frame: HTMLIFrameElement; load(): void }) => void): void;
   registerPaletteProvider(provider: WorkspacePaletteProvider): void;
   registerCommand(command: WorkspaceClientCommand): void;
+  registeredCommands(): WorkspaceClientCommand[];
 }
 
 export interface WorkspaceClientModuleContext {

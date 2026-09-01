@@ -2,7 +2,7 @@
 
 import { setActivityButtonState } from "@atelier/design-system/activity-button/client";
 import { atelierObservableTerminalTheme, createObservableTerminalViewer, observableWebSocketUrl, type ObservableTerminalTheme, type ObservableTerminalViewer } from "@atelier/observable-terminal/client";
-import { CableTopics, composerSubmitKey, copyTextToClipboard, notifyInputListeners, phoneViewportMediaQuery, recentWorkspaceProjectStorageKey, setTextInputValue, workspaceProxyUrl, type AtelierCableClient, type CableIdentifier, type CableSubscriptionOptions, type WorkspaceClientController, type WorkspaceClientModule } from "@atelier/shared";
+import { CableTopics, composerSubmitKey, copyTextToClipboard, notifyInputListeners, phoneViewportMediaQuery, recentWorkspaceProjectStorageKey, setTextInputValue, workspaceProxyUrl, type AtelierCableClient, type CableIdentifier, type CableSubscriptionOptions, type WorkspaceClientCommand, type WorkspaceClientController, type WorkspaceClientHooks, type WorkspaceClientModule } from "@atelier/shared";
 import { agentTreeOwnsMenu, handleAgentTreeKeydown, handleAgentTreeMenuEvent, selectAgentTreeOption } from "./session-tree.ts";
 
 type StimulusControllerConstructor = new (...args: never[]) => { element: Element };
@@ -1149,6 +1149,46 @@ function promptTemplateTriggerForHotkey(html: string, hotkey: string): string | 
   return container.content.querySelector<HTMLElement>(`[data-prompt-template-hotkey="${hotkey}"]`)?.dataset.commandTrigger;
 }
 
+type ShortcutCommand = Pick<WorkspaceClientCommand, "label" | "binding">;
+
+export function promptTemplateHotkeyConflict(hotkey: string, commands: readonly ShortcutCommand[]): ShortcutCommand | undefined {
+  const binding = `Meta+Alt+Key${hotkey.toUpperCase()}`;
+  return commands.find((command) => command.binding === binding);
+}
+
+function visibleWorkspaceCommands(): ShortcutCommand[] {
+  const presentation = document.querySelector<HTMLElement>(".workspace-detail-resident.visible .fixed-workspace-presentation")
+    ?? document.querySelector<HTMLElement>(".fixed-workspace-presentation");
+  if (!presentation) return [];
+  // SAFETY: The server serializes WorkspaceCommandRegistration values into this dataset.
+  return JSON.parse(presentation.dataset.workspaceCommands!) as ShortcutCommand[];
+}
+
+function promptTemplateShortcutConflict(hooks: WorkspaceClientHooks, hotkey: string): ShortcutCommand | undefined {
+  return promptTemplateHotkeyConflict(hotkey, [...hooks.registeredCommands(), ...visibleWorkspaceCommands()]);
+}
+
+function markPromptTemplateShortcutConflicts(html: string, hooks: WorkspaceClientHooks): string {
+  const container = document.createElement("template");
+  container.innerHTML = html.trim();
+  for (const option of container.content.querySelectorAll<HTMLElement>("[data-prompt-template-hotkey]")) {
+    const hotkey = option.dataset.promptTemplateHotkey!;
+    const conflict = promptTemplateShortcutConflict(hooks, hotkey);
+    if (!conflict) continue;
+    option.removeAttribute("data-prompt-template-hotkey");
+    option.removeAttribute("aria-keyshortcuts");
+    const message = `Shortcut unavailable: ⌘⌥${hotkey.toUpperCase()} is used by ${conflict.label}.`;
+    option.title = message;
+    option.setAttribute("aria-label", `${option.getAttribute("aria-label") ?? option.dataset.commandTrigger}. ${message}`);
+    const shortcut = option.querySelector<HTMLElement>(".agent-quick-launch-shortcut");
+    if (shortcut) {
+      shortcut.classList.add("conflict");
+      shortcut.textContent = `⌘⌥${hotkey.toUpperCase()} used by ${conflict.label}`;
+    }
+  }
+  return container.innerHTML;
+}
+
 function filterSlashCompletionCatalog(html: string, query: string, compactAvailable: boolean): string {
   const container = document.createElement("template");
   container.innerHTML = html.trim();
@@ -1211,7 +1251,7 @@ async function expandedPromptTemplate(url: string, text: string): Promise<string
   return await response.text();
 }
 
-function createAgentCompletionsController(Controller: StimulusControllerConstructor) {
+function createAgentCompletionsController(Controller: StimulusControllerConstructor, hooks: WorkspaceClientHooks) {
   const HtmlAutocompleteController = createHtmlAutocompleteController(Controller, {
     optionSelector: ".agent-completion-option:not([hidden]):not(:disabled)",
     loadingHtml: `<div class="popup-menu autocomplete-menu autocomplete-empty" role="status"><span class="agent-completion-spinner" aria-hidden="true"></span>Loading completions…</div>`,
@@ -1235,8 +1275,12 @@ function createAgentCompletionsController(Controller: StimulusControllerConstruc
       return { query: completion.query, params, debounceMs: completion.kind === "file" ? 70 : 0 };
     },
     loadHtml(request, url, interaction) {
-      if (request.params?.kind === "quick-launch") return quickLaunchHtml(url, interaction);
-      if (request.params?.kind === "slash-command") return slashCompletionHtml(url, interaction, request.query, request.params.compactAvailable !== "false");
+      const html = request.params?.kind === "quick-launch"
+        ? quickLaunchHtml(url, interaction)
+        : request.params?.kind === "slash-command"
+          ? slashCompletionHtml(url, interaction, request.query, request.params.compactAvailable !== "false")
+          : undefined;
+      return html?.then((content) => markPromptTemplateShortcutConflicts(content, hooks));
     },
     select(option, input, url) {
       if (selectAgentTreeOption(option, input)) return false;
@@ -1294,7 +1338,9 @@ function createAgentCompletionsController(Controller: StimulusControllerConstruc
       if (resident && !resident.classList.contains("visible")) return;
       const catalog = slashCatalogCache.get(slashCatalogUrl(this.urlValue).href)?.html;
       if (!catalog) return;
-      const trigger = promptTemplateTriggerForHotkey(catalog, match[1]!.toLowerCase());
+      const hotkey = match[1]!.toLowerCase();
+      if (promptTemplateShortcutConflict(hooks, hotkey)) return;
+      const trigger = promptTemplateTriggerForHotkey(catalog, hotkey);
       if (!trigger) return;
 
       event.preventDefault();
@@ -1303,7 +1349,9 @@ function createAgentCompletionsController(Controller: StimulusControllerConstruc
       void expandedPromptTemplate(this.urlValue, trigger).then((expanded) => {
         if (this.inputTarget.value !== initialValue) return;
         setTextInputValue(this.inputTarget, expanded);
-        this.inputTarget.form!.focus({ preventScroll: true });
+        const form = this.inputTarget.form!;
+        const submitter = form.querySelector<HTMLButtonElement>('button[value="send"], button[value="steer"]');
+        form.requestSubmit(submitter ?? undefined);
       });
     };
   };
@@ -1770,7 +1818,7 @@ export const agentClientModule: WorkspaceClientModule = {
     application.register("agent-tail-frame", createAgentTailFrameController(Controller));
     application.register("agent-lazy-detail", createAgentLazyDetailController(Controller));
     application.register("agent-notice", createAgentNoticeController(Controller));
-    application.register("agent-completions", createAgentCompletionsController(Controller));
+    application.register("agent-completions", createAgentCompletionsController(Controller, hooks));
     application.register("agent-proxy", createAgentProxyController(Controller));
     application.register("agent-term", createAgentTermController(Controller));
 

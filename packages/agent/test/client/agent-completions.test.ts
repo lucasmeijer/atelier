@@ -1,5 +1,5 @@
 import { describe, expect, mock, test } from "bun:test";
-import { type AgentCompletionInput, agentCompletionRequest, agentComposerPrimaryAction, agentComposerTextStorageKey, agentConnectionShouldRun, fileCompletionPrefix, focusAgentPaneComposerOnWideViewport, forwardAgentTerminalWheel, insertSlashCommand, messageNavigationDirection, navigatePromptHistory, scrollMessageToTop, shouldPositionTranscriptAfterSnapshot, terminalOutputHasPrintableText, transcriptFollowingAfterScroll, workspaceSelectionScrollTop } from "../../src/client/agent-controllers.ts";
+import { type AgentCompletionInput, agentCompletionRequest, agentComposerPrimaryAction, agentComposerTextStorageKey, agentConnectionShouldRun, fileCompletionPrefix, focusAgentPaneComposerOnWideViewport, forwardAgentTerminalWheel, insertSlashCommand, messageNavigationDirection, navigatePromptHistory, promptTemplateHotkeyConflict, scrollMessageToTop, shouldPositionTranscriptAfterSnapshot, terminalOutputHasPrintableText, transcriptFollowingAfterScroll, workspaceSelectionScrollTop } from "../../src/client/agent-controllers.ts";
 
 function input(value: string, cursor = value.length): AgentCompletionInput {
   return {
@@ -196,6 +196,16 @@ describe("agent prompt completion activation", () => {
     expect(agentCompletionRequest(input("/tmp"), true)).toEqual({ kind: "file", query: "/tmp", mode: "direct" });
     expect(agentCompletionRequest(input("/tmp/bla"))).toBeUndefined();
     expect(agentCompletionRequest(input("/tmp/bla"), true)).toEqual({ kind: "file", query: "/tmp/bla", mode: "direct" });
+  });
+
+  test("rejects prompt-template hotkeys already assigned to Atelier commands", () => {
+    const commands = [
+      { label: "Open VS Code", binding: "Meta+Alt+KeyV" },
+      { label: "New Terminal", binding: "Meta+Alt+KeyT" },
+    ];
+
+    expect(promptTemplateHotkeyConflict("v", commands)?.label).toBe("Open VS Code");
+    expect(promptTemplateHotkeyConflict("s", commands)).toBeUndefined();
   });
 
   test("a selected prompt template replaces a partial trigger before inline expansion", () => {
