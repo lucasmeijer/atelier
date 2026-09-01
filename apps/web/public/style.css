@@ -247,8 +247,9 @@ turbo-frame { display: contents; }
 .fixed-shell-projects-drawer > .fixed-shell-project-heading-row .fixed-shell-project-heading > .disclosure-icon { display: none; }
 .fixed-shell-projects-drawer > .fixed-shell-project-workspaces > .fixed-shell-project { margin-bottom: 2px; }
 .fixed-shell-workspace-row { padding-left: 24px; }
-.fixed-shell-workspace-warning { flex: 0 0 auto; color: var(--warning); font-style: normal; }
-.workspace-attention-status { position: relative; display: inline-grid; width: 10px; height: 10px; place-items: center; overflow: visible; }
+.fixed-shell-workspace-status { position: relative; display: inline-grid; width: 16px; height: 16px; place-items: center; overflow: visible; }
+.fixed-shell-workspace-warning { color: var(--warning); font-style: normal; line-height: 1; }
+.workspace-attention-status { position: relative; }
 .workspace-attention-status > .status-dot.attention.at-edge { position: static; margin-inline-start: 0; }
 .fixed-shell-workspace-row[data-workspace-preloading] > .workspace-attention-status::after {
   position: absolute;

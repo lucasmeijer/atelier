@@ -386,11 +386,11 @@ describe("web app contracts", () => {
     const body = await response.text();
     expect(updatesWorkspacePaneCollections(body)).toBe(true);
     expect(body).toContain(`data-workspace-entry-id="${id}"`);
-    expect(body).toContain('class="status-spinner sm fixed-shell-workspace-busy action-item__status"');
+    expect(body).toContain('class="fixed-shell-workspace-status action-item__status"><i class="status-spinner sm fixed-shell-workspace-busy"');
 
     await Bun.sleep(10);
     const startingPaneBroadcast = broadcasts.find((html) => updatesWorkspacePaneCollections(html) && html.includes(`data-workspace-entry-id="${id}"`));
-    expect(startingPaneBroadcast).toContain('class="status-spinner sm fixed-shell-workspace-busy action-item__status"');
+    expect(startingPaneBroadcast).toContain('class="fixed-shell-workspace-status action-item__status"><i class="status-spinner sm fixed-shell-workspace-busy"');
 
     broadcasts.length = 0;
     provision.resolve();

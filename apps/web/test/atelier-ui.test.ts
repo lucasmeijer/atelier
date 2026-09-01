@@ -1382,6 +1382,48 @@ Comment: I don't think we need these tests`;
     await page.close();
   });
 
+  test("keeps project Workspace status markers inside their slots", async () => {
+    const presentation: WorkspacePresentation = {
+      workspace: { id: "status-slots", title: "Status slots" },
+      agentConversations: [agentConversation("status-slots", "agent-status")],
+      workViews: [],
+    };
+    const pane: WorkspacePanePresentation = {
+      projects: [{
+        id: "atelier",
+        title: "atelier",
+        workspaces: [
+          { id: "outdated", title: "update-latest-channel-release", outdated: true },
+          { id: "starting", title: "dialog-component-api-design", state: "starting" },
+        ],
+      }],
+      projectlessWorkspaces: [],
+    };
+    const page = await newTestPage({ viewport: { width: 760, height: 500 } });
+    await page.route("http://atelier.test/workspaces/status-slots", (route) => route.fulfill({
+      contentType: "text/html",
+      body: `<style>${workspaceStyle}</style><style>.fixed-shell-app { --fixed-workspace-width: 180px; }</style>${renderShellFixture(presentation, pane)}<script type="module" src="${workspaceClientPath}"></script>`,
+    }));
+    await page.goto("http://atelier.test/workspaces/status-slots");
+
+    const statusGeometry = await page.locator(".fixed-shell-workspace-status").evaluateAll((slots) => slots.map((slot) => {
+      const marker = slot.firstElementChild!;
+      const slotBox = slot.getBoundingClientRect();
+      const markerBox = marker.getBoundingClientRect();
+      return {
+        markerClass: marker.className,
+        markerInsideSlot: marker instanceof HTMLElement && marker.className.includes("status-spinner")
+          ? markerBox.left >= slotBox.left && markerBox.right <= slotBox.right
+          : undefined,
+      };
+    }));
+    expect(statusGeometry).toEqual([
+      { markerClass: "fixed-shell-workspace-warning", markerInsideSlot: undefined },
+      { markerClass: "status-spinner sm fixed-shell-workspace-busy", markerInsideSlot: true },
+    ]);
+    await page.close();
+  });
+
   test("shrinks Agent tabs before header actions and scrolls clipped names on hover", async () => {
     const close = { action: "/agents/close", label: "agent" };
     const presentation: WorkspacePresentation = {

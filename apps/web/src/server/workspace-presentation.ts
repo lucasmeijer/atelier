@@ -109,18 +109,24 @@ function selectorCloseForm(close: ViewCloseAction): string {
   return `<form data-turbo="true" method="post" action="${escapeHtml(close.action)}">${confirmation}</form>`;
 }
 
+function workspaceStatusSlot(content: string): string {
+  return `<span class="fixed-shell-workspace-status action-item__status">${content}</span>`;
+}
+
 function renderWorkspaceRowStatus(workspace: WorkspacePaneEntry): string {
   if (workspace.state === "starting" || workspace.state === "deleting") {
     const label = workspace.state === "starting" ? "Workspace starting" : "Workspace deleting";
-    return `<i class="status-spinner sm fixed-shell-workspace-busy action-item__status" aria-label="${label}" title="${label}"></i>`;
+    return workspaceStatusSlot(`<i class="status-spinner sm fixed-shell-workspace-busy" aria-label="${label}" title="${label}"></i>`);
   }
   if (workspace.busyViewKeys?.length) {
-    return '<i class="status-spinner sm fixed-shell-workspace-busy action-item__status" aria-label="Workspace busy" title="Workspace busy"></i>';
+    return workspaceStatusSlot('<i class="status-spinner sm fixed-shell-workspace-busy" aria-label="Workspace busy" title="Workspace busy"></i>');
   }
   if (workspace.attention) {
-    return '<span class="workspace-attention-status action-item__status" aria-label="Attention"><i class="status-dot attention at-edge" aria-hidden="true"></i></span>';
+    return '<span class="workspace-attention-status fixed-shell-workspace-status action-item__status" aria-label="Attention"><i class="status-dot attention at-edge" aria-hidden="true"></i></span>';
   }
-  return workspace.outdated ? '<i class="fixed-shell-workspace-warning action-item__status" aria-label="Workspace created with an older version of Atelier" title="Some newer features may require a new workspace">⚠︎</i>' : "";
+  return workspace.outdated
+    ? workspaceStatusSlot('<i class="fixed-shell-workspace-warning" aria-label="Workspace created with an older version of Atelier" title="Some newer features may require a new workspace">⚠︎</i>')
+    : "";
 }
 
 function renderWorkspaceRow(workspace: WorkspacePaneEntry, projectId?: string, options: { unpark?: boolean } = {}): string {

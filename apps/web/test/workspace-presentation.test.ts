@@ -102,7 +102,7 @@ describe("role-fixed Workspace presentation", () => {
     expect(html).not.toContain("fixed-shell-workspace-color");
     expect(html).toContain('data-workspace-attention-at="123"');
     expect(html).toContain('aria-current="page"');
-    expect(html).toContain('class="status-spinner sm fixed-shell-workspace-busy action-item__status" aria-label="Workspace deleting"');
+    expect(html).toContain('class="fixed-shell-workspace-status action-item__status"><i class="status-spinner sm fixed-shell-workspace-busy" aria-label="Workspace deleting"');
     expect(html).toContain('<section id="global_sidebar_contributions"><button data-update-probe>Restart to update</button></section>');
   });
 
@@ -116,12 +116,12 @@ describe("role-fixed Workspace presentation", () => {
     const deleting = row({ state: "deleting", attention: true, busyViewKeys: ["agent:one"] });
     const busy = row({ state: "idle", attention: true, busyViewKeys: ["agent:one"] });
     const attention = row({ state: "requires_delete_confirmation", attention: true });
-    expect(row({ state: "idle" })).toContain("fixed-shell-workspace-warning");
-    expect(starting).toContain('aria-label="Workspace starting"');
+    expect(row({ state: "idle" })).toContain('class="fixed-shell-workspace-status action-item__status"><i class="fixed-shell-workspace-warning"');
+    expect(starting).toContain('class="fixed-shell-workspace-status action-item__status"><i class="status-spinner sm fixed-shell-workspace-busy" aria-label="Workspace starting"');
     expect(starting).not.toContain('aria-label="Workspace busy"');
-    expect(deleting).toContain('aria-label="Workspace deleting"');
+    expect(deleting).toContain('class="fixed-shell-workspace-status action-item__status"><i class="status-spinner sm fixed-shell-workspace-busy" aria-label="Workspace deleting"');
     expect(deleting).not.toContain('aria-label="Workspace busy"');
-    expect(busy).toContain('aria-label="Workspace busy"');
+    expect(busy).toContain('class="fixed-shell-workspace-status action-item__status"><i class="status-spinner sm fixed-shell-workspace-busy" aria-label="Workspace busy"');
     expect(busy).not.toContain('aria-label="Attention"');
     expect(attention).toContain('aria-label="Attention"');
     expect(attention).not.toContain("fixed-shell-workspace-warning");
