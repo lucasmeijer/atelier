@@ -80,6 +80,7 @@ function createReviewController(Controller: StimulusControllerConstructor) {
     private hydratedHosts = new WeakSet<HTMLElement>();
     private draft?: DraftModel;
     private hydrated = false;
+    private diffStyle: "unified" | "split" = "unified";
     private wordDiffEnabled = false;
     private lineWrappingEnabled = true;
     private pane!: HTMLElement;
@@ -151,6 +152,14 @@ function createReviewController(Controller: StimulusControllerConstructor) {
       for (const file of this.fileTargets) file.open = true;
     }
 
+    setDiffLayout(event: ToggleChangeEvent): void {
+      this.diffStyle = event.detail.value === "split" ? "split" : "unified";
+      for (const instance of this.instances) {
+        instance.setOptions({ ...instance.options, diffStyle: this.diffStyle });
+        instance.rerender();
+      }
+    }
+
     setWordDiff(event: ToggleChangeEvent): void {
       this.wordDiffEnabled = event.detail.value === "true";
       for (const instance of this.instances) {
@@ -188,6 +197,7 @@ function createReviewController(Controller: StimulusControllerConstructor) {
       let instance: FileDiff<AnnotationMetadata>;
       instance = new FileDiffClass<AnnotationMetadata>({
         ...reviewDiffOptions,
+        diffStyle: this.diffStyle,
         lineDiffType: this.wordDiffEnabled ? "word-alt" : reviewDiffOptions.lineDiffType,
         overflow: this.lineWrappingEnabled ? "wrap" : "scroll",
         renderAnnotation: (item) => this.renderAnnotation(item.metadata!, instance),
@@ -197,7 +207,7 @@ function createReviewController(Controller: StimulusControllerConstructor) {
       const draft = this.draft?.path === path ? this.draft : undefined;
       const lineAnnotations = this.annotations(path);
       instance.hydrate({ fileContainer: container, fileDiff: model.fileDiff, lineAnnotations, prerenderedHTML });
-      if (draft) instance.render({ fileDiff: model.fileDiff, lineAnnotations: [...lineAnnotations] });
+      if (draft || this.diffStyle !== reviewDiffOptions.diffStyle) instance.render({ fileDiff: model.fileDiff, lineAnnotations: [...lineAnnotations] });
       this.instances.push(instance);
       this.enableTextCommenting(container, path, instance);
       this.decorateExpansionControls(container);

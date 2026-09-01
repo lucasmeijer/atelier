@@ -225,12 +225,16 @@ describe("Review presentation", () => {
     expect(html).toContain('aria-label="Refresh review"');
     expect(html).toContain('aria-label="Collapse all files"');
     expect(html).toContain('aria-label="Expand all files"');
+    expect(html).toContain('role="group" aria-label="Diff layout" data-controller="toggle" data-action="change-&gt;review#setDiffLayout"');
+    expect(html).toContain('name="review-diff-layout" value="unified" aria-pressed="true">Unified</button>');
+    expect(html).toContain('name="review-diff-layout" value="split" aria-pressed="false">Side by side</button>');
     expect(html).toContain('role="group" aria-label="Diff highlighting" data-controller="toggle" data-action="change-&gt;review#setWordDiff"');
     expect(html).toContain('name="review-word-diff" value="false" aria-pressed="true">Lines</button>');
     expect(html).toContain('name="review-word-diff" value="true" aria-pressed="false">Words</button>');
     expect(html).toContain('role="group" aria-label="Long lines" data-controller="toggle" data-action="change-&gt;review#setLineWrapping"');
     expect(html).toContain('name="review-line-wrapping" value="false" aria-pressed="false">Scroll</button>');
     expect(html).toContain('name="review-line-wrapping" value="true" aria-pressed="true">Wrap</button>');
+    expect(html.indexOf(">Unified</button>")).toBeLessThan(html.indexOf(">Side by side</button>"));
     expect(html.indexOf(">Lines</button>")).toBeLessThan(html.indexOf(">Words</button>"));
     expect(html.indexOf(">Scroll</button>")).toBeLessThan(html.indexOf(">Wrap</button>"));
     expect(html).toContain('<span class="review-comment-count" aria-label="1 comment">1</span>');

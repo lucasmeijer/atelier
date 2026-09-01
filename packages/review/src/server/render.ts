@@ -161,6 +161,14 @@ function toolbar(workspaceId: string, comments: ReviewComment[]): string {
     label: "Copy review comments to clipboard",
     disabled: comments.length === 0,
   });
+  const diffLayout = toggleHtml({
+    variant: "text-subtle",
+    label: "Diff layout",
+    name: "review-diff-layout",
+    value: "unified",
+    element: { dataAction: "change->review#setDiffLayout" },
+    options: [{ label: "Unified", value: "unified" }, { label: "Side by side", value: "split" }],
+  });
   const diffHighlighting = toggleHtml({
     variant: "text-subtle",
     label: "Diff highlighting",
@@ -184,7 +192,7 @@ function toolbar(workspaceId: string, comments: ReviewComment[]): string {
       <form method="post" action="/workspaces/${encodeURIComponent(workspaceId)}/review/comments/delete" data-turbo="true"><button class="button danger icon-only" type="submit" aria-label="Delete all review comments" title="Delete all review comments"${commentsDisabled}>${Icons.Trash}</button></form>
       ${refreshForm(workspaceId)}
       ${collapse}${expand}
-      <div class="review-display-toggles">${diffHighlighting}${longLines}</div>
+      <div class="review-display-toggles">${diffLayout}${diffHighlighting}${longLines}</div>
       <span data-copy-source hidden>${escapeHtml(reviewCommentsPrompt(comments))}</span>
     </div>
   </header>`;

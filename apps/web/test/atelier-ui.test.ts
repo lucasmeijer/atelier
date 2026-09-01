@@ -284,6 +284,9 @@ Comment: I don't think we need these tests`;
       await page.goto("http://atelier.test/");
 
       const file = page.locator("details.review-file");
+      const layout = page.getByRole("group", { name: "Diff layout", exact: true });
+      const unified = layout.getByRole("button", { name: "Unified", exact: true });
+      const sideBySide = layout.getByRole("button", { name: "Side by side", exact: true });
       const highlighting = page.getByRole("group", { name: "Diff highlighting", exact: true });
       const lines = highlighting.getByRole("button", { name: "Lines", exact: true });
       const words = highlighting.getByRole("button", { name: "Words", exact: true });
@@ -304,6 +307,20 @@ Comment: I don't think we need these tests`;
       expect(detailRequests).toBe(1);
       expect(await file.locator(".review-additions").count()).toBe(1);
       await file.locator("summary").click();
+      const renderedDiff = page.locator("diffs-container").locator("pre[data-diff]");
+      expect(await unified.getAttribute("aria-pressed")).toBe("true");
+      expect(await sideBySide.getAttribute("aria-pressed")).toBe("false");
+      expect(await renderedDiff.getAttribute("data-diff-type")).toBe("single");
+
+      await sideBySide.click();
+      expect(await unified.getAttribute("aria-pressed")).toBe("false");
+      expect(await sideBySide.getAttribute("aria-pressed")).toBe("true");
+      expect(await renderedDiff.getAttribute("data-diff-type")).toBe("split");
+
+      await unified.click();
+      expect(await unified.getAttribute("aria-pressed")).toBe("true");
+      expect(await sideBySide.getAttribute("aria-pressed")).toBe("false");
+      expect(await renderedDiff.getAttribute("data-diff-type")).toBe("single");
       expect(await lines.getAttribute("aria-pressed")).toBe("true");
       expect(await words.getAttribute("aria-pressed")).toBe("false");
       expect(await wordHighlights.count()).toBe(0);
