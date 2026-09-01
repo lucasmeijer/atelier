@@ -13,6 +13,7 @@
     "./destructive-confirmation/client": "./src/destructive-confirmation/destructive-confirmation-controller.ts",
     "./icons": "./src/icons/icons-html.ts",
     "./linear-navigation/client": "./src/linear-navigation/linear-navigation-controller.ts",
+    "./panel": "./src/panel/panel-html.ts",
     "./progress-button": "./src/progress-button/progress-button-html.ts",
     "./transient-feedback": "./src/transient-feedback/transient-feedback-html.ts",
     "./transient-feedback/client": "./src/transient-feedback/transient-feedback-controller.ts",

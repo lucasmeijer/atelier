@@ -125,6 +125,10 @@
     .catalogue-demo details summary::-webkit-details-marker { display: none; }
     .detail-copy { margin: 6px 16px 8px 28px; color: var(--text); }
     .truncate-demo { width: 230px; }
+    .catalogue-panel { width: min(520px, 100%); height: 240px; margin: 0 auto; }
+    .catalogue-panel .panel__header { justify-content: space-between; }
+    .catalogue-panel-title { color: var(--text-bright); font-weight: var(--weight-semibold); }
+    .catalogue-panel-body { padding: 16px; overflow: auto; }
     .catalogue-dialog { position: static; width: min(520px, 100%); }
 
     .popup-demo { min-height: 388px; display: flex; align-items: flex-end; justify-content: flex-end; }
@@ -176,6 +180,7 @@
         <a href="#destructive-confirmation">Destructive confirmation</a>
         <a href="#status-dots">Status dots</a>
         <a href="#text-entry">Text entry</a>
+        <a href="#panel">Panel</a>
         <a href="#dialog">Dialog</a>
         <a href="#autocomplete">Autocomplete</a>
         <a href="#popup-menu">Popup menu</a>
@@ -583,6 +588,16 @@ bun test</pre></div>
 &lt;label for="instructions"&gt;Instructions&lt;/label&gt;
 &lt;textarea class="textarea" id="instructions"&gt;&lt;/textarea&gt;</pre></article>
           </div>
+        </section>
+
+        <section class="catalogue-section" id="panel">
+          <div class="catalogue-section-head"><h2>Panel</h2><p>A bounded application surface with fixed chrome around a flexible body. Panel establishes structure and clipping; its content decides where scrolling belongs.</p></div>
+          <article class="catalogue-card wide"><div class="catalogue-card-title"><span>Workspace surface</span><code>panelHtml()</code></div><div class="catalogue-demo">
+            <aside class="panel catalogue-panel" aria-label="Example workspace panel">
+              <header class="panel__header"><strong class="catalogue-panel-title">Atelier</strong><button class="button secondary icon-only" type="button" aria-label="Panel action"><svg aria-hidden="true" viewBox="0 0 24 24"><path d="M12 5v14M5 12h14"/></svg></button></header>
+              <div class="panel__body catalogue-panel-body"><p>The body is flexible and clipped by default. A workspace list, transcript layout, or work-view host can choose its own scroll owner.</p></div>
+            </aside>
+          </div><p class="catalogue-note">The header inherits the panel background. Its divider establishes hierarchy without introducing another surface color.</p></article>
         </section>
 
         <section class="catalogue-section" id="dialog">

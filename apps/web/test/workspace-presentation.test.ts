@@ -66,8 +66,8 @@ describe("role-fixed Workspace presentation", () => {
       { id: "workspace-2", title: "Working", state: "deleting" },
     ] }], emptyProjects: [{ id: "project-2", title: "Empty" }], projectlessWorkspaces: [{ id: "workspace-3", title: "Scratch" }] }, '<button data-update-probe>Restart to update</button>');
 
-    expect(html).toContain('class="fixed-shell-workspace-pane"');
-    const workspaceHeader = html.slice(html.indexOf("<header>"), html.indexOf("</header>"));
+    expect(html).toContain('class="panel fixed-shell-workspace-pane"');
+    const workspaceHeader = html.slice(html.indexOf("<header"), html.indexOf("</header>"));
     expect(workspaceHeader).toContain('<strong><svg aria-hidden="true"');
     expect(workspaceHeader.indexOf("<svg")).toBeLessThan(workspaceHeader.indexOf("Atelier"));
     expect(workspaceHeader).toContain('href="/settings"');

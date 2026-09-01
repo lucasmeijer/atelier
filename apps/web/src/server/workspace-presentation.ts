@@ -1,6 +1,7 @@
 import { actionItemHtml } from "@atelier/design-system/action-item";
 import { destructiveConfirmationHtml } from "@atelier/design-system/destructive-confirmation";
 import { Icons } from "@atelier/design-system/icons";
+import { panelHtml } from "@atelier/design-system/panel";
 import { domId, escapeHtml, turboStream } from "@atelier/shared";
 import type { WorkspaceDeletionState } from "./workspace-registry.ts";
 
@@ -222,7 +223,7 @@ function renderWorkspacePaneCollectionRegions(presentation: WorkspacePanePresent
   return { scrollHtml: `${projects}${projectless}`, projectsDrawerHtml };
 }
 
-export function renderWorkspacePaneCollections(presentation: WorkspacePanePresentation, sidebarContributionsHtml = ""): string {
+function renderWorkspacePaneCollections(presentation: WorkspacePanePresentation, sidebarContributionsHtml = ""): string {
   const regions = renderWorkspacePaneCollectionRegions(presentation);
   return `<div class="fixed-shell-pane-collections" data-workspace-pane-collections>
     <div id="${workspacePaneScrollDomId}" class="fixed-shell-workspace-scroll" data-workspace-navigation-target="scroll">${regions.scrollHtml}</div>
@@ -236,10 +237,11 @@ const workspaceProjectsDrawerDomId = "fixed_shell_projects_drawer";
 
 export function renderWorkspacePane(presentation: WorkspacePanePresentation, sidebarContributionsHtml = ""): string {
   const settings = `<a class="button secondary icon-only" href="/settings" title="Settings" aria-label="Settings" data-controller="settings-prefetch" data-action="pointerenter->settings-prefetch#prefetch focus->settings-prefetch#prefetch click->settings-prefetch#open">${Icons.Settings}</a>`;
-  return `<aside class="fixed-shell-workspace-pane" aria-label="Workspaces">
-    <header><strong>${Icons.Atelier}Atelier</strong><div class="button-group">${settings}${topBarButton("Collapse Workspace pane", "click->workspace-navigation#toggleDesktopWorkspacePane", Icons.Panel, "data-collapse-workspace-pane")}</div></header>
-    ${renderWorkspacePaneCollections(presentation, sidebarContributionsHtml)}
-  </aside>`;
+  return panelHtml({
+    element: { tag: "aside", className: "fixed-shell-workspace-pane", attributesHtml: 'aria-label="Workspaces"' },
+    headerHtml: `<strong>${Icons.Atelier}Atelier</strong><div class="button-group">${settings}${topBarButton("Collapse Workspace pane", "click->workspace-navigation#toggleDesktopWorkspacePane", Icons.Panel, "data-collapse-workspace-pane")}</div>`,
+    bodyHtml: renderWorkspacePaneCollections(presentation, sidebarContributionsHtml),
+  });
 }
 
 export function renderGlobalMobileNavigation(): string {

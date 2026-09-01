@@ -31,6 +31,7 @@ export const fingerprintedStaticFiles: StaticFileRegistry = {
   "/copy-button.css": { url: new URL("../../../../packages/design-system/src/copy-button/copy-button.css", import.meta.url), contentType: "text/css; charset=utf-8" },
   "/destructive-confirmation.css": { url: new URL("../../../../packages/design-system/src/destructive-confirmation/destructive-confirmation.css", import.meta.url), contentType: "text/css; charset=utf-8" },
   "/icons.css": { url: new URL("../../../../packages/design-system/src/icons/icons.css", import.meta.url), contentType: "text/css; charset=utf-8" },
+  "/panel.css": { url: new URL("../../../../packages/design-system/src/panel/panel.css", import.meta.url), contentType: "text/css; charset=utf-8" },
   "/perimeter-button.css": { url: new URL("../../../../packages/design-system/src/perimeter-button/perimeter-button.css", import.meta.url), contentType: "text/css; charset=utf-8" },
   "/progress-button.css": { url: new URL("../../../../packages/design-system/src/progress-button/progress-button.css", import.meta.url), contentType: "text/css; charset=utf-8" },
   "/transient-feedback.css": { url: new URL("../../../../packages/design-system/src/transient-feedback/transient-feedback.css", import.meta.url), contentType: "text/css; charset=utf-8" },
