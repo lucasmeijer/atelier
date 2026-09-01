@@ -28,11 +28,12 @@ type HtmlAutocompleteOptions = {
   request(input: HTMLInputElement | HTMLTextAreaElement, force?: boolean): HtmlAutocompleteRequest | undefined;
   loadHtml?(request: HtmlAutocompleteRequest, url: URL, interaction: HtmlAutocompleteInteraction): Promise<string> | undefined;
   /** Return false when selection starts an interaction that owns the open menu. */
-  select(option: HTMLElement, input: HTMLInputElement | HTMLTextAreaElement): boolean | void;
+  select(option: HTMLElement, input: HTMLInputElement | HTMLTextAreaElement, url: string): boolean | void;
   keydown?(event: KeyboardEvent, input: HTMLInputElement | HTMLTextAreaElement, url: string, actions: HtmlAutocompleteActions): boolean;
   loadingHtml?: string;
   triggerKeysWhenClosed?: string[];
   fullscreenShortcut?(option: HTMLElement): boolean;
+  keepOpenOnBlur?(input: HTMLInputElement | HTMLTextAreaElement, menu: HTMLElement): boolean;
   /** Return true when an event inside the menu has been handled. */
   menuEvent?(event: Event, input: HTMLInputElement | HTMLTextAreaElement): boolean | void;
 };
@@ -905,7 +906,7 @@ export function createHtmlAutocompleteController(Controller: StimulusControllerC
 
     private readonly pointerover = (event: Event): void => {
       const option = this.optionFromEvent(event);
-      if (option) this.activate(option, false);
+      if (option && this.options().includes(option)) this.activate(option, false);
     };
 
     private optionFromEvent(event: Event): HTMLElement | null {
@@ -918,6 +919,7 @@ export function createHtmlAutocompleteController(Controller: StimulusControllerC
 
     private readonly blur = (event: Event): void => {
       if (!(event instanceof FocusEvent)) throw new Error("Autocomplete blur handler received a non-focus event");
+      if (autocomplete.keepOpenOnBlur?.(this.inputTarget, this.menuTarget)) return;
       const relatedTarget = event.relatedTarget;
       if (relatedTarget instanceof Node && this.menuTarget.contains(relatedTarget)) return;
       this.close();
@@ -938,6 +940,10 @@ export function createHtmlAutocompleteController(Controller: StimulusControllerC
       const html = await (autocomplete.loadHtml?.(request, url, this.interaction)
         ?? fetch(url, { headers: { Accept: "text/html" } }).then((response) => response.text()));
       if (id !== this.requestId) return;
+      if (!html.trim()) {
+        this.close();
+        return;
+      }
       this.menuTarget.innerHTML = html;
       this.menuTarget.hidden = false;
       const active = this.activeOption();
@@ -954,11 +960,11 @@ export function createHtmlAutocompleteController(Controller: StimulusControllerC
     }
 
     private options(): HTMLElement[] {
-      return [...this.menuTarget.querySelectorAll<HTMLElement>(autocomplete.optionSelector)];
+      return [...this.menuTarget.querySelectorAll<HTMLElement>(autocomplete.optionSelector)].filter((option) => option.getAttribute("role") === "option");
     }
 
     private activeOption(): HTMLElement | undefined {
-      return this.menuTarget.querySelector<HTMLElement>(`${autocomplete.optionSelector}.active`) ?? this.options()[0];
+      return this.options().find((option) => option.classList.contains("active")) ?? this.options()[0];
     }
 
     private activate(option: HTMLElement, scroll = true): void {
@@ -987,7 +993,7 @@ export function createHtmlAutocompleteController(Controller: StimulusControllerC
     }
 
     private insert(option: HTMLElement): void {
-      if (autocomplete.select(option, this.inputTarget) === false) return;
+      if (autocomplete.select(option, this.inputTarget, this.urlValue) === false) return;
       notifyInputListeners(this.inputTarget);
       this.close();
     }
@@ -1041,7 +1047,7 @@ function rawFileCompletionQuery(prefix: string): string {
 }
 
 export interface AgentCompletionRequest {
-  kind: "slash-command" | "file";
+  kind: "quick-launch" | "slash-command" | "file";
   query: string;
   mode?: "direct" | "fuzzy";
 }
@@ -1051,6 +1057,8 @@ export function agentCompletionRequest(input: AgentCompletionInput, force = fals
     const prefix = fileCompletionPrefix(input);
     return { kind: "file", query: rawFileCompletionQuery(prefix), mode: prefix.startsWith("@") ? "fuzzy" : "direct" };
   }
+
+  if (input.value === "") return { kind: "quick-launch", query: "" };
 
   const before = input.value.slice(0, input.selectionStart ?? 0);
   const after = input.value.slice(input.selectionEnd ?? 0);
@@ -1151,7 +1159,7 @@ function filterSlashCompletionCatalog(html: string, query: string): string {
   return menu.outerHTML;
 }
 
-async function slashCompletionHtml(url: URL, interaction: HtmlAutocompleteInteraction, query: string): Promise<string> {
+async function commandCatalogHtml(url: URL, interaction: HtmlAutocompleteInteraction): Promise<string> {
   let catalog = slashCatalogSnapshots.get(interaction);
   if (!catalog) {
     const entry = slashCatalogCache.get(slashCatalogUrl(url).href);
@@ -1163,7 +1171,24 @@ async function slashCompletionHtml(url: URL, interaction: HtmlAutocompleteIntera
     }
     slashCatalogSnapshots.set(interaction, catalog);
   }
-  return filterSlashCompletionCatalog(catalog, query);
+  return catalog;
+}
+
+async function slashCompletionHtml(url: URL, interaction: HtmlAutocompleteInteraction, query: string): Promise<string> {
+  return filterSlashCompletionCatalog(await commandCatalogHtml(url, interaction), query);
+}
+
+async function quickLaunchHtml(url: URL, interaction: HtmlAutocompleteInteraction): Promise<string> {
+  const container = document.createElement("template");
+  container.innerHTML = (await commandCatalogHtml(url, interaction)).trim();
+  return container.content.querySelector<HTMLElement>(".agent-quick-launches")?.outerHTML ?? "";
+}
+
+async function expandedPromptTemplate(url: string, text: string): Promise<string> {
+  const body = new FormData();
+  body.set("text", text);
+  const response = await fetch(`${url}/prompt-template-expand`, { method: "POST", body, headers: { Accept: "text/plain" } });
+  return await response.text();
 }
 
 function createAgentCompletionsController(Controller: StimulusControllerConstructor) {
@@ -1172,6 +1197,7 @@ function createAgentCompletionsController(Controller: StimulusControllerConstruc
     loadingHtml: `<div class="popup-menu autocomplete-menu autocomplete-empty" role="status"><span class="agent-completion-spinner" aria-hidden="true"></span>Loading completions…</div>`,
     triggerKeysWhenClosed: ["/", "@"],
     fullscreenShortcut: (option) => option.dataset.completionKind === "prompt-template",
+    keepOpenOnBlur: (input, menu) => input.value === "" && Boolean(menu.querySelector(".agent-quick-launch")),
     menuEvent: handleAgentTreeMenuEvent,
     request(input, force) {
       const completion = agentCompletionRequest(input, force);
@@ -1185,11 +1211,19 @@ function createAgentCompletionsController(Controller: StimulusControllerConstruc
       return { query: completion.query, params, debounceMs: completion.kind === "file" ? 70 : 0 };
     },
     loadHtml(request, url, interaction) {
+      if (request.params?.kind === "quick-launch") return quickLaunchHtml(url, interaction);
       if (request.params?.kind === "slash-command") return slashCompletionHtml(url, interaction, request.query);
     },
-    select(option, input) {
+    select(option, input, url) {
       if (selectAgentTreeOption(option, input)) return false;
-      if (option.dataset.commandTrigger) insertSlashCommand(option, input);
+      if (option.dataset.completionKind === "quick-launch") {
+        const initialValue = input.value;
+        void expandedPromptTemplate(url, option.dataset.commandTrigger!).then((expanded) => {
+          if (input.value !== initialValue) return;
+          setTextInputValue(input, expanded);
+          input.form!.focus({ preventScroll: true });
+        });
+      } else if (option.dataset.commandTrigger) insertSlashCommand(option, input);
       else if (option.dataset.completionKind === "file") insertFileCompletion(option, input);
     },
     keydown(event, input, url, actions) {
@@ -1201,10 +1235,7 @@ function createAgentCompletionsController(Controller: StimulusControllerConstruc
         if (active?.dataset.commandTrigger) actions.select(active);
         if (send || !/^\/[^/\s]+(?:\s+[\s\S]*)?$/.test(input.value.trim())) return false;
         event.preventDefault();
-        const body = new FormData();
-        body.set("text", input.value);
-        void fetch(`${url}/prompt-template-expand`, { method: "POST", body, headers: { Accept: "text/plain" } })
-          .then((response) => response.text())
+        void expandedPromptTemplate(url, input.value)
           .then((expanded) => {
             actions.setInputValue(expanded);
             actions.close();
@@ -1222,7 +1253,7 @@ function createAgentCompletionsController(Controller: StimulusControllerConstruc
   return class AgentCompletionsController extends HtmlAutocompleteController {
     connect(): void {
       super.connect();
-      void refreshSlashCatalog(this.urlValue);
+      void refreshSlashCatalog(this.urlValue).then(() => this.input());
     }
   };
 }

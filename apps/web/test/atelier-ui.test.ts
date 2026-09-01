@@ -2737,6 +2737,71 @@ Comment: I don't think we need these tests`;
     await page.close();
   });
 
+  test("keeps quick launches available for an empty Agent composer and expands the selected template", async () => {
+    const page = await newTestPage();
+    const catalog = renderSlashCommandCatalog([
+      { name: "simplify", trigger: "/simplify", description: "Simplify the current changes", prompt: "Simplify", quickLaunch: true },
+      { name: "review", trigger: "/review", description: "Review the current changes", prompt: "Review" },
+    ], []);
+    await page.route("http://atelier.test/quick-launch", (route) => route.fulfill({
+      contentType: "text/html",
+      body: `<button type="button" aria-label="Outside composer">Outside</button><div class="agent-pane" data-controller="agent-pane" data-agent-pane-workspace-id-value="quick" data-agent-pane-conversation-id-value="agent-1">
+        <div class="agent-transcript" data-agent-pane-target="transcript"></div>
+        <div class="composer agent-pane-composer" data-controller="agent-completions" data-agent-completions-url-value="/workspaces/quick/agents/agent-1/completions">
+          <div class="agent-pane-composer-overlays"><div class="agent-completion-menu-host" data-agent-completions-target="menu" hidden></div><button type="button" data-agent-pane-target="transcriptNav" disabled></button></div>
+          <div class="composer-surface"><form method="post" action="/send" tabindex="-1" data-agent-pane-target="form" data-action="keydown->agent-completions#keydown keydown->agent-pane#inputKeydown"><textarea aria-label="Agent prompt" name="text" data-agent-pane-target="input" data-agent-completions-target="input" data-action="input->agent-completions#input input->agent-pane#promptChanged"></textarea><button type="submit" name="mode" value="send" data-agent-pane-target="sendStop" data-agent-busy="false">Send</button></form></div>
+        </div>
+      </div><script type="module" src="${workspaceClientPath}"></script>`,
+    }));
+    await page.route("**/workspaces/quick/completion-catalog", (route) => route.fulfill({ contentType: "text/html", body: catalog }));
+    await page.route("**/workspaces/quick/agents/agent-1/completions/prompt-template-expand", (route) => route.fulfill({ contentType: "text/plain", body: "Review and simplify all current changes." }));
+    let submissions = 0;
+    await page.route("**/send", (route) => {
+      submissions++;
+      return route.fulfill({ status: 204 });
+    });
+    await page.goto("http://atelier.test/quick-launch");
+
+    const input = page.getByRole("textbox", { name: "Agent prompt" });
+    const quickLaunch = page.getByRole("button", { name: "/simplify", exact: true });
+    await quickLaunch.waitFor();
+    expect(await page.getByRole("group", { name: "Quick launch" }).isVisible()).toBe(true);
+    expect(await page.getByText("Simplify the current changes").count()).toBe(0);
+
+    await input.focus();
+    expect(await quickLaunch.isVisible()).toBe(true);
+    await input.press("Enter");
+    expect(await input.inputValue()).toBe("\n");
+    await input.fill("");
+    await quickLaunch.waitFor();
+    await input.pressSequentially("draft");
+    expect(await quickLaunch.count()).toBe(0);
+    await input.press("ControlOrMeta+A");
+    await input.press("Backspace");
+    await quickLaunch.waitFor();
+    expect(await quickLaunch.isVisible()).toBe(true);
+    await page.getByRole("button", { name: "Outside composer" }).focus();
+    expect(await quickLaunch.isVisible()).toBe(true);
+
+    await input.fill("/");
+    expect(await page.getByRole("listbox", { name: "Slash commands" }).isVisible()).toBe(true);
+    expect(await page.getByText(/\/simplify — Simplify the current changes/).isVisible()).toBe(true);
+
+    await input.fill("");
+    await page.getByRole("button", { name: "Outside composer" }).focus();
+    await quickLaunch.click();
+    await page.waitForFunction(() => document.querySelector<HTMLTextAreaElement>("textarea[name='text']")?.value === "Review and simplify all current changes.");
+    expect(await input.inputValue()).toBe("Review and simplify all current changes.");
+    const form = page.locator("form[action='/send']");
+    expect(await form.evaluate((element) => document.activeElement === element)).toBe(true);
+    expect(submissions).toBe(0);
+    const sendRequest = page.waitForRequest((request) => new URL(request.url()).pathname === "/send");
+    await form.press("Control+Enter");
+    await sendRequest;
+    expect(submissions).toBe(1);
+    await page.close();
+  });
+
   test("uses the phone keyboard Send key to submit a completed slash command without restoring composer focus", async () => {
     const agentBody = `<div class="agent-pane" data-controller="agent-pane agent-completions" data-agent-pane-workspace-id-value="phone-send" data-agent-pane-label-value="Agent" data-agent-completions-url-value="/workspaces/phone-send/agents/agent-1/completions">
       <div class="agent-transcript" data-agent-pane-target="transcript"></div>

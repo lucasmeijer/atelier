@@ -27,7 +27,9 @@ function slashCommands(templates: readonly PromptTemplate[], skills: readonly Pi
 
 export function renderSlashCommandCatalog(templates: readonly PromptTemplate[], skills: readonly Pick<Skill, "name" | "description">[]): string {
   const commands = slashCommands(templates, skills);
-  return `<div class="popup-menu autocomplete-menu action-list" role="listbox" aria-label="Slash commands">${commands.map((command, index) => {
+  const quickLaunches = templates.filter((template) => template.quickLaunch).map((template) => `<button class="button secondary agent-completion-option agent-quick-launch" type="button" data-completion-kind="quick-launch" data-command-trigger="${escapeHtml(template.trigger)}">${escapeHtml(template.trigger)}</button>`).join("");
+  const quickLaunchCatalog = quickLaunches ? `<div class="agent-quick-launches" role="group" aria-label="Quick launch">${quickLaunches}</div>` : "";
+  const slashCommandCatalog = `<div class="popup-menu autocomplete-menu action-list" role="listbox" aria-label="Slash commands">${commands.map((command, index) => {
     const template = command.prompt !== undefined;
     return actionItemHtml({
       kind: "single",
@@ -40,4 +42,5 @@ export function renderSlashCommandCatalog(templates: readonly PromptTemplate[], 
       },
     });
   }).join("")}</div>`;
+  return `${quickLaunchCatalog}${slashCommandCatalog}`;
 }

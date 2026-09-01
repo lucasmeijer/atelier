@@ -198,7 +198,7 @@ async function renderAgentPaneFrame(ctx: AgentRenderContext, agent: WorkspaceAge
 
 export function renderAgentPanePromptInput(ctx: AgentRenderContext, initialText = ""): string {
   const placeholder = "Write your prompt here";
-  return `<textarea id="${ids.input(ctx)}" class="composer-input" name="text" rows="2" enterkeyhint="send" placeholder="${escapeHtml(placeholder)}" aria-label="${escapeHtml(placeholder)}" data-agent-pane-target="input" data-agent-completions-target="input" data-action="keydown->agent-completions#keydown input->agent-completions#input keydown->agent-pane#inputKeydown input->agent-pane#promptChanged">${escapeHtml(initialText)}</textarea>`;
+  return `<textarea id="${ids.input(ctx)}" class="composer-input" name="text" rows="2" enterkeyhint="send" placeholder="${escapeHtml(placeholder)}" aria-label="${escapeHtml(placeholder)}" data-agent-pane-target="input" data-agent-completions-target="input" data-action="input->agent-completions#input input->agent-pane#promptChanged">${escapeHtml(initialText)}</textarea>`;
 }
 
 interface SharedComposerRenderOptions {
@@ -243,12 +243,12 @@ async function renderSharedComposer(options: SharedComposerRenderOptions): Promi
     completionsEnabled ? `data-agent-completions-target="input"` : "",
   ].filter(Boolean).join(" ");
   const inputActionsList = [
-    ...(completionsEnabled ? ["keydown->agent-completions#keydown", "input->agent-completions#input"] : []),
-    ...(options.formTarget ? ["keydown->agent-pane#inputKeydown", "input->agent-pane#promptChanged"] : []),
+    ...(completionsEnabled ? ["input->agent-completions#input"] : []),
+    ...(options.formTarget ? ["input->agent-pane#promptChanged"] : []),
   ];
   const inputActions = inputActionsList.length ? ` data-action="${inputActionsList.join(" ")}"` : "";
   const formActions = options.formTarget
-    ? actionAttrs.join(" ")
+    ? ["keydown->agent-completions#keydown", "keydown->agent-pane#inputKeydown", ...actionAttrs].join(" ")
     : ["submit->transcription-composer#submit", options.formActions].filter(Boolean).join(" ");
   const actions = options.includePaneActions && options.ctx
     ? `<span id="${ids.actions(options.ctx)}">${renderPromptActions(options.ctx, Boolean(options.busy))}</span>`
@@ -277,7 +277,7 @@ async function renderSharedComposer(options: SharedComposerRenderOptions): Promi
         ${composerOverlays ? `<div class="agent-pane-composer-overlays">${composerOverlays}</div>` : ""}
         <div class="composer-surface">
           ${options.suggestionHtml ?? ""}
-          <form id="${escapeHtml(formId)}" method="post" action="${escapeHtml(options.action)}"${turboAttr}${targetAttrs} data-action="${escapeHtml(formActions)}">
+          <form id="${escapeHtml(formId)}" method="post" action="${escapeHtml(options.action)}"${turboAttr}${targetAttrs}${completionsEnabled ? ` tabindex="-1"` : ""} data-action="${escapeHtml(formActions)}">
             <input type="hidden" name="attachmentDraft" value="${escapeHtml(draftId)}">
             <div class="agent-attach-row" id="${attachRowId}" data-agent-attachments-target="row">${(options.attachments ?? []).map((attachment) => renderAttachmentChip(attachment, draftId)).join("")}</div>
             <div class="composer-input-area">

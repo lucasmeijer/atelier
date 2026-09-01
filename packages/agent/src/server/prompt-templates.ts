@@ -8,12 +8,14 @@ export interface PromptTemplate {
   description: string;
   argumentHint?: string;
   prompt: string;
+  quickLaunch?: boolean;
   preserveArguments?: boolean;
 }
 
 interface PromptFrontmatter {
   description?: string;
   argumentHint?: string;
+  quickLaunch?: boolean;
 }
 
 interface ParsedPromptFrontmatter {
@@ -65,6 +67,7 @@ function parseFrontmatter(markdown: string): ParsedPromptFrontmatter {
     if ((value.startsWith('"') && value.endsWith('"')) || (value.startsWith("'") && value.endsWith("'"))) value = value.slice(1, -1);
     if (key === "description") frontmatter.description = value;
     if (key === "argument-hint") frontmatter.argumentHint = value;
+    if (key === "quick-launch" && (value === "true" || value === "false")) frontmatter.quickLaunch = value === "true";
   }
   return { frontmatter, body };
 }
@@ -147,6 +150,7 @@ export async function loadPromptTemplatesFromRoot(root: string): Promise<PromptT
         description: frontmatter.description || fallbackDescription(body),
         argumentHint: frontmatter.argumentHint,
         prompt: body,
+        quickLaunch: frontmatter.quickLaunch,
       });
     }
   }

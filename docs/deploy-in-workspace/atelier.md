@@ -101,7 +101,7 @@ Each `*.md` file becomes a slash command named after the file. For example, `.at
 To add a new prompt template:
 
 1. Create `.atelier/prompts/<name>.md` in the repository.
-2. Optionally add frontmatter with `description` and `argument-hint`.
+2. Optionally add frontmatter with `description`, `argument-hint`, and `quick-launch`.
 3. Write the prompt body, using argument placeholders if needed.
 
 Example `.atelier/prompts/land.md`:
@@ -110,9 +110,12 @@ Example `.atelier/prompts/land.md`:
 ---
 description: Land the workspace
 argument-hint: "[branch]"
+quick-launch: true
 ---
 Review the current changes, run the relevant checks, commit them, and prepare to push to ${1:-main}.
 ```
+
+Set `quick-launch: true` to show a compact command button whenever the Agent pane composer is empty, whether or not it has focus. Selecting it expands the template into the composer for review and editing without focusing or submitting the composer. Quick launches do not appear in the new-workspace launch composer and disappear as soon as the user types.
 
 Supported placeholders in the body:
 

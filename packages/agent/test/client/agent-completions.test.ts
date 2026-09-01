@@ -171,7 +171,13 @@ describe("agent prompt history", () => {
 });
 
 describe("agent prompt completion activation", () => {
-  test("slash resources and @ references are the only automatic completions", () => {
+  test("quick launches appear only before the user types", () => {
+    expect(agentCompletionRequest(input(""))).toEqual({ kind: "quick-launch", query: "" });
+    expect(agentCompletionRequest(input(" "))).toBeUndefined();
+    expect(agentCompletionRequest(input("draft"))).toBeUndefined();
+  });
+
+  test("slash resources and @ references are the only typed automatic completions", () => {
     expect(agentCompletionRequest(input("/review"))).toEqual({ kind: "slash-command", query: "review" });
     expect(agentCompletionRequest(input("/skill:review"))).toEqual({ kind: "slash-command", query: "skill:review" });
     expect(agentCompletionRequest(input("look at @packages/agent"))).toEqual({ kind: "file", query: "packages/agent", mode: "fuzzy" });

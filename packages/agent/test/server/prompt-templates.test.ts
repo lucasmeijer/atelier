@@ -9,12 +9,12 @@ describe("prompt templates", () => {
     const root = await mkdtemp(join(tmpdir(), "atelier-prompts-"));
     await mkdir(join(root, ".atelier/prompts"), { recursive: true });
     await mkdir(join(root, ".pi/prompts"), { recursive: true });
-    await writeFile(join(root, ".atelier/prompts/land.md"), `---\ndescription: Land the workspace\nargument-hint: "[branch]"\n---\ncommit to ${"$"}{1:-main}`);
+    await writeFile(join(root, ".atelier/prompts/land.md"), `---\ndescription: Land the workspace\nargument-hint: "[branch]"\nquick-launch: true\n---\ncommit to ${"$"}{1:-main}`);
     await writeFile(join(root, ".pi/prompts/review.md"), "Review $ARGUMENTS");
 
     const templates = await loadPromptTemplatesFromRoot(root);
     expect(templates.map((template) => template.trigger)).toEqual(["/compact", "/land", "/name", "/new", "/park", "/review"]);
-    expect(templates.find((template) => template.name === "land")?.argumentHint).toBe("[branch]");
+    expect(templates.find((template) => template.name === "land")).toMatchObject({ argumentHint: "[branch]", quickLaunch: true });
     const nameCommand = templates.find((template) => template.name === "name");
     expect(nameCommand).toMatchObject({
       trigger: "/name",
