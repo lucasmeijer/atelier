@@ -65,7 +65,7 @@ async function openFileEndpoint(workspaceId: string, url: URL, openWorkView: (wo
 async function markdownPreviewEndpoint(workspaceId: string, request: Request, url: URL): Promise<Response> {
   if (request.method !== "POST") return textResponse("Method not allowed", 405);
   const sourcePath = url.searchParams.get("path");
-  const options = sourcePath?.startsWith("/") ? { sourcePath } : {};
+  const options = sourcePath?.startsWith("/") ? { sourcePath, frontmatter: true } : { frontmatter: true };
   return new Response(renderMarkdown(workspaceId, await request.text(), options), { headers: { "content-type": "text/html; charset=utf-8", "cache-control": "no-store" } });
 }
 

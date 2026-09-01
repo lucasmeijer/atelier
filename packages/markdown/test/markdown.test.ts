@@ -81,6 +81,16 @@ describe("renderMarkdown", () => {
     expect(html).toContain("<h4>Detail</h4>");
   });
 
+  test("omits frontmatter when requested", () => {
+    const html = renderMarkdown("work 1", "---\ntitle: Example\ntags:\n  - docs\n---\n# Guide", { frontmatter: true });
+    expect(html).toBe("<h1>Guide</h1>");
+  });
+
+  test("only recognizes a complete frontmatter block at the start of the document", () => {
+    const html = renderMarkdown("work 1", "---\ntitle: Not closed\n# Guide", { frontmatter: true });
+    expect(html).toContain("title: Not closed");
+  });
+
   test("renders Atelier file links through the Files view", () => {
     const html = renderMarkdown("work 1", "[example.ts:42](atelier://file/work/src/example.ts?line=42&column=3)");
     expect(html).toContain(">example.ts:42</a>");

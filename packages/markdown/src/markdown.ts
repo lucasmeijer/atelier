@@ -5,6 +5,7 @@ import { highlightCodeHtml } from "@atelier/syntax";
 
 export interface MarkdownRenderOptions {
   sourcePath?: string;
+  frontmatter?: boolean;
 }
 
 interface MarkdownEnvironment extends MarkdownRenderOptions {
@@ -84,6 +85,11 @@ function workspaceLocalPreviewHref(workspaceId: string, href: string): string | 
   return workspaceProxyUrl(workspaceId, `port-${port}`, `${url.pathname}${url.search}${url.hash}`);
 }
 
+function withoutFrontmatter(text: string): string {
+  return text.replace(/^\uFEFF?---[ \t]*\r?\n(?:[\s\S]*?\r?\n)?(?:---|\.\.\.)[ \t]*(?:\r?\n|$)/, "");
+}
+
 export function renderMarkdown(workspaceId: string, text: string, options: MarkdownRenderOptions = {}): string {
-  return markdown.render(text, { workspaceId, ...options } satisfies MarkdownEnvironment).trim();
+  const source = options.frontmatter ? withoutFrontmatter(text) : text;
+  return markdown.render(source, { workspaceId, ...options } satisfies MarkdownEnvironment).trim();
 }

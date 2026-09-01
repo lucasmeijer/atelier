@@ -27,6 +27,18 @@ describe("Files Work view integration", () => {
     deleteFilesViewState("workspace-progressive");
   });
 
+  test("Markdown previews omit frontmatter", async () => {
+    const request = new Request("http://test.local/workspaces/workspace-frontmatter/files-view/markdown-preview?path=%2Fwork%2Fguide.md", {
+      method: "POST",
+      body: "---\ntitle: Internal title\ndraft: true\n---\n# Public guide",
+    });
+    // SAFETY: The Markdown preview endpoint does not use the route context.
+    const response = await atelierServerModule.routes![0]!.handle(request, new URL(request.url), {} as never);
+
+    expect(response?.headers.get("content-type")).toContain("text/html");
+    expect(await response?.text()).toBe("<h1>Public guide</h1>");
+  });
+
   test("the Files command creates a blank independent view", async () => {
     const result = await atelierServerModule.commands![0]!.execute({ workspaceId: "workspace-command", input: {}, events: createAtelierEventBus() });
     const created = listFilesViews("workspace-command").find((view) => view.id === result.createdWorkView?.id);
