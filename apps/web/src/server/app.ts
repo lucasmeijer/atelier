@@ -762,7 +762,7 @@ ${moduleStylesHtml()}
       : state === "first-workspace"
         ? '<h1>Welcome to Atelier!</h1><p>Create your <strong data-empty-workspace-onboarding-target="origin">first workspace</strong> to get started!</p>'
         : '<h1>Welcome to Atelier</h1><p><strong data-empty-workspace-onboarding-target="origin">Select a workspace</strong> to get started.</p>';
-    const welcome = `<section class="workspace-empty-welcome">${copy}</section>`;
+    const welcome = `<section class="workspace-empty-welcome" data-empty-workspace-state="${state}">${copy}</section>`;
     if (state === "workspaces") return `<div id="${emptyWorkspaceOnboardingId}">${welcome}</div>`;
     return `<div id="${emptyWorkspaceOnboardingId}" data-controller="empty-workspace-onboarding" data-empty-workspace-onboarding-destination-value="${state}">
       ${welcome}
