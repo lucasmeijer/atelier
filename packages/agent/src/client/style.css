@@ -220,6 +220,7 @@
 @media (max-width: 700px) {
   .agent-pane .composer-input { min-height: calc(1.5em * 4 + 30px); }
   .composer-actions { bottom: 44px; }
+  .agent-quick-launch-shortcut { display: none; }
 }
 .composer-actions > * { pointer-events: auto; }
 .composer-actions .spacer { display: block; flex: 1; }

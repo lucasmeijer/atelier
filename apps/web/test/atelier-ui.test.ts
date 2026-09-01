@@ -2906,7 +2906,7 @@ Comment: I don't think we need these tests`;
     ], []);
     await page.route("http://atelier.test/quick-launch", (route) => route.fulfill({
       contentType: "text/html",
-      body: `<button type="button" aria-label="Outside composer">Outside</button><div class="agent-pane" data-controller="agent-pane" data-agent-pane-workspace-id-value="quick" data-agent-pane-conversation-id-value="agent-1">
+      body: `<style>${agentStyle}</style><button type="button" aria-label="Outside composer">Outside</button><div class="agent-pane" data-controller="agent-pane" data-agent-pane-workspace-id-value="quick" data-agent-pane-conversation-id-value="agent-1">
         <div class="agent-transcript" data-agent-pane-target="transcript"></div>
         <div class="composer agent-pane-composer" data-controller="agent-completions" data-agent-completions-url-value="/workspaces/quick/agents/agent-1/completions">
           <div class="agent-pane-composer-overlays"><button type="button" data-agent-pane-target="transcriptNav" disabled></button></div>
@@ -2928,7 +2928,12 @@ Comment: I don't think we need these tests`;
     await quickLaunch.waitFor();
     expect(await page.getByRole("group", { name: "Quick launch" }).isVisible()).toBe(true);
     expect(await page.getByText("Simplify the current changes").count()).toBe(0);
-    expect(await quickLaunch.locator("kbd").textContent()).toBe("⌘⌥S");
+    const quickLaunchShortcut = quickLaunch.locator("kbd");
+    expect(await quickLaunchShortcut.textContent()).toBe("⌘⌥S");
+    expect(await quickLaunchShortcut.isVisible()).toBe(true);
+    await page.setViewportSize({ width: 390, height: 844 });
+    expect(await quickLaunchShortcut.isVisible()).toBe(false);
+    await page.setViewportSize({ width: 1280, height: 720 });
 
     await pressCommandOptionShortcut(page, "s", "KeyS");
     await page.waitForFunction(() => document.querySelector<HTMLTextAreaElement>("textarea[name='text']")?.value === "Review and simplify all current changes.");
