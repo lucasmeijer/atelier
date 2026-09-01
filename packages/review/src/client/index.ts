@@ -21,7 +21,7 @@ type DraftModel = {
 };
 type AnnotationMetadata = ({ kind: "comment" } & ReviewCommentModel) | DraftModel;
 type DiffModel = { fileDiff: FileDiffMetadata; comments: ReviewCommentModel[] };
-interface SavedReviewPosition { path: string; offset: number; line?: number; lineType?: string }
+interface SavedReviewPosition { path: string; offset: number; openPaths: string[]; line?: number; lineType?: string }
 type FileDiffConstructor = typeof import("@pierre/diffs")["FileDiff"];
 
 declare global {
@@ -414,7 +414,11 @@ function createReviewController(Controller: StimulusControllerConstructor) {
       const toolbarBottom = scrollerTop + (this.element.querySelector<HTMLElement>(".review-toolbar")?.offsetHeight ?? 0) + 12;
       const file = this.fileTargets.findLast((candidate) => candidate.getBoundingClientRect().top <= toolbarBottom) ?? this.fileTargets[0];
       if (file) {
-        const saved: SavedReviewPosition = { path: file.dataset.reviewPath!, offset: file.getBoundingClientRect().top - scrollerTop };
+        const saved: SavedReviewPosition = {
+          path: file.dataset.reviewPath!,
+          offset: file.getBoundingClientRect().top - scrollerTop,
+          openPaths: this.fileTargets.filter((candidate) => candidate.open).map((candidate) => candidate.dataset.reviewPath!),
+        };
         const container = file.querySelector<HTMLElement>("diffs-container");
         const numbers = [...(container?.shadowRoot?.querySelectorAll<HTMLElement>("[data-column-number]") ?? [])];
         const line = numbers.findLast((candidate) => candidate.getBoundingClientRect().top <= toolbarBottom);
@@ -434,6 +438,7 @@ function createReviewController(Controller: StimulusControllerConstructor) {
       if (!raw) return;
       // SAFETY: rememberPosition writes this browser-owned value with this exact shape.
       const saved = JSON.parse(raw) as SavedReviewPosition;
+      for (const candidate of this.fileTargets) candidate.open = saved.openPaths.includes(candidate.dataset.reviewPath!);
       const file = this.fileTargets.find((candidate) => candidate.dataset.reviewPath === saved.path);
       if (!file) return;
       const scroller = this.element;

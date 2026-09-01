@@ -10,7 +10,7 @@ import type { ToolView, TranscriptItem } from "../../../packages/agent/src/serve
 import { renderMarkdown } from "../../../packages/markdown/src/index.ts";
 import { filesEditorFrameId, renderFilesEditorFrame, renderFilesTreeFrame, renderFilesWorkViewBody } from "../../../packages/files/src/server/render.ts";
 import { collectReviewFile, collectReviewIndex, collectReviewStats } from "../../../packages/review/src/server/diff.ts";
-import { renderReviewBody, renderReviewFileDetails, renderReviewStatsFrame } from "../../../packages/review/src/server/render.ts";
+import { renderReviewBody, reviewBodyId, renderReviewFileDetails, renderReviewStatsFrame } from "../../../packages/review/src/server/render.ts";
 import type { ReviewComment } from "../../../packages/review/src/server/state.ts";
 import { createReviewRepository } from "../../../packages/review/test/support/repository.ts";
 import { turboStream } from "../../../packages/shared/src/index.ts";
@@ -170,6 +170,50 @@ Comment: I don't think we need these tests`;
     await page.getByRole("button", { name: "Copy review comments to clipboard", exact: true }).click();
     expect(await page.evaluate(() => navigator.clipboard.readText())).toBe(generated);
     await page.close();
+  });
+
+  test("keeps review files open after submitting a comment with Command-Enter", async () => {
+    const root = await createReviewRepository();
+    try {
+      await writeFile(join(root, "changed.ts"), "const after = true;\n");
+      const index = await collectReviewIndex(root);
+      if (index.phase !== "ready") throw new Error("expected ready review");
+      const reviewFile = await collectReviewFile(root, "changed.ts");
+      if (!reviewFile) throw new Error("expected review file");
+      const workspaceId = "comment-shortcut";
+      let comments: ReviewComment[] = [];
+      const fixture = `<div class="workspace-detail-resident visible"><section class="fixed-shell-surface is-active" data-workspace-pane-role="work">${renderReviewBody(workspaceId, index, comments)}</section></div>`;
+      const page = await newTestPage();
+      await page.addInitScript(({ key }) => sessionStorage.setItem(key, JSON.stringify({
+        kind: "draft", path: "changed.ts", side: "additions", startLine: 1, endLine: 1, body: "Keep this open",
+      })), { key: `atelier.review.draft:${workspaceId}` });
+      await page.route("http://atelier.test/", (route) => route.fulfill({ contentType: "text/html", body: `${fixture}<script type="module" src="${workspaceClientPath}"></script>` }));
+      await page.route(`http://atelier.test/workspaces/${workspaceId}/review/stats`, (route) => route.fulfill({ contentType: "text/html", body: "" }));
+      await page.route(`http://atelier.test/workspaces/${workspaceId}/review/files/changed.ts`, async (route) => route.fulfill({
+        contentType: "text/html",
+        body: await renderReviewFileDetails(workspaceId, reviewFile, comments),
+      }));
+      await page.route(`http://atelier.test/workspaces/${workspaceId}/review/comments`, async (route) => {
+        comments = [{ id: "saved-comment", path: "changed.ts", side: "additions", startLine: 1, endLine: 1, snippet: "const after = true;", body: "Keep this open" }];
+        return route.fulfill({
+          contentType: "text/vnd.turbo-stream.html",
+          body: turboStream("replace", reviewBodyId(workspaceId), renderReviewBody(workspaceId, index, comments)),
+        });
+      });
+      await page.goto("http://atelier.test/");
+
+      const file = page.locator('details.review-file[data-review-path="changed.ts"]');
+      await file.locator("summary").click();
+      const editor = page.getByRole("textbox", { name: "Review comment" });
+      await editor.waitFor();
+      await editor.press("Meta+Enter");
+
+      await page.waitForFunction(() => document.querySelector('details.review-file[data-review-path="changed.ts"]')?.getAttribute("data-review-comments") === "1");
+      expect(await file.getAttribute("open")).toBe("");
+      await page.close();
+    } finally {
+      await rm(root, { recursive: true, force: true });
+    }
   });
 
   test("loads review stats eagerly, then intent-loads and retains each diff", async () => {
