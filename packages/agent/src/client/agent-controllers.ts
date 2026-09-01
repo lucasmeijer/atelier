@@ -1136,6 +1136,12 @@ function refreshSlashCatalog(completionsUrl: string | URL): Promise<string> {
   return entry.refresh;
 }
 
+function promptTemplateTriggerForHotkey(html: string, hotkey: string): string | undefined {
+  const container = document.createElement("template");
+  container.innerHTML = html.trim();
+  return container.content.querySelector<HTMLElement>(`[data-prompt-template-hotkey="${hotkey}"]`)?.dataset.commandTrigger;
+}
+
 function filterSlashCompletionCatalog(html: string, query: string): string {
   const container = document.createElement("template");
   container.innerHTML = html.trim();
@@ -1253,8 +1259,35 @@ function createAgentCompletionsController(Controller: StimulusControllerConstruc
   return class AgentCompletionsController extends HtmlAutocompleteController {
     connect(): void {
       super.connect();
+      window.addEventListener("keydown", this.promptTemplateHotkey);
       void refreshSlashCatalog(this.urlValue).then(() => this.input());
     }
+
+    disconnect(): void {
+      window.removeEventListener("keydown", this.promptTemplateHotkey);
+      super.disconnect();
+    }
+
+    private readonly promptTemplateHotkey = (event: KeyboardEvent): void => {
+      if (event.defaultPrevented || event.repeat || event.isComposing || !event.metaKey || !event.altKey || event.ctrlKey || event.shiftKey) return;
+      const match = event.code.match(/^Key([A-Z])$/);
+      if (!match || this.element.getClientRects().length === 0) return;
+      const resident = this.element.closest<HTMLElement>(".workspace-detail-resident");
+      if (resident && !resident.classList.contains("visible")) return;
+      const catalog = slashCatalogCache.get(slashCatalogUrl(this.urlValue).href)?.html;
+      if (!catalog) return;
+      const trigger = promptTemplateTriggerForHotkey(catalog, match[1]!.toLowerCase());
+      if (!trigger) return;
+
+      event.preventDefault();
+      event.stopImmediatePropagation();
+      const initialValue = this.inputTarget.value;
+      void expandedPromptTemplate(this.urlValue, trigger).then((expanded) => {
+        if (this.inputTarget.value !== initialValue) return;
+        setTextInputValue(this.inputTarget, expanded);
+        this.inputTarget.form!.focus({ preventScroll: true });
+      });
+    };
   };
 }
 

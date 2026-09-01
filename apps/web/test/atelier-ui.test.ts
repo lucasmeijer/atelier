@@ -2838,7 +2838,7 @@ Comment: I don't think we need these tests`;
   test("keeps quick launches available for an empty Agent composer and expands the selected template", async () => {
     const page = await newTestPage();
     const catalog = renderSlashCommandCatalog([
-      { name: "simplify", trigger: "/simplify", description: "Simplify the current changes", prompt: "Simplify", quickLaunch: true },
+      { name: "simplify", trigger: "/simplify", description: "Simplify the current changes", prompt: "Simplify", quickLaunch: true, hotkey: "s" },
       { name: "review", trigger: "/review", description: "Review the current changes", prompt: "Review" },
     ], []);
     await page.route("http://atelier.test/quick-launch", (route) => route.fulfill({
@@ -2865,6 +2865,13 @@ Comment: I don't think we need these tests`;
     await quickLaunch.waitFor();
     expect(await page.getByRole("group", { name: "Quick launch" }).isVisible()).toBe(true);
     expect(await page.getByText("Simplify the current changes").count()).toBe(0);
+    expect(await quickLaunch.locator("kbd").textContent()).toBe("⌘⌥S");
+
+    await pressCommandOptionShortcut(page, "s", "KeyS");
+    await page.waitForFunction(() => document.querySelector<HTMLTextAreaElement>("textarea[name='text']")?.value === "Review and simplify all current changes.");
+    expect(submissions).toBe(0);
+    await input.fill("");
+    await quickLaunch.waitFor();
 
     await input.focus();
     expect(await quickLaunch.isVisible()).toBe(true);

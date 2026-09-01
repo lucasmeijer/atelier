@@ -9,6 +9,7 @@ interface SlashCommand {
   description: string;
   argumentHint?: string;
   prompt?: string;
+  hotkey?: string;
 }
 
 function slashCommands(templates: readonly PromptTemplate[], skills: readonly Pick<Skill, "name" | "description">[]): SlashCommand[] {
@@ -20,6 +21,7 @@ function slashCommands(templates: readonly PromptTemplate[], skills: readonly Pi
       description: template.description,
       argumentHint: template.argumentHint,
       prompt: template.prompt,
+      hotkey: template.hotkey,
     })),
     ...skills.map((skill) => ({ kind: "skill" as const, trigger: `/skill:${skill.name}`, description: skill.description })),
   ];
@@ -27,7 +29,12 @@ function slashCommands(templates: readonly PromptTemplate[], skills: readonly Pi
 
 export function renderSlashCommandCatalog(templates: readonly PromptTemplate[], skills: readonly Pick<Skill, "name" | "description">[]): string {
   const commands = slashCommands(templates, skills);
-  const quickLaunches = templates.filter((template) => template.quickLaunch).map((template) => `<button class="button secondary agent-completion-option agent-quick-launch" type="button" data-completion-kind="quick-launch" data-command-trigger="${escapeHtml(template.trigger)}">${escapeHtml(template.trigger)}</button>`).join("");
+  const quickLaunches = templates.filter((template) => template.quickLaunch).map((template) => {
+    const hotkey = template.hotkey;
+    const hotkeyData = hotkey ? ` data-prompt-template-hotkey="${escapeHtml(hotkey)}" aria-keyshortcuts="Meta+Alt+${escapeHtml(hotkey.toUpperCase())}"` : "";
+    const shortcut = hotkey ? `<kbd class="agent-quick-launch-shortcut" aria-hidden="true">⌘⌥${escapeHtml(hotkey.toUpperCase())}</kbd>` : "";
+    return `<button class="button secondary agent-completion-option agent-quick-launch" type="button" aria-label="${escapeHtml(template.trigger)}" data-completion-kind="quick-launch" data-command-trigger="${escapeHtml(template.trigger)}"${hotkeyData}><span>${escapeHtml(template.trigger)}</span>${shortcut}</button>`;
+  }).join("");
   const quickLaunchCatalog = quickLaunches ? `<div class="agent-quick-launches" role="group" aria-label="Quick launch">${quickLaunches}</div>` : "";
   const slashCommandCatalog = `<div class="popup-menu autocomplete-menu action-list" role="listbox" aria-label="Slash commands">${commands.map((command, index) => {
     const template = command.prompt !== undefined;
@@ -38,7 +45,7 @@ export function renderSlashCommandCatalog(templates: readonly PromptTemplate[], 
       element: {
         tag: "button",
         className: `agent-completion-option${index === 0 ? " active" : ""}`,
-        attributesHtml: `type="button" role="option" aria-selected="${index === 0 ? "true" : "false"}" data-completion-kind="${command.kind}" data-command-trigger="${escapeHtml(command.trigger)}"${command.trigger === "/tree" ? ` data-command-action="tree"` : ""}${template ? ` data-controller="atelier-fullscreen" data-atelier-fullscreen-mode-value="template" data-atelier-fullscreen-title-value="${escapeHtml(command.trigger)}"` : ""}`,
+        attributesHtml: `type="button" role="option" aria-selected="${index === 0 ? "true" : "false"}" data-completion-kind="${command.kind}" data-command-trigger="${escapeHtml(command.trigger)}"${command.hotkey ? ` data-prompt-template-hotkey="${escapeHtml(command.hotkey)}"` : ""}${command.trigger === "/tree" ? ` data-command-action="tree"` : ""}${template ? ` data-controller="atelier-fullscreen" data-atelier-fullscreen-mode-value="template" data-atelier-fullscreen-title-value="${escapeHtml(command.trigger)}"` : ""}`,
       },
     });
   }).join("")}</div>`;

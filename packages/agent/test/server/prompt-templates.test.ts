@@ -9,12 +9,13 @@ describe("prompt templates", () => {
     const root = await mkdtemp(join(tmpdir(), "atelier-prompts-"));
     await mkdir(join(root, ".atelier/prompts"), { recursive: true });
     await mkdir(join(root, ".pi/prompts"), { recursive: true });
-    await writeFile(join(root, ".atelier/prompts/land.md"), `---\ndescription: Land the workspace\nargument-hint: "[branch]"\nquick-launch: true\n---\ncommit to ${"$"}{1:-main}`);
-    await writeFile(join(root, ".pi/prompts/review.md"), "Review $ARGUMENTS");
+    await writeFile(join(root, ".atelier/prompts/land.md"), `---\ndescription: Land the workspace\nargument-hint: "[branch]"\nquick-launch: true\nhotkey: L\n---\ncommit to ${"$"}{1:-main}`);
+    await writeFile(join(root, ".pi/prompts/review.md"), "---\nhotkey: command-r\n---\nReview $ARGUMENTS");
 
     const templates = await loadPromptTemplatesFromRoot(root);
     expect(templates.map((template) => template.trigger)).toEqual(["/compact", "/land", "/name", "/new", "/park", "/review"]);
-    expect(templates.find((template) => template.name === "land")).toMatchObject({ argumentHint: "[branch]", quickLaunch: true });
+    expect(templates.find((template) => template.name === "land")).toMatchObject({ argumentHint: "[branch]", quickLaunch: true, hotkey: "l" });
+    expect(templates.find((template) => template.name === "review")?.hotkey).toBeUndefined();
     const nameCommand = templates.find((template) => template.name === "name");
     expect(nameCommand).toMatchObject({
       trigger: "/name",
