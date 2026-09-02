@@ -414,6 +414,7 @@
   position-try-fallbacks: flip-block, flip-inline, flip-block flip-inline;
   margin-block-start: 8px;
 }
+.popup-menu.popup-menu-anchored[data-popup-select-menu] { position-anchor: auto; }
 .popup-menu.popup-menu-anchored.opens-above {
   position-area: block-start span-inline-end;
   margin-block: 0 8px;

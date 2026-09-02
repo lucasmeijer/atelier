@@ -6,9 +6,9 @@ import { Controller } from "@hotwired/stimulus";
 let menuSequence = 0;
 
 function closeOtherMenus(except: HTMLElement): void {
-  document.querySelectorAll<HTMLElement>(".popup-menu[data-popup-select-menu]").forEach((menu) => {
+  document.querySelectorAll<HTMLElement>(".popup-menu[data-popup-select-menu]:popover-open").forEach((menu) => {
     if (menu === except) return;
-    menu.hidden = true;
+    menu.hidePopover();
     document.querySelector<HTMLElement>(`[aria-controls="${CSS.escape(menu.id)}"]`)?.setAttribute("aria-expanded", "false");
   });
 }
@@ -40,12 +40,13 @@ export abstract class SelectPopupController extends Controller<HTMLSelectElement
     this.menu.dataset.popupSelectMenu = "true";
     this.menu.id = `${this.element.id || `popup_select_${++menuSequence}`}_menu`;
     this.menu.setAttribute("role", "menu");
-    this.menu.hidden = true;
+    this.menu.setAttribute("popover", "auto");
     this.button.setAttribute("aria-controls", this.menu.id);
+    this.button.setAttribute("popovertarget", this.menu.id);
 
     this.element.after(this.button, this.menu);
     this.element.addEventListener("change", this.sync);
-    document.addEventListener("click", this.closeFromOutside);
+    this.menu.addEventListener("toggle", this.syncOpenState);
     document.addEventListener("atelier:theme-change", this.sync);
     this.observer = new MutationObserver(this.sync);
     this.observer.observe(this.element, { childList: true, subtree: true, attributes: true, attributeFilter: ["selected", "disabled"] });
@@ -55,7 +56,7 @@ export abstract class SelectPopupController extends Controller<HTMLSelectElement
   disconnect(): void {
     this.button.removeEventListener("click", this.toggle);
     this.element.removeEventListener("change", this.sync);
-    document.removeEventListener("click", this.closeFromOutside);
+    this.menu.removeEventListener("toggle", this.syncOpenState);
     document.removeEventListener("atelier:theme-change", this.sync);
     this.observer.disconnect();
     this.button.remove();
@@ -106,23 +107,25 @@ export abstract class SelectPopupController extends Controller<HTMLSelectElement
   protected canOpen(): boolean { return !this.element.disabled; }
 
   protected close(): void {
-    this.menu.hidden = true;
+    if (this.menu.matches(":popover-open")) this.menu.hidePopover();
     this.button.setAttribute("aria-expanded", "false");
   }
 
   private toggle = (event: MouseEvent): void => {
+    event.preventDefault();
     event.stopPropagation();
     if (!this.canOpen()) return;
-    closeOtherMenus(this.menu);
-    const opening = this.menu.hidden;
-    this.menu.hidden = !opening;
-    this.button.setAttribute("aria-expanded", String(opening));
+    const opening = !this.menu.matches(":popover-open");
+    if (opening) {
+      closeOtherMenus(this.menu);
+      this.menu.showPopover();
+    } else {
+      this.menu.hidePopover();
+    }
   };
 
-  private closeFromOutside = (event: MouseEvent): void => {
-    const target = event.target instanceof Node ? event.target : null;
-    if (target && (this.menu.contains(target) || this.button.contains(target))) return;
-    this.close();
+  private readonly syncOpenState = (): void => {
+    this.button.setAttribute("aria-expanded", String(this.menu.matches(":popover-open")));
   };
 }
 
