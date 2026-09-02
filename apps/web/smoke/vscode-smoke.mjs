@@ -85,9 +85,6 @@ try {
   if (!text.includes(workspaceIdentity)) throw new Error(`VS Code did not receive its isolated workspace identity: ${workspaceIdentity}`);
   const vscode = page.frameLocator('iframe.vscode-frame');
   await vscode.locator('.monaco-workbench').waitFor({ state: 'visible', timeout: 60_000 });
-  await vscode.locator('body').evaluate(async () => {
-    await globalThis.__atelierVSCodeCommands.executeCommand('workbench.action.focusActiveEditorGroup');
-  });
   const cspFailures = consoleMessages.filter((message) => message.includes('Content Security Policy') || message.includes('vscode-remote-resource') && message.includes('Failed to fetch'));
   if (cspFailures.length > 0) throw new Error(`VS Code resource loading failed:\n${cspFailures.join('\n')}`);
   console.log(`playwright smoke passed: ${src}`);

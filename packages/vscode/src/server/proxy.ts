@@ -107,50 +107,9 @@ async function ensureRecentVSCodeServer(workspaceId: string): Promise<void> {
   await promise;
 }
 
-function vscodeBridgeScript(nonce: string | undefined): string {
-  return `<script${nonce ? ` nonce="${escapeHtmlAttribute(nonce)}"` : ""} type="module">
-(() => {
-  const trustedSource = window.parent;
-  async function workbenchCommands() {
-    for (let attempt = 0; attempt < 200; attempt++) {
-      if (window.__atelierVSCodeCommands) return window.__atelierVSCodeCommands;
-      await new Promise((resolve) => setTimeout(resolve, 25));
-    }
-    throw new Error("VS Code command bridge did not initialize");
-  }
-  window.addEventListener("message", async (event) => {
-    const message = event.data;
-    if (event.source !== trustedSource || !message || message.type !== "atelier.vscode.executeCommand") return;
-    try {
-      const commands = await workbenchCommands();
-      await commands.executeCommand(message.command, ...(message.args || []));
-    } catch (error) {
-      console.error("Atelier VS Code command failed", error);
-    }
-  });
-})();
-</script>`;
-}
-
-function patchVSCodeWorkbenchScript(text: string): string {
-  const identifier = "([A-Za-z_$][\\w$]*)";
-  const commandApiPattern = new RegExp(`async function ${identifier}\\(${identifier},\\.\\.\\.${identifier}\\)\\{return\\(await [A-Za-z_$][\\w$]*\\.p\\)\\.commands\\.executeCommand\\(\\2,\\.\\.\\.\\3\\)\\}${identifier}\\.executeCommand=\\1`);
-  const patched = text.replace(commandApiPattern, "$&;globalThis.__atelierVSCodeCommands=$4");
-  if (patched === text) throw new Error("could not expose VS Code command bridge");
-  return patched;
-}
-
 export async function patchVSCodeWorkspaceAppResponse(app: WorkspaceAppHost, response: Response, request: Request): Promise<Response> {
   if (app.appKey !== vscodeAppKey || !response.ok) return response;
-  const contentType = response.headers.get("content-type") ?? "";
-  if (contentType.includes("javascript") && new URL(request.url).pathname.endsWith("/workbench/workbench.js")) {
-    const patchedScript = patchVSCodeWorkbenchScript(await response.text());
-    const headers = new Headers(response.headers);
-    headers.delete("content-length");
-    headers.delete("content-encoding");
-    return new Response(patchedScript, { status: response.status, statusText: response.statusText, headers });
-  }
-  if (!contentType.includes("text/html")) return response;
+  if (!response.headers.get("content-type")?.includes("text/html")) return response;
   const themeDefaults = themeDefaultsForRequest(request);
   const text = await response.text();
   const configPattern = /(<meta id="vscode-workbench-web-configuration" data-settings=")([^"]+)(">)/;
@@ -176,13 +135,10 @@ export async function patchVSCodeWorkspaceAppResponse(app: WorkspaceAppHost, res
     settings.configurationDefaults = configurationDefaults;
     return `${prefix}${escapeHtmlAttribute(JSON.stringify(settings))}${suffix}`;
   });
-  const nonce = response.headers.get("content-security-policy")?.match(/'nonce-([^']+)'/)?.[1];
-  const bridge = vscodeBridgeScript(nonce);
-  const patched = themed.includes("</body>") ? themed.replace("</body>", `${bridge}</body>`) : `${themed}${bridge}`;
   const headers = new Headers(response.headers);
   headers.delete("content-length");
   headers.delete("content-encoding");
-  return new Response(patched, { status: response.status, statusText: response.statusText, headers });
+  return new Response(themed, { status: response.status, statusText: response.statusText, headers });
 }
 
 export async function resolveVSCodeWorkspaceAppTarget(app: WorkspaceAppHost, requestUrl: URL): Promise<URL> {
