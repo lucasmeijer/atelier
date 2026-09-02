@@ -373,7 +373,6 @@ button { border: 0; background: none; cursor: pointer; }
 .settings-development-back { padding: 16px 24px; border-bottom: 1px solid var(--line); }
 .settings-reset-form { margin: 16px 0 0; }
 .settings-reset-link { border: 0; background: transparent; color: var(--text-muted); font: inherit; font-size: var(--text-body); text-decoration: underline; cursor: pointer; padding: 0; }
-.settings-reset-link.danger { color: color-mix(in srgb, var(--danger) 70%, var(--text-muted)); }
 .settings-reset-link:hover { color: var(--danger); }
 .settings-main { min-height: 100%; position: relative; font-size: var(--text-body); }
 .settings-main-dev { display: flex; flex-direction: column; }
@@ -392,6 +391,8 @@ button { border: 0; background: none; cursor: pointer; }
 .settings-input.text-field { font-family: var(--font-mono); }
 .settings-dev-link { padding: 16px 24px 24px; text-align: left; }
 .settings-dev-actions { margin-top: auto; padding: 16px 24px 24px; }
+.settings-force-delete { display: grid; justify-items: end; gap: 8px; margin-top: 16px; }
+.settings-force-delete p { margin: 0; white-space: pre-wrap; }
 .settings-dev-link a { color: var(--text-muted); font-size: var(--text-body); text-decoration: none; }
 .settings-dev-link a:hover { color: var(--accent); text-decoration: underline; }
 .settings-provider-icon { width: 34px; height: 34px; border-radius: var(--radius-control); display: grid; place-items: center; background: var(--provider-color); color: #fff; font-weight: var(--weight-bold); flex-shrink: 0; }

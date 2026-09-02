@@ -169,8 +169,21 @@ async function renderModelSetupSettings(): Promise<string> {
   return `<section class="settings-sec settings-sec-models" id="settings-sec-models">${await renderModelSetup("settings")}</section>`;
 }
 
+type WorkspaceCleanupResult = { deleted: number; errors: string[] };
+
+function renderForceDeleteWorkspaces(result?: WorkspaceCleanupResult): string {
+  const confirmation = destructiveConfirmationHtml({
+    buttonHtml: '<button class="button danger" type="button">Force delete all workspaces</button>',
+    confirmCaption: "Force delete all workspaces",
+    cancelCaption: "Cancel",
+  });
+  const deleted = result === undefined ? "" : `<p role="status">Deleted ${escapeHtml(result.deleted)} workspace${result.deleted === 1 ? "" : "s"}.</p>`;
+  const errors = result?.errors.length ? `<p class="settings-error">${escapeHtml(result.errors.join("\n"))}</p>` : "";
+  return `<div id="settings_force_delete_workspaces" class="settings-force-delete">${deleted}${errors}<form method="post" action="/settings/workspaces/force-delete" data-turbo="true">${confirmation}</form></div>`;
+}
+
 async function renderDevelopmentSettings(): Promise<string> {
-  const forceDeleteWorkspaces = devSettingsEnabled() ? `<form class="settings-reset-form" method="post" action="/settings/workspaces/force-delete/flow" data-turbo="true"><button class="settings-reset-link danger" type="submit">force delete all workspaces</button></form>` : "";
+  const forceDeleteWorkspaces = devSettingsEnabled() ? renderForceDeleteWorkspaces() : "";
   const keypressProbeSettings = await listSettingsContributions().find((contribution) => contribution.id === "keypress-probe")?.render() ?? "";
   const resetSettings = `<form class="settings-reset-form" method="post" action="/settings/reset" data-turbo="true"><button class="settings-reset-link" type="submit" onclick="return confirm('Delete stored git identity, GitHub token, and all stored model provider credentials?')">delete all settings</button></form>`;
   return `${keypressProbeSettings}<div class="settings-dev-actions">${resetSettings}${forceDeleteWorkspaces}</div>`;
@@ -383,24 +396,6 @@ export async function renderSettingsDialog(_active = "theme"): Promise<string> {
 export async function renderDevelopmentSettingsDialog(): Promise<string> {
   const backLink = '<div class="settings-development-back"><a class="settings-back-link" href="/settings" data-turbo-frame="_top" data-turbo-stream="true">Settings</a></div>';
   return settingsDialogHtml("Development settings", `<main class="settings-main settings-main-dev">${backLink}${await renderDevelopmentSettings()}</main>`);
-}
-
-function forceDeleteAllWorkspacesModal(error = ""): string {
-  return `<dialog id="settings_dev_force_delete_workspaces_dialog" class="dialog" data-dialog-auto-show>
-    <form method="post" action="/settings/workspaces/force-delete" data-turbo="true">
-      ${dialogHeader("Force delete all workspaces?", `<div class="settings-provider-icon" style="--provider-color:${providerBrandColor("github")}">!</div>`)}
-      <div class="dialog__body"><p>This force-removes every Atelier workspace container in this namespace and deletes its local workspace data. Uncommitted work will be lost.</p>${error ? `<p class="settings-error">${escapeHtml(error)}</p>` : ""}</div>
-      <div class="dialog__actions"><button class="button secondary" formmethod="dialog">Cancel</button><button class="button danger" type="submit">Force delete all workspaces</button></div>
-    </form>
-  </dialog>`;
-}
-
-function forceDeleteAllWorkspacesResultModal(deleted: number, errors: string[]): string {
-  return `<dialog id="settings_dev_force_delete_workspaces_dialog" class="dialog" data-dialog-auto-show>
-    ${dialogHeader("Workspace cleanup complete", `<div class="settings-provider-icon" style="--provider-color:${errors.length ? "var(--danger)" : "var(--success)"}">${errors.length ? "!" : "✓"}</div>`)}
-    <div class="dialog__body"><p>Deleted ${escapeHtml(deleted)} workspace${deleted === 1 ? "" : "s"}.</p>${errors.length ? `<p class="settings-error">${escapeHtml(errors.join("\n"))}</p>` : ""}</div>
-    <div class="dialog__actions"><form method="dialog"><button class="button primary">Done</button></form></div>
-  </dialog>`;
 }
 
 function apiKeyModal(id: string, label: string, surface: SettingsSurface, error = ""): string {
@@ -622,7 +617,7 @@ async function deleteAllStoredSettings(): Promise<void> {
   for (const credential of await runtime.listCredentials()) await runtime.logout(credential.providerId);
 }
 
-export async function handleSettingsRequest(request: Request, url: URL, options: { forceDeleteAllWorkspaces?: () => Promise<{ deleted: number; errors: string[] }> } = {}): Promise<Response | undefined> {
+export async function handleSettingsRequest(request: Request, url: URL, options: { forceDeleteAllWorkspaces?: () => Promise<WorkspaceCleanupResult> } = {}): Promise<Response | undefined> {
   if (url.pathname === "/settings" && request.method === "GET") {
     const html = await renderSettingsDialog(url.searchParams.get("section") ?? "theme");
     return wantsStream(request) ? stream(update("settings_modal_host", html)) : response(html);
@@ -644,13 +639,11 @@ export async function handleSettingsRequest(request: Request, url: URL, options:
     await deleteAllStoredSettings();
     return stream(`${replace("settings_dialog", await renderDevelopmentSettingsDialog())}${update("onboarding_modal_host", await renderOnboardingDialog())}${remove("settings_flow_dialog")}`);
   }
-  if (url.pathname === "/settings/workspaces/force-delete/flow" && request.method === "POST" && devSettingsEnabled()) {
-    return stream(append("settings_modal_host", forceDeleteAllWorkspacesModal()));
-  }
   if (url.pathname === "/settings/workspaces/force-delete" && request.method === "POST" && devSettingsEnabled()) {
-    if (!options.forceDeleteAllWorkspaces) return stream(replace("settings_dev_force_delete_workspaces_dialog", forceDeleteAllWorkspacesModal("Workspace deletion is not available.")));
-    const result = await options.forceDeleteAllWorkspaces();
-    return stream(replace("settings_dev_force_delete_workspaces_dialog", forceDeleteAllWorkspacesResultModal(result.deleted, result.errors)));
+    const result = options.forceDeleteAllWorkspaces
+      ? await options.forceDeleteAllWorkspaces()
+      : { deleted: 0, errors: ["Workspace deletion is not available."] };
+    return stream(replace("settings_force_delete_workspaces", renderForceDeleteWorkspaces(result)));
   }
   if (url.pathname === "/settings/git-identity" && request.method === "POST") {
     const form = await request.formData();

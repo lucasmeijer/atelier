@@ -4,5 +4,6 @@
 .update-sidebar-row form, .update-settings-control form { display: flex; margin: 0; }
 .update-sidebar-row form { flex: none; }
 .update-settings-control { min-height: 55px; display: flex; align-items: center; justify-content: space-between; padding-block: 14px; }
-.update-restart-form { margin-left: auto; }
+.update-restart-feedback { max-width: 100%; margin-left: auto; }
+.update-restart-error { height: auto; white-space: normal; text-align: left; }
 .update-restart-modal { width: min(760px, calc(100vw - 40px)); }

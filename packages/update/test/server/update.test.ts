@@ -398,7 +398,7 @@ describe("update state machine", () => {
     await manager.startPull();
     await expect(manager.launchUpdater(new URL("http://atelier.test/update/restart"))).rejects.toThrow("Update helper port 81 is already in use");
     expect(dockerCalls).toEqual([["ps", "-aq", "--filter", "name=^/atelier-updater-"]]);
-    expect(manager.snapshot()).toMatchObject({ state: "failed", error: "Update helper port 81 is already in use. Stop the process using port 81 and retry the update." });
+    expect(manager.snapshot()).toMatchObject({ state: "ready_to_restart", error: "Update helper port 81 is already in use. Stop the process using port 81 and retry the update." });
   });
 });
 
@@ -420,7 +420,8 @@ describe("update routes", () => {
     expect(available).toContain("<p>There's a new version of Atelier!</p>");
     expect(available).toContain(">Download Update</span>");
     const restart = renderSidebarRow({ ...snapshot, state: "ready_to_restart" });
-    expect(restart).toContain('method="post" action="/update/restart"');
+    expect(restart).toContain('data-controller="transient-feedback" data-transient-feedback-state-value="initial"');
+    expect(restart).toContain('method="post" action="/update/restart?surface=sidebar"');
     expect(restart).toContain('class="destructive-confirmation"');
     expect(restart).toContain(">Restart to update</button>");
   });
@@ -439,12 +440,12 @@ describe("update routes", () => {
     await manager.initialize(ctx);
     await manager.startPull();
     const route = createUpdateRouteHandler(manager);
-    const response = await route(new Request("http://atelier.test/update/restart?theme=nord", { method: "POST", headers: { Accept: "text/vnd.turbo-stream.html" } }), new URL("http://atelier.test/update/restart?theme=nord"));
+    const response = await route(new Request("http://atelier.test/update/restart?surface=settings&theme=nord", { method: "POST", headers: { Accept: "text/vnd.turbo-stream.html" } }), new URL("http://atelier.test/update/restart?surface=settings&theme=nord"));
     expect(response!.headers.get("content-type")).toContain("text/vnd.turbo-stream.html");
     expect(response!.headers.get("location")).toBe("https://atelier.test:81/?theme=nord");
   });
 
-  test("restart route returns a modest error modal for turbo requests", async () => {
+  test("restart route replaces the clicked control with transient inline feedback", async () => {
     const { ctx } = context();
     const manager = new UpdateManager({
       detectRuntime: async () => runtime("old"),
@@ -457,13 +458,15 @@ describe("update routes", () => {
     await manager.initialize(ctx);
     await manager.startPull();
     const route = createUpdateRouteHandler(manager);
-    const response = await route(new Request("http://test/update/restart", { method: "POST", headers: { Accept: "text/vnd.turbo-stream.html" } }), new URL("http://test/update/restart"));
+    const response = await route(new Request("http://test/update/restart?surface=settings", { method: "POST", headers: { Accept: "text/vnd.turbo-stream.html" } }), new URL("http://test/update/restart?surface=settings"));
     const text = await response!.text();
     expect(response!.headers.get("content-type")).toContain("text/vnd.turbo-stream.html");
-    expect(text).toContain("restart-update-error-modal");
+    expect(text).toContain('action="replace" target="update_restart_feedback_settings"');
+    expect(text).toContain('data-transient-feedback-state-value="feedback"');
+    expect(text).toContain('data-transient-feedback-content="feedback" role="status"');
     expect(text).toContain("Could not restart Atelier");
     expect(text).toContain("127.0.0.1:81");
-    expect(text).toContain(">OK</button>");
+    expect(text).toContain('action="/update/restart?surface=settings"');
   });
 
   test("start route kicks off pulling against the shared manager", async () => {

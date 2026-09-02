@@ -167,7 +167,7 @@ export class UpdateManager {
       return Response.redirect(updaterUrl.toString(), 303);
     } catch (error) {
       this.restarting = false;
-      this.fail(error instanceof Error ? error.message : String(error));
+      this.setState("ready_to_restart", { error: error instanceof Error ? error.message : String(error) });
       throw error;
     }
   }
@@ -232,14 +232,29 @@ function renderDownloadControl(snapshot: StateSnapshot): string {
   return `<form method="post" action="/update/start" data-turbo="true">${button}</form>`;
 }
 
-function renderRestartForm(): string {
+type UpdateControlSurface = "settings" | "sidebar";
+
+function restartFeedbackId(surface: UpdateControlSurface): string {
+  return `update_restart_feedback_${surface}`;
+}
+
+function restartFormHtml(surface: UpdateControlSurface): string {
   const confirmation = destructiveConfirmationHtml({
     buttonHtml: '<button class="button primary" type="button">Restart to update</button>',
     confirmCaption: "Restart to update",
     cancelCaption: "Cancel",
     variant: "primary",
   });
-  return `<form class="update-restart-form" method="post" action="/update/restart" data-turbo="false" data-controller="update-restart" data-action="submit->update-restart#submit">${confirmation}</form>`;
+  return `<form method="post" action="/update/restart?surface=${surface}" data-turbo="false" data-controller="update-restart" data-action="submit->update-restart#submit">${confirmation}</form>`;
+}
+
+function renderRestartFeedback(surface: UpdateControlSurface, message?: string): string {
+  return transientFeedbackHtml({
+    element: { tag: "div", className: "update-restart-feedback", attributesHtml: `id="${restartFeedbackId(surface)}"` },
+    initialContent: { kind: "html", html: restartFormHtml(surface) },
+    feedbackContent: { kind: "html", html: `<span class="button secondary update-restart-error">Could not restart Atelier: ${escapeHtml(message ?? "")}</span>` },
+    state: message === undefined ? "initial" : "feedback",
+  });
 }
 
 function renderCheckFeedback(state: "initial" | "in-progress", feedback = false): string {
@@ -251,11 +266,11 @@ function renderCheckFeedback(state: "initial" | "in-progress", feedback = false)
   });
 }
 
-function renderUpdateControl(snapshot: StateSnapshot): string {
+function renderUpdateControl(snapshot: StateSnapshot, surface: UpdateControlSurface): string {
   if (snapshot.state === "checking") return renderCheckFeedback("in-progress");
   if (!snapshot.selfUpdatable || snapshot.state === "idle") return renderCheckFeedback("initial");
   if (snapshot.state === "available" || snapshot.state === "failed" || snapshot.state === "incompatible" || snapshot.state === "pulling") return renderDownloadControl(snapshot);
-  if (snapshot.state === "ready_to_restart") return renderRestartForm();
+  if (snapshot.state === "ready_to_restart") return renderRestartFeedback(surface);
   return progressButtonHtml({
     initialContent: { kind: "text", text: "Restart to update" },
     progressContent: { kind: "text", text: "Restarting…" },
@@ -266,7 +281,7 @@ function renderUpdateControl(snapshot: StateSnapshot): string {
 
 function renderUpdateSettings(updateManager: UpdateManager, checked = false): string {
   const snapshot = updateManager.snapshot();
-  const control = checked && snapshot.state === "idle" ? renderCheckFeedback("initial", true) : renderUpdateControl(snapshot);
+  const control = checked && snapshot.state === "idle" ? renderCheckFeedback("initial", true) : renderUpdateControl(snapshot, "settings");
   return `<section class="settings-sec update-settings-control" id="settings-sec-update"><h2>Updates</h2>${control}</section>`;
 }
 
@@ -283,17 +298,7 @@ const updateSettingsContribution: SettingsContribution = {
 
 export function renderSidebarRow(snapshot: StateSnapshot): string {
   if (!snapshot.selfUpdatable || snapshot.state === "idle" || snapshot.state === "checking") return "";
-  return `<section class="update-sidebar-section"><div id="update_sidebar_row" class="update-sidebar-row"><p>There's a new version of Atelier!</p>${renderUpdateControl(snapshot)}</div></section>`;
-}
-
-function renderRestartErrorModal(message: string): string {
-  return `<dialog id="restart-update-error-modal" class="dialog dialog--compact update-restart-modal" data-controller="modal" data-modal-auto-show-value="true">
-  <form class="dialog__form" method="dialog">
-    <header class="dialog__header"><h2 class="title">Could not restart Atelier</h2></header>
-    <div class="dialog__body"><p>${escapeHtml(message)}</p></div>
-    <footer class="dialog__actions button-group"><button class="button primary" value="close">OK</button></footer>
-  </form>
-</dialog>`;
+  return `<section class="update-sidebar-section"><div id="update_sidebar_row" class="update-sidebar-row"><p>There's a new version of Atelier!</p>${renderUpdateControl(snapshot, "sidebar")}</div></section>`;
 }
 
 function installerCommand(channel: ReleaseChannel): string {
@@ -337,7 +342,10 @@ export function createUpdateRouteHandler(updateManager: UpdateManager): (request
         const location = response.headers.get("location");
         return location ? turboStreamResponse("", { headers: { location } }) : turboStreamResponse("");
       } catch (error) {
-        return modalStream(renderRestartErrorModal(error instanceof Error ? error.message : String(error)));
+        const surface = url.searchParams.get("surface");
+        if (surface !== "settings" && surface !== "sidebar") return new Response("Missing update control surface", { status: 400 });
+        const message = error instanceof Error ? error.message : String(error);
+        return turboStreamResponse(turboStream("replace", restartFeedbackId(surface), renderRestartFeedback(surface, message)));
       }
     }
     return undefined;

@@ -1238,6 +1238,22 @@ describe("web app contracts", () => {
     expect(reorder!.indexOf('data-workspace-entry-id="b"')).toBeLessThan(reorder!.indexOf('data-workspace-entry-id="a"'));
   });
 
+  test("development settings confirms and reports force deletion inline", async () => {
+    const { app } = createTestApp();
+
+    const settingsResponse = await app.fetch(new Request("http://test.local/settings/development"));
+    const settings = await settingsResponse.text();
+    expect(settings).toContain('id="settings_force_delete_workspaces"');
+    expect(settings).toContain('action="/settings/workspaces/force-delete"');
+    expect(settings).toContain('class="destructive-confirmation"');
+
+    const deleteResponse = await app.fetch(post("/settings/workspaces/force-delete"));
+    const result = await deleteResponse.text();
+    expect(result).toContain('action="replace" target="settings_force_delete_workspaces"');
+    expect(result).toContain('role="status">Deleted 0 workspaces.');
+    expect(result).toContain('class="destructive-confirmation"');
+  });
+
   test("GitHub connection instructions and token input render inline in settings", async () => {
     await withTempDataDir(async () => {
       const { app } = createTestApp();
