@@ -57,7 +57,7 @@ A closable, reorderable destination inside the Work pane, such as a Terminal, Br
 _Avoid_: Workspace group, preview group
 
 **Resource Work view**:
-A Work view representing an independently open resource or running session, such as a File, Browser, Terminal, VS Code, or Desktop view.
+A Work view representing an independently open resource or running session, such as a File, Browser, Terminal, or VS Code view.
 _Avoid_: Document view, permanent view
 
 **Contextual Work view**:
@@ -65,7 +65,7 @@ A workspace-level utility Work view, such as Files.
 _Avoid_: Permanent view, special view
 
 **Mobile destination**:
-A top-level phone navigation target for the Workspace pane, an open Agent conversation, or a Work view configured for direct mobile access. Every open Agent conversation is directly reachable. Open File, Browser, and Terminal views are directly reachable; Files, VS Code, and Desktop views are found through More.
+A top-level phone navigation target for the Workspace pane, an open Agent conversation, or a Work view configured for direct mobile access. Every open Agent conversation is directly reachable. Open File, Browser, and Terminal views are directly reachable; Files and VS Code views are found through More.
 _Avoid_: Mobile tab, mobile Work pane
 
 **Atelier bar**:

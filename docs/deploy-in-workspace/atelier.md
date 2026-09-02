@@ -7,7 +7,7 @@ Atelier is a self-hosted browser app for working with coding agents in isolated 
 - A **workspace** is an isolated development environment. Its project files live under `/work` inside the workspace.
 - An **Agent conversation** is a coding-assistant conversation running inside a Workspace. A Workspace can have more than one Agent conversation.
 - A **Project** is a saved Git source and configuration from which Atelier creates Workspaces.
-- A **Work view** is a file, terminal, browser preview, VS Code session, Desktop, or other working surface shown in the Work pane.
+- A **Work view** is a file, terminal, browser preview, VS Code session, or other working surface shown in the Work pane.
 
 ## 2. Getting Set Up
 
@@ -134,7 +134,6 @@ Use the Work pane `+` menu or mobile More sheet to open Work views:
 - **Terminal**: shell access inside the workspace.
 - **Browser**: preview web apps running in the workspace.
 - **VS Code**: browser-based VS Code for the workspace.
-- **Desktop**: a graphical desktop when needed.
 
 Work views can be selected, reordered, and closed inside the single contextual Work pane.
 

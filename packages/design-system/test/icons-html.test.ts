@@ -4,7 +4,7 @@ import { Icons } from "../src/icons/icons-html.ts";
 describe("Icons", () => {
   test("provides the shared decorative icon repository", () => {
     expect(Object.keys(Icons)).toEqual([
-      "Agent", "Atelier", "Browser", "Close", "CollapseAll", "Code", "Desktop", "Disclosure", "ExpandAll",
+      "Agent", "Atelier", "Browser", "Close", "CollapseAll", "Code", "Disclosure", "ExpandAll",
       "Files", "More", "Next", "Panel", "Park", "Plus", "Refresh", "Review", "Settings", "Terminal", "Trash", "Workspace",
     ]);
     expect(Icons.Disclosure).toContain('class="disclosure-icon"');

@@ -1205,7 +1205,7 @@ class WorkspaceNavigationController extends Controller {
     this.setWorkspacePaneOpen(true);
   }
 
-  toggleDesktopWorkspacePane(): void {
+  toggleWorkspacePaneCollapsed(): void {
     const collapsed = !this.element.classList.contains("is-workspace-pane-collapsed");
     const toggle = collapsed
       ? this.visibleWorkspacePaneToggle()

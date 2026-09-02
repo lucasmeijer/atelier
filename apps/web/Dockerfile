@@ -31,7 +31,6 @@ COPY packages/workspace-terminal/package.json packages/workspace-terminal/packag
 COPY packages/observable-terminal/package.json packages/observable-terminal/package.json
 COPY packages/shared/package.json packages/shared/package.json
 COPY packages/browser/package.json packages/browser/package.json
-COPY packages/desktop/package.json packages/desktop/package.json
 COPY packages/keypress-probe/package.json packages/keypress-probe/package.json
 COPY packages/vscode/package.json packages/vscode/package.json
 COPY packages/proxy-egress/package.json packages/proxy-egress/package.json

@@ -87,7 +87,7 @@ export interface WorkspacePresentation {
   overlayHtml?: readonly string[];
 }
 
-type WorkViewIconName = "Browser" | "Code" | "Desktop" | "Files" | "Plus" | "Review" | "Terminal";
+type WorkViewIconName = "Browser" | "Code" | "Files" | "Plus" | "Review" | "Terminal";
 
 function topBarButton(label: string, action: string, iconHtml: string, attributes = ""): string {
   return `<button type="button" class="button secondary icon-only" title="${escapeHtml(label)}" aria-label="${escapeHtml(label)}" data-action="${action}" ${attributes}>${iconHtml}</button>`;
@@ -249,7 +249,7 @@ export function renderWorkspacePane(presentation: WorkspacePanePresentation, sid
   const settings = `<a class="button secondary icon-only" href="/settings" title="Settings" aria-label="Settings" data-controller="settings-prefetch" data-action="pointerenter->settings-prefetch#prefetch focus->settings-prefetch#prefetch click->settings-prefetch#open">${Icons.Settings}</a>`;
   return panelHtml({
     element: { tag: "aside", className: "fixed-shell-workspace-pane", attributesHtml: 'aria-label="Workspaces"' },
-    headerHtml: `<strong class="panel__title">${Icons.Atelier}Atelier</strong><div class="button-group">${settings}${topBarButton("Collapse Workspace pane", "click->workspace-navigation#toggleDesktopWorkspacePane", Icons.Panel, "data-collapse-workspace-pane")}</div>`,
+    headerHtml: `<strong class="panel__title">${Icons.Atelier}Atelier</strong><div class="button-group">${settings}${topBarButton("Collapse Workspace pane", "click->workspace-navigation#toggleWorkspacePaneCollapsed", Icons.Panel, "data-collapse-workspace-pane")}</div>`,
     bodyHtml: renderWorkspacePaneCollections(presentation, sidebarContributionsHtml),
   });
 }
@@ -360,7 +360,7 @@ function renderAgentPane(presentation: WorkspacePresentation): string {
   const panes = presentation.agentConversations.map((agent) => renderAgentPaneSlot(presentation.workspace.id, agent)).join("");
   return panelHtml({
     element: { tag: "section", className: "fixed-shell-agent-pane", attributesHtml: 'data-workspace-role-region="agent" data-workspace-presentation-target="agentPane" aria-label="Agent"' },
-    headerHtml: `${topBarButton("Show Workspace pane", "click->workspace-navigation#toggleDesktopWorkspacePane", Icons.Panel, "data-show-workspace-pane")}<div id="${agentNavigationDomId(presentation.workspace.id)}" class="fixed-shell-agent-navigation">${renderAgentNavigation(presentation)}</div><div id="${agentActionsDomId(presentation.workspace.id)}" class="fixed-shell-agent-actions button-group">${renderAgentActions(presentation)}</div>`,
+    headerHtml: `${topBarButton("Show Workspace pane", "click->workspace-navigation#toggleWorkspacePaneCollapsed", Icons.Panel, "data-show-workspace-pane")}<div id="${agentNavigationDomId(presentation.workspace.id)}" class="fixed-shell-agent-navigation">${renderAgentNavigation(presentation)}</div><div id="${agentActionsDomId(presentation.workspace.id)}" class="fixed-shell-agent-actions button-group">${renderAgentActions(presentation)}</div>`,
     bodyHtml: `<div id="${agentBodiesDomId(presentation.workspace.id)}" class="fixed-shell-agent-bodies">${panes}</div>`,
   });
 }
@@ -445,7 +445,6 @@ function workViewIcon(view: WorkPaneContribution): WorkViewIconName {
 function workViewTypeIcon(type: string): WorkViewIconName {
   switch (type) {
     case "browser": return "Browser";
-    case "desktop": return "Desktop";
     case "files": return "Files";
     case "review": return "Review";
     case "terminal": return "Terminal";
@@ -521,7 +520,7 @@ function renderMobileWorkViewCloser(view: WorkPaneContribution): string {
   return view.close ? renderMobileCloser(`work:${view.key}`, view.close) : "";
 }
 
-const mobileLauncherCommandIds = new Set(["files.create", "terminal.create", "terminal.attach", "browser.create", "vscode.open", "desktop.start"]);
+const mobileLauncherCommandIds = new Set(["files.create", "terminal.create", "terminal.attach", "browser.create", "vscode.open"]);
 const mobileMoreAttentionHtml = '<i class="status-dot attention" aria-label="Hidden Attention" data-mobile-overflow-attention hidden></i>';
 
 function renderWorkspaceBar(presentation: WorkspacePresentation): string {

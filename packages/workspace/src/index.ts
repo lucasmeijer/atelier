@@ -56,7 +56,6 @@ const stringArraySchema = Type.Array(Type.String());
 const nonBlankStringArraySchema = Type.Array(nonBlankStringSchema);
 export const workspaceRoot = "/work";
 export const workspaceVSCodePort = 8000;
-export const workspaceDesktopPort = 6080;
 export const workspacePreviewPorts = [3000, 3001, 3002, 3003, 3004, 3005, 3006, 3007, 3008, 3009, 3010] as const;
 export type WorkspacePreviewPort = (typeof workspacePreviewPorts)[number];
 
@@ -453,7 +452,7 @@ function hostUserEnv(): WorkspaceEnvironment {
 }
 
 function baseWorkspacePlan(labels: Record<string, string>): WorkspaceDockerPlan {
-  return { labels, env: { LANG: "C.UTF-8", LC_ALL: "C.UTF-8", ...hostUserEnv() }, mounts: [], publishes: [workspaceVSCodePort, workspaceDesktopPort, ...workspacePreviewPorts], extraArgs: ["--privileged"], initScripts: [workspaceGitCredentialInitScript()], containerFiles: [], cleanup: [] };
+  return { labels, env: { LANG: "C.UTF-8", LC_ALL: "C.UTF-8", ...hostUserEnv() }, mounts: [], publishes: [workspaceVSCodePort, ...workspacePreviewPorts], extraArgs: ["--privileged"], initScripts: [workspaceGitCredentialInitScript()], containerFiles: [], cleanup: [] };
 }
 
 function alignWorkspaceUserScript(): string {
