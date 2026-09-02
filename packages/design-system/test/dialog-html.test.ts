@@ -25,6 +25,20 @@ describe("dialogHtml", () => {
     expect(html).toContain('aria-label="Close dialog"');
   });
 
+  test("omits the cancel button when requested", () => {
+    const html = dialogHtml({
+      element: {},
+      iconHtml: "<svg></svg>",
+      titleCaption: "Required setup",
+      bodyHtml: "Complete setup to continue",
+      omitCancelButton: true,
+    });
+
+    expect(html).not.toContain('class="dialog__close-form"');
+    expect(html).not.toContain('aria-label="Close dialog"');
+    expect(html).toContain("Required setup");
+  });
+
   test("escapes caller-owned identity, class names, and close label", () => {
     const html = dialogHtml({
       element: { id: 'unsafe" data-id="injected', className: 'wide" data-class="injected' },

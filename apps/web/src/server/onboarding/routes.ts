@@ -1,8 +1,10 @@
 import { listOnboardingContributions, registerOnboardingContribution } from "./registry.ts";
+import { dialogHtml } from "@atelier/design-system/dialog";
+import { Icons } from "@atelier/design-system/icons";
 import { escapeHtml, turboStream, turboStreamResponse } from "@atelier/shared";
 import { hasWorkspaceGitHubToken } from "@atelier/proxy-egress";
 import { hasAvailableConfiguredAgentModel } from "@atelier/agent/server";
-import { githubRow, isOnboarded, renderModelSetup } from "../settings/routes.ts";
+import { isOnboarded, renderGitHubSetup, renderModelSetup } from "../settings/routes.ts";
 
 function response(body: string, init: ResponseInit = {}): Response {
   const headers = new Headers(init.headers);
@@ -20,54 +22,56 @@ function update(target: string, html: string): string {
 }
 
 async function renderGithubStep(): Promise<string> {
-  return `<div class="onboarding-step form-stack"><h2 class="title">Connect GitHub</h2>${githubRow("onboarding")}</div>`;
+  return `<div class="onboarding-step form-stack"><h2 class="title">Connect GitHub</h2>${renderGitHubSetup("onboarding")}</div>`;
 }
 
 async function renderLlmStep(): Promise<string> {
-  return `<div data-onboarding-wide>${await renderModelSetup("onboarding")}</div>`;
+  return await renderModelSetup("onboarding");
 }
 
 function renderDoneStep(items: Array<{ id: string; label: string; complete: boolean }>): string {
   const completed = items.filter((item) => item.complete).length;
   const allComplete = completed === items.length;
   const title = allComplete ? "You’re all set up and ready to start using Atelier" : `${completed}/${items.length} onboarding steps completed`;
-  return `<div data-onboarding-done-complete="${allComplete ? "true" : "false"}"><h2 class="title">${escapeHtml(title)}</h2><ul class="status-list">${items.map((item) => `<li class="status-list__item" role="checkbox" aria-checked="${item.complete ? "true" : "false"}" data-onboarding-check="${escapeHtml(item.id)}"><span class="status-list__marker">${item.complete ? "✓" : ""}</span>${escapeHtml(item.label)}</li>`).join("")}</ul></div>`;
+  return `<div data-onboarding-done-complete="${allComplete ? "true" : "false"}"><h2 class="onboarding-completion-title">${escapeHtml(title)}</h2><ul class="status-list">${items.map((item) => `<li class="status-list__item" role="checkbox" aria-checked="${item.complete ? "true" : "false"}" data-onboarding-check="${escapeHtml(item.id)}"><span class="status-list__marker">${item.complete ? "✓" : ""}</span>${escapeHtml(item.label)}</li>`).join("")}</ul></div>`;
 }
 
 registerOnboardingContribution({ id: "github", label: "GitHub", order: 20, isComplete: async () => hasWorkspaceGitHubToken(), render: renderGithubStep });
 registerOnboardingContribution({ id: "llm", label: "Models", order: 30, isComplete: hasAvailableConfiguredAgentModel, render: renderLlmStep });
 
-export async function renderOnboardingDialog(force = false): Promise<string> {
-  if (!force && await isOnboarded()) return "";
+export async function renderOnboardingDialog(options: { includeCompleted?: boolean; resumeAfter?: string } = {}): Promise<string> {
+  if (!options.includeCompleted && !options.resumeAfter && await isOnboarded()) return "";
   const allContributions = listOnboardingContributions();
   const allCompletions = await Promise.all(allContributions.map((contribution) => contribution.isComplete()));
-  const contributions = force ? allContributions : allContributions.filter((_, index) => !allCompletions[index]);
+  const contributions = options.includeCompleted || options.resumeAfter ? allContributions : allContributions.filter((_, index) => !allCompletions[index]);
   if (!contributions.length) return "";
   const rendered = await Promise.all(contributions.map((contribution) => contribution.render()));
   const completionById = new Map(allContributions.map((contribution, index) => [contribution.id, Boolean(allCompletions[index])]));
   rendered.push(renderDoneStep(allContributions.map((contribution) => ({ id: contribution.id, label: contribution.label, complete: completionById.get(contribution.id) ?? false }))));
+  const initialIndex = options.resumeAfter === undefined ? 0 : contributions.findIndex((contribution) => contribution.id === options.resumeAfter) + 1;
   const steps = rendered.map((html, index) => {
     const contribution = contributions[index];
     const isDone = index === rendered.length - 1;
     const isComplete = isDone || (contribution ? completionById.get(contribution.id) === true : false);
-    return `<section class="onboarding-pane" data-onboarding-target="pane" data-onboarding-complete="${isComplete}" data-onboarding-kind="${isDone ? "done" : contribution?.id ?? ""}"${index === 0 ? "" : " hidden"}>${html}</section>`;
+    return `<section class="onboarding-pane" data-onboarding-target="pane" data-onboarding-complete="${isComplete}" data-onboarding-kind="${isDone ? "done" : contribution?.id ?? ""}"${index === initialIndex ? "" : " hidden"}>${html}</section>`;
   });
-  return `<dialog id="onboarding_dialog" class="dialog onboarding-dialog" data-controller="modal onboarding" data-modal-auto-show-value="true" aria-label="Set up Atelier">
-    <div class="onboarding-card">
-      <div class="onboarding-progress" aria-label="Onboarding progress">${rendered.map((_, index) => `<span class="onboarding-progress-item" data-onboarding-target="dot"${index === 0 ? ' aria-current="step"' : ""}></span>`).join("")}</div>
-      <div class="onboarding-body">${steps.join("")}</div>
-      <footer class="dialog__actions onboarding-actions"><button class="button secondary" type="button" data-onboarding-target="back" data-action="onboarding#prev">‹ Back</button><button class="button secondary" type="button" data-onboarding-target="continue" data-action="onboarding#next">Continue</button></footer>
-    </div>
-  </dialog>`;
-}
-
-export async function renderOnboardingDialogIfNeeded(): Promise<string> {
-  return await renderOnboardingDialog(false);
+  return dialogHtml({
+    element: {
+      id: "onboarding_dialog",
+      className: "onboarding-dialog",
+      attributesHtml: 'aria-label="Set up Atelier" data-controller="onboarding" data-dialog-auto-show',
+    },
+    iconHtml: Icons.Atelier,
+    titleCaption: "Set up Atelier",
+    bodyHtml: `<div class="onboarding-progress" aria-label="Onboarding progress">${rendered.map((_, index) => `<span class="onboarding-progress-item" data-onboarding-target="dot"${index === initialIndex ? ' aria-current="step"' : ""}></span>`).join("")}</div><div class="onboarding-body">${steps.join("")}</div>`,
+    footerHtml: `<button class="button secondary" type="button" data-onboarding-target="back" data-action="onboarding#prev">‹ Back</button><button class="button secondary" type="button" data-onboarding-target="continue" data-action="onboarding#next">Continue</button>`,
+    omitCancelButton: true,
+  });
 }
 
 export async function handleOnboardingRequest(request: Request, url: URL): Promise<Response | undefined> {
   if (url.pathname === "/onboarding" && request.method === "GET") {
-    const html = await renderOnboardingDialog(true);
+    const html = await renderOnboardingDialog({ includeCompleted: true });
     const acceptsStream = request.headers.get("accept")?.includes("text/vnd.turbo-stream.html") ?? false;
     if (acceptsStream) return stream(update("onboarding_modal_host", html));
     // Onboarding is a modal flow, not a standalone page. If a browser lands here

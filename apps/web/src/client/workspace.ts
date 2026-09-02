@@ -2166,26 +2166,28 @@ class ModelCatalogueController extends Controller {
   private observer?: MutationObserver;
 
   connect(): void {
-    this.observer = new MutationObserver(() => this.sortProviderGroups());
+    this.observer = new MutationObserver(() => this.sortModels());
     this.observer.observe(this.element, { childList: true, subtree: true });
-    this.sortProviderGroups();
+    this.sortModels();
   }
 
   disconnect(): void {
     this.observer?.disconnect();
   }
 
-  private sortProviderGroups(): void {
+  private sortModels(): void {
     const items = this.element.querySelector<HTMLElement>(".managed-list__items");
     if (!items) return;
-    const current = Array.from(items.querySelectorAll<HTMLElement>(":scope > .model-provider-group"));
+    const current = Array.from(items.querySelectorAll<HTMLElement>(":scope > .model-catalogue-row"));
     const sorted = [...current].sort((a, b) => {
+      const aRank = a.dataset.popularityRank === undefined ? Number.MAX_SAFE_INTEGER : Number(a.dataset.popularityRank);
+      const bRank = b.dataset.popularityRank === undefined ? Number.MAX_SAFE_INTEGER : Number(b.dataset.popularityRank);
       const aConnected = a.querySelector<HTMLElement>(":scope > .model-provider-state")?.dataset.connected === "true";
       const bConnected = b.querySelector<HTMLElement>(":scope > .model-provider-state")?.dataset.connected === "true";
-      return Number(bConnected) - Number(aConnected) || (a.dataset.providerLabel ?? "").localeCompare(b.dataset.providerLabel ?? "");
+      return aRank - bRank || Number(bConnected) - Number(aConnected) || (a.dataset.modelSort ?? "").localeCompare(b.dataset.modelSort ?? "");
     });
-    if (current.every((group, index) => group === sorted[index])) return;
-    for (const group of sorted) items.append(group);
+    if (current.every((model, index) => model === sorted[index])) return;
+    for (const model of sorted) items.append(model);
     const more = items.querySelector<HTMLElement>(":scope > .model-catalogue-more");
     if (more) items.append(more);
   }
@@ -2209,7 +2211,7 @@ class OnboardingController extends Controller {
   connect(): void {
     this.observer = new MutationObserver(() => this.show(this.index));
     this.observer.observe(this.element, { childList: true, subtree: true, attributes: true, attributeFilter: ["data-onboarding-complete"] });
-    this.show(0);
+    this.show(this.paneTargets.findIndex((pane) => !pane.hidden));
   }
 
   disconnect(): void {
@@ -2242,13 +2244,13 @@ class OnboardingController extends Controller {
     const complete = current?.dataset.onboardingComplete === "true" || (kind === "llm" && workingModel);
     if (kind === "done") this.refreshChecklist(current);
     const doneComplete = kind === "done" && current?.querySelector<HTMLElement>("[data-onboarding-done-complete]")?.dataset.onboardingDoneComplete === "true";
-    if (this.hasBackTarget) {
-      this.backTarget.hidden = this.index === 0;
-      this.backTarget.disabled = this.index === 0;
-    }
+    if (this.hasBackTarget) this.backTarget.hidden = this.index === 0;
     if (this.hasContinueTarget) {
       this.continueTarget.classList.toggle("primary", kind === "done" ? Boolean(doneComplete) : complete);
-      const label = kind === "done" ? (doneComplete ? "Let’s start!" : "Start anyway") : kind === "llm" && !workingModel ? "No model configured yet" : "Continue";
+      let label = "Continue";
+      if (kind === "done") label = doneComplete ? "Let’s start!" : "Start anyway";
+      else if (kind === "llm" && !workingModel) label = "Continue without models for now";
+      else if (kind === "github" && !complete) label = "Continue without setting up github";
       if (this.continueTarget.textContent !== label) this.continueTarget.textContent = label;
     }
   }

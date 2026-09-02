@@ -21,7 +21,7 @@ import { clearGitIdentity, getGitIdentity, getStoredGitIdentity, setGitIdentity 
 import { listSettingsContributions, registerSettingsContribution } from "./registry.ts";
 import { workspaceModules } from "../workspace-modules.ts";
 import { validateGitHubToken } from "../github-auth.ts";
-import { renderOnboardingDialogIfNeeded } from "../onboarding/routes.ts";
+import { renderOnboardingDialog } from "../onboarding/routes.ts";
 
 function response(body: string, init: ResponseInit = {}): Response {
   const headers = new Headers(init.headers);
@@ -101,18 +101,31 @@ const modelRemovalConfirmation = destructiveConfirmationHtml({
   cancelCaption: "Cancel",
 });
 
-function githubRow(surface: "settings" | "onboarding" = "settings"): string {
+type GitHubSurface = "settings" | "onboarding";
+
+function githubConnectionForm(surface: GitHubSurface, error: string): string {
+  const action = surface === "onboarding" ? "/settings/github/connect?surface=onboarding" : "/settings/github/connect";
+  const rowClass = surface === "settings" ? " github-connect-form--row" : "";
+  return `<form class="github-connect-form${rowClass} form-stack" method="post" action="${action}" data-turbo="true">
+    <p>On your machine, sign in with GitHub CLI if needed, then print your token:</p>
+    <pre class="settings-command">gh auth login
+gh auth token</pre>
+    <p>Paste the token output below. Atelier stores and encrypts it outside of the agent sandbox so the agent never sees it, but can still read and write from your github repo’s.</p>
+    ${error ? `<p class="settings-error">${escapeHtml(error)}</p>` : ""}
+    <div class="github-connect-controls"><input class="settings-input text-field" type="password" name="token" placeholder="Paste output from gh auth token" aria-label="GitHub token" autocomplete="off" required><button class="button primary" type="submit">Connect</button></div>
+  </form>`;
+}
+
+export function renderGitHubSetup(surface: GitHubSurface = "settings", error = ""): string {
   const connected = hasWorkspaceGitHubToken();
-  const flowAction = surface === "onboarding" ? "/settings/github/flow?surface=onboarding" : "/settings/github/flow";
+  const id = domId(surface, "provider", "github");
   const disconnectAction = surface === "onboarding" ? "/settings/github/disconnect?surface=onboarding" : "/settings/github/disconnect";
-  return `<div class="managed-list"><div class="managed-list__item" id="${domId(surface, "provider", "github")}">
+  if (surface === "onboarding" && !connected) return `<div class="github-connection" id="${id}">${githubConnectionForm(surface, error)}</div>`;
+  return `<div class="github-connection" id="${id}"><div class="managed-list"><div class="managed-list__item">
     ${providerIcon("github", "GitHub", "settings-provider-icon managed-list__visual")}
-    <div class="managed-list__content"><div class="managed-list__label"><span class="managed-list__label-text">GitHub</span></div><div class="managed-list__description">Atelier securely injects your token into workspace GitHub requests without exposing it to the coding agent.</div></div>
-    ${connected ? "" : '<span class="managed-list__meta">Not connected</span>'}
-    <div class="managed-list__actions">${connected
-      ? `<form method="post" action="${disconnectAction}" data-turbo="true">${githubDisconnectConfirmation}</form>`
-      : `<form method="post" action="${flowAction}" data-turbo="true"><button class="button primary" type="submit">Connect</button></form>`}</div>
-  </div></div>`;
+    <div class="managed-list__content"><div class="managed-list__label"><span class="managed-list__label-text">GitHub</span></div>${connected ? "" : githubConnectionForm(surface, error)}</div>
+    ${connected ? `<div class="managed-list__actions"><form method="post" action="${disconnectAction}" data-turbo="true">${githubDisconnectConfirmation}</form></div>` : ""}
+  </div></div></div>`;
 }
 
 type ProviderSummary = { provider: string; label: string; connected: boolean; stored: boolean; methods: string[] };
@@ -150,7 +163,7 @@ async function renderGitIdentitySettings(): Promise<string> {
 }
 
 async function renderGitHubSettings(): Promise<string> {
-  return `<section class="settings-sec settings-sec-github" id="settings-sec-github">${githubRow()}</section>`;
+  return `<section class="settings-sec settings-sec-github" id="settings-sec-github">${renderGitHubSetup()}</section>`;
 }
 
 async function renderModelSetupSettings(): Promise<string> {
@@ -276,7 +289,9 @@ function catalogueModelAction(model: ModelCatalogueEntry, provider: ProviderSumm
 }
 
 function catalogueModelRow(model: ModelCatalogueEntry, provider: ProviderSummary, surface: ModelSetupSurface): string {
-  return `<div class="managed-list__item" data-search-text="${escapeHtml(`${model.label} ${model.provider} ${model.id}`.toLowerCase())}">
+  const popularityRank = getPopularModelRank(model.provider, model.id);
+  return `<div class="managed-list__item model-catalogue-row" data-model-sort="${escapeHtml(`${model.provider} ${model.label}`.toLowerCase())}"${popularityRank === undefined ? "" : ` data-popularity-rank="${popularityRank}"`} data-search-text="${escapeHtml(`${model.label} ${model.provider} ${model.id}`.toLowerCase())}">
+    ${providerState(provider)}
     ${modelManagedListContent(model, `${model.provider} · ${model.id}`)}
     ${catalogueModelAction(model, provider, surface)}
   </div>`;
@@ -290,19 +305,17 @@ function modelCatalogueFrameId(surface: ModelSetupSurface): string {
 
 function renderModelCatalogueResults(data: ModelSetupData, surface: ModelSetupSurface, query: string): string {
   const normalizedQuery = query.trim().toLowerCase();
-  const matchingModels = normalizedQuery
+  const matchingModels = (normalizedQuery
     ? data.models.filter((model) => `${model.label} ${model.provider} ${model.id} ${data.providers.get(model.provider)?.label ?? ""}`.toLowerCase().includes(normalizedQuery))
-    : data.models;
+    : data.models).filter((model) => data.providers.has(model.provider));
   const visibleModels = matchingModels.slice(0, modelCatalogueLimit);
-  const groups = [...data.providers.values()].map((provider) => {
-    const models = visibleModels.filter((model) => model.provider === provider.provider);
-    if (!models.length) return "";
-    return `<div class="model-provider-group" data-provider-label="${escapeHtml(provider.label.toLowerCase())}">${providerState(provider)}${catalogueProviderForms(provider, surface)}${models.map((model) => catalogueModelRow(model, provider, surface)).join("")}</div>`;
-  }).join("");
+  const visibleProviderIds = new Set(visibleModels.map((model) => model.provider));
+  const providerForms = [...visibleProviderIds].map((provider) => catalogueProviderForms(data.providers.get(provider)!, surface)).join("");
+  const rows = visibleModels.map((model) => catalogueModelRow(model, data.providers.get(model.provider)!, surface)).join("");
   const remaining = matchingModels.length - visibleModels.length;
   const more = remaining > 0 ? `<div class="managed-list__item model-catalogue-more" role="status" aria-disabled="true">Many results, use the filter box</div>` : "";
   const empty = matchingModels.length ? "" : `<div class="managed-list__empty">No matching models.</div>`;
-  return `<turbo-frame id="${modelCatalogueFrameId(surface)}" class="model-catalogue-results"><div class="model-catalogue-loading" role="status"><span class="status-spinner" aria-hidden="true"></span>Filtering models…</div><div class="managed-list__items">${groups}${more}</div>${empty}</turbo-frame>`;
+  return `<turbo-frame id="${modelCatalogueFrameId(surface)}" class="model-catalogue-results">${providerForms}<div class="model-catalogue-loading" role="status"><span class="status-spinner" aria-hidden="true"></span>Filtering models…</div><div class="managed-list__items">${rows}${more}</div>${empty}</turbo-frame>`;
 }
 
 function renderModelCatalogue(data: ModelSetupData, surface: ModelSetupSurface): string {
@@ -318,10 +331,9 @@ function renderModelCatalogue(data: ModelSetupData, surface: ModelSetupSurface):
 
 function renderModelSetupData(data: ModelSetupData, surface: ModelSetupSurface): string {
   const working = data.working;
-  const head = surface === "onboarding" ? `<div class="model-setup-head"><h2>Configure models</h2><p>Connect providers and choose the models shown in model menus.</p></div>` : "";
   const id = surface === "dialog" ? "model_setup_dialog_content" : `model_setup_${surface}`;
   return `<div class="model-setup form-stack" id="${id}">
-    ${head}${modelSetupWorkingState(working)}
+    ${modelSetupWorkingState(working)}
     <div class="configured-model-section configured-model-section-${surface}">${renderConfiguredModelsSection(data, surface)}</div>
     <section class="model-setup-section form-section"><h2>Available models</h2><div class="model-catalogue" data-controller="model-catalogue">${renderModelCatalogue(data, surface)}</div></section>
   </div>`;
@@ -388,24 +400,6 @@ function forceDeleteAllWorkspacesResultModal(deleted: number, errors: string[]):
     ${dialogHeader("Workspace cleanup complete", `<div class="settings-provider-icon" style="--provider-color:${errors.length ? "var(--danger)" : "var(--success)"}">${errors.length ? "!" : "✓"}</div>`)}
     <div class="dialog__body"><p>Deleted ${escapeHtml(deleted)} workspace${deleted === 1 ? "" : "s"}.</p>${errors.length ? `<p class="settings-error">${escapeHtml(errors.join("\n"))}</p>` : ""}</div>
     <div class="dialog__actions"><form method="dialog"><button class="button primary">Done</button></form></div>
-  </dialog>`;
-}
-
-function githubTokenModal(error = "", surface: "settings" | "onboarding" = "settings"): string {
-  const action = surface === "onboarding" ? "/settings/github/connect?surface=onboarding" : "/settings/github/connect";
-  return `<dialog id="settings_flow_dialog" class="dialog" data-dialog-auto-show>
-    <form method="post" action="${action}" data-turbo="true">
-      ${dialogHeader("GitHub", providerIcon("github", "GitHub"))}
-      <div class="dialog__body">
-        <p>On your machine, sign in with GitHub CLI if needed, then print your token:</p>
-        <pre class="settings-command">gh auth login
-gh auth token</pre>
-        <p>Paste the token output below. Atelier stores it locally and injects it into workspace GitHub requests as <code>GH_TOKEN</code>.</p>
-        ${error ? `<p class="settings-error">${escapeHtml(error)}</p>` : ""}
-        <input class="settings-input text-field settings-token-input" type="password" name="token" placeholder="Paste output from gh auth token" autocomplete="off" required autofocus>
-      </div>
-      <div class="dialog__actions"><button class="button secondary" formmethod="dialog">Cancel</button><button class="button primary" type="submit">Connect</button></div>
-    </form>
   </dialog>`;
 }
 
@@ -628,7 +622,7 @@ export async function handleSettingsRequest(request: Request, url: URL, options:
   }
   if (url.pathname === "/settings/reset" && request.method === "POST") {
     await deleteAllStoredSettings();
-    return stream(`${replace("settings_dialog", await renderDevelopmentSettingsDialog())}${update("onboarding_modal_host", await renderOnboardingDialogIfNeeded())}${remove("settings_flow_dialog")}`);
+    return stream(`${replace("settings_dialog", await renderDevelopmentSettingsDialog())}${update("onboarding_modal_host", await renderOnboardingDialog())}${remove("settings_flow_dialog")}`);
   }
   if (url.pathname === "/settings/workspaces/force-delete/flow" && request.method === "POST" && devSettingsEnabled()) {
     return stream(append("settings_modal_host", forceDeleteAllWorkspacesModal()));
@@ -646,32 +640,26 @@ export async function handleSettingsRequest(request: Request, url: URL, options:
       const message = error instanceof Error ? error.message : String(error);
       return stream(replace("settings_git_identity", await renderGitIdentityForm(message)));
     }
-    return stream(`${replace("settings_dialog", await renderSettingsDialog("git-identity"))}${update("onboarding_modal_host", await renderOnboardingDialogIfNeeded())}`);
-  }
-  if (url.pathname === "/settings/github/flow" && request.method === "POST") {
-    const surface = url.searchParams.get("surface") === "onboarding" ? "onboarding" : "settings";
-    return surface === "onboarding"
-      ? stream(append("onboarding_modal_host", githubTokenModal("", "onboarding")))
-      : stream(update("settings_modal_host", `${await renderSettingsDialog("github")}${githubTokenModal()}`));
+    return stream(`${replace("settings_dialog", await renderSettingsDialog("git-identity"))}${update("onboarding_modal_host", await renderOnboardingDialog())}`);
   }
   if (url.pathname === "/settings/github/connect" && request.method === "POST") {
     const surface = url.searchParams.get("surface") === "onboarding" ? "onboarding" : "settings";
     const form = await request.formData();
     const token = String(form.get("token") ?? "").trim();
     const validation = await validateGitHubToken(token);
-    if (!validation.ok) return stream(replace("settings_flow_dialog", githubTokenModal(validation.message, surface)));
+    if (!validation.ok) return stream(replace(domId(surface, "provider", "github"), renderGitHubSetup(surface, validation.message)));
     setWorkspaceGitHubToken(token);
     if (!await getStoredGitIdentity()) await setGitIdentity({ name: validation.name, email: validation.email });
     return surface === "onboarding"
-      ? stream(`${remove("settings_flow_dialog")}${update("onboarding_modal_host", await renderOnboardingDialogIfNeeded())}`)
-      : stream(`${replace("settings_dialog", await renderSettingsDialog("github"))}${update("onboarding_modal_host", await renderOnboardingDialogIfNeeded())}${remove("settings_flow_dialog")}`);
+      ? stream(update("onboarding_modal_host", await renderOnboardingDialog({ resumeAfter: "github" })))
+      : stream(`${replace("settings_dialog", await renderSettingsDialog("github"))}${update("onboarding_modal_host", await renderOnboardingDialog())}`);
   }
   if (url.pathname === "/settings/github/disconnect" && request.method === "POST") {
     const surface = url.searchParams.get("surface") === "onboarding" ? "onboarding" : "settings";
     clearWorkspaceGitHubToken();
     return surface === "onboarding"
-      ? stream(update("onboarding_modal_host", await renderOnboardingDialogIfNeeded()))
-      : stream(`${replace("settings_dialog", await renderSettingsDialog("github"))}${update("onboarding_modal_host", await renderOnboardingDialogIfNeeded())}`);
+      ? stream(update("onboarding_modal_host", await renderOnboardingDialog()))
+      : stream(replace("settings_dialog", await renderSettingsDialog("github")));
   }
   let match = url.pathname.match(/^\/settings\/providers\/([^/]+)\/flow$/);
   if (match && request.method === "POST") {
@@ -760,5 +748,3 @@ async function handleModelPickerAction(request: Request, pathname: string): Prom
   await setPickerAgentModels(current, current.find((model) => model.active));
   return stream(await refreshConfiguredModelState({ provider, id }));
 }
-
-export { githubRow };

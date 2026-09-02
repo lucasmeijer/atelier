@@ -24,10 +24,16 @@ function storedGitHubTokenPath(): string {
   return join(getAtelierRuntimeContext().atelierDataDir, "workspace", "github-token");
 }
 
+function disabledHostGitHubTokenPath(): string {
+  return join(getAtelierRuntimeContext().atelierDataDir, "workspace", "github-token-disabled");
+}
+
 export function discoverHostGitHubToken(): string | undefined {
   const path = storedGitHubTokenPath();
   const stored = existsSync(path) ? readFileSync(path, "utf8").trim() : undefined;
-  return stored || process.env.GH_TOKEN?.trim() || undefined;
+  if (stored) return stored;
+  if (existsSync(disabledHostGitHubTokenPath())) return undefined;
+  return process.env.GH_TOKEN?.trim() || undefined;
 }
 
 export function hasWorkspaceGitHubToken(): boolean {
@@ -38,8 +44,12 @@ export function setWorkspaceGitHubToken(token: string): void {
   const path = storedGitHubTokenPath();
   mkdirSync(dirname(path), { recursive: true });
   writeFileSync(path, `${token.trim()}\n`, { mode: 0o600 });
+  rmSync(disabledHostGitHubTokenPath(), { force: true });
 }
 
 export function clearWorkspaceGitHubToken(): void {
+  const disabledPath = disabledHostGitHubTokenPath();
   rmSync(storedGitHubTokenPath(), { force: true });
+  mkdirSync(dirname(disabledPath), { recursive: true });
+  writeFileSync(disabledPath, "", { mode: 0o600 });
 }

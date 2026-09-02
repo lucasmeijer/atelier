@@ -79,7 +79,7 @@ import {
 import type { WorkspaceDeletionState, WorkspaceEntry, WorkspaceRegistry } from "./workspace-registry.ts";
 import { workspaceModules } from "./workspace-modules.ts";
 import { handleSettingsRequest, renderSettingsDialog } from "./settings/routes.ts";
-import { handleOnboardingRequest, renderOnboardingDialogIfNeeded } from "./onboarding/routes.ts";
+import { handleOnboardingRequest, renderOnboardingDialog } from "./onboarding/routes.ts";
 import { GitHubRepositorySearchRateLimitError, renderGitHubRepositorySearchMenu, renderGitHubRepositorySearchRateLimitMenu, searchGitHubRepositories, shouldSearchGitHubRepositories } from "./github-repo-search.ts";
 import { atelierOpenApi } from "./openapi.ts";
 import { parseCloseWorkViewRequest, parseReorderWorkViewRequest } from "./work-view-api.ts";
@@ -818,7 +818,7 @@ ${moduleStylesHtml()}
   ${projectEditorModal()}
   <div id="update_modal_host"></div>
   <div id="settings_modal_host"></div>
-  <div id="onboarding_modal_host">${await renderOnboardingDialogIfNeeded()}</div>
+  <div id="onboarding_modal_host">${await renderOnboardingDialog()}</div>
   <div id="${workspaceCommandModalHostId}"></div>
   <turbo-frame id="${launchComposerFrameId}"></turbo-frame>`;
   }

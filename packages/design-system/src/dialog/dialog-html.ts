@@ -20,6 +20,8 @@ export interface DialogOptions {
   footerHtml?: string;
   /** Accessible close-button label. */
   closeLabel?: string;
+  /** Omits the header's cancel control when the flow must provide its own completion action. */
+  omitCancelButton?: boolean;
 }
 
 /** Renders a native modal host around the design-system panel surface. */
@@ -27,9 +29,10 @@ export function dialogHtml(options: DialogOptions): string {
   const { element } = options;
   const id = element.id === undefined ? "" : ` id="${escapeHtml(element.id)}"`;
   const closeLabel = escapeHtml(options.closeLabel ?? "Close dialog");
+  const cancelButton = options.omitCancelButton ? "" : `<form class="dialog__close-form" method="dialog"><button class="dialog__close button secondary icon-only" value="close" title="${closeLabel}" aria-label="${closeLabel}">${Icons.Close}</button></form>`;
   const panel = panelHtml({
     element: { tag: "div", className: "dialog__panel" },
-    headerHtml: `<h2 class="panel__title dialog__title">${options.iconHtml}<span>${escapeHtml(options.titleCaption)}</span></h2><form class="dialog__close-form" method="dialog"><button class="dialog__close button secondary icon-only" value="close" title="${closeLabel}" aria-label="${closeLabel}">${Icons.Close}</button></form>`,
+    headerHtml: `<h2 class="panel__title dialog__title">${options.iconHtml}<span>${escapeHtml(options.titleCaption)}</span></h2>${cancelButton}`,
     bodyHtml: options.bodyHtml,
     footerHtml: options.footerHtml,
   });

@@ -9,7 +9,7 @@ import { createWebApp } from "../src/server/app.ts";
 import { workViewBodyFrameId } from "../src/server/workspace-presentation.ts";
 import { createWorkspaceRegistry } from "../src/server/workspace-registry.ts";
 import { createPiModelRuntime, getConfiguredAgentModels, setPickerAgentModels } from "@atelier/agent/server";
-import { setWorkspaceGitHubToken } from "@atelier/proxy-egress";
+import { hasWorkspaceGitHubToken, setWorkspaceGitHubToken } from "@atelier/proxy-egress";
 import { addProject, createProjectSecret, getGitIdentity, isGitProjectInit, listProjectEnvironmentVariables, listProjects, projectWorkspaceInit, revealProjectSecrets, createProjectSshKey, type WorkspaceDeleteBlockedDetails } from "@atelier/projects";
 
 function deferred<T = void>() {
@@ -254,7 +254,15 @@ describe("web app contracts", () => {
       expect(body).toContain("Git email");
       expect(body).not.toContain("settings-btn");
       expect(body).not.toContain("settings-button");
-      expect(body.match(/class="managed-list__item" data-search-text=/g)?.length).toBe(50);
+      expect(body.match(/class="managed-list__item model-catalogue-row"/g)?.length).toBe(50);
+      const catalogueRows = body.match(/<div class="managed-list__item model-catalogue-row"[^>]*>/g) ?? [];
+      expect(catalogueRows.slice(0, 5).map((row) => [row.match(/data-popularity-rank="(\d+)"/)?.[1], row.match(/data-search-text="([^"]+)"/)?.[1]])).toEqual([
+        ["0", "gpt-5.6 sol openai-codex gpt-5.6-sol"],
+        ["1", "gpt-5.6 terra openai-codex gpt-5.6-terra"],
+        ["2", "gpt-5.6 luna openai-codex gpt-5.6-luna"],
+        ["3", "claude fable 5 anthropic claude-fable-5"],
+        ["4", "claude opus 5 anthropic claude-opus-5"],
+      ]);
       expect(body).toContain("grok-4.6");
       expect(body).toContain('<div class="managed-list__item model-catalogue-more" role="status" aria-disabled="true">Many results, use the filter box</div>');
 
@@ -263,7 +271,7 @@ describe("web app contracts", () => {
       expect(filteredBody).toContain(`<turbo-frame id="model_catalogue_results_settings" class="model-catalogue-results">`);
       expect(filteredBody).toContain('<div class="model-catalogue-loading" role="status"><span class="status-spinner" aria-hidden="true"></span>Filtering models…</div>');
       expect(filteredBody).toContain(catalogueModel.id);
-      expect(filteredBody.match(/class="managed-list__item" data-search-text=/g)?.length ?? 0).toBeLessThanOrEqual(50);
+      expect(filteredBody.match(/class="managed-list__item model-catalogue-row"/g)?.length ?? 0).toBeLessThanOrEqual(50);
 
       const apiKeyDialogResponse = await app.fetch(post(`/settings/providers/${catalogueModel.provider}/flow?method=api_key`));
       const apiKeyDialogBody = await apiKeyDialogResponse.text();
@@ -286,9 +294,64 @@ describe("web app contracts", () => {
       expect(removeBody).toContain('targets=".model_catalogue_action_settings_');
       expect(removeBody).not.toContain('targets=".model-catalogue"');
 
+      await app.fetch(postForm("/settings/models/add", new URLSearchParams({ model: `${catalogueModel.provider}::${catalogueModel.id}` })));
+      expect((await getConfiguredAgentModels()).some((model) => model.provider === catalogueModel.provider && model.id === catalogueModel.id)).toBe(false);
+
       await setPickerAgentModels([]);
       const emptyResponse = await app.fetch(new Request("http://test.local/settings"));
       expect(await emptyResponse.text()).not.toContain("<h2>Configured models</h2>");
+    });
+  });
+
+  test("onboarding uses the design-system dialog without a cancel button", async () => {
+    await withTempDataDir(async () => {
+      const { app } = createTestApp();
+      const body = await (await app.fetch(new Request("http://test.local/"))).text();
+      const onboarding = body.slice(body.indexOf('<dialog id="onboarding_dialog"'), body.indexOf("</dialog>", body.indexOf('<dialog id="onboarding_dialog"')) + "</dialog>".length);
+
+      expect(onboarding).toContain('class="dialog dialog--panel onboarding-dialog"');
+      expect(onboarding).toContain('data-controller="onboarding" data-dialog-auto-show');
+      expect(onboarding).toContain('class="panel dialog__panel"');
+      expect(onboarding).not.toContain('class="dialog__close-form"');
+      expect(onboarding).not.toContain("Configure models");
+      expect(onboarding).not.toContain("Connect providers and choose the models shown in model menus.");
+    });
+  });
+
+  test("disconnecting GitHub during onboarding suppresses a host token and offers reconnection", async () => {
+    await withTempDataDir(async () => {
+      process.env.GH_TOKEN = "host-token";
+      const { app } = createTestApp();
+
+      expect(hasWorkspaceGitHubToken()).toBe(true);
+      const response = await app.fetch(post("/settings/github/disconnect?surface=onboarding"));
+      const body = await response.text();
+
+      expect(hasWorkspaceGitHubToken()).toBe(false);
+      expect(body).toContain('data-onboarding-kind="github"');
+      expect(body).toContain('<div class="github-connection" id="onboarding_provider_github"><form class="github-connect-form form-stack"');
+      expect(body).toContain('action="/settings/github/connect?surface=onboarding"');
+      expect(body).not.toContain("Atelier securely injects your token into workspace GitHub requests without exposing it to the coding agent.");
+      expect(body).toContain("Atelier stores and encrypts it outside of the agent sandbox so the agent never sees it, but can still read and write from your github repo’s.");
+      expect(body).not.toContain("Not connected");
+      expect(body).toContain('data-onboarding-check="github"');
+      expect(body).toContain('aria-checked="false" data-onboarding-check="github"');
+    });
+  });
+
+  test("disconnecting GitHub in settings keeps settings open with the inline connection form", async () => {
+    await withTempDataDir(async () => {
+      process.env.GH_TOKEN = "host-token";
+      const { app } = createTestApp();
+
+      const response = await app.fetch(post("/settings/github/disconnect"));
+      const body = await response.text();
+
+      expect(hasWorkspaceGitHubToken()).toBe(false);
+      expect(body).toContain('target="settings_dialog"');
+      expect(body).toContain('class="github-connect-form github-connect-form--row form-stack"');
+      expect(body).not.toContain('target="onboarding_modal_host"');
+      expect(body).not.toContain('id="onboarding_dialog"');
     });
   });
 
@@ -1169,17 +1232,34 @@ describe("web app contracts", () => {
     expect(reorder!.indexOf('data-workspace-entry-id="b"')).toBeLessThan(reorder!.indexOf('data-workspace-entry-id="a"'));
   });
 
-  test("GitHub connect flow asks for GitHub CLI token output", async () => {
-    const { app } = createTestApp();
+  test("GitHub connection instructions and token input render inline in settings", async () => {
+    await withTempDataDir(async () => {
+      const { app } = createTestApp();
 
-    const response = await app.fetch(post("/settings/github/flow"));
-    const body = await response.text();
+      const response = await app.fetch(new Request("http://test.local/settings"));
+      const body = await response.text();
 
-    expect(response.headers.get("content-type")).toContain("text/vnd.turbo-stream.html");
-    expect(body).toContain("gh auth login");
-    expect(body).toContain("gh auth token");
-    expect(body).toContain("Paste output from gh auth token");
-    expect(body).not.toContain("personal-access-tokens");
+      expect(body).toContain('class="github-connect-form github-connect-form--row form-stack"');
+      expect(body).toContain('action="/settings/github/connect"');
+      expect(body).toContain("gh auth login");
+      expect(body).toContain("gh auth token");
+      expect(body).toContain("Paste output from gh auth token");
+      expect(body).not.toContain('id="settings_flow_dialog"');
+      expect(body).not.toContain("personal-access-tokens");
+    });
+  });
+
+  test("GitHub validation errors replace the inline connection form", async () => {
+    await withTempDataDir(async () => {
+      const { app } = createTestApp();
+      const response = await app.fetch(postForm("/settings/github/connect?surface=onboarding", new URLSearchParams({ token: "" })));
+      const body = await response.text();
+
+      expect(body).toContain('target="onboarding_provider_github"');
+      expect(body).toContain("Enter a GitHub token.");
+      expect(body).toContain('action="/settings/github/connect?surface=onboarding"');
+      expect(body).not.toContain('id="settings_flow_dialog"');
+    });
   });
 
   test("GitHub connect validates and stores pasted GitHub CLI token", async () => {
@@ -1202,8 +1282,18 @@ describe("web app contracts", () => {
         expect(body).toContain('target="settings_dialog"');
         expect(body).not.toContain('class="managed-list__meta">Connected</span>');
         expect(body).toContain("Disconnect GitHub");
-        expect(body).toContain('target="settings_flow_dialog"');
+        expect(body).not.toContain('target="settings_flow_dialog"');
+        expect(body).not.toContain('class="github-connect-form github-connect-form--row form-stack"');
         expect(await getGitIdentity()).toEqual({ name: "Mona Lisa", email: "octocat@github.com" });
+
+        await app.fetch(post("/settings/github/disconnect"));
+        const onboardingResponse = await app.fetch(postForm("/settings/github/connect?surface=onboarding", new URLSearchParams({ token: "cli-token" })));
+        const onboardingBody = await onboardingResponse.text();
+        const progressDots = onboardingBody.match(/<span class="onboarding-progress-item"[^>]*>/g) ?? [];
+        expect(progressDots).toHaveLength(3);
+        expect(progressDots.findIndex((dot) => dot.includes('aria-current="step"'))).toBe(1);
+        expect(onboardingBody).toContain('data-onboarding-kind="github" hidden');
+        expect(onboardingBody).toMatch(/data-onboarding-kind="llm">/);
       } finally {
         globalThis.fetch = originalFetch;
       }

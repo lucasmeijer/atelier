@@ -55,6 +55,18 @@ describe("GitHub token discovery", () => {
     expect(hasWorkspaceGitHubToken()).toBe(true);
   });
 
+  test("disconnect suppresses a discovered GH_TOKEN until a token is connected again", () => {
+    process.env.GH_TOKEN = "env-token";
+
+    clearWorkspaceGitHubToken();
+    expect(discoverHostGitHubToken()).toBeUndefined();
+    expect(hasWorkspaceGitHubToken()).toBe(false);
+
+    setWorkspaceGitHubToken("reconnected-token");
+    expect(discoverHostGitHubToken()).toBe("reconnected-token");
+    expect(hasWorkspaceGitHubToken()).toBe(true);
+  });
+
   test("falls back to GH_TOKEN when stored token file is blank", async () => {
     const tokenPath = join(dataDir, "workspace", "github-token");
     await mkdir(dirname(tokenPath), { recursive: true });
