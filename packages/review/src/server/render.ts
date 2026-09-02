@@ -6,7 +6,7 @@ import { toggleHtml } from "@atelier/design-system/toggle";
 import { preloadDiffHTML } from "@pierre/diffs/ssr";
 import { domId, escapeHtml, turboStream, workspaceWorkViewLabelDomId, type WorkspaceWorkViewPresentation } from "@atelier/shared";
 import type { ReviewFile, ReviewFileStats, ReviewFileSummary, ReviewIndex } from "./diff.ts";
-import { reviewCommentsPrompt, type ReviewCommentModel, type ReviewDiffLayout } from "../model.ts";
+import { defaultReviewDiffLayouts, reviewCommentsPrompt, type ReviewCommentModel, type ReviewDiffLayouts } from "../model.ts";
 import { reviewDiffOptions, reviewViewKey } from "../pierre.ts";
 import type { ReviewComment } from "./state.ts";
 
@@ -160,7 +160,7 @@ function refreshForm(workspaceId: string, caption = ""): string {
   return `<form method="post" action="/workspaces/${encodeURIComponent(workspaceId)}/review/refresh" data-turbo="true" data-action="submit->review#updateRefreshState turbo:submit-end->review#updateRefreshState">${button}</form>`;
 }
 
-function toolbar(workspaceId: string, comments: ReviewComment[], diffLayout: ReviewDiffLayout): string {
+function toolbar(workspaceId: string, comments: ReviewComment[], diffLayouts: ReviewDiffLayouts): string {
   const commentsDisabled = comments.length === 0 ? " disabled" : "";
   const collapse = iconButton("Collapse all files", "review#collapseAll", Icons.CollapseAll);
   const expand = iconButton("Expand all files", "review#expandAll", Icons.ExpandAll);
@@ -172,8 +172,8 @@ function toolbar(workspaceId: string, comments: ReviewComment[], diffLayout: Rev
     variant: "text-subtle",
     label: "Diff layout",
     name: "review-diff-layout",
-    value: diffLayout,
-    form: { action: "/review/settings/diff-layout", dataAction: "change->review#setDiffLayout" },
+    value: diffLayouts.desktop,
+    form: { action: "/review/settings/diff-layout?viewport=desktop", dataAction: "change->review#setDiffLayout" },
     options: [{ label: "Unified", value: "unified" }, { label: "Side by side", value: "split" }],
   });
   const diffHighlighting = toggleHtml({
@@ -205,7 +205,7 @@ function toolbar(workspaceId: string, comments: ReviewComment[], diffLayout: Rev
   </header>`;
 }
 
-export function renderReviewBody(workspaceId: string, index: ReviewIndex, comments: ReviewComment[], diffLayout: ReviewDiffLayout = "unified"): string {
+export function renderReviewBody(workspaceId: string, index: ReviewIndex, comments: ReviewComment[], diffLayouts: ReviewDiffLayouts = defaultReviewDiffLayouts): string {
   if (index.phase === "not-git") {
     return `<section id="${reviewBodyId(workspaceId)}" class="review-body review-empty" data-controller="review" data-review-workspace-id-value="${escapeHtml(workspaceId)}"><div><h2>Not a git repository</h2><p>Review becomes available when this Workspace contains a Git repository.</p>${refreshForm(workspaceId, "Refresh")}</div></section>`;
   }
@@ -217,7 +217,7 @@ export function renderReviewBody(workspaceId: string, index: ReviewIndex, commen
     : `<div class="review-no-changes"><h2>No changes to review</h2><p>The working tree matches HEAD.</p></div>`;
   const commentModels = comments.map(commentModel);
   const statsUrl = `/workspaces/${encodeURIComponent(workspaceId)}/review/stats`;
-  return `<section id="${reviewBodyId(workspaceId)}" class="review-body" data-controller="review" data-review-workspace-id-value="${escapeHtml(workspaceId)}" data-review-diff-layout="${diffLayout}">${toolbar(workspaceId, comments, diffLayout)}${content}<turbo-frame id="${reviewStatsFrameId(workspaceId)}" src="${escapeHtml(statsUrl)}"></turbo-frame><script id="${reviewCommentsModelId(workspaceId)}" type="application/json" data-review-comments>${jsonForHtml(commentModels)}</script></section>`;
+  return `<section id="${reviewBodyId(workspaceId)}" class="review-body" data-controller="review" data-review-workspace-id-value="${escapeHtml(workspaceId)}" data-mobile-diff-layout="${diffLayouts.mobile}" data-desktop-diff-layout="${diffLayouts.desktop}">${toolbar(workspaceId, comments, diffLayouts)}${content}<turbo-frame id="${reviewStatsFrameId(workspaceId)}" src="${escapeHtml(statsUrl)}"></turbo-frame><script id="${reviewCommentsModelId(workspaceId)}" type="application/json" data-review-comments>${jsonForHtml(commentModels)}</script></section>`;
 }
 
 export const reviewWorkViewPresentation: WorkspaceWorkViewPresentation = {

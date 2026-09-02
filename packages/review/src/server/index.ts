@@ -6,7 +6,7 @@ import { Value } from "typebox/value";
 import { reviewCommentsPrompt, type ReviewSide } from "../model.ts";
 import { collectReviewFile, collectReviewIndex, collectReviewStats, reviewSnippet, type ReviewIndex } from "./diff.ts";
 import { renderReviewBody, renderReviewFileDetails, renderReviewStatsFrame, renderReviewTitle, reviewBodyId, reviewFileFrameId, reviewReference, reviewWorkViewPresentation } from "./render.ts";
-import { isReviewDiffLayout, readReviewDiffLayout, writeReviewDiffLayout } from "./settings.ts";
+import { isReviewDiffLayout, isReviewViewport, readReviewDiffLayouts, writeReviewDiffLayout } from "./settings.ts";
 import { addReviewComment, deleteReviewComments, deleteReviewState, listReviewComments, reconcileReviewComments, remapReviewFileComments, reviewCommentsForPrompt, updateReviewComment, type ReviewComment } from "./state.ts";
 
 const reviewReferenceSchema = Type.Object({ type: Type.Literal("review") });
@@ -34,7 +34,7 @@ async function current(workspaceId: string): Promise<{ index: ReviewIndex; comme
 }
 
 async function bodyStream(workspaceId: string, index: ReviewIndex, comments: ReviewComment[]): Promise<string> {
-  return turboStream("replace", reviewBodyId(workspaceId), renderReviewBody(workspaceId, index, comments, await readReviewDiffLayout()));
+  return turboStream("replace", reviewBodyId(workspaceId), renderReviewBody(workspaceId, index, comments, await readReviewDiffLayouts()));
 }
 
 async function refreshedResponse(workspaceId: string): Promise<Response> {
@@ -84,7 +84,7 @@ export const reviewWorkspaceModule: WorkspaceModule = {
     identity: (_reference: ReviewReference) => "workspace",
     async render({ workspaceId }) {
       const { index, comments } = await current(workspaceId);
-      return renderReviewBody(workspaceId, index, comments, await readReviewDiffLayout());
+      return renderReviewBody(workspaceId, index, comments, await readReviewDiffLayouts());
     },
   }],
   commands: [{ id: "review.open", execute: () => ({ createdWorkView: reviewReference }) }],
@@ -93,9 +93,10 @@ export const reviewWorkspaceModule: WorkspaceModule = {
     async handle(request, url) {
       if (url.pathname === "/review/settings/diff-layout") {
         if (request.method !== "POST") return textResponse("Method not allowed", 405);
+        const viewport = url.searchParams.get("viewport") ?? "";
         const value = String((await request.formData()).get("review-diff-layout") ?? "");
-        if (!isReviewDiffLayout(value)) return textResponse("Invalid review diff layout", 422);
-        await writeReviewDiffLayout(value);
+        if (!isReviewViewport(viewport) || !isReviewDiffLayout(value)) return textResponse("Invalid review diff layout", 422);
+        await writeReviewDiffLayout(viewport, value);
         return turboStreamResponse("");
       }
       let match = url.pathname.match(/^\/workspaces\/([^/]+)\/review\/refresh$/);

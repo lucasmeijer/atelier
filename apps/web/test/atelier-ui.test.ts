@@ -286,7 +286,7 @@ Comment: I don't think we need these tests`;
       if (index.phase !== "ready") throw new Error("expected ready review");
       const reviewFile = await collectReviewFile(root, "changed.ts");
       if (!reviewFile) throw new Error("expected review file");
-      const reviewBody = renderReviewBody("word-diff", index, [], "split");
+      const reviewBody = renderReviewBody("word-diff", index, [], { mobile: "unified", desktop: "split" });
       const fileDetails = await renderReviewFileDetails("word-diff", reviewFile, []);
       const statsFrame = renderReviewStatsFrame("word-diff", await collectReviewStats(root, index));
       const fixture = `<div class="workspace-detail-resident visible"><section class="fixed-shell-surface is-active" data-workspace-pane-role="work">${reviewBody}</section></div>`;
@@ -305,7 +305,7 @@ Comment: I don't think we need these tests`;
         detailRequests += 1;
         return route.fulfill({ contentType: "text/html", body: fileDetails });
       });
-      await page.route("http://atelier.test/review/settings/diff-layout", (route) => route.fulfill({ contentType: "text/vnd.turbo-stream.html", body: "" }));
+      await page.route("http://atelier.test/review/settings/diff-layout?viewport=desktop", (route) => route.fulfill({ contentType: "text/vnd.turbo-stream.html", body: "" }));
       await page.addInitScript(() => localStorage.setItem("atelier.review.collapsed:word-diff", "[]"));
       await page.goto("http://atelier.test/");
 
@@ -339,7 +339,7 @@ Comment: I don't think we need these tests`;
       expect(await sideBySide.getAttribute("aria-pressed")).toBe("true");
       expect(await renderedDiff.getAttribute("data-diff-type")).toBe("split");
 
-      const layoutRequest = page.waitForRequest("http://atelier.test/review/settings/diff-layout");
+      const layoutRequest = page.waitForRequest("http://atelier.test/review/settings/diff-layout?viewport=desktop");
       const busyState = await unified.evaluate((element) => {
         // SAFETY: unified resolves the named toggle button.
         const button = element as HTMLButtonElement;
@@ -380,6 +380,28 @@ Comment: I don't think we need these tests`;
     } finally {
       await rm(root, { recursive: true, force: true });
     }
+  });
+
+  test("uses and updates separate review layouts when the viewport changes", async () => {
+    const reviewBody = renderReviewBody("responsive-review", { phase: "ready", files: [] }, [], { mobile: "split", desktop: "unified" });
+    const fixture = `<div class="workspace-detail-resident visible"><div data-work-view-key="review:workspace"><span class="action-item__label-text">Review</span></div><section class="fixed-shell-surface is-active" data-workspace-pane-role="work">${reviewBody}</section></div>`;
+    const page = await newTestPage({ viewport: { width: 1000, height: 700 } });
+    await page.route("http://atelier.test/", (route) => route.fulfill({ contentType: "text/html", body: `${fixture}<script type="module" src="${workspaceClientPath}"></script>` }));
+    await page.route("http://atelier.test/workspaces/responsive-review/review/stats", (route) => route.fulfill({ contentType: "text/html", body: renderReviewStatsFrame("responsive-review", []) }));
+    await page.route("http://atelier.test/review/settings/diff-layout?viewport=mobile", (route) => route.fulfill({ contentType: "text/vnd.turbo-stream.html", body: "" }));
+    await page.goto("http://atelier.test/");
+
+    const layout = page.getByRole("group", { name: "Diff layout", exact: true });
+    const unified = layout.getByRole("button", { name: "Unified", exact: true });
+    const sideBySide = layout.getByRole("button", { name: "Side by side", exact: true });
+    expect(await unified.getAttribute("aria-pressed")).toBe("true");
+
+    await page.setViewportSize({ width: 500, height: 700 });
+    await page.waitForFunction(() => document.querySelector<HTMLButtonElement>('button[name="review-diff-layout"][value="split"]')?.getAttribute("aria-pressed") === "true");
+    const request = page.waitForRequest("http://atelier.test/review/settings/diff-layout?viewport=mobile");
+    await unified.click();
+    expect((await request).postData()).toBe("review-diff-layout=unified");
+    await page.close();
   });
 
   test("toggles long review lines between horizontal scrolling and wrapping", async () => {

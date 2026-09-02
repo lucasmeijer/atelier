@@ -1,5 +1,9 @@
 export type ReviewSide = "deletions" | "additions";
 export type ReviewDiffLayout = "unified" | "split";
+export type ReviewViewport = "mobile" | "desktop";
+export type ReviewDiffLayouts = Record<ReviewViewport, ReviewDiffLayout>;
+
+export const defaultReviewDiffLayouts = { mobile: "unified", desktop: "unified" } satisfies ReviewDiffLayouts;
 
 export interface ReviewCommentModel {
   id: string;

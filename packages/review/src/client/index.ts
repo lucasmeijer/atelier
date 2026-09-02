@@ -3,9 +3,9 @@
 import type { DiffLineAnnotation, FileDiff, FileDiffMetadata, SelectedLineRange } from "@pierre/diffs";
 import { setActivityButtonState } from "@atelier/design-system/activity-button/client";
 import { Icons } from "@atelier/design-system/icons";
-import type { ToggleChangeEvent } from "@atelier/design-system/toggle/client";
-import { isWorkspacePaneVisible, type WorkspaceClientModule } from "@atelier/shared";
-import { reviewCommentsPrompt, type ReviewCommentModel, type ReviewDiffLayout } from "../model.ts";
+import { setToggleValue, type ToggleChangeEvent } from "@atelier/design-system/toggle/client";
+import { isWorkspacePaneVisible, phoneViewportMediaQuery, type WorkspaceClientModule } from "@atelier/shared";
+import { reviewCommentsPrompt, type ReviewCommentModel, type ReviewDiffLayout, type ReviewViewport } from "../model.ts";
 import { reviewDiffOptions } from "../pierre.ts";
 
 type StimulusControllerConstructor = new (...args: never[]) => { element: Element };
@@ -91,10 +91,17 @@ function createReviewController(Controller: StimulusControllerConstructor) {
     private lineWrappingEnabled = true;
     private pane!: HTMLElement;
     private resident!: HTMLElement;
+    private viewportMedia!: MediaQueryList;
     private readonly becameVisible = (): void => { void this.becomeVisible(); };
+    private readonly viewportChanged = (): void => {
+      const layout = this.syncViewportLayout();
+      if (this.diffStyle !== layout) void this.renderDiffLayout(layout);
+    };
 
     connect(): void {
-      this.diffStyle = this.element.dataset.reviewDiffLayout === "split" ? "split" : "unified";
+      this.viewportMedia = window.matchMedia(phoneViewportMediaQuery);
+      this.viewportMedia.addEventListener("change", this.viewportChanged);
+      this.diffStyle = this.syncViewportLayout();
       this.restoreDraft();
       this.pane = this.element.closest<HTMLElement>('[data-workspace-pane-role="work"]')!;
       this.resident = this.element.closest<HTMLElement>(".workspace-detail-resident")!;
@@ -103,6 +110,7 @@ function createReviewController(Controller: StimulusControllerConstructor) {
     }
 
     disconnect(): void {
+      this.viewportMedia.removeEventListener("change", this.viewportChanged);
       this.pane.removeEventListener("atelier:workspace-pane-visible", this.becameVisible);
       for (const instance of this.instances) instance.cleanUp();
       this.instances = [];
@@ -159,8 +167,27 @@ function createReviewController(Controller: StimulusControllerConstructor) {
       for (const file of this.fileTargets) file.open = true;
     }
 
+    private get viewport(): ReviewViewport {
+      return this.viewportMedia.matches ? "mobile" : "desktop";
+    }
+
+    private syncViewportLayout(): ReviewDiffLayout {
+      const viewport = this.viewport;
+      const layout = this.element.dataset[`${viewport}DiffLayout`] === "split" ? "split" : "unified";
+      const toggle = this.element.querySelector<HTMLFormElement>('[role="group"][aria-label="Diff layout"]')!;
+      toggle.action = `/review/settings/diff-layout?viewport=${viewport}`;
+      setToggleValue(toggle, layout);
+      return layout;
+    }
+
     async setDiffLayout(event: ToggleChangeEvent): Promise<void> {
-      this.diffStyle = event.detail.value === "split" ? "split" : "unified";
+      const layout = event.detail.value === "split" ? "split" : "unified";
+      this.element.dataset[`${this.viewport}DiffLayout`] = layout;
+      await this.renderDiffLayout(layout);
+    }
+
+    private async renderDiffLayout(layout: ReviewDiffLayout): Promise<void> {
+      this.diffStyle = layout;
       const files = this.element.querySelector<HTMLElement>(".review-files");
       const controls = this.element.querySelectorAll<HTMLButtonElement>(".review-display-toggles button");
       this.layoutStatusTarget.hidden = false;
