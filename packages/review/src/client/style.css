@@ -119,9 +119,8 @@
   padding: var(--space-2xl);
   text-align: center;
 }
-.review-no-changes h2,
 .review-empty h2 { margin: 0 0 var(--space-sm); color: var(--text-bright); font-size: var(--text-title); }
-.review-no-changes p,
+.review-no-changes p { margin: 0; }
 .review-empty p { margin: 0 0 var(--space-lg); color: var(--text-muted); }
 
 .review-unanchored-comments { background: var(--bg); }

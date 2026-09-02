@@ -231,7 +231,7 @@ export function renderReviewBody(workspaceId: string, index: ReviewIndex, commen
   const renderedFiles = index.files.map((file) => renderFile(workspaceId, file, comments));
   const content = renderedFiles.length || unanchoredComments.length
     ? `<div class="review-files action-list" data-controller="linear-navigation" data-action="keydown->review#changeFileDisclosure">${renderedFiles.join("")}${renderUnanchoredSlot(workspaceId, unanchoredComments)}</div>`
-    : `<div class="review-no-changes"><h2>No changes to review</h2><p>The working tree matches HEAD.</p></div>`;
+    : `<div class="review-no-changes"><p>No changes to review<br>The working tree matches HEAD.</p></div>`;
   const commentModels = comments.map(commentModel);
   const statsUrl = `/workspaces/${encodeURIComponent(workspaceId)}/review/stats`;
   return `<section id="${reviewBodyId(workspaceId)}" class="review-body" data-controller="review" data-review-workspace-id-value="${escapeHtml(workspaceId)}" data-mobile-diff-layout="${diffLayouts.mobile}" data-desktop-diff-layout="${diffLayouts.desktop}">${toolbar(workspaceId, comments, diffLayouts)}${content}<turbo-frame id="${reviewStatsFrameId(workspaceId)}" src="${escapeHtml(statsUrl)}"></turbo-frame><script id="${reviewCommentsModelId(workspaceId)}" type="application/json" data-review-comments>${jsonForHtml(commentModels)}</script></section>`;
