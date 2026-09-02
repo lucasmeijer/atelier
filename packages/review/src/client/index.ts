@@ -100,6 +100,8 @@ function createReviewController(Controller: StimulusControllerConstructor) {
     declare readonly layoutStatusTextTarget: HTMLElement;
     private instances: FileDiff<AnnotationMetadata>[] = [];
     private containers = new Map<FileDiff<AnnotationMetadata>, HTMLElement>();
+    private instancesByHost = new WeakMap<HTMLElement, FileDiff<AnnotationMetadata>>();
+    private staleInstances = new Set<FileDiff<AnnotationMetadata>>();
     private models = new Map<string, DiffModel>();
     private hydratedHosts = new WeakSet<HTMLElement>();
     private draft?: DraftModel;
@@ -140,6 +142,8 @@ function createReviewController(Controller: StimulusControllerConstructor) {
       for (const instance of this.instances) instance.cleanUp();
       this.instances = [];
       this.containers.clear();
+      this.instancesByHost = new WeakMap();
+      this.staleInstances.clear();
       this.models.clear();
       this.hydrated = false;
     }
@@ -160,6 +164,11 @@ function createReviewController(Controller: StimulusControllerConstructor) {
 
     requestFile(event: Event): void {
       requestReviewFile(event);
+      if (!(event.currentTarget instanceof HTMLDetailsElement) || !event.currentTarget.open) return;
+      const host = event.currentTarget.querySelector<HTMLElement>('[data-review-target="diff"]');
+      const instance = host ? this.instancesByHost.get(host) : undefined;
+      if (!instance || !this.staleInstances.delete(instance)) return;
+      instance.rerender();
     }
 
     changeFileDisclosure(event: KeyboardEvent): void {
@@ -210,10 +219,33 @@ function createReviewController(Controller: StimulusControllerConstructor) {
 
     private async renderDiffLayout(layout: ReviewDiffLayout): Promise<void> {
       this.diffStyle = layout;
+      await this.updateDiffPresentation(
+        `Switching to ${this.diffStyle === "split" ? "side by side" : "unified"}…`,
+        (instance) => instance.setOptions({ ...instance.options, diffStyle: this.diffStyle }),
+      );
+    }
+
+    async setWordDiff(event: ToggleChangeEvent): Promise<void> {
+      this.wordDiffEnabled = event.detail.value === "true";
+      await this.updateDiffPresentation(
+        `Switching to ${this.wordDiffEnabled ? "word" : "line"} highlighting…`,
+        (instance) => instance.setOptions({ ...instance.options, lineDiffType: this.wordDiffEnabled ? "word-alt" : reviewDiffOptions.lineDiffType }),
+      );
+    }
+
+    async setLineWrapping(event: ToggleChangeEvent): Promise<void> {
+      this.lineWrappingEnabled = event.detail.value === "true";
+      await this.updateDiffPresentation(
+        `Switching to ${this.lineWrappingEnabled ? "wrapped" : "scrolling"} lines…`,
+        (instance) => instance.setOptions({ ...instance.options, overflow: this.lineWrappingEnabled ? "wrap" : "scroll" }),
+      );
+    }
+
+    private async updateDiffPresentation(status: string, update: (instance: FileDiff<AnnotationMetadata>) => void): Promise<void> {
       const files = this.element.querySelector<HTMLElement>(".review-files");
       const controls = this.element.querySelectorAll<HTMLButtonElement>(".review-display-toggles button");
       this.layoutStatusTarget.hidden = false;
-      this.layoutStatusTextTarget.textContent = `Switching to ${this.diffStyle === "split" ? "side by side" : "unified"}…`;
+      this.layoutStatusTextTarget.textContent = status;
       files?.setAttribute("aria-busy", "true");
       this.element.dataset.reviewLayoutBusy = "true";
 
@@ -222,9 +254,14 @@ function createReviewController(Controller: StimulusControllerConstructor) {
       await nextAnimationFrame();
       try {
         for (const instance of this.instances) {
-          instance.setOptions({ ...instance.options, diffStyle: this.diffStyle });
-          instance.rerender();
-          await nextAnimationFrame();
+          update(instance);
+          const file = this.containers.get(instance)!.closest<HTMLDetailsElement>(".review-file");
+          if (file?.open) {
+            instance.rerender();
+            this.staleInstances.delete(instance);
+          } else {
+            this.staleInstances.add(instance);
+          }
         }
       } finally {
         this.layoutStatusTarget.hidden = true;
@@ -232,22 +269,6 @@ function createReviewController(Controller: StimulusControllerConstructor) {
         files?.removeAttribute("aria-busy");
         delete this.element.dataset.reviewLayoutBusy;
         for (const button of controls) button.disabled = false;
-      }
-    }
-
-    setWordDiff(event: ToggleChangeEvent): void {
-      this.wordDiffEnabled = event.detail.value === "true";
-      for (const instance of this.instances) {
-        instance.setOptions({ ...instance.options, lineDiffType: this.wordDiffEnabled ? "word-alt" : reviewDiffOptions.lineDiffType });
-        instance.rerender();
-      }
-    }
-
-    setLineWrapping(event: ToggleChangeEvent): void {
-      this.lineWrappingEnabled = event.detail.value === "true";
-      for (const instance of this.instances) {
-        instance.setOptions({ ...instance.options, overflow: this.lineWrappingEnabled ? "wrap" : "scroll" });
-        instance.rerender();
       }
     }
 
@@ -273,6 +294,7 @@ function createReviewController(Controller: StimulusControllerConstructor) {
         onPostRender: () => this.decorateExpansionControls(container),
       });
       this.containers.set(instance, container);
+      this.instancesByHost.set(host, instance);
       const draft = this.draft?.path === path ? this.draft : undefined;
       const lineAnnotations = this.annotations(path);
       instance.hydrate({ fileContainer: container, fileDiff: model.fileDiff, lineAnnotations, prerenderedHTML });
