@@ -1069,6 +1069,25 @@ export function insertSlashCommand(option: Pick<HTMLElement, "dataset">, input: 
   input.setSelectionRange(trigger.length + 1, trigger.length + 1);
 }
 
+const treeComingSoonMessage = "/tree feature is coming soon!";
+
+function showApplicationCommandNotice(input: AgentCompletionInput & HTMLElement, message: string): void {
+  const notices = input.closest(".agent-pane")!.querySelector<HTMLElement>(".agent-notices")!;
+  const notice = document.createElement("div");
+  notice.className = "agent-noticeline info";
+  notice.dataset.controller = "agent-notice";
+  notice.setAttribute("role", "status");
+  notice.textContent = message;
+  notices.append(notice);
+}
+
+function runApplicationCommand(option: HTMLElement, input: HTMLInputElement | HTMLTextAreaElement): boolean {
+  if (option.dataset.commandAction !== "notice") return false;
+  input.value = "";
+  showApplicationCommandNotice(input, option.dataset.commandMessage!);
+  return true;
+}
+
 function insertFileCompletion(option: HTMLElement, input: AgentCompletionInput): void {
   const path = option.dataset.filePath;
   const prefix = fileCompletionPrefix(input);
@@ -1270,6 +1289,7 @@ function createAgentCompletionsController(Controller: StimulusControllerConstruc
       return html?.then((content) => markPromptTemplateShortcutConflicts(content, hooks));
     },
     select(option, input, url) {
+      if (runApplicationCommand(option, input)) return;
       if (selectAgentTreeOption(option, input)) return false;
       if (option.dataset.completionKind === "quick-launch") {
         const initialValue = input.value;
@@ -1284,6 +1304,14 @@ function createAgentCompletionsController(Controller: StimulusControllerConstruc
     keydown(event, input, url, actions) {
       const send = composerSubmitKey(event) === "shortcut";
       const expand = event.key === "Enter" && event.shiftKey && !event.metaKey && !event.ctrlKey && !event.altKey;
+      if (event.key === "Enter" && input.value.trim() === "/tree") {
+        event.preventDefault();
+        event.stopImmediatePropagation();
+        actions.setInputValue("");
+        actions.close();
+        showApplicationCommandNotice(input, treeComingSoonMessage);
+        return true;
+      }
       if (handleAgentTreeKeydown(event, input, actions)) return true;
       if (send || expand) {
         const active = actions.open ? actions.activeOption() : undefined;

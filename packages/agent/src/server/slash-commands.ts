@@ -14,7 +14,7 @@ interface SlashCommand {
 
 function slashCommands(templates: readonly PromptTemplate[], skills: readonly Pick<Skill, "name" | "description">[]): SlashCommand[] {
   return [
-    { kind: "application-command" as const, trigger: "/tree", description: "Inspect and navigate the agent session tree." },
+    { kind: "application-command" as const, trigger: "/tree", description: "Coming soon." },
     ...templates.filter((template) => template.trigger !== "/tree").map((template) => ({
       kind: "prompt-template" as const,
       trigger: template.trigger,
@@ -45,7 +45,7 @@ export function renderSlashCommandCatalog(templates: readonly PromptTemplate[], 
       element: {
         tag: "button",
         className: `agent-completion-option${index === 0 ? " active" : ""}`,
-        attributesHtml: `type="button" role="option" aria-selected="${index === 0 ? "true" : "false"}" data-completion-kind="${command.kind}" data-command-trigger="${escapeHtml(command.trigger)}"${command.hotkey ? ` data-prompt-template-hotkey="${escapeHtml(command.hotkey)}"` : ""}${command.trigger === "/tree" ? ` data-command-action="tree"` : ""}${template ? ` data-controller="atelier-fullscreen" data-atelier-fullscreen-mode-value="template" data-atelier-fullscreen-title-value="${escapeHtml(command.trigger)}"` : ""}`,
+        attributesHtml: `type="button" role="option" aria-selected="${index === 0 ? "true" : "false"}" data-completion-kind="${command.kind}" data-command-trigger="${escapeHtml(command.trigger)}"${command.hotkey ? ` data-prompt-template-hotkey="${escapeHtml(command.hotkey)}"` : ""}${command.trigger === "/tree" ? ` data-command-action="notice" data-command-message="/tree feature is coming soon!"` : ""}${template ? ` data-controller="atelier-fullscreen" data-atelier-fullscreen-mode-value="template" data-atelier-fullscreen-title-value="${escapeHtml(command.trigger)}"` : ""}`,
       },
     });
   }).join("")}</div>`;
