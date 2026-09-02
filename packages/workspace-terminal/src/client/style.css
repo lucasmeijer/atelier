@@ -9,19 +9,11 @@ html.software-keyboard-visible .terminal-pane:has(.gespenst__input:focus) > .ter
 .terminal-accessory-key { min-width: 0; height: 38px; padding: 0 4px; border: 1px solid var(--line-strong); border-radius: var(--radius-control); background: color-mix(in srgb, var(--text) 10%, var(--bg)); color: var(--text); font: var(--weight-semibold) var(--text-body)/var(--leading-none) ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace; touch-action: manipulation; user-select: none; -webkit-user-select: none; }
 .terminal-accessory-key:active { background: color-mix(in srgb, var(--text) 22%, var(--bg)); transform: translateY(1px); }
 .terminal-accessory-key[aria-pressed="true"] { border-color: var(--accent); background: var(--accent); color: var(--bg); }
-.terminal-attach-dialog { width: min(760px, calc(100vw - 32px)); }
-.terminal-attach-dialog .dialog__header p { margin: 4px 0 0; color: var(--text); font-size: var(--text-body); }
-.terminal-session-list { display: grid; max-height: min(480px, 60vh); overflow: auto; }
-.terminal-session-option { grid-template-columns: auto minmax(180px, 1fr) minmax(190px, auto); gap: 12px; cursor: pointer; }
-.terminal-session-option:last-child { border-bottom: 0; }
-.terminal-session-option:hover { background: var(--hover); }
-.terminal-session-option:has(input:checked) { background: var(--accent-soft); box-shadow: inset 3px 0 var(--accent); }
-.terminal-session-main { display: grid; min-width: 0; gap: 4px; }
-.terminal-session-main b { font-size: var(--text-body); }
-.terminal-session-main small { overflow: hidden; color: var(--text); text-overflow: ellipsis; white-space: nowrap; }
-.terminal-session-main code { color: var(--text-bright); }
-.terminal-session-meta { display: flex; max-width: 270px; flex-wrap: wrap; justify-content: flex-end; gap: 4px 8px; color: var(--text); font-size: var(--text-body); }
-.terminal-session-meta strong { color: var(--accent); font-weight: var(--weight-semibold); }
-.terminal-session-meta .terminal-session-dead { color: var(--danger); }
+.terminal-session-list { max-height: min(480px, 60vh); padding: 8px; overflow: auto; }
+.terminal-session-list .action-item__label-text { display: flex; align-items: baseline; gap: 8px; }
+.terminal-session-name, .terminal-session-process { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.terminal-session-name { flex: 0 1 auto; color: var(--text-bright); font-weight: var(--weight-medium); }
+.terminal-session-separator { flex: 0 0 auto; color: var(--text-muted); }
+.terminal-session-process { flex: 1 1 auto; color: var(--text); }
+.terminal-session-activity { flex: 0 0 auto; color: var(--text); white-space: nowrap; }
 .terminal-session-empty { min-height: 120px; }
-@media (max-width: 620px) { .terminal-session-option { grid-template-columns: auto 1fr; } .terminal-session-meta { grid-column: 2; justify-content: flex-start; } }

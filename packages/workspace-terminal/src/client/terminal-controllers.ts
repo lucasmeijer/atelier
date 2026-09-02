@@ -136,6 +136,22 @@ function stopTerminal(workspaceId: string, terminalId: string): void {
   pendingTerminalFocus.delete(key);
 }
 
+function createTerminalSessionPickerController(Controller: StimulusControllerConstructor) {
+  return class TerminalSessionPickerController extends Controller {
+    static targets = ["input", "item"];
+    declare readonly inputTarget: HTMLInputElement;
+    declare readonly itemTargets: HTMLButtonElement[];
+
+    select(event: Event): void {
+      if (!(event.currentTarget instanceof HTMLButtonElement)) throw new Error("terminal session selection must come from a button");
+      const session = event.currentTarget.dataset.terminalSession;
+      if (!session) throw new Error("terminal session action item is missing its session name");
+      this.inputTarget.value = session;
+      for (const item of this.itemTargets) item.setAttribute("aria-selected", String(item === event.currentTarget));
+    }
+  };
+}
+
 function createTerminalPaneController(Controller: StimulusControllerConstructor) {
   return class TerminalPaneController extends Controller {
     static values = { workspaceId: String, id: String };
@@ -174,6 +190,7 @@ export const workspaceTerminalClientModule: WorkspaceClientModule = {
   install({ application, Controller, hooks }) {
     initializeTerminalTheme();
     application.register("terminal-pane", createTerminalPaneController(Controller));
+    application.register("terminal-session-picker", createTerminalSessionPickerController(Controller));
     hooks.onBecomeVisible(({ workspaceId, surfaceKey }) => {
       const terminalId = terminalIdFromViewKey(surfaceKey);
       if (terminalId) void startTerminal(workspaceId, terminalId, { focus: document.hasFocus() });

@@ -1,5 +1,8 @@
 import { registerWorkspacePresenter } from "@atelier/agent/server";
 import type { JsonValue } from "@atelier/core";
+import { actionItemHtml } from "@atelier/design-system/action-item";
+import { dialogHtml } from "@atelier/design-system/dialog";
+import { Icons } from "@atelier/design-system/icons";
 import { domId, escapeHtml, turboStream, type WorkspaceCommandContribution, type WorkspaceModule, type WorkspaceWorkViewPresentation, type WorkspaceWorkViewReference } from "@atelier/shared";
 import { terminalViewKey } from "../shared.ts";
 import { createTmuxPresenter } from "./agent-tool.ts";
@@ -61,26 +64,38 @@ function attachDialogId(workspaceId: string): string {
 }
 
 async function renderAttachDialog(workspaceId: string): Promise<string> {
-  const [sessions, terminals] = await Promise.all([listTmuxSessions(workspaceId), listWorkspaceTerminals(workspaceId)]);
-  const openCounts = new Map<string, number>();
-  for (const terminal of terminals) openCounts.set(terminal.tmuxSession, (openCounts.get(terminal.tmuxSession) ?? 0) + 1);
+  const sessions = await listTmuxSessions(workspaceId);
+  const rows = sessions.map((session, index) => actionItemHtml({
+    kind: "single",
+    element: {
+      tag: "button",
+      attributesHtml: `type="button" role="option" aria-selected="${index === 0}" data-action="terminal-session-picker#select focus->terminal-session-picker#select" data-terminal-session-picker-target="item" data-linear-navigation-target="item" data-terminal-session="${escapeHtml(session.name)}"`,
+    },
+    label: {
+      kind: "html",
+      html: `<span class="terminal-session-name">${escapeHtml(session.name)}</span><span class="terminal-session-separator">·</span><span class="terminal-session-process">${escapeHtml(session.command)}</span>`,
+    },
+    trailingHtml: `<span class="terminal-session-activity" title="Created ${relativeAge(session.createdAt)}">active ${relativeAge(session.lastActivityAt)}</span>`,
+  })).join("");
 
-  const rows = sessions.map((session) => {
-    const openCount = openCounts.get(session.name) ?? 0;
-    return `<label class="terminal-session-option managed-list__item">
-      <input type="radio" name="session" value="${escapeHtml(session.name)}" required>
-      <span class="terminal-session-main"><b>${escapeHtml(session.name)}</b><small><code>${escapeHtml(session.command)}</code> in <span title="${escapeHtml(session.cwd)}">${escapeHtml(session.cwd)}</span></small></span>
-      <span class="terminal-session-meta"><span>${session.windows} ${session.windows === 1 ? "window" : "windows"}</span><span>${session.width}×${session.height}</span><span title="Created ${relativeAge(session.createdAt)}">active ${relativeAge(session.lastActivityAt)}</span>${session.attachedClients ? `<span>${session.attachedClients} tmux ${session.attachedClients === 1 ? "client" : "clients"}</span>` : ""}${openCount ? `<strong>${openCount} open ${openCount === 1 ? "terminal" : "terminals"}</strong>` : ""}${session.dead ? `<strong class="terminal-session-dead">exited</strong>` : ""}</span>
-    </label>`;
-  }).join("");
-
-  return `<dialog id="${attachDialogId(workspaceId)}" class="dialog terminal-attach-dialog" data-controller="modal" data-modal-auto-show-value="true">
-    <form class="dialog__form" method="post" action="/workspaces/${encodeURIComponent(workspaceId)}/terminals/attach" data-turbo="true">
-      <header class="dialog__header"><div><h2 class="title">Attach terminal</h2><p>Choose an existing tmux session. Multiple Terminal views can attach to the same session.</p></div></header>
-      <div class="dialog__body"><div class="terminal-session-list managed-list">${rows || `<div class="terminal-session-empty managed-list__empty empty-state">No tmux sessions are running yet.</div>`}</div></div>
-      <footer class="dialog__actions"><button class="button secondary" type="button" data-action="modal#close">Cancel</button><button class="button primary" type="submit"${rows ? "" : " disabled"}>Attach</button></footer>
-    </form>
-  </dialog>`;
+  const formId = domId("attach_terminal_form", workspaceId);
+  const bodyHtml = `<form id="${formId}" method="post" action="/workspaces/${encodeURIComponent(workspaceId)}/terminals/attach" data-turbo="true" data-controller="terminal-session-picker action-items" data-action="turbo:submit-end->dialog#submitted">
+    ${sessions[0] ? `<input type="hidden" name="session" value="${escapeHtml(sessions[0].name)}" data-terminal-session-picker-target="input">` : ""}
+    <div class="terminal-session-list action-list" role="listbox" aria-label="Tmux sessions" data-controller="linear-navigation">${rows || `<div class="terminal-session-empty empty-state">No tmux sessions are running yet.</div>`}</div>
+  </form>`;
+  const footerHtml = `<form method="dialog"><button class="button secondary" value="cancel">Cancel</button></form><button class="button primary" type="submit" form="${formId}"${rows ? "" : " disabled"}>Attach</button>`;
+  return dialogHtml({
+    element: {
+      id: attachDialogId(workspaceId),
+      attributesHtml: 'aria-label="Attach terminal" data-dialog-auto-show',
+    },
+    iconHtml: Icons.Terminal,
+    titleCaption: "Attach terminal",
+    bodyHtml,
+    bodyLayout: "full-bleed",
+    footerHtml,
+    closeLabel: "Close attach terminal dialog",
+  });
 }
 
 export const terminalWorkspaceModule: WorkspaceModule = {
