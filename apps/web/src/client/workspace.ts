@@ -548,7 +548,7 @@ class AtelierShortcutsController extends Controller {
       description: "Delete the current workspace without checking for outstanding changes",
       scope: "workspace",
       binding: "Meta+Alt+Shift+Backspace",
-      run: () => this.forceDeleteVisibleWorkspace(),
+      run: () => this.deleteVisibleWorkspace(true),
     }];
   }
 
@@ -559,23 +559,24 @@ class AtelierShortcutsController extends Controller {
     return document.querySelector<HTMLFormElement>(`.workspace-detail-resident.visible form.fixed-shell-delete-workspace[action="${action}"]`);
   }
 
-  private deleteVisibleWorkspace(): void {
-    const form = this.visibleWorkspaceDeleteForm();
-    if (form) submitFormWithFirstButton(form);
-  }
-
-  private forceDeleteVisibleWorkspace(): void {
+  private deleteVisibleWorkspace(force = false): void {
     const form = this.visibleWorkspaceDeleteForm();
     if (!form) return;
-    const submitter = document.createElement("button");
-    submitter.type = "submit";
-    submitter.hidden = true;
-    const action = new URL(form.action);
-    action.searchParams.set("force", "1");
-    submitter.formAction = action.href;
-    form.append(submitter);
-    form.requestSubmit(submitter);
-    submitter.remove();
+    const workspaceId = this.visibleWorkspaceId()!;
+    if (force) {
+      const submitter = document.createElement("button");
+      submitter.type = "submit";
+      submitter.hidden = true;
+      const action = new URL(form.action);
+      action.searchParams.set("force", "1");
+      submitter.formAction = action.href;
+      form.append(submitter);
+      form.requestSubmit(submitter);
+      submitter.remove();
+    } else {
+      submitFormWithFirstButton(form);
+    }
+    residencyController()?.unselectWorkspace(workspaceId);
   }
 
   private visibleWorkspacePresentation(): HTMLElement | null {
@@ -1445,19 +1446,22 @@ class WorkspaceResidencyController extends Controller {
     if (this.residencyConnected && preparationCleared) this.reconcileResidents();
   }
 
+  unselectWorkspace(workspaceId: string): void {
+    if (this.visibleWorkspaceId() !== workspaceId && this.intendedWorkspaceId !== workspaceId) return;
+    ++this.selectionSeq;
+    this.intendedWorkspaceId = undefined;
+    if (this.workspaceIdFromLocation() === workspaceId) history.replaceState({}, "", "/");
+    this.showEmpty();
+    workspaceNavigationController()?.showWorkspacePane();
+    this.reconcileResidents();
+  }
+
   removeWorkspace(workspaceId: string): void {
     this.operations.get(workspaceId)?.abort.abort();
     this.prepared.delete(workspaceId);
     const resident = this.resident(workspaceId);
-    const wasVisible = resident?.classList.contains("visible") ?? false;
+    this.unselectWorkspace(workspaceId);
     resident?.remove();
-    if (wasVisible || this.intendedWorkspaceId === workspaceId) {
-      ++this.selectionSeq;
-      this.intendedWorkspaceId = undefined;
-      if (this.workspaceIdFromLocation() === workspaceId) history.replaceState({}, "", "/");
-      this.showEmpty();
-      workspaceNavigationController()?.showWorkspacePane();
-    }
     this.reconcileResidents();
   }
 

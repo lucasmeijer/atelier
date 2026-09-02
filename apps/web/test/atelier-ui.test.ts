@@ -870,47 +870,63 @@ Comment: I don't think we need these tests`;
     await page.close();
   });
 
-  test("force deletes the visible workspace with Command-Option-Shift-Backspace", async () => {
+  for (const shortcut of [
+    { name: "delete", workspaceId: "delete-me", force: false },
+    { name: "force delete", workspaceId: "force-delete-me", force: true },
+  ]) test(`immediately unselects a Workspace when its ${shortcut.name} shortcut is used`, async () => {
     const presentation: WorkspacePresentation = {
-      workspace: { id: "force-delete-me", title: "Force delete me" },
-      agentConversations: [agentConversation("force-delete-me", "agent-force-delete")],
+      workspace: { id: shortcut.workspaceId, title: "Delete me" },
+      agentConversations: [agentConversation(shortcut.workspaceId, "agent-delete")],
       workViews: [],
     };
     const pane: WorkspacePanePresentation = {
       projects: [],
-      projectlessWorkspaces: [{ id: "force-delete-me", title: "Force delete me", active: true }],
+      projectlessWorkspaces: [{ id: shortcut.workspaceId, title: "Delete me", active: true }],
     };
     const shell = renderShellFixture(presentation, pane)
       .replace('data-controller="workspace-navigation"', 'data-controller="atelier-shortcuts workspace-navigation"');
+    let releaseDeleteResponse!: () => void;
+    const deleteResponseReleased = new Promise<void>((resolve) => { releaseDeleteResponse = resolve; });
     const page = await newTestPage();
-    await page.route("http://atelier.test/workspaces/force-delete-me", (route) => route.fulfill({
+    await page.route(`http://atelier.test/workspaces/${shortcut.workspaceId}`, (route) => route.fulfill({
       contentType: "text/html",
       body: `${shell}<script type="module" src="${workspaceClientPath}"></script>`,
     }));
-    await page.route("**/workspaces/force-delete-me/delete?force=1", (route) => route.fulfill({ status: 204 }));
-    await page.goto("http://atelier.test/workspaces/force-delete-me");
+    await page.route(`**/workspaces/${shortcut.workspaceId}/delete*`, async (route) => {
+      await deleteResponseReleased;
+      await route.fulfill({ status: 204 });
+    });
+    await page.goto(`http://atelier.test/workspaces/${shortcut.workspaceId}`);
     await page.waitForFunction(() => document.querySelector(".fixed-workspace-presentation")?.getAttribute("data-navigation-ready") === "true");
-    await page.waitForFunction(() => document.querySelector('.workspace-detail-resident[data-workspace-id="force-delete-me"]')?.classList.contains("visible"));
+    await page.waitForFunction((workspaceId) => document.querySelector(`.workspace-detail-resident[data-workspace-id="${workspaceId}"]`)?.classList.contains("visible"), shortcut.workspaceId);
 
-    const requestPromise = page.waitForRequest((request) => new URL(request.url()).pathname === "/workspaces/force-delete-me/delete");
-    const handled = await page.locator("body").evaluate((body) => {
+    const requestPromise = page.waitForRequest((request) => new URL(request.url()).pathname === `/workspaces/${shortcut.workspaceId}/delete`);
+    const responsePromise = page.waitForResponse((response) => new URL(response.url()).pathname === `/workspaces/${shortcut.workspaceId}/delete`);
+    const handled = await page.locator("body").evaluate((body, force) => {
       const event = new KeyboardEvent("keydown", {
         key: "Backspace",
         code: "Backspace",
         metaKey: true,
         altKey: true,
-        shiftKey: true,
+        shiftKey: force,
         bubbles: true,
         cancelable: true,
       });
       body.dispatchEvent(event);
       return event.defaultPrevented;
-    });
+    }, shortcut.force);
     expect(handled).toBe(true);
     const request = await requestPromise;
 
     expect(request.method()).toBe("POST");
-    expect(new URL(request.url()).searchParams.get("force")).toBe("1");
+    expect(new URL(request.url()).searchParams.get("force")).toBe(shortcut.force ? "1" : null);
+    expect(new URL(page.url()).pathname).toBe("/");
+    expect(await page.locator(".fixed-shell-workspace-row.active").count()).toBe(0);
+    expect(await page.locator(`.workspace-detail-resident[data-workspace-id="${shortcut.workspaceId}"]`).getAttribute("class")).not.toContain("visible");
+    expect(await page.locator("[data-workspace-residency-target='empty']").getAttribute("hidden")).toBeNull();
+
+    releaseDeleteResponse();
+    await responsePromise;
     await page.close();
   });
 
