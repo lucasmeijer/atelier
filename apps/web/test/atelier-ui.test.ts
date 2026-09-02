@@ -47,16 +47,23 @@ async function newTestPage(options: { viewport?: { width: number; height: number
 
 async function installFakeVisualViewport(page: Page, height = 844): Promise<void> {
   await page.addInitScript((initialHeight) => {
-    class FakeVisualViewport extends EventTarget { height = initialHeight; }
+    class FakeVisualViewport extends EventTarget {
+      height = initialHeight;
+      offsetTop = 0;
+    }
     Object.defineProperty(window, "visualViewport", { configurable: true, value: new FakeVisualViewport() });
   }, height);
 }
 
-async function resizeFakeVisualViewport(page: Page, height: number): Promise<void> {
-  await page.evaluate((nextHeight) => {
-    Object.defineProperty(window.visualViewport!, "height", { configurable: true, value: nextHeight });
+async function resizeFakeVisualViewport(page: Page, height: number, offsetTop = 0): Promise<void> {
+  await page.evaluate(({ nextHeight, nextOffsetTop }) => {
+    Object.defineProperties(window.visualViewport!, {
+      height: { configurable: true, value: nextHeight },
+      offsetTop: { configurable: true, value: nextOffsetTop },
+    });
     window.visualViewport!.dispatchEvent(new Event("resize"));
-  }, height);
+    window.visualViewport!.dispatchEvent(new Event("scroll"));
+  }, { nextHeight: height, nextOffsetTop: offsetTop });
 }
 
 function agentConversation(workspaceId: string, id: string, title = "Agent"): WorkspacePresentation["agentConversations"][number] {
@@ -2880,7 +2887,7 @@ Comment: I don't think we need these tests`;
     await page.close();
   });
 
-  test("hides navigation only while a software keyboard occludes the app", async () => {
+  test("hides navigation without exposing empty space when a software keyboard pans the viewport", async () => {
     const presentation: WorkspacePresentation = {
       workspace: { id: "mobile-compose", title: "Mobile compose" },
       agentConversations: [agentConversation("mobile-compose", "agent-1")],
@@ -2889,18 +2896,22 @@ Comment: I don't think we need these tests`;
     const pane: WorkspacePanePresentation = { projects: [], projectlessWorkspaces: [{ id: "mobile-compose", title: "Mobile compose", active: true }] };
     const page = await newTestPage({ viewport: { width: 390, height: 844 }, mobile: true });
     await installFakeVisualViewport(page);
-    await page.route("http://atelier.test/workspaces/mobile-compose", (route) => route.fulfill({ contentType: "text/html", body: `<style>${workspaceStyle}</style>${renderShellFixture(presentation, pane)}<script type="module" src="${workspaceClientPath}"></script>` }));
+    await page.route("http://atelier.test/workspaces/mobile-compose", (route) => route.fulfill({ contentType: "text/html", body: `<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover"><style>${workspaceStyle}</style>${renderShellFixture(presentation, pane)}<script type="module" src="${workspaceClientPath}"></script>` }));
     await page.route("**/workspaces/mobile-compose/agents/agent-1/body", (route) => route.fulfill({ contentType: "text/html", body: renderAgentBodyFrame("mobile-compose", "agent-1", '<div><textarea aria-label="Agent prompt"></textarea></div>') }));
     await page.route("**/workspaces/mobile-compose/active", (route) => route.fulfill({ status: 204 }));
     await page.goto("http://atelier.test/workspaces/mobile-compose");
 
     const globalNavigation = page.locator(".fixed-shell-global-mobile-nav");
+    const shell = page.locator(".fixed-shell-app");
     const input = page.getByRole("textbox", { name: "Agent prompt" });
     await input.focus();
     expect(await globalNavigation.isVisible()).toBe(true);
 
-    await resizeFakeVisualViewport(page, 500);
+    await resizeFakeVisualViewport(page, 500, 344);
     expect(await globalNavigation.isVisible()).toBe(false);
+    const shellBottom = await shell.evaluate((element) => element.getBoundingClientRect().bottom);
+    const visualViewportBottom = await page.evaluate(() => window.visualViewport!.offsetTop + window.visualViewport!.height);
+    expect(shellBottom).toBeGreaterThanOrEqual(visualViewportBottom);
 
     await resizeFakeVisualViewport(page, 844);
     expect(await input.evaluate((element) => document.activeElement === element)).toBe(true);

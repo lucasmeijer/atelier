@@ -42,10 +42,7 @@ export function installSoftwareKeyboardTracking(): void {
       textEntryFocused,
       focusLikelyOpensSoftwareKeyboard(),
     );
-    const root = document.documentElement;
-    root.classList.toggle("software-keyboard-visible", nextVisible);
-    if (nextVisible) root.style.setProperty("--software-keyboard-viewport-height", `${currentViewportHeight}px`);
-    else root.style.removeProperty("--software-keyboard-viewport-height");
+    document.documentElement.classList.toggle("software-keyboard-visible", nextVisible);
   };
 
   const resetBaseline = (): void => {
