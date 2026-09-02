@@ -11,7 +11,7 @@ import {
   stageAttachment,
   validDraftId,
 } from "../../src/server/attachment-drafts.ts";
-import { renderAgentPane } from "../../src/server/render.ts";
+import { renderAgentPane } from "../../src/server/render-composer.ts";
 
 let dir: string | undefined;
 

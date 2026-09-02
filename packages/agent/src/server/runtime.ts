@@ -15,22 +15,18 @@ import {
 } from "@earendil-works/pi-coding-agent";
 import { contentText } from "@earendil-works/pi-ai";
 import { escapeHtml, turboStream } from "./html.ts";
+import { ids, type AgentRenderContext } from "./render-context.ts";
+import { renderNotice } from "./render-attachments.ts";
+import { renderActiveToolContent } from "./render-tool.ts";
+import { renderAgentPaneComposerFooter, renderPromptActions, type AgentPaneState, type AgentStatsView } from "./render-composer.ts";
 import {
-  ids,
-  renderNotice,
   renderModelContextDetailFrame,
-  renderActiveToolContent,
-  renderPromptActions,
-  renderAgentPaneComposerFooter,
   renderTranscript,
   renderTranscriptItem,
   renderTranscriptItemDetailFrame,
-  type AgentPaneState,
   type AgentModelContextView,
-  type AgentRenderContext,
-  type AgentStatsView,
   type AgentToolDefinitionView,
-} from "./render.ts";
+} from "./render-transcript.ts";
 import { replaceWorkspaceAgentSession, type WorkspaceAgentConversationInfo } from "./session-store.ts";
 import { renderAgentSessionTree, updateAgentSessionTreeLabel, type TreeFilterMode } from "./session-tree.ts";
 import { loadWorkspaceSkills } from "./skills.ts";

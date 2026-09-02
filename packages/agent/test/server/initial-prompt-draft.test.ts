@@ -8,7 +8,7 @@ import {
   removeWorkspaceInitialPromptDrafts,
   stageInitialPrompt,
 } from "../../src/server/initial-prompt-draft.ts";
-import { renderAgentPane } from "../../src/server/render.ts";
+import { renderAgentPane } from "../../src/server/render-composer.ts";
 
 let temporaryDataDir: string | undefined;
 

@@ -1,5 +1,7 @@
 import { describe, expect, test } from "bun:test";
-import { renderAgentPane, renderAgentPaneComposer, renderAgentPaneComposerFooter, renderPromptActions, renderTranscript, renderTranscriptItem, renderTranscriptItemDetailFrame, type AgentRenderContext } from "../../src/server/render.ts";
+import { renderAgentPane, renderAgentPaneComposer, renderAgentPaneComposerFooter, renderPromptActions } from "../../src/server/render-composer.ts";
+import { renderTranscript, renderTranscriptItem, renderTranscriptItemDetailFrame } from "../../src/server/render-transcript.ts";
+import type { AgentRenderContext } from "../../src/server/render-context.ts";
 import type { ToolView, TranscriptItem } from "../../src/server/transcript.ts";
 
 const ctx: AgentRenderContext = { workspaceId: "ws", conversationId: "00000000-0000-4000-8000-000000000001" };

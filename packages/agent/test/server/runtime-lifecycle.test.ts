@@ -2,7 +2,7 @@ import { createAtelierEventBus } from "@atelier/core";
 import { expect, test } from "bun:test";
 import { AgentServiceTierState } from "../../src/server/service-tier.ts";
 import { RealAgentRuntime, subscribeWorkspaceViewBusy } from "../../src/server/runtime.ts";
-import type { AgentStatsView } from "../../src/server/render.ts";
+import type { AgentStatsView } from "../../src/server/render-composer.ts";
 import type { TranscriptItem } from "../../src/server/transcript.ts";
 
 interface Deferred<Value> {

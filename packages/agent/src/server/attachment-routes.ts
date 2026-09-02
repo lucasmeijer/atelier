@@ -6,7 +6,8 @@ import {
   validDraftId,
 } from "./attachment-drafts.ts";
 import { turboStream, turboStreamResponse } from "./html.ts";
-import { ids, renderAttachmentChip } from "./render.ts";
+import { ids } from "./render-context.ts";
+import { renderAttachmentChip } from "./render-attachments.ts";
 import { matchRoute, type AgentRouteHandler } from "./route-support.ts";
 
 export const handleAttachmentRequest: AgentRouteHandler = async (request, url) => {
