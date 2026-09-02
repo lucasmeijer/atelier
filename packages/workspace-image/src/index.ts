@@ -9,6 +9,7 @@ import { buildWorkspaceImageCarrier, defaultAtelierWorkspaceImageSpecifier, find
 import { parseWorkspaceImageMetadata, type WorkspaceImageMetadata } from "./metadata.ts";
 import { pruneSupersededWorkspaceImages, workspaceImageKindLabel, type WorkspaceImageKind } from "./prune.ts";
 import { createSerializedImageTagger } from "./tag-queue.ts";
+import { dockerImageStoreQueue, workspaceImageStoreWaitReporter } from "./image-store-queue.ts";
 
 export * from "./carrier.ts";
 
@@ -76,9 +77,12 @@ async function imageExists(tag: string): Promise<boolean> {
   return result.exitCode === 0;
 }
 
-async function pullImage(tag: string): Promise<void> {
+async function pullImage(tag: string, options: ResolveWorkspaceImageOptions): Promise<void> {
   if (await imageExists(tag)) return;
-  const result = await runDocker(["pull", tag]);
+  const result = await dockerImageStoreQueue.run({
+    label: `Pulling workspace image ${tag}`,
+    onWait: workspaceImageStoreWaitReporter({ events: options.events, workspaceId: options.workspaceId, parentId: "workspace.image" }),
+  }, () => runDocker(["pull", tag]));
   if (result.exitCode !== 0) throw new Error(result.stderr.trim() || `docker pull ${tag} failed`);
 }
 
@@ -128,7 +132,10 @@ function startBuildTask(tag: string, modules: string[], kind: BuiltWorkspaceImag
   if (existing) return existing;
 
   const task: WorkspaceImageBuildTask = { tag, modules, output: "", promise: Promise.resolve() };
-  task.promise = (async () => {
+  task.promise = dockerImageStoreQueue.run({
+    label: `Building workspace image ${tag}`,
+    onWait: workspaceImageStoreWaitReporter({ events: options.events, workspaceId: options.workspaceId, parentId: "workspace.image" }),
+  }, async () => {
     const buildStartedAt = new Date();
     const args = dockerBuildArgs(tag, kind, dockerfile, contextDir, options);
     if (options.buildOutput === "inherit") {
@@ -149,7 +156,7 @@ function startBuildTask(tag: string, modules: string[], kind: BuiltWorkspaceImag
       if (result.exitCode !== 0) throw new Error(`docker build failed with exit code ${result.exitCode}`);
     }
     pruneSupersededWorkspaceImages(kind, buildStartedAt);
-  })().finally(() => {
+  }).finally(() => {
     buildTasks.delete(tag);
   });
 
@@ -223,7 +230,7 @@ let defaultWorkspaceImagePromise: Promise<string> | undefined;
 async function resolveDefaultWorkspaceImage(options: ResolveWorkspaceImageOptions): Promise<string> {
   const descriptor = await defaultWorkspaceImageDescriptor();
   if (!descriptor.build) {
-    await pullImage(descriptor.image);
+    await pullImage(descriptor.image, options);
     return descriptor.image;
   }
   return await ensureBuiltImage(descriptor.build.contextDir, join(descriptor.build.contextDir, "Dockerfile"), descriptor.build.metadata, "default", options);
@@ -306,7 +313,7 @@ async function repoWorkspaceImageMetadata(dockerfile: string, baseImage: string)
 }
 
 const tagAtelierWorkspaceBase = createSerializedImageTagger(async (baseImage) => {
-  const result = await runDocker(["tag", baseImage, "atelier-workspace"]);
+  const result = await dockerImageStoreQueue.run({ label: "Tagging the workspace base image" }, () => runDocker(["tag", baseImage, "atelier-workspace"]));
   if (result.exitCode !== 0) throw new Error(result.stderr.trim() || `docker tag ${baseImage} atelier-workspace failed`);
 });
 
@@ -351,13 +358,16 @@ export function defaultWorkspaceImageLocalAlias(defaultImage: string): string | 
   return tag && /^[a-f0-9]{16}$/.test(tag) ? `atelier-workspace:${tag}` : undefined;
 }
 
-async function ensureOuterImage(ref: string): Promise<void> {
+async function ensureOuterImage(ref: string, options: Pick<ResolveWorkspaceImageOptions, "events" | "workspaceId">): Promise<void> {
   if (await imageExists(ref)) return;
-  const pulled = await runDocker(["pull", ref]);
+  const pulled = await dockerImageStoreQueue.run({
+    label: `Pulling nested Docker image ${ref}`,
+    onWait: workspaceImageStoreWaitReporter({ events: options.events, workspaceId: options.workspaceId, parentId: "workspace.docker-images" }),
+  }, () => runDocker(["pull", ref]));
   if (pulled.exitCode !== 0) throw new Error(pulled.stderr.trim() || `docker pull ${ref} failed`);
 }
 
-interface DockerImagePreloadOptions { specs: string[]; workspaceResolution: WorkspaceImageResolution }
+interface DockerImagePreloadOptions { specs: string[]; workspaceResolution: WorkspaceImageResolution; events?: AtelierEventBus; workspaceId?: string }
 
 async function dockerImagePreload(options: DockerImagePreloadOptions, mode: "materialize"): Promise<ResolvedDockerImagePreload>;
 async function dockerImagePreload(options: DockerImagePreloadOptions, mode: "inspect"): Promise<ResolvedDockerImagePreload | undefined>;
@@ -366,7 +376,7 @@ async function dockerImagePreload(options: DockerImagePreloadOptions, mode: "mat
   const images: ResolvedDockerImagePreload["images"] = [];
   for (const spec of specs) {
     const sourceRef = spec === defaultAtelierWorkspaceImageSpecifier ? options.workspaceResolution.defaultImage : spec;
-    if (mode === "materialize") await ensureOuterImage(sourceRef);
+    if (mode === "materialize") await ensureOuterImage(sourceRef, options);
     else if (!await imageExists(sourceRef)) return undefined;
     const aliases: string[] = [];
     if (spec === defaultAtelierWorkspaceImageSpecifier) {
@@ -398,8 +408,8 @@ function carrierInitScripts(preload: ResolvedDockerImagePreload): string[] {
   return [nestedDockerDaemonInitScript(), dockerImagePreloadVerificationInitScript(preload.refs)];
 }
 
-export async function prepareWorkspaceImageCarrier(options: { resolution: WorkspaceImageResolution; platform: string; preload: ResolvedDockerImagePreload; onProgress?: (message: string) => void | Promise<void> }): Promise<WorkspaceImageCarrierResolution> {
-  const carrier = await buildWorkspaceImageCarrier({ baseImage: options.resolution.image, baseIdentity: await dockerImageId(options.resolution.image), platform: options.platform, preload: options.preload, onProgress: options.onProgress });
+export async function prepareWorkspaceImageCarrier(options: { resolution: WorkspaceImageResolution; platform: string; preload: ResolvedDockerImagePreload; events?: AtelierEventBus; workspaceId?: string; onProgress?: (message: string) => void | Promise<void> }): Promise<WorkspaceImageCarrierResolution> {
+  const carrier = await buildWorkspaceImageCarrier({ baseImage: options.resolution.image, baseIdentity: await dockerImageId(options.resolution.image), platform: options.platform, preload: options.preload, events: options.events, workspaceId: options.workspaceId, onProgress: options.onProgress });
   return { image: carrier.image, key: carrier.key, path: carrier.kind, initScripts: carrierInitScripts(options.preload) };
 }
 

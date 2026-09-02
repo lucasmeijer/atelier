@@ -2,7 +2,8 @@ import { createHash } from "node:crypto";
 import { mkdir, rm } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
-import { isJsonObject, requireDocker, runDocker, shellQuote } from "@atelier/core";
+import { isJsonObject, requireDocker, runDocker, shellQuote, type AtelierEventBus } from "@atelier/core";
+import { dockerImageStoreQueue, workspaceImageStoreWaitReporter } from "./image-store-queue.ts";
 import { pruneSupersededWorkspaceImages, workspaceImageKindLabel } from "./prune.ts";
 
 export const workspaceCarrierFormatVersion = 1;
@@ -165,7 +166,7 @@ async function assertCarrierBase(baseImage: string, preload: ResolvedDockerImage
   for (const image of preload.images) if (await dockerPlatform(image.sourceRef) !== platform) throw new Error(`${image.sourceRef} platform does not match ${platform}`);
 }
 
-export async function buildWorkspaceImageCarrier(options: { baseImage: string; baseIdentity: string; platform: string; preload: ResolvedDockerImagePreload; onProgress?: (message: string) => void | Promise<void> }): Promise<WorkspaceImageCarrierResult> {
+export async function buildWorkspaceImageCarrier(options: { baseImage: string; baseIdentity: string; platform: string; preload: ResolvedDockerImagePreload; events?: AtelierEventBus; workspaceId?: string; onProgress?: (message: string) => void | Promise<void> }): Promise<WorkspaceImageCarrierResult> {
   const { platform } = options;
   const progress = async (message: string): Promise<void> => { await options.onProgress?.(message); };
   const identity = carrierIdentity(options);
@@ -181,7 +182,10 @@ export async function buildWorkspaceImageCarrier(options: { baseImage: string; b
     return await existing;
   }
 
-  const task = (async (): Promise<WorkspaceImageCarrierResult> => {
+  const task = dockerImageStoreQueue.run({
+    label: `Creating preloaded workspace image ${tag}`,
+    onWait: workspaceImageStoreWaitReporter({ events: options.events, workspaceId: options.workspaceId, parentId: "workspace.image-carrier" }),
+  }, async (): Promise<WorkspaceImageCarrierResult> => {
     const buildStartedAt = new Date();
     await progress("Checking image compatibility…");
     await assertCarrierBase(options.baseImage, options.preload, platform);
@@ -228,7 +232,7 @@ export async function buildWorkspaceImageCarrier(options: { baseImage: string; b
       await runDocker(["rm", "-f", seed]);
       await rm(dir, { recursive: true, force: true });
     }
-  })().finally(() => carrierTasks.delete(key));
+  }).finally(() => carrierTasks.delete(key));
   carrierTasks.set(key, task);
   return await task;
 }

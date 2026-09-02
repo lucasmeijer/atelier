@@ -551,12 +551,14 @@ export async function createWorkspace(options: CreateWorkspaceOptions = {}): Pro
       if (forkImage && carrierPlatform) imageResolution = { image: forkImage, defaultImage: await ensureDefaultWorkspaceImage() };
     }
     if (activePlan.preloadDockerImages?.length && imageResolution && carrierPlatform) {
-      const preload = await provisionStep(options.events, id, "workspace.docker-images", "Resolve nested Docker images", () => resolveDockerImagePreload({ specs: activePlan.preloadDockerImages!, workspaceResolution: imageResolution }), { output: (result) => result.images.map((image) => `${image.sourceRef} ${image.imageId}${image.aliases.length ? `\n  aliases: ${image.aliases.join(", ")}` : ""}`).join("\n") });
+      const preload = await provisionStep(options.events, id, "workspace.docker-images", "Resolve nested Docker images", () => resolveDockerImagePreload({ specs: activePlan.preloadDockerImages!, workspaceResolution: imageResolution, events: options.events, workspaceId: id }), { output: (result) => result.images.map((image) => `${image.sourceRef} ${image.imageId}${image.aliases.length ? `\n  aliases: ${image.aliases.join(", ")}` : ""}`).join("\n") });
       let carrierProgress = "";
       const carrier = await provisionStep(options.events, id, "workspace.image-carrier", "Prepare preloaded workspace image", () => prepareWorkspaceImageCarrier({
         resolution: imageResolution,
         platform: carrierPlatform,
         preload,
+        events: options.events,
+        workspaceId: id,
         onProgress: async (message) => {
           carrierProgress += `${message}\n`;
           await options.events?.emit("workspace_provision_step", { workspaceId: id, id: "workspace.image-carrier", output: carrierProgress });

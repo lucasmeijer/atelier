@@ -1,4 +1,5 @@
 import { runDocker } from "@atelier/core";
+import { dockerImageStoreQueue } from "./image-store-queue.ts";
 
 export type WorkspaceImageKind = "default" | "repository" | "carrier";
 
@@ -13,12 +14,11 @@ export function workspaceImagePruneArgs(kind: WorkspaceImageKind, buildStartedAt
 }
 
 /**
- * Pruning is deliberately detached from provisioning. Docker protects images
- * used by containers, and the timestamp keeps this build and concurrent builds
- * out of the prune set.
+ * Pruning is detached from the workspace that requested cleanup. The image-store
+ * queue keeps it from overlapping later provisioning while preserving FIFO order.
  */
 export function pruneSupersededWorkspaceImages(kind: WorkspaceImageKind, buildStartedAt: Date): void {
-  void runDocker(workspaceImagePruneArgs(kind, buildStartedAt)).then((result) => {
+  void dockerImageStoreQueue.run({ label: `Pruning old ${kind} workspace images` }, () => runDocker(workspaceImagePruneArgs(kind, buildStartedAt))).then((result) => {
     if (result.exitCode !== 0) console.warn(`[workspace-image] background prune failed: ${result.stderr.trim()}`);
   }).catch((error) => {
     console.warn(`[workspace-image] background prune failed: ${error instanceof Error ? error.message : String(error)}`);
