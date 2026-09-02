@@ -569,6 +569,7 @@ ${moduleStylesHtml()}
       iconHtml: Icons.Settings,
       titleCaption: "Project settings",
       bodyHtml: '<turbo-frame id="project_editor_frame" class="project-editor-frame"></turbo-frame>',
+      bodyLayout: "full-bleed",
       closeLabel: "Close project settings",
     });
   }

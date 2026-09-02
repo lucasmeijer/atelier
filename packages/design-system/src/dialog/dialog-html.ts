@@ -16,6 +16,8 @@ export interface DialogOptions {
   titleCaption: string;
   /** Trusted, already-escaped body contents. */
   bodyHtml: string;
+  /** Padded by default. Use full-bleed when child regions own spacing or separators must reach both edges. */
+  bodyLayout?: "padded" | "full-bleed";
   /** Trusted, already-escaped footer contents. Omit when the dialog has no footer actions. */
   footerHtml?: string;
   /** Accessible close-button label. */
@@ -34,7 +36,7 @@ export function dialogHtml(options: DialogOptions): string {
     element: { tag: "div", className: "dialog__panel" },
     headerHtml: `<h2 class="panel__title dialog__title">${options.iconHtml}<span>${escapeHtml(options.titleCaption)}</span></h2>${cancelButton}`,
     bodyHtml: options.bodyHtml,
-    bodyClassName: "dialog__body",
+    bodyClassName: classNames("dialog__body", options.bodyLayout === "full-bleed" && "dialog__body--full-bleed"),
     footerHtml: options.footerHtml,
   });
   return `<dialog${id} class="${escapeHtml(classNames("dialog", "dialog--panel", element.className))}"${attributesHtml(element.attributesHtml)}>${panel}</dialog>`;

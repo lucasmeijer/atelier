@@ -17,12 +17,25 @@ describe("dialogHtml", () => {
     expect(html).toContain('<div class="panel__body dialog__body"><p>Enter an API key.</p></div><footer class="panel__footer"><button>Connect</button></footer>');
   });
 
-  test("uses the default close label and omits optional identity and footer markup", () => {
+  test("uses the default padded body and close label and omits optional identity and footer markup", () => {
     const html = dialogHtml({ element: {}, iconHtml: "<svg></svg>", titleCaption: "Command", bodyHtml: "Results" });
 
     expect(html).not.toContain(" id=");
     expect(html).not.toContain("panel__footer");
+    expect(html).not.toContain("dialog__body--full-bleed");
     expect(html).toContain('aria-label="Close dialog"');
+  });
+
+  test("renders full-bleed bodies for child-owned spacing and edge-to-edge separators", () => {
+    const html = dialogHtml({
+      element: {},
+      iconHtml: "<svg></svg>",
+      titleCaption: "Settings",
+      bodyHtml: '<section class="settings-section">Theme</section>',
+      bodyLayout: "full-bleed",
+    });
+
+    expect(html).toContain('class="panel__body dialog__body dialog__body--full-bleed"');
   });
 
   test("omits the cancel button when requested", () => {

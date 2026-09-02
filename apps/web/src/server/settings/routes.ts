@@ -369,6 +369,7 @@ function settingsDialogHtml(titleCaption: string, bodyHtml: string): string {
     iconHtml: Icons.Settings,
     titleCaption,
     bodyHtml,
+    bodyLayout: "full-bleed",
     closeLabel: "Close settings",
   });
 }

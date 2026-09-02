@@ -64,6 +64,7 @@ export async function renderOnboardingDialog(options: { includeCompleted?: boole
     iconHtml: Icons.Atelier,
     titleCaption: "Set up Atelier",
     bodyHtml: `<div class="onboarding-progress" aria-label="Onboarding progress">${rendered.map((_, index) => `<span class="onboarding-progress-item" data-onboarding-target="dot"${index === initialIndex ? ' aria-current="step"' : ""}></span>`).join("")}</div><div class="onboarding-body">${steps.join("")}</div>`,
+    bodyLayout: "full-bleed",
     footerHtml: `<button class="button secondary" type="button" data-onboarding-target="back" data-action="onboarding#prev">‹ Back</button><button class="button secondary" type="button" data-onboarding-target="continue" data-action="onboarding#next">Continue</button>`,
     omitCancelButton: true,
   });
