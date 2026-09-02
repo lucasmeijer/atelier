@@ -48,7 +48,6 @@ import {
   type ProjectSecretSummary,
   type ProjectSshKeySummary,
   type ProjectSummary,
-  type WorkspaceDeleteBlockedDetails,
 } from "@atelier/projects";
 import { createWorkspacePresentationStore, generateWorkspaceId, listWorkspaces, setWorkspaceParked, setWorkspaceTitle, type WorkspaceCreationContext, type WorkspaceInitInstruction, type WorkspaceWorkViewReference, type WorkspaceWorkViewState } from "@atelier/workspace";
 import { createWorkspaceProvisioningStore } from "@atelier/workspace/server/provisioning";
@@ -68,12 +67,14 @@ import {
   type AgentWorkspaceForkRequest,
   type AgentWorkspaceParameters,
   type CableIdentifier,
+  type DeleteCurrentWorkspaceResult,
   type GlobalSidebarContributionRegistry,
   type WorkspaceAttachment,
   type WorkspaceModuleCommandHandler,
   type WorkspaceModuleCommandResult,
   type WorkspaceModuleRouteHandler,
   type WorkspaceModuleWorkViewAdapter,
+  type WorkspaceDeletionReview,
   type WorkspaceServerProvisioningHook,
   type WorkspaceAgentTabProvider,
   type WorkspaceWorkViewPresentation,
@@ -113,7 +114,8 @@ export interface WebAppDeps {
   devReload?: boolean;
   /** Create the container + default agent etc. for an already-registered workspace id. */
   provisionWorkspace(id: string, options?: { init?: import("@atelier/workspace").WorkspaceInitInstruction; context?: WorkspaceCreationContext; fork?: { sourceWorkspaceId: string } }): Promise<void>;
-  inspectDeleteSafety(id: string): Promise<WorkspaceDeleteBlockedDetails>;
+  /** Test/embedding override. Production obtains this contribution from the Review module. */
+  deletionReview?: WorkspaceDeletionReview;
   /** Force-remove the workspace container. */
   destroyWorkspace(id: string): Promise<void>;
   /** Persist parked state and stop or start its workspace container. Defaults to setWorkspaceParked. */
@@ -127,7 +129,7 @@ export interface WebAppDeps {
 export interface WebApp {
   fetch(request: Request): Promise<Response>;
   shellSnapshot(): Promise<string>;
-  deleteCurrentWorkspaceFromAgent(workspaceId: string, force: boolean): Promise<{ deleted: boolean; blocked: boolean; details?: WorkspaceDeleteBlockedDetails }>;
+  deleteCurrentWorkspaceFromAgent(workspaceId: string, force: boolean): Promise<DeleteCurrentWorkspaceResult>;
   resumeWorkspaceDeletions(): void;
   createWorkspaceFromAgent(workspaceId: string, request: AgentWorkspaceCreateRequest): Promise<AgentWorkspaceCreateResult>;
   forkCurrentWorkspaceFromAgent(workspaceId: string, request: AgentWorkspaceForkRequest): Promise<AgentWorkspaceCreateResult>;
@@ -238,6 +240,10 @@ export function createWebApp(deps: WebAppDeps): WebApp {
   const versionTooltip = atelierVersionTooltip();
   // SAFETY: This value is validated or constructed by the server boundary immediately surrounding this use.
   const workViewAdapters = workspaceModules.flatMap((module) => module.workViews ?? []) as WorkspaceModuleWorkViewAdapter[];
+  const moduleDeletionReviews = workspaceModules.flatMap((module) => module.deletionReview ? [module.deletionReview] : []);
+  if (!deps.deletionReview && moduleDeletionReviews.length !== 1) throw new Error(`Expected one deletion Review contribution, found ${moduleDeletionReviews.length}`);
+  const deletionReview = deps.deletionReview ?? moduleDeletionReviews[0]!;
+  const deletionEvidence = new Map<string, { details: JsonValue; html: string }>();
   // SAFETY: Workspace modules expose this exact shared Agent-tab provider contract.
   const agentTabProviders = workspaceModules.flatMap((module) => module.agentTabs ? [module.agentTabs] : []) as WorkspaceAgentTabProvider[];
   if (agentTabProviders.length !== 1) throw new Error(`Expected exactly one Workspace Agent-tab provider, found ${agentTabProviders.length}`);
@@ -750,7 +756,7 @@ ${moduleStylesHtml()}
 
   async function workspaceDetailContent(id: string): Promise<string> {
     const entry = requireWorkspace(id);
-    return entry.deletion ? renderWorkspaceDeletionPresentation(entry.id, entry.deletion) : renderWorkspacePresentation(await fixedWorkspacePresentation(id));
+    return entry.deletion ? deletionPresentation(entry, entry.deletion) : renderWorkspacePresentation(await fixedWorkspacePresentation(id));
   }
 
   async function workspaceDetailResidentHtml(id: string, options: { visible?: boolean } = {}): Promise<string> {
@@ -1112,14 +1118,19 @@ ${moduleStylesHtml()}
     }
   }
 
+  function deletionPresentation(entry: WorkspaceEntry, deletion: WorkspaceDeletionState): string {
+    const evidence = deletion.status === "blocked" ? deletionEvidence.get(entry.id)?.html : undefined;
+    return renderWorkspaceDeletionPresentation(entry.id, deletion, evidence);
+  }
+
   function deletionPresentationStream(entry: WorkspaceEntry, deletion: WorkspaceDeletionState): string {
-    return `${turboReplaceStream(workspacePresentationDomId(entry.id), renderWorkspaceDeletionPresentation(entry.id, deletion))}${workspacePreparationInvalidatedTurboStream(entry.id)}`;
+    return `${turboReplaceStream(workspacePresentationDomId(entry.id), deletionPresentation(entry, deletion))}${workspacePreparationInvalidatedTurboStream(entry.id)}`;
   }
 
   function broadcastDeletionPresentation(id: string): void {
     const entry = requireWorkspace(id);
     if (!entry.deletion) throw new Error(`workspace ${id} has no deletion state`);
-    const resident = `<div class="workspace-detail-resident" data-workspace-residency-target="resident" data-workspace-id="${escapeHtml(id)}">${renderWorkspaceDeletionPresentation(entry.id, entry.deletion)}</div>`;
+    const resident = `<div class="workspace-detail-resident" data-workspace-residency-target="resident" data-workspace-id="${escapeHtml(id)}">${deletionPresentation(entry, entry.deletion)}</div>`;
     broadcastShell(`${deletionPresentationStream(entry, entry.deletion)}${turboReplaceStream(workspaceBootId(id), resident)}`);
   }
 
@@ -1138,6 +1149,7 @@ ${moduleStylesHtml()}
     setDeletionState(id, { status: "deleting", forced });
     try {
       await deps.destroyWorkspace(id);
+      deletionEvidence.delete(id);
       registry.remove(id);
       return undefined;
     } catch (error) {
@@ -1169,34 +1181,57 @@ ${moduleStylesHtml()}
     return entry.deletion.status === "blocked" || entry.deletion.status === "failed";
   }
 
-  async function checkAndScheduleWorkspaceDeletion(id: string): Promise<{ deleted: boolean; blocked: boolean; details?: WorkspaceDeleteBlockedDetails }> {
+  async function showBlockedAssessment(id: string, assessment: Extract<Awaited<ReturnType<WorkspaceDeletionReview["inspect"]>>, { status: "blocked" }>): Promise<DeleteCurrentWorkspaceResult> {
+    const html = deletionReview.renderEvidence(id, assessment.details);
+    deletionEvidence.set(id, { details: assessment.details, html });
+    const deletion: WorkspaceDeletionState = { status: "blocked", fingerprint: assessment.fingerprint, verification: assessment.verification };
+    registry.markViewAttention(id, "workspace");
+    registry.setDeletion(id, deletion);
+    const pane = workspacePaneCollectionsTurboStream(await workspacePaneCollections(""));
+    const entry = requireWorkspace(id);
+    const resident = `<div class="workspace-detail-resident" data-workspace-residency-target="resident" data-workspace-id="${escapeHtml(id)}">${deletionPresentation(entry, deletion)}</div>`;
+    broadcastShell(`${pane}${deletionPresentationStream(entry, deletion)}${turboReplaceStream(workspaceBootId(id), resident)}`);
+    return { deleted: false, blocked: true, details: assessment.details };
+  }
+
+  async function checkAndScheduleWorkspaceDeletion(id: string): Promise<DeleteCurrentWorkspaceResult> {
     setDeletionState(id, { status: "checking" });
-    let details: WorkspaceDeleteBlockedDetails;
     try {
-      details = await deps.inspectDeleteSafety(id);
+      const assessment = await deletionReview.inspect(id);
+      if (assessment.status === "blocked") return await showBlockedAssessment(id, assessment);
     } catch (error) {
       const message = error instanceof Error ? error.message : String(error);
       setDeletionState(id, { status: "failed", operation: "checking", error: message });
       return { deleted: false, blocked: false };
     }
-    if (details.issues.length > 0) {
-      const deletion: WorkspaceDeletionState = { status: "blocked", issues: details.issues };
-      registry.markViewAttention(id, "workspace");
-      registry.setDeletion(id, deletion);
-      const pane = workspacePaneCollectionsTurboStream(await workspacePaneCollections(""));
-      const entry = requireWorkspace(id);
-      const resident = `<div class="workspace-detail-resident" data-workspace-residency-target="resident" data-workspace-id="${escapeHtml(id)}">${renderWorkspaceDeletionPresentation(entry.id, deletion)}</div>`;
-      broadcastShell(`${pane}${deletionPresentationStream(entry, deletion)}${turboReplaceStream(workspaceBootId(id), resident)}`);
-      return { deleted: false, blocked: true, details };
-    }
     scheduleWorkspaceDeletion(id, false);
     return { deleted: true, blocked: false };
   }
 
-  async function requestWorkspaceDeletion(id: string, force: boolean): Promise<{ deleted: boolean; blocked: boolean; details?: WorkspaceDeleteBlockedDetails }> {
+  async function confirmWorkspaceDeletion(id: string, fingerprint: string): Promise<DeleteCurrentWorkspaceResult> {
+    const entry = requireWorkspace(id);
+    if (entry.deletion?.status !== "blocked" || entry.deletion.fingerprint !== fingerprint) throw new AtelierCoreError("workspace_not_ready", "The deletion assessment is no longer current");
+    setDeletionState(id, { status: "checking" });
+    try {
+      const assessment = await deletionReview.inspect(id);
+      if (assessment.status === "clear") {
+        scheduleWorkspaceDeletion(id, false);
+        return { deleted: true, blocked: false };
+      }
+      if (assessment.fingerprint !== fingerprint) return await showBlockedAssessment(id, assessment);
+    } catch (error) {
+      const message = error instanceof Error ? error.message : String(error);
+      setDeletionState(id, { status: "failed", operation: "checking", error: message });
+      return { deleted: false, blocked: false };
+    }
+    scheduleWorkspaceDeletion(id, true);
+    return { deleted: true, blocked: false };
+  }
+
+  async function requestWorkspaceDeletion(id: string, force: boolean): Promise<DeleteCurrentWorkspaceResult> {
     const entry = requireWorkspace(id);
     if (!canDeleteWorkspace(entry)) throw new AtelierCoreError("workspace_not_ready", `workspace ${id} is not ready for deletion`);
-    if (entry.deletion?.status === "blocked" && !force) return { deleted: false, blocked: true, details: { workspaceId: id, issues: entry.deletion.issues } };
+    if (entry.deletion?.status === "blocked" && !force) return { deleted: false, blocked: true, details: deletionEvidence.get(id)?.details };
     const retryForced = entry.deletion?.status === "failed" && entry.deletion.operation === "deleting" ? entry.deletion.forced : undefined;
     if (force || (entry.phase === "failed" && !entry.deletion) || retryForced !== undefined) {
       scheduleWorkspaceDeletion(id, force || retryForced === true);
@@ -1205,7 +1240,7 @@ ${moduleStylesHtml()}
     return await checkAndScheduleWorkspaceDeletion(id);
   }
 
-  function deleteCurrentWorkspaceFromAgent(id: string, force: boolean): Promise<{ deleted: boolean; blocked: boolean; details?: WorkspaceDeleteBlockedDetails }> {
+  function deleteCurrentWorkspaceFromAgent(id: string, force: boolean): Promise<DeleteCurrentWorkspaceResult> {
     return requestWorkspaceDeletion(id, force);
   }
 
@@ -1227,11 +1262,19 @@ ${moduleStylesHtml()}
     const entry = requireWorkspace(id);
     if (entry.deletion?.status !== "blocked" && entry.deletion?.status !== "failed") return turboStreamResponse("", { status: 409 });
     registry.setDeletion(id, undefined);
+    deletionEvidence.delete(id);
     registry.clearViewAttention(id, "workspace");
     const stream = `${turboReplaceStream(workspacePresentationDomId(id), renderWorkspacePresentation(await fixedWorkspacePresentation(id)))}${workspacePreparationInvalidatedTurboStream(id)}`;
     broadcastShell(stream);
     if (requestAcceptsJson(request)) return jsonResponse({ cancelled: true });
     return turboStreamResponse(stream);
+  }
+
+  async function confirmWorkspaceDeletionEndpoint(id: string, request: Request): Promise<Response> {
+    const fingerprint = String((await request.formData()).get("fingerprint") ?? "");
+    const result = await confirmWorkspaceDeletion(id, fingerprint);
+    if (requestAcceptsJson(request)) return jsonResponse(result);
+    return turboStreamResponse(currentDeletionStream(id));
   }
 
   async function retryWorkspaceDeletionEndpoint(id: string, request: Request): Promise<Response> {
@@ -1812,6 +1855,7 @@ ${moduleStylesHtml()}
     if ((params = match(/^\/workspaces\/([^/]+)\/park$/)) && request.method === "POST") return parkWorkspaceEndpoint(params[0], true, request);
     if ((params = match(/^\/workspaces\/([^/]+)\/unpark$/)) && request.method === "POST") return parkWorkspaceEndpoint(params[0], false, request);
     if ((params = match(/^\/workspaces\/([^/]+)\/delete\/cancel$/)) && request.method === "POST") return await cancelWorkspaceDeletionEndpoint(params[0], request);
+    if ((params = match(/^\/workspaces\/([^/]+)\/delete\/confirm$/)) && request.method === "POST") return await confirmWorkspaceDeletionEndpoint(params[0], request);
     if ((params = match(/^\/workspaces\/([^/]+)\/delete\/retry$/)) && request.method === "POST") return await retryWorkspaceDeletionEndpoint(params[0], request);
     if ((params = match(/^\/workspaces\/([^/]+)\/delete$/)) && request.method === "POST") return await deleteWorkspaceEndpoint(params[0], request);
     if ((params = match(/^\/workspaces\/([^/]+)$/)) && request.method === "GET") return await workspacePage(params[0], request);

@@ -197,6 +197,15 @@ export interface WorkspaceModuleRouteHandler {
   handle(request: Request, url: URL, context: WorkspaceModuleRouteContext): Promise<Response | undefined> | Response | undefined;
 }
 
+export type WorkspaceDeletionAssessment =
+  | { status: "clear" }
+  | { status: "blocked"; fingerprint: string; verification: "verified" | "incomplete"; details: JsonValue };
+
+/** Supplies the Git-loss check and read-only evidence used by workspace deletion. */
+export interface WorkspaceDeletionReview {
+  inspect(workspaceId: string): Promise<WorkspaceDeletionAssessment>;
+  renderEvidence(workspaceId: string, details: JsonValue): string;
+}
 
 export interface WorkspaceSocketConnection {
   send(message: string | Uint8Array): void;
@@ -326,6 +335,7 @@ export interface WorkspaceModule {
   commands?: WorkspaceModuleCommandHandler[];
   routes?: WorkspaceModuleRouteHandler[];
   workViews?: WorkspaceModuleWorkViewAdapter[];
+  deletionReview?: WorkspaceDeletionReview;
   agentTabs?: WorkspaceAgentTabProvider;
   initialize?(context: WorkspaceServerModuleContext): Promise<void> | void;
   attachToWorkspace?(context: WorkspaceAttachContext): Promise<WorkspaceAttachment> | WorkspaceAttachment;

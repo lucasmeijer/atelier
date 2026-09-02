@@ -6,7 +6,6 @@ import { Value } from "typebox/value";
 import { createAtelierEventBus, getAtelierRuntimeContext } from "@atelier/core";
 import { attachHostObservableTerminal, observableTerminalCols, observableTerminalRows, type IPty } from "@atelier/observable-terminal/server";
 import { createWorkspace, deleteWorkspace, isWorkspaceRunning, listWorkspaces, resolveWorkspace, setWorkspaceContainerRunning, workspaceSetupProvisioningHook } from "@atelier/workspace";
-import type { WorkspaceDeleteSafetyIssue } from "@atelier/projects";
 import { atelierName, CableTopics, escapeHtml, type WorkspaceAppBackend, type WorkspaceAppRef, type WorkspaceServerAppResolver, type WorkspaceServerProvisioningHook, type WorkspaceServerSocketHandler, type WorkspaceServerSocketSession } from "@atelier/shared";
 import {
   createFileOriginIdentityStore,
@@ -250,11 +249,6 @@ app = createWebApp({
     await atelierEvents.emit("workspace_provision_step", { workspaceId: id, id: "workspace.integrations", label: "Run workspace startup integrations", status: "running" });
     await atelierEvents.emit("workspace_created", { workspaceId: id, init: options?.init, context: options?.context });
     await atelierEvents.emit("workspace_provision_step", { workspaceId: id, id: "workspace.integrations", label: "Run workspace startup integrations", status: "done" });
-  },
-  inspectDeleteSafety: async (id) => {
-    const issues: WorkspaceDeleteSafetyIssue[] = [];
-    await atelierEvents.emit("workspace_delete_inspect", { workspaceId: id, issues });
-    return { workspaceId: id, issues };
   },
   destroyWorkspace: async (id) => {
     await workspaceIngress.stopWorkspace(id);

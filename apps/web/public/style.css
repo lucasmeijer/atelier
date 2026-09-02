@@ -242,7 +242,7 @@ turbo-frame { display: contents; }
 }
 .fixed-shell-main { min-width: 0; min-height: 0; flex: 1; display: flex; gap: var(--fixed-shell-gap); }
 .workspace-deletion-presentation { display: grid; place-items: center; overflow: auto; padding: 32px; background: var(--fixed-shell-bg); }
-.workspace-deletion-state { width: min(640px, 100%); margin: auto; }
+.workspace-deletion-state { width: min(960px, 100%); margin: auto; }
 .workspace-deletion-state[data-deletion-status="checking"],
 .workspace-deletion-state[data-deletion-status="deleting"] { width: min(480px, 100%); }
 .workspace-deletion-heading { text-align: center; }
@@ -250,20 +250,25 @@ turbo-frame { display: contents; }
 .workspace-deletion-heading h1,
 .workspace-deletion-heading > p { max-width: 520px; margin: 0 auto; color: var(--text); font: inherit; }
 .workspace-deletion-heading > p { margin-top: 8px; }
-.workspace-deletion-issues { max-height: min(48vh, 420px); margin-top: 24px; overflow: auto; text-align: left; }
-.workspace-deletion-issue { padding: 0 0 20px; }
-.workspace-deletion-issue + .workspace-deletion-issue { padding-top: 20px; border-top: 1px solid var(--fixed-shell-border); }
-.workspace-deletion-change-group + .workspace-deletion-change-group { margin-top: 12px; }
-.workspace-deletion-change-group h2 { margin: 0 0 4px; color: var(--text); font: inherit; }
-.workspace-deletion-hash { flex: 0 0 auto; }
-.workspace-deletion-change-group ul { display: grid; gap: 2px; margin: 0; padding: 0; list-style: none; }
-.workspace-deletion-change-group li { min-width: 0; display: flex; gap: 8px; color: var(--text); overflow-wrap: anywhere; }
+.workspace-deletion-evidence { max-height: min(72vh, 760px); overflow: auto; text-align: left; }
+.workspace-deletion-repository + .workspace-deletion-repository { border-top: 1px solid var(--fixed-shell-border); }
+.workspace-deletion-repository > h2 { margin: 0 0 16px; font: var(--weight-semibold) var(--text-body)/var(--leading-tight) var(--font-sans); }
+.workspace-deletion-change-group + .workspace-deletion-change-group { margin-top: 20px; }
+.workspace-deletion-change-group > h3 { margin: 0 0 8px; color: var(--text); font: var(--weight-semibold) var(--text-body)/var(--leading-tight) var(--font-sans); }
+.workspace-deletion-note { margin: -2px 0 10px; color: var(--text-subtle); }
+.workspace-deletion-verification-error { margin-bottom: 16px; padding: 12px; border: 1px solid color-mix(in srgb, var(--danger) 35%, var(--line)); border-radius: var(--radius-control); background: var(--danger-soft); }
+.workspace-deletion-verification-error p { margin: 4px 0 0; }
+.workspace-deletion-commits { display: grid; gap: 8px; }
+.workspace-deletion-commit { border: 1px solid var(--fixed-shell-border); border-radius: 6px; overflow: clip; }
+.workspace-deletion-commit > summary { display: grid; grid-template-columns: max-content minmax(0, 1fr) max-content; gap: 10px; padding: 10px 12px; cursor: pointer; }
+.workspace-deletion-commit > summary > span { min-width: 0; overflow-wrap: anywhere; }
+.workspace-deletion-commit > summary > span:last-child { color: var(--text-subtle); }
+.workspace-deletion-commit > .review-files { border-top: 1px solid var(--fixed-shell-border); }
 .workspace-deletion-actions { display: flex; justify-content: flex-end; gap: 8px; padding-top: 20px; border-top: 1px solid var(--fixed-shell-border); }
 .workspace-deletion-actions form { display: flex; margin: 0; }
 .workspace-deletion-error { max-width: 100%; overflow-wrap: anywhere; }
 @media (max-width: 700px) {
   .workspace-deletion-presentation { padding: 24px 16px; }
-  .workspace-deletion-change-group li { display: grid; gap: 0; }
   .workspace-deletion-actions form, .workspace-deletion-actions .button { flex: 1; }
 }
 .fixed-shell-agent-pane { min-width: 380px; flex: 0 0 var(--fixed-agent-width); }

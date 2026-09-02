@@ -32,12 +32,12 @@ function commentModel(comment: ReviewComment): ReviewCommentModel {
   };
 }
 
-async function renderTextFile(file: ReviewFile, comments: ReviewComment[]): Promise<string> {
+async function renderTextFile(file: ReviewFile, comments: ReviewComment[], target = "review"): Promise<string> {
   const annotations = comments.map(commentModel);
   const pierreAnnotations = annotations.map((comment) => ({ side: comment.side, lineNumber: comment.startLine, metadata: comment }));
   const prerendered = await preloadDiffHTML({ fileDiff: file.diff!, options: reviewDiffOptions, annotations: pierreAnnotations });
   const model = { fileDiff: file.diff, comments: annotations };
-  return `<div class="atelier-pierre-host review-pierre-host" data-review-target="diff" data-review-path="${escapeHtml(file.path)}"><diffs-container><template shadowrootmode="open">${prerendered}</template></diffs-container><script type="application/json" data-review-model>${jsonForHtml(model)}</script></div>`;
+  return `<div class="atelier-pierre-host review-pierre-host" data-${target}-target="diff" data-review-path="${escapeHtml(file.path)}"><diffs-container><template shadowrootmode="open">${prerendered}</template></diffs-container><script type="application/json" data-review-model>${jsonForHtml(model)}</script></div>`;
 }
 
 function renderSpecialFile(file: ReviewFile): string {
@@ -52,7 +52,7 @@ function renderCommentCount(count: number): string {
   return `<span class="review-comment-count" aria-label="${count} comment${count === 1 ? "" : "s"}">${count}</span>`;
 }
 
-function renderFileSummary(label: ActionItemLabel, metaHtml: string, title?: string): string {
+export function renderFileSummary(label: ActionItemLabel, metaHtml: string, title?: string): string {
   return actionItemHtml({
     kind: "single",
     leadingHtml: Icons.Disclosure,
@@ -82,10 +82,12 @@ function reviewStatsFrameId(workspaceId: string): string {
   return domId("review", workspaceId, "stats_frame");
 }
 
+export function renderChangeCounts(counts: Pick<ReviewFileStats, "additions" | "deletions">): string {
+  return `<span class="review-additions">+${counts.additions}</span><span class="review-deletions">−${counts.deletions}</span>`;
+}
+
 function renderGitStats(workspaceId: string, file: ReviewFileSummary, counts?: Pick<ReviewFileStats, "additions" | "deletions">): string {
-  const content = counts
-    ? `<span class="review-additions">+${counts.additions}</span><span class="review-deletions">−${counts.deletions}</span>`
-    : `<span class="status-spinner review-stats-spinner" role="status" aria-label="Loading change stats"></span>`;
+  const content = counts ? renderChangeCounts(counts) : `<span class="status-spinner review-stats-spinner" role="status" aria-label="Loading change stats"></span>`;
   return `<span id="${reviewFileStatsId(workspaceId, file.path)}" class="review-git-stats">${content}</span>`;
 }
 
@@ -101,7 +103,7 @@ export function renderReviewStatsFrame(workspaceId: string, files: ReviewFileSta
   return `<turbo-frame id="${reviewStatsFrameId(workspaceId)}">${titleStream}${fileStreams}</turbo-frame>`;
 }
 
-function renderFilePath(path: string): string {
+export function renderFilePath(path: string): string {
   const basenameStart = path.lastIndexOf("/") + 1;
   const directory = path.slice(0, basenameStart);
   const basename = path.slice(basenameStart);
@@ -126,6 +128,11 @@ export async function renderReviewFileDetails(workspaceId: string, file: ReviewF
   const body = file.kind === "text" ? await renderTextFile(file, fileComments) : renderSpecialFile(file);
   const commentModels = comments.map(commentModel);
   return `<turbo-frame id="${reviewFileFrameId(workspaceId, file.path)}"><turbo-stream action="replace" target="${reviewUnanchoredId(workspaceId)}"><template>${renderUnanchoredSlot(workspaceId, unanchoredComments)}</template></turbo-stream><turbo-stream action="replace" target="${reviewCommentsModelId(workspaceId)}"><template><script id="${reviewCommentsModelId(workspaceId)}" type="application/json" data-review-comments>${jsonForHtml(commentModels)}</script></template></turbo-stream><div class="review-file-diff">${body}</div></turbo-frame>`;
+}
+
+export async function renderReadOnlyReviewFile(frameId: string, file: ReviewFile): Promise<string> {
+  const body = file.kind === "text" ? await renderTextFile(file, [], "deletion-review") : renderSpecialFile(file);
+  return `<turbo-frame id="${escapeHtml(frameId)}"><div class="review-file-diff">${body}</div></turbo-frame>`;
 }
 
 function renderUnanchoredComment(workspaceId: string, comment: ReviewComment): string {

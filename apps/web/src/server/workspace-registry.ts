@@ -1,6 +1,5 @@
 import { mkdir, readFile, rename, writeFile } from "node:fs/promises";
 import { dirname } from "node:path";
-import type { WorkspaceDeleteSafetyIssue } from "@atelier/projects";
 import type { WorkspaceInitInstruction } from "@atelier/workspace";
 import { Type, type TSchema } from "typebox";
 import { Value } from "typebox/value";
@@ -9,7 +8,7 @@ export type WorkspacePhase = "starting" | "ready" | "checking_delete" | "deletin
 
 export type WorkspaceDeletionState =
   | { status: "checking" }
-  | { status: "blocked"; issues: WorkspaceDeleteSafetyIssue[] }
+  | { status: "blocked"; fingerprint: string; verification: "verified" | "incomplete" }
   | { status: "deleting"; forced: boolean }
   | { status: "failed"; operation: "checking"; error: string }
   | { status: "failed"; operation: "deleting"; forced: boolean; error: string };
@@ -90,14 +89,9 @@ const workspaceUnreadSchema = Type.Object({
   nextToken: Type.Integer({ minimum: 1 }),
   views: Type.Record(Type.String(), Type.Record(Type.String(), workspaceUnreadOccurrenceSchema)),
 }, { additionalProperties: false });
-const deleteSafetyIssueSchema = Type.Object({
-  repo: Type.String(),
-  uncommittedPaths: Type.Array(Type.String()),
-  outgoingCommits: Type.Array(Type.Object({ hash: Type.String(), subject: Type.String() })),
-});
 const workspaceDeletionStateSchema = Type.Union([
   Type.Object({ status: Type.Literal("checking") }),
-  Type.Object({ status: Type.Literal("blocked"), issues: Type.Array(deleteSafetyIssueSchema) }),
+  Type.Object({ status: Type.Literal("blocked"), fingerprint: Type.String(), verification: Type.Union([Type.Literal("verified"), Type.Literal("incomplete")]) }),
   Type.Object({ status: Type.Literal("deleting"), forced: Type.Boolean() }),
   Type.Object({ status: Type.Literal("failed"), operation: Type.Literal("checking"), error: Type.String() }),
   Type.Object({ status: Type.Literal("failed"), operation: Type.Literal("deleting"), forced: Type.Boolean(), error: Type.String() }),
@@ -233,8 +227,16 @@ export function createWorkspaceRegistry(options: WorkspaceRegistryOptions = {}):
       workspaceDeletions = Object.fromEntries(Object.entries(loadedDeletions).filter(([id]) => workspaceIds.has(id)));
       if (Object.keys(workspaceDeletions).length !== Object.keys(loadedDeletions).length) persistDeletions();
       entries.clear();
+      let persistedBlockedAssessment = false;
       for (const workspace of workspaces) {
-        const deletion = workspaceDeletions[workspace.id];
+        const persistedDeletion = workspaceDeletions[workspace.id];
+        // Blocked evidence is deliberately not persisted. Reinspect after restart so the
+        // confirmation can only describe the current workspace.
+        const deletion = persistedDeletion?.status === "blocked" ? { status: "checking" as const } : persistedDeletion;
+        if (deletion !== persistedDeletion && deletion) {
+          workspaceDeletions[workspace.id] = deletion;
+          persistedBlockedAssessment = true;
+        }
         const phase: WorkspacePhase = deletion?.status === "deleting" ? "deleting" : deletion?.status === "failed" ? "failed" : deletion ? "checking_delete" : "ready";
         const entry: WorkspaceEntry = {
           id: workspace.id,
@@ -249,6 +251,7 @@ export function createWorkspaceRegistry(options: WorkspaceRegistryOptions = {}):
         if (deletion?.status === "failed") entry.error = deletion.error;
         entries.set(workspace.id, entry);
       }
+      if (persistedBlockedAssessment) persistDeletions();
       callbacks.listChanged?.(sorted());
     },
 

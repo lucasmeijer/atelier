@@ -149,7 +149,7 @@ async function withTestApp(
       cable: { broadcast: (identifier, html, options) => broadcasts.push({ identifier, html, options }) },
       provisionWorkspace: async () => {},
       provisioningHooks: [],
-      inspectDeleteSafety: async (workspaceId) => ({ workspaceId, issues: [] }),
+      deletionReview: { inspect: async () => ({ status: "clear" }), renderEvidence: () => "" },
       destroyWorkspace: async () => {},
       persistWorkspaceParked: async () => {},
       logError: () => {},

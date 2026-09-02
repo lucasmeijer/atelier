@@ -5,12 +5,13 @@ import { afterEach, beforeEach, describe, expect, test } from "bun:test";
 import { Type } from "typebox";
 import { Value } from "typebox/value";
 import { createAtelierEventBus, type AtelierEventBus, type JsonObject } from "@atelier/core";
+import type { WorkspaceDeletionReview } from "@atelier/shared";
 import { createWebApp } from "../src/server/app.ts";
 import { workViewBodyFrameId } from "../src/server/workspace-presentation.ts";
 import { createWorkspaceRegistry } from "../src/server/workspace-registry.ts";
 import { createPiModelRuntime, getConfiguredAgentModels, setPickerAgentModels } from "@atelier/agent/server";
 import { hasWorkspaceGitHubToken, setWorkspaceGitHubToken } from "@atelier/proxy-egress";
-import { addProject, createProjectSecret, getGitIdentity, isGitProjectInit, listProjectEnvironmentVariables, listProjects, projectWorkspaceInit, revealProjectSecrets, createProjectSshKey, type WorkspaceDeleteBlockedDetails } from "@atelier/projects";
+import { addProject, createProjectSecret, getGitIdentity, isGitProjectInit, listProjectEnvironmentVariables, listProjects, projectWorkspaceInit, revealProjectSecrets, createProjectSshKey } from "@atelier/projects";
 
 function deferred<T = void>() {
   let resolve!: (value: T) => void;
@@ -117,11 +118,27 @@ const projectDeletionSuccessResponseSchema = Type.Object({
 
 interface TestAppOptions {
   provision?: (id: string, options?: ProvisionWorkspaceOptions) => Promise<void>;
-  inspect?: (id: string) => Promise<WorkspaceDeleteBlockedDetails>;
+  inspect?: (id: string) => Promise<string[]>;
   destroy?: (id: string) => Promise<void>;
   persistParked?: (id: string, parked: boolean) => Promise<void>;
   events?: AtelierEventBus;
   devReload?: boolean;
+}
+
+const testDeletionDetailsSchema = Type.Object({ risks: Type.Array(Type.String()) });
+
+function testDeletionReview(inspect: (id: string) => Promise<string[]>): WorkspaceDeletionReview {
+  return {
+    async inspect(workspaceId) {
+      const risks = await inspect(workspaceId);
+      if (!risks.length) return { status: "clear" };
+      const details = { risks };
+      return { status: "blocked", fingerprint: String(Bun.hash(JSON.stringify(details))), verification: "verified", details };
+    },
+    renderEvidence(_workspaceId, details) {
+      return Value.Parse(testDeletionDetailsSchema, details).risks.join("\n");
+    },
+  };
 }
 
 function createTestApp(options: TestAppOptions = {}) {
@@ -136,7 +153,7 @@ function createTestApp(options: TestAppOptions = {}) {
     devReload: options.devReload,
     provisionWorkspace: options.provision ?? (async () => {}),
     provisioningHooks: [],
-    inspectDeleteSafety: options.inspect ?? (async (id) => ({ workspaceId: id, issues: [] })),
+    deletionReview: testDeletionReview(options.inspect ?? (async () => [])),
     destroyWorkspace: options.destroy ?? (async () => {}),
     persistWorkspaceParked: options.persistParked ?? (async () => {}),
     logError: () => {},
@@ -189,10 +206,7 @@ async function withTempDataDir<T>(fn: () => Promise<T>): Promise<T> {
   }
 }
 
-const blockedDetails = (id: string): WorkspaceDeleteBlockedDetails => ({
-  workspaceId: id,
-  issues: [{ repo: "demo", uncommittedPaths: ["a.txt"], outgoingCommits: [{ hash: "abc123", subject: "wip" }] }],
-});
+const blockedRisks = (): string[] => ["a.txt", "wip"];
 
 let previousTestDataDir: string | undefined;
 let testDataDir: string | undefined;
@@ -487,7 +501,7 @@ describe("web app contracts", () => {
     const destroyed: string[] = [];
     const inspected: string[] = [];
     const { app, registry, broadcasts } = createTestApp({
-      inspect: async (id) => { inspected.push(id); return blockedDetails(id); },
+      inspect: async (id) => { inspected.push(id); return blockedRisks(); },
       destroy: async (id) => { destroyed.push(id); },
     });
     await registry.seed([]);
@@ -1028,24 +1042,48 @@ describe("web app contracts", () => {
   });
 
   test("blocked delete replaces the workspace panes and waits for the user's decision", async () => {
-    const { app, registry, broadcasts } = createTestApp({ inspect: async (id) => blockedDetails(id) });
+    const { app, registry, broadcasts } = createTestApp({ inspect: async () => blockedRisks() });
     await registry.seed([{ id: "abc", title: "A" }]);
     broadcasts.length = 0;
 
     const body = await (await app.fetch(post("/workspaces/abc/delete"))).text();
 
-    expect(body).toContain("Please confirm it's okay to delete the workspace with these outstanding changes.");
+    expect(body).not.toContain("Review work that may be lost");
+    expect(body).not.toContain("Uncommitted changes");
     expect(body).toContain("/workspaces/abc/delete/cancel");
-    expect(body).toContain("/workspaces/abc/delete?force=1");
+    expect(body).toContain("/workspaces/abc/delete/confirm");
     expect(body).toContain("a.txt");
     expect(registry.get("abc")?.phase).toBe("checking_delete");
     expect(registry.get("abc")?.deletion).toMatchObject({ status: "blocked" });
     expect(registry.hasAttention("abc")).toBe(true);
     expect(broadcasts.some((html) => html.includes("Checking if it’s safe to delete"))).toBe(true);
     const token = registry.attentionTokens("abc").workspace!;
-    const blockedPresentation = broadcasts.find((html) => html.includes("Please confirm it's okay to delete the workspace with these outstanding changes."));
+    const blockedPresentation = broadcasts.find((html) => html.includes("/workspaces/abc/delete/confirm"));
     expect(blockedPresentation).toContain('aria-label="Attention"');
     expect(blockedPresentation).toContain(`data-workspace-attention-tokens="{&quot;workspace&quot;:${token}}"`);
+  });
+
+  test("delete confirmation requires the current Review assessment", async () => {
+    let version = 1;
+    let destroyed = 0;
+    const inspect = async (): Promise<string[]> => [version === 1 ? "first.txt" : "latest.txt"];
+    const { app, registry } = createTestApp({ inspect, destroy: async () => { destroyed++; } });
+    await registry.seed([{ id: "abc", title: "A" }]);
+
+    const initial = await (await app.fetch(post("/workspaces/abc/delete"))).text();
+    const initialFingerprint = initial.match(/name="fingerprint" value="([^"]+)"/)?.[1];
+    expect(initialFingerprint).toBeTruthy();
+
+    version = 2;
+    const changed = await (await app.fetch(postForm("/workspaces/abc/delete/confirm", new URLSearchParams({ fingerprint: initialFingerprint! })))).text();
+    expect(changed).toContain("latest.txt");
+    expect(changed).not.toContain("first.txt");
+    expect(destroyed).toBe(0);
+
+    const latestFingerprint = changed.match(/name="fingerprint" value="([^"]+)"/)?.[1];
+    await app.fetch(postForm("/workspaces/abc/delete/confirm", new URLSearchParams({ fingerprint: latestFingerprint! })));
+    while (registry.get("abc")) await Bun.sleep(1);
+    expect(destroyed).toBe(1);
   });
 
   test("allowed delete keeps its row and status page until destruction finishes", async () => {
@@ -1220,7 +1258,7 @@ describe("web app contracts", () => {
       cable: { broadcast: (_identifier, html) => broadcasts.push(html) },
       provisionWorkspace: async () => {},
       provisioningHooks: [],
-      inspectDeleteSafety: async (id) => ({ workspaceId: id, issues: [] }),
+      deletionReview: testDeletionReview(async () => []),
       destroyWorkspace: async () => {},
     });
     await registry.seed([

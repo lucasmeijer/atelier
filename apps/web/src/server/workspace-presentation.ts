@@ -545,14 +545,7 @@ function renderWorkspaceBar(presentation: WorkspacePresentation): string {
   </nav>`;
 }
 
-function renderDeletionIssues(deletion: Extract<WorkspaceDeletionState, { status: "blocked" }>): string {
-  return deletion.issues.map((issue) => `<section class="workspace-deletion-issue">
-    ${issue.uncommittedPaths.length > 0 ? `<section class="workspace-deletion-change-group"><h2>Uncommitted changes</h2><ul>${issue.uncommittedPaths.map((path) => `<li>${escapeHtml(path)}</li>`).join("")}</ul></section>` : ""}
-    ${issue.outgoingCommits.length > 0 ? `<section class="workspace-deletion-change-group"><h2>Unpushed commits</h2><ul>${issue.outgoingCommits.map((commit) => `<li><span class="workspace-deletion-hash">${escapeHtml(commit.hash.slice(0, 12))}</span><span>${escapeHtml(commit.subject)}</span></li>`).join("")}</ul></section>` : ""}
-  </section>`).join("");
-}
-
-export function renderWorkspaceDeletionPresentation(workspaceId: string, deletion: WorkspaceDeletionState): string {
+export function renderWorkspaceDeletionPresentation(workspaceId: string, deletion: WorkspaceDeletionState, evidenceHtml = ""): string {
   const id = encodeURIComponent(workspaceId);
   let content: string;
   if (deletion.status === "checking") {
@@ -562,11 +555,13 @@ export function renderWorkspaceDeletionPresentation(workspaceId: string, deletio
     const detail = deletion.forced ? "Local changes or unpushed commits may be discarded." : "The safety check passed. Atelier is removing the workspace.";
     content = `<div class="workspace-deletion-heading"><span class="status-spinner" aria-hidden="true"></span><h1>${title}</h1><p>${detail}</p></div>`;
   } else if (deletion.status === "blocked") {
-    content = `<header class="workspace-deletion-heading"><h1>Please confirm it's okay to delete the workspace with these outstanding changes.</h1></header><div class="workspace-deletion-issues" aria-label="Outstanding workspace changes">${renderDeletionIssues(deletion)}</div><footer class="workspace-deletion-actions"><form method="post" action="/workspaces/${id}/delete/cancel" data-turbo="true"><button class="button secondary" type="submit">Cancel deletion</button></form><form method="post" action="/workspaces/${id}/delete?force=1" data-turbo="true"><button class="button danger" type="submit">Delete anyway</button></form></footer>`;
+    content = `<div class="workspace-deletion-evidence" aria-label="Git work that may be lost">${evidenceHtml}</div><footer class="workspace-deletion-actions"><form method="post" action="/workspaces/${id}/delete/cancel" data-turbo="true"><button class="button secondary" type="submit">Cancel deletion</button></form><form method="post" action="/workspaces/${id}/delete/confirm" data-turbo="true"><input type="hidden" name="fingerprint" value="${escapeHtml(deletion.fingerprint)}"><button class="button danger" type="submit">${deletion.verification === "incomplete" ? "Delete without verification" : "Delete anyway"}</button></form></footer>`;
   } else {
-    content = `<div class="workspace-deletion-heading"><h1>Workspace deletion failed</h1><p class="workspace-deletion-error">${escapeHtml(deletion.error)}</p></div><footer class="workspace-deletion-actions"><form method="post" action="/workspaces/${id}/delete/cancel" data-turbo="true"><button class="button secondary" type="submit">Cancel deletion</button></form><form method="post" action="/workspaces/${id}/delete/retry" data-turbo="true"><button class="button danger" type="submit">Retry deletion</button></form></footer>`;
+    const bypass = deletion.operation === "checking" ? `<form method="post" action="/workspaces/${id}/delete?force=1" data-turbo="true"><button class="button danger" type="submit">Delete without verification</button></form>` : "";
+    content = `<div class="workspace-deletion-heading"><h1>${deletion.operation === "checking" ? "Deletion could not be verified" : "Workspace deletion failed"}</h1><p class="workspace-deletion-error">${escapeHtml(deletion.error)}</p></div><footer class="workspace-deletion-actions"><form method="post" action="/workspaces/${id}/delete/cancel" data-turbo="true"><button class="button secondary" type="submit">Cancel deletion</button></form><form method="post" action="/workspaces/${id}/delete/retry" data-turbo="true"><button class="button secondary" type="submit">Retry verification</button></form>${bypass}</footer>`;
   }
-  return `<div id="${domId("fixed_workspace", workspaceId)}" class="fixed-workspace-presentation workspace-deletion-presentation" data-workspace-id="${escapeHtml(workspaceId)}" data-workspace-commands="[]"><main class="workspace-deletion-state" data-deletion-status="${deletion.status}" role="${deletion.status === "failed" ? "alert" : "status"}">${content}</main></div>`;
+  const role = deletion.status === "failed" ? ' role="alert"' : deletion.status === "blocked" ? "" : ' role="status"';
+  return `<div id="${domId("fixed_workspace", workspaceId)}" class="fixed-workspace-presentation workspace-deletion-presentation" data-workspace-id="${escapeHtml(workspaceId)}" data-workspace-commands="[]"><main class="workspace-deletion-state" data-deletion-status="${deletion.status}"${role}>${content}</main></div>`;
 }
 
 export function renderWorkspacePresentation(presentation: WorkspacePresentation): string {

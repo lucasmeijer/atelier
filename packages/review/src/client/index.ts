@@ -70,6 +70,24 @@ function nextAnimationFrame(): Promise<void> {
   return new Promise((resolve) => requestAnimationFrame(() => resolve()));
 }
 
+function requestReviewFile(event: Event): void {
+  if (!(event.currentTarget instanceof HTMLDetailsElement)) throw new Error("Review file loading requires details");
+  if (event.type === "toggle" && !event.currentTarget.open) return;
+  const frame = event.currentTarget.querySelector<HTMLElement>(":scope > turbo-frame[data-src]")!;
+  if (!frame.hasAttribute("src")) frame.setAttribute("src", frame.dataset.src!);
+}
+
+function serverRenderedDiff(host: HTMLElement) {
+  const script = host.querySelector<HTMLScriptElement>("script[data-review-model]")!;
+  // SAFETY: Review renders this private DiffModel beside the diff host.
+  const model = JSON.parse(script.textContent ?? "") as DiffModel;
+  const container = host.querySelector<HTMLElement>("diffs-container")!;
+  const shadowTemplate = container.querySelector<HTMLTemplateElement>(":scope > template[shadowrootmode]");
+  const prerenderedHTML = shadowTemplate?.innerHTML;
+  shadowTemplate?.remove();
+  return { model, container, prerenderedHTML };
+}
+
 function createReviewController(Controller: StimulusControllerConstructor) {
   return class ReviewController extends Controller {
     static values = { workspaceId: String };
@@ -134,10 +152,7 @@ function createReviewController(Controller: StimulusControllerConstructor) {
     }
 
     requestFile(event: Event): void {
-      if (!(event.currentTarget instanceof HTMLDetailsElement)) throw new Error("Review file loading requires details");
-      if (event.type === "toggle" && !event.currentTarget.open) return;
-      const frame = event.currentTarget.querySelector<HTMLElement>(":scope > turbo-frame[data-src]")!;
-      if (!frame.hasAttribute("src")) frame.setAttribute("src", frame.dataset.src!);
+      requestReviewFile(event);
     }
 
     changeFileDisclosure(event: KeyboardEvent): void {
@@ -238,15 +253,9 @@ function createReviewController(Controller: StimulusControllerConstructor) {
     }
 
     private hydrateDiff(host: HTMLElement, FileDiffClass: FileDiffConstructor): void {
-      const script = host.querySelector<HTMLScriptElement>("script[data-review-model]")!;
-      // SAFETY: The server emits this private JSON script from a DiffModel and no external input can write it.
-      const model = JSON.parse(script.textContent ?? "") as DiffModel;
+      const { model, container, prerenderedHTML } = serverRenderedDiff(host);
       const path = host.dataset.reviewPath!;
       this.models.set(path, model);
-      const container = host.querySelector<HTMLElement>("diffs-container")!;
-      const shadowTemplate = container.querySelector<HTMLTemplateElement>(":scope > template[shadowrootmode]");
-      const prerenderedHTML = shadowTemplate?.innerHTML;
-      shadowTemplate?.remove();
       let instance: FileDiff<AnnotationMetadata>;
       instance = new FileDiffClass<AnnotationMetadata>({
         ...reviewDiffOptions,
@@ -561,10 +570,43 @@ function createReviewController(Controller: StimulusControllerConstructor) {
   };
 }
 
+function createDeletionReviewController(Controller: StimulusControllerConstructor) {
+  return class DeletionReviewController extends Controller {
+    static targets = ["diff"];
+    private instances: FileDiff<never>[] = [];
+    private hydratedHosts = new WeakSet<HTMLElement>();
+
+    requestFile(event: Event): void {
+      requestReviewFile(event);
+    }
+
+    diffTargetConnected(host: HTMLElement): void {
+      void this.hydrateHost(host);
+    }
+
+    disconnect(): void {
+      for (const instance of this.instances) instance.cleanUp();
+      this.instances = [];
+    }
+
+    private async hydrateHost(host: HTMLElement): Promise<void> {
+      if (this.hydratedHosts.has(host)) return;
+      const { FileDiff } = await import("@pierre/diffs");
+      if (!host.isConnected || this.hydratedHosts.has(host)) return;
+      this.hydratedHosts.add(host);
+      const { model, container, prerenderedHTML } = serverRenderedDiff(host);
+      const instance = new FileDiff<never>({ ...reviewDiffOptions, overflow: "wrap" });
+      instance.hydrate({ fileContainer: container, fileDiff: model.fileDiff, lineAnnotations: [], prerenderedHTML });
+      this.instances.push(instance);
+    }
+  };
+}
+
 export const reviewClientModule: WorkspaceClientModule = {
   id: "review",
   install({ application, Controller }) {
     application.register("review", createReviewController(Controller));
+    application.register("deletion-review", createDeletionReviewController(Controller));
   },
 };
 

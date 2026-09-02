@@ -7,6 +7,7 @@ import { reviewCommentsPrompt, type ReviewSide } from "../model.ts";
 import { collectReviewFile, collectReviewIndex, collectReviewStats, reviewSnippet, type ReviewIndex } from "./diff.ts";
 import { renderReviewBody, renderReviewFileDetails, renderReviewStatsFrame, renderReviewTitle, reviewBodyId, reviewFileFrameId, reviewReference, reviewWorkViewPresentation } from "./render.ts";
 import { isReviewDiffLayout, isReviewViewport, readReviewDiffLayouts, writeReviewDiffLayout } from "./settings.ts";
+import { clearDeletionReview, deletionReviewFileResponse, reviewDeletionReview } from "./deletion.ts";
 import { addReviewComment, deleteReviewComments, deleteReviewState, listReviewComments, reconcileReviewComments, remapReviewFileComments, reviewCommentsForPrompt, updateReviewComment, type ReviewComment } from "./state.ts";
 
 const reviewReferenceSchema = Type.Object({ type: Type.Literal("review") });
@@ -75,6 +76,7 @@ async function updateComment(workspaceId: string, id: string, request: Request):
 
 export const reviewWorkspaceModule: WorkspaceModule = {
   id: "review",
+  deletionReview: reviewDeletionReview,
   workViews: [{
     type: "review",
     parseReference(value: JsonValue) {
@@ -99,7 +101,9 @@ export const reviewWorkspaceModule: WorkspaceModule = {
         await writeReviewDiffLayout(viewport, value);
         return turboStreamResponse("");
       }
-      let match = url.pathname.match(/^\/workspaces\/([^/]+)\/review\/refresh$/);
+      let match = url.pathname.match(/^\/workspaces\/([^/]+)\/review\/deletion\/file$/);
+      if (match) return request.method === "GET" ? await deletionReviewFileResponse(decodeURIComponent(match[1]!), url) : textResponse("Method not allowed", 405);
+      match = url.pathname.match(/^\/workspaces\/([^/]+)\/review\/refresh$/);
       if (match) return request.method === "POST" ? await refreshedResponse(decodeURIComponent(match[1]!)) : textResponse("Method not allowed", 405);
       match = url.pathname.match(/^\/workspaces\/([^/]+)\/review\/stats$/);
       if (match) {
@@ -159,6 +163,7 @@ export const reviewWorkspaceModule: WorkspaceModule = {
       indexes.delete(workspaceId);
       reviewTitles.delete(workspaceId);
       deleteReviewState(workspaceId);
+      clearDeletionReview(workspaceId);
     });
   },
   attachToWorkspace({ workspaceId }) {
