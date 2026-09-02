@@ -1,5 +1,5 @@
 import { describe, expect, mock, test } from "bun:test";
-import { type AgentCompletionInput, agentCompletionRequest, agentComposerPrimaryAction, agentComposerTextStorageKey, agentConnectionShouldRun, fileCompletionPrefix, focusAgentPaneComposerForTyping, forwardAgentTerminalWheel, insertSlashCommand, messageNavigationDirection, navigatePromptHistory, promptTemplateHotkeyConflict, scrollMessageToTop, shouldPositionTranscriptAfterSnapshot, terminalOutputHasPrintableText, transcriptFollowingAfterScroll, workspaceSelectionScrollTop } from "../../src/client/agent-controllers.ts";
+import { type AgentCompletionInput, agentCompletionRequest, agentComposerPrimaryAction, agentComposerTextStorageKey, agentConnectionShouldRun, fileCompletionPrefix, forwardAgentTerminalWheel, insertSlashCommand, messageNavigationDirection, navigatePromptHistory, promptTemplateHotkeyConflict, scrollMessageToTop, shouldPositionTranscriptAfterSnapshot, terminalOutputHasPrintableText, transcriptFollowingAfterScroll, workspaceSelectionScrollTop } from "../../src/client/agent-controllers.ts";
 
 function input(value: string, cursor = value.length): AgentCompletionInput {
   return {
@@ -12,32 +12,6 @@ function input(value: string, cursor = value.length): AgentCompletionInput {
     },
   };
 }
-
-describe("AgentPaneComposer focus", () => {
-  test("focuses without scrolling when focus does not open a software keyboard", () => {
-    const focus = mock(() => {});
-    const pane = { querySelector: () => ({ focus }) };
-
-    expect(focusAgentPaneComposerForTyping(pane, false, true)).toBe(true);
-    expect(focus).toHaveBeenCalledWith({ preventScroll: true });
-  });
-
-  test("leaves the Agent pane unfocused when focus would open a software keyboard", () => {
-    const focus = mock(() => {});
-    const pane = { querySelector: () => ({ focus }) };
-
-    expect(focusAgentPaneComposerForTyping(pane, true, true)).toBe(false);
-    expect(focus).not.toHaveBeenCalled();
-  });
-
-  test("leaves the Agent pane unfocused when its document does not own focus", () => {
-    const focus = mock(() => {});
-    const pane = { querySelector: () => ({ focus }) };
-
-    expect(focusAgentPaneComposerForTyping(pane, false, false)).toBe(false);
-    expect(focus).not.toHaveBeenCalled();
-  });
-});
 
 describe("Agent pane residency", () => {
   test("runs live connections only while logically visible in a visible document", () => {

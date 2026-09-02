@@ -537,7 +537,6 @@ function createAgentPaneController(Controller: StimulusControllerConstructor) {
           if (consumed.has(input.value)) input.closest(".agent-chip")!.remove();
         });
       }
-      focusAgentPaneComposerForTyping(this.element);
     }
   };
 }
@@ -1737,26 +1736,8 @@ function agentPaneController(application: StimulusApplication, pane: HTMLElement
   return agentPane ? application.getControllerForElementAndIdentifier(agentPane, "agent-pane") as AgentPaneControllerInstance | null : null;
 }
 
-type AgentPaneComposerContainer = { querySelector(selectors: string): Pick<HTMLTextAreaElement, "focus"> | null };
-
-function focusAgentPaneComposer(pane?: AgentPaneComposerContainer | null): boolean {
-  const input = pane?.querySelector(".composer-input");
-  if (!input) return false;
-  input.focus({ preventScroll: true });
-  return true;
-}
-
-export function focusAgentPaneComposerForTyping(
-  pane?: AgentPaneComposerContainer | null,
-  focusOpensSoftwareKeyboard = focusLikelyOpensSoftwareKeyboard(),
-  documentFocused = document.hasFocus(),
-): boolean {
-  return documentFocused && !focusOpensSoftwareKeyboard && focusAgentPaneComposer(pane);
-}
-
 function agentConversationBecameVisible(application: StimulusApplication, pane: HTMLElement): void {
   agentPaneController(application, pane)?.becomeVisible();
-  focusAgentPaneComposerForTyping(pane);
 }
 
 function agentConversationNoLongerVisible(application: StimulusApplication, pane: HTMLElement): void {
@@ -1811,7 +1792,6 @@ export const agentClientModule: WorkspaceClientModule = {
 
     hooks.onBecomeVisible(({ pane }) => agentConversationBecameVisible(application, pane));
     hooks.onNoLongerVisible(({ pane }) => agentConversationNoLongerVisible(application, pane));
-    hooks.onFocusGroup(({ pane }) => focusAgentPaneComposerForTyping(pane));
     const openLaunchComposer = (): void => {
       const resident = document.querySelector<HTMLElement>(".workspace-detail-resident.visible");
       const projectId = resident ? resident.dataset.projectId : localStorage.getItem(recentWorkspaceProjectStorageKey);

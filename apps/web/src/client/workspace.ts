@@ -26,7 +26,6 @@ import {
   workspaceProxyUrl,
   type AtelierCableClient,
   type WorkspaceClientSurfaceVisibilityContext,
-  type WorkspaceClientFocusContext,
   type WorkspaceClientHooks,
   type WorkspaceClientControllerConstructor,
   type WorkspaceClientWorkspaceAppFrameContext,
@@ -68,7 +67,6 @@ const workspaceBusyViewsSchema = Type.Array(Type.String());
 class WorkspaceClientHookRegistry implements WorkspaceClientHooks {
   private readonly becomeVisibleHandlers: Array<(context: WorkspaceClientSurfaceVisibilityContext) => void> = [];
   private readonly noLongerVisibleHandlers: Array<(context: WorkspaceClientSurfaceVisibilityContext) => void> = [];
-  private readonly focusGroupHandlers: Array<(context: WorkspaceClientFocusContext) => boolean | void | Promise<boolean | void>> = [];
   private readonly workspaceAppFrameUrlHandlers: Array<(context: WorkspaceClientWorkspaceAppFrameContext) => void> = [];
   private readonly workspaceAppFrameRefreshHandlers: Array<(context: { appKey: string; frame: HTMLIFrameElement; load(): void }) => void> = [];
   private readonly paletteProviders = new Map<string, WorkspacePaletteProvider>();
@@ -76,7 +74,6 @@ class WorkspaceClientHookRegistry implements WorkspaceClientHooks {
 
   onBecomeVisible(handler: (context: WorkspaceClientSurfaceVisibilityContext) => void): void { this.becomeVisibleHandlers.push(handler); }
   onNoLongerVisible(handler: (context: WorkspaceClientSurfaceVisibilityContext) => void): void { this.noLongerVisibleHandlers.push(handler); }
-  onFocusGroup(handler: (context: WorkspaceClientFocusContext) => boolean | void | Promise<boolean | void>): void { this.focusGroupHandlers.push(handler); }
   onWorkspaceAppFrameUrl(handler: (context: WorkspaceClientWorkspaceAppFrameContext) => void): void { this.workspaceAppFrameUrlHandlers.push(handler); }
   onWorkspaceAppFrameRefresh(handler: (context: { appKey: string; frame: HTMLIFrameElement; load(): void }) => void): void { this.workspaceAppFrameRefreshHandlers.push(handler); }
   registerPaletteProvider(provider: WorkspacePaletteProvider): void { this.paletteProviders.set(provider.id, provider); }
@@ -89,13 +86,6 @@ class WorkspaceClientHookRegistry implements WorkspaceClientHooks {
 
   noLongerVisible(context: WorkspaceClientSurfaceVisibilityContext): void {
     this.noLongerVisibleHandlers.forEach((handler) => handler(context));
-  }
-
-  async focusGroup(context: WorkspaceClientFocusContext): Promise<boolean> {
-    for (const handler of this.focusGroupHandlers) {
-      if (await handler(context)) return true;
-    }
-    return false;
   }
 
   workspaceAppFrameUrl(context: WorkspaceClientWorkspaceAppFrameContext): void {

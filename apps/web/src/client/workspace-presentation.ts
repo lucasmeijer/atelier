@@ -211,14 +211,14 @@ export function createWorkspacePresentationController(
       if (!id) return;
       this.state.activeAgentId = id;
       this.state.phoneDestination = "agents";
-      this.persistAndApply({ focus: true });
+      this.persistAndApply();
     }
 
     selectAgentById(conversationId: string): void {
       if (!this.element.querySelector(`[data-workspace-pane-role="agent"][data-workspace-pane-id="${CSS.escape(conversationId)}"]`)) return;
       this.state.activeAgentId = conversationId;
       this.state.phoneDestination = "agents";
-      this.persistAndApply({ focus: true });
+      this.persistAndApply();
     }
 
     selectAgentSuccessor(closedConversationId: string, successorConversationId: string): void {
@@ -369,7 +369,7 @@ export function createWorkspacePresentationController(
         this.state.workPaneVisible = true;
       }
       this.moreOpen = false;
-      this.persistAndApply({ focus: true });
+      this.persistAndApply({ focus: destination.startsWith("work:") });
     }
 
     confirmClose(event: SubmitEvent): void {
@@ -380,7 +380,7 @@ export function createWorkspacePresentationController(
 
     toggleWorkPane(): void {
       this.state.workPaneVisible = !this.state.workPaneVisible;
-      this.persistAndApply({ focus: true });
+      this.persistAndApply({ focus: this.state.workPaneVisible });
     }
 
     toggleDrawer(event: Event): void {
@@ -683,10 +683,7 @@ export function createWorkspacePresentationController(
         this.element.querySelector<HTMLElement>(".fixed-shell-more-menu [role='menuitem']:not([hidden]), .fixed-shell-more-menu [role='menuitemradio']:not([hidden])")?.focus();
         return;
       }
-      const surface = this.visiblePanes().at(-1);
-      if (surface?.dataset.workspacePaneRole === "agent" && this.isPhone) return;
-      const composer = surface?.dataset.workspacePaneRole === "agent" ? surface.querySelector<HTMLElement>("textarea[name='text']") : undefined;
-      (composer ?? surface)?.focus({ preventScroll: true });
+      this.visiblePanes().at(-1)?.focus({ preventScroll: true });
     }
 
     private async initializeEmbeddedWorkSurface(): Promise<void> {

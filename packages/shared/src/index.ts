@@ -350,14 +350,6 @@ export interface WorkspaceClientSurfaceVisibilityContext {
   application: WorkspaceClientApplication;
 }
 
-export interface WorkspaceClientFocusContext {
-  workspaceId?: string;
-  surfaceKey?: string;
-  pane?: HTMLElement | null;
-  region: HTMLElement;
-  application: WorkspaceClientApplication;
-}
-
 export const phoneViewportMediaQuery = "(max-width: 700px)";
 
 type ComposerSubmitKey = "shortcut" | "software-keyboard";
@@ -430,7 +422,6 @@ export interface WorkspaceClientCommand {
 export interface WorkspaceClientHooks {
   onBecomeVisible(handler: (context: WorkspaceClientSurfaceVisibilityContext) => void): void;
   onNoLongerVisible(handler: (context: WorkspaceClientSurfaceVisibilityContext) => void): void;
-  onFocusGroup(handler: (context: WorkspaceClientFocusContext) => boolean | void | Promise<boolean | void>): void;
   onWorkspaceAppFrameUrl(handler: (context: WorkspaceClientWorkspaceAppFrameContext) => void): void;
   onWorkspaceAppFrameRefresh(handler: (context: { appKey: string; frame: HTMLIFrameElement; load(): void }) => void): void;
   registerPaletteProvider(provider: WorkspacePaletteProvider): void;

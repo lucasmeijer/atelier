@@ -199,11 +199,5 @@ export const workspaceTerminalClientModule: WorkspaceClientModule = {
       const terminalId = terminalIdFromViewKey(surfaceKey);
       if (terminalId) stopTerminal(workspaceId, terminalId);
     });
-    hooks.onFocusGroup(({ workspaceId, surfaceKey }) => {
-      const terminalId = surfaceKey ? terminalIdFromViewKey(surfaceKey) : undefined;
-      if (!workspaceId || !terminalId) return false;
-      void startTerminal(workspaceId, terminalId, { focus: true });
-      return true;
-    });
   },
 };
