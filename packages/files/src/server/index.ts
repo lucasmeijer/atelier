@@ -114,7 +114,10 @@ const filesWorkspaceModule: WorkspaceModule = {
     render: ({ workspaceId, reference }: { workspaceId: string; reference: FilesWorkViewReference }) => renderFilesWorkViewBody(workspaceId, filesView(workspaceId, reference.id)),
     close: ({ workspaceId, reference }: { workspaceId: string; reference: FilesWorkViewReference }) => closeFilesView(workspaceId, reference.id),
   }],
-  commands: [{ id: "files.create", execute: ({ workspaceId }) => ({ createdWorkView: { type: "files", id: createFilesView(workspaceId).id } }) }],
+  commands: [
+    { id: "files.create", execute: ({ workspaceId }) => ({ createdWorkView: { type: "files", id: createFilesView(workspaceId).id } }) },
+    { id: "files.open", execute: ({ workspaceId }) => ({ createdWorkView: { type: "files", id: listFilesViews(workspaceId)[0]!.id } }) },
+  ],
   staticFiles: { "/files.css": { url: new URL("../client/style.css", import.meta.url), contentType: "text/css; charset=utf-8" } },
   routes: [{
     async handle(request, url, context) {
@@ -151,7 +154,10 @@ const filesWorkspaceModule: WorkspaceModule = {
   attachToWorkspace({ workspaceId }) {
     return {
       workViews: listFilesViews(workspaceId).map(filesWorkViewPresentation),
-      commands: [{ id: "files.create", label: "New Files", scope: "workspace", surfaces: { ui: { placement: "work-launcher", label: "New Files" } } }],
+      commands: [
+        { id: "files.create", label: "New Files", scope: "workspace", surfaces: { ui: { placement: "work-launcher", label: "New Files" } } },
+        { id: "files.open", label: "Open Files", description: "Open the existing Files view, or create one if none exists.", scope: "workspace", surfaces: { shortcut: { defaultBinding: "Meta+Alt+KeyF" } } },
+      ],
       overlayHtml: [renderFilesRefreshSignal(workspaceId)],
     };
   },
