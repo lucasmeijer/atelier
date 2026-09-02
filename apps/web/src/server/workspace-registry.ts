@@ -426,7 +426,9 @@ export function createWorkspaceRegistry(options: WorkspaceRegistryOptions = {}):
     oldestAttentionWorkspace() {
       return [...entries.values()]
         .filter((entry) => this.hasAttention(entry.id))
-        .sort((a, b) => (this.workspaceAttentionAt(a.id)! - this.workspaceAttentionAt(b.id)!) || a.id.localeCompare(b.id))[0];
+        .sort((a, b) => Number(busyViewsByWorkspace.has(a.id)) - Number(busyViewsByWorkspace.has(b.id))
+          || (this.workspaceAttentionAt(a.id)! - this.workspaceAttentionAt(b.id)!)
+          || a.id.localeCompare(b.id))[0];
     },
 
     busyViews(id) {

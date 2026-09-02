@@ -322,6 +322,20 @@ describe("workspace registry", () => {
     expect(registry.oldestAttentionWorkspace()).toBeUndefined();
   });
 
+  test("oldestAttentionWorkspace prefers a non-busy Workspace over an older busy one", async () => {
+    let clock = 100;
+    const { registry } = setup({ now: () => ++clock });
+    await registry.seed([
+      { id: "busy", title: null },
+      { id: "ready", title: null },
+    ]);
+
+    registry.markViewAttention("busy", "agent:completed");
+    registry.setViewBusy("busy", "agent:running", true);
+    registry.markViewAttention("ready", "agent:completed");
+
+    expect(registry.oldestAttentionWorkspace()?.id).toBe("ready");
+  });
 
   test("remove deletes the entry, persisted activity, and emits removed + list change; unknown ids are a no-op", async () => {
     const { registry, captured, store } = setup({ activity: { a: 100 } });
