@@ -167,21 +167,6 @@ describe("Atelier browser behavior", () => {
     await page.close();
   });
 
-  test("restores a lazily loaded Review title from a cached stats frame", async () => {
-    const workspaceId = "cached-review-title";
-    const reviewBody = renderReviewBody(workspaceId, { phase: "ready", files: [] }, []);
-    const loadedStats = renderReviewStatsFrame(workspaceId, [{ path: "changed.ts", change: "modified", additions: 12, deletions: 4 }])
-      .replaceAll(/<turbo-stream[\s\S]*?<\/turbo-stream>/g, "");
-    const cachedBody = reviewBody.replace(/<turbo-frame id="review_cached-review-title_stats_frame"[\s\S]*?<\/turbo-frame>/, loadedStats);
-    const fixture = `<div class="workspace-detail-resident visible"><button data-work-view-key="review:workspace"><span class="action-item__label-text">Review</span></button><section class="fixed-shell-surface is-active" data-workspace-pane-role="work"><div class="fixed-shell-live-body">${cachedBody}</div></section></div>`;
-    const page = await newTestPage();
-    await page.route("http://atelier.test/", (route) => route.fulfill({ contentType: "text/html; charset=utf-8", body: `${fixture}<script type="module" src="${workspaceClientPath}"></script>` }));
-    await page.goto("http://atelier.test/");
-
-    await page.waitForFunction(() => document.querySelector('[data-work-view-key="review:workspace"] .action-item__label-text')?.textContent === "Review +12 −4");
-    await page.close();
-  });
-
   test("copies review comments into the agent composer or clipboard only on request", async () => {
     const comments: ReviewComment[] = [
       { id: "one", path: "apps/web/web.ts", side: "additions", startLine: 14, endLine: 14, snippet: "the selection the user made gets written here", body: "Why are we doing it like this over here" },

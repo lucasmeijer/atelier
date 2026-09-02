@@ -3,7 +3,7 @@ import { actionItemHtml } from "@atelier/design-system/action-item";
 import { destructiveConfirmationHtml } from "@atelier/design-system/destructive-confirmation";
 import { Icons } from "@atelier/design-system/icons";
 import { panelHtml } from "@atelier/design-system/panel";
-import { domId, escapeHtml, turboStream } from "@atelier/shared";
+import { domId, escapeHtml, turboStream, workspaceWorkViewLabelDomId } from "@atelier/shared";
 import type { WorkspaceDeletionState } from "./workspace-registry.ts";
 
 export type WorkViewAvailability =
@@ -50,6 +50,7 @@ export interface WorkPaneContribution {
   /** Stable, type-native serialized identity supplied by the resource adapter. */
   key: string;
   label: string;
+  labelHtml?: string;
   kind: "resource" | "contextual";
   attentionSequence?: number;
   availability: WorkViewAvailability;
@@ -376,9 +377,12 @@ function renderAvailability(view: WorkPaneContribution): string {
 
 function renderWorkViewSelector(workspaceId: string, view: WorkPaneContribution): string {
   const iconName = workViewIcon(view);
+  const textAttributesHtml = `id="${workspaceWorkViewLabelDomId(workspaceId, view.key)}"`;
   return actionItemHtml({
     kind: "compound",
-    label: { kind: "text", text: view.label },
+    label: view.labelHtml === undefined
+      ? { kind: "text", text: view.label, textAttributesHtml }
+      : { kind: "html", html: view.labelHtml, textAttributesHtml },
     leadingHtml: `<span class="fixed-shell-work-view-icon" data-icon="${iconName.toLowerCase()}">${Icons[iconName]}</span>`,
     trailingHtml: view.attentionSequence === undefined ? "" : '<i class="status-dot attention action-item__status" aria-label="Attention"></i>',
     container: {

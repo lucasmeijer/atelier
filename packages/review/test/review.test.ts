@@ -207,13 +207,13 @@ describe("Review presentation", () => {
 
     const body = renderReviewBody("workspace 1", index, []);
     expect(body).toContain('data-src="/workspaces/workspace%201/review/files/changed.ts"');
-    expect(body).toContain('src="/workspaces/workspace%201/review/stats" data-action="turbo:frame-load->review#syncTabTitle"');
+    expect(body).toContain('src="/workspaces/workspace%201/review/stats"');
     expect(body).toContain('aria-label="Loading change stats"');
     expect(body).not.toContain("<diffs-container>");
     expect(body).not.toContain("review-additions");
 
     const stats = renderReviewStatsFrame("workspace 1", await collectReviewStats(root, index));
-    expect(stats).toContain('<template data-review-target="tabTitle">Review <span class="review-additions">+1</span> <span class="review-deletions">−1</span></template>');
+    expect(stats).toContain('<turbo-stream action="update" target="work_view_label_workspace_1_review_workspace"><template>Review <span class="review-additions">+1</span> <span class="review-deletions">−1</span></template></turbo-stream>');
     expect(stats).toContain("review-additions\">+1");
     expect(stats).not.toContain("Loading change stats");
 

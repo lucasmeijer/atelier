@@ -247,7 +247,26 @@ describe("role-fixed Workspace presentation", () => {
     for (const [type, label] of [["terminal", "Terminal"], ["files", "Files"], ["browser", "Preview"], ["review", "Review"]]) {
       const tab = selectors.slice(selectors.indexOf(`data-work-view-key="${type}:`));
       expect(tab).toContain(`class="fixed-shell-work-view-icon" data-icon="${type}"`);
-      expect(tab.indexOf(`data-icon="${type}"`)).toBeLessThan(tab.indexOf(`class="action-item__label-text">${label}`));
+      expect(tab.indexOf(`data-icon="${type}"`)).toBeLessThan(tab.indexOf(`>${label}</span>`));
+    }
+  });
+
+  test("keeps module-owned dynamic Work view labels in structural selector updates", () => {
+    const review = {
+      key: "review:workspace",
+      label: "Review",
+      labelHtml: 'Review <span class="review-additions">+12</span> <span class="review-deletions">−4</span>',
+      kind: "contextual" as const,
+      availability: { phase: "live" as const },
+      bodyHtml: "<p>Review</p>",
+    };
+
+    const initial = renderWorkspacePresentation(fixture({ workViews: [review] }));
+    const afterAnotherViewCloses = workViewsTurboStream("workspace-1", [review], { removedKey: "terminal:one" });
+
+    for (const html of [initial, afterAnotherViewCloses]) {
+      expect(html).toContain('id="work_view_label_workspace-1_review_workspace"');
+      expect(html).toContain('Review <span class="review-additions">+12</span> <span class="review-deletions">−4</span>');
     }
   });
 

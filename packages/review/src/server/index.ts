@@ -5,13 +5,14 @@ import { Type, type Static } from "typebox";
 import { Value } from "typebox/value";
 import { reviewCommentsPrompt, type ReviewSide } from "../model.ts";
 import { collectReviewFile, collectReviewIndex, collectReviewStats, reviewSnippet, type ReviewIndex } from "./diff.ts";
-import { renderReviewBody, renderReviewFileDetails, renderReviewStatsFrame, reviewBodyId, reviewFileFrameId, reviewReference, reviewWorkViewPresentation } from "./render.ts";
+import { renderReviewBody, renderReviewFileDetails, renderReviewStatsFrame, renderReviewTitle, reviewBodyId, reviewFileFrameId, reviewReference, reviewWorkViewPresentation } from "./render.ts";
 import { isReviewDiffLayout, readReviewDiffLayout, writeReviewDiffLayout } from "./settings.ts";
 import { addReviewComment, deleteReviewComments, deleteReviewState, listReviewComments, reconcileReviewComments, remapReviewFileComments, reviewCommentsForPrompt, updateReviewComment, type ReviewComment } from "./state.ts";
 
 const reviewReferenceSchema = Type.Object({ type: Type.Literal("review") });
 type ReviewReference = Static<typeof reviewReferenceSchema>;
 const indexes = new Map<string, ReviewIndex>();
+const reviewTitles = new Map<string, string>();
 
 function textResponse(message: string, status: number): Response {
   return new Response(message, { status, headers: { "content-type": "text/plain; charset=utf-8", "cache-control": "no-store" } });
@@ -105,6 +106,7 @@ export const reviewWorkspaceModule: WorkspaceModule = {
         const workspaceId = decodeURIComponent(match[1]!);
         const { index } = await current(workspaceId);
         const stats = await collectReviewStats(workspaceWorkHostPath(workspaceId), index);
+        reviewTitles.set(workspaceId, renderReviewTitle(stats));
         return htmlResponse(renderReviewStatsFrame(workspaceId, stats));
       }
       match = url.pathname.match(/^\/workspaces\/([^/]+)\/review\/files\/([^/]+)$/);
@@ -154,12 +156,14 @@ export const reviewWorkspaceModule: WorkspaceModule = {
     });
     context.onWorkspaceRemoved((workspaceId) => {
       indexes.delete(workspaceId);
+      reviewTitles.delete(workspaceId);
       deleteReviewState(workspaceId);
     });
   },
-  attachToWorkspace() {
+  attachToWorkspace({ workspaceId }) {
+    const workView = { ...reviewWorkViewPresentation, labelHtml: reviewTitles.get(workspaceId) };
     return {
-      workViews: [reviewWorkViewPresentation],
+      workViews: [workView],
       commands: [{ id: "review.open", label: "Review", scope: "workspace", surfaces: { ui: { placement: "work-launcher", label: "Review" } } }],
     };
   },

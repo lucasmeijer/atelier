@@ -95,6 +95,8 @@ export interface WorkspaceWorkViewPresentation {
   reference: WorkspaceWorkViewReference;
   sourceKey: string;
   label: string;
+  /** Trusted, server-rendered label content for Work views with cached dynamic summaries. */
+  labelHtml?: string;
   kind: "resource" | "contextual";
   /** Whether this view joins the initial presentation when the Workspace has no saved view layout. */
   initiallyOpen?: boolean;
@@ -111,6 +113,10 @@ export type WorkspaceWorkViewAvailability =
   | { phase: "live" }
   | { phase: "reconnecting"; detail?: string }
   | { phase: "unavailable"; detail: string; recoveryHtml?: string };
+
+export function workspaceWorkViewLabelDomId(workspaceId: string, key: string): string {
+  return domId("work_view_label", workspaceId, key);
+}
 
 export interface WorkspaceModuleWorkViewAdapter<Reference extends WorkspaceWorkViewReference = WorkspaceWorkViewReference> {
   type: Reference["type"];
