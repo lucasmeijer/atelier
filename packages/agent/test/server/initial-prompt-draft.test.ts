@@ -1,9 +1,8 @@
 import { afterEach, describe, expect, test } from "bun:test";
-import { mkdtemp, rm } from "node:fs/promises";
+import { mkdir, mkdtemp, rm, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
-import { join } from "node:path";
+import { dirname, join } from "node:path";
 import {
-  acceptInitialPromptDraft,
   readInitialPromptDraft,
   removeInitialPromptDraft,
   removeWorkspaceInitialPromptDrafts,
@@ -36,44 +35,38 @@ describe("initial Agent prompt drafts", () => {
     const workspaceId = "workspace-1";
     const firstId = "53fc77b7-dc19-42d5-b200-2e134ec67529";
     const secondId = "268604ac-d16a-4a4a-ab1e-1ed3ca54687d";
-    await stageInitialPrompt(workspaceId, firstId, "Configure this project", "suggestion");
+    await stageInitialPrompt(workspaceId, firstId, "Wait for a model");
 
-    expect(await readInitialPromptDraft(workspaceId, firstId)).toEqual({ prompt: "Configure this project", accepted: false });
+    expect(await readInitialPromptDraft(workspaceId, firstId)).toEqual({ prompt: "Wait for a model" });
     expect(await readInitialPromptDraft(workspaceId, secondId)).toBeUndefined();
-    await acceptInitialPromptDraft(workspaceId, firstId);
 
     const firstAgent = { workspaceId, conversationId: firstId, label: "Agent 1", title: "First", path: "/tmp/first.jsonl" };
     const secondAgent = { workspaceId, conversationId: secondId, label: "Agent 2", title: "Second", path: "/tmp/second.jsonl" };
     const firstRender = await renderAgentPane({ workspaceId, conversationId: firstId }, firstAgent, emptyPaneState);
     const reconstructed = await renderAgentPane({ workspaceId, conversationId: firstId }, firstAgent, emptyPaneState);
     const secondRender = await renderAgentPane({ workspaceId, conversationId: secondId }, secondAgent, emptyPaneState);
-    expect(firstRender).toContain("Configure this project");
-    expect(reconstructed).toContain("Configure this project");
-    expect(secondRender).not.toContain("Configure this project");
+    expect(firstRender).toContain(">Wait for a model</textarea>");
+    expect(reconstructed).toContain(">Wait for a model</textarea>");
+    expect(secondRender).not.toContain("Wait for a model");
   });
 
-  test("puts an accepted draft directly into the Agent composer", async () => {
+  test("discards a project-preparation suggestion left by an older server", async () => {
     await useTemporaryDataDir();
-    const workspaceId = "workspace-1";
-    const conversationId = "53fc77b7-dc19-42d5-b200-2e134ec67529";
-    await stageInitialPrompt(workspaceId, conversationId, "Wait for a model", "composer");
+    const path = join(temporaryDataDir!, "agent-initial-prompt-drafts", "workspace-1", "agent-a.json");
+    await mkdir(dirname(path), { recursive: true });
+    await writeFile(path, JSON.stringify({ prompt: "Prepare this project", accepted: false }));
 
-    const agent = { workspaceId, conversationId, label: "Agent 1", title: "First", path: "/tmp/first.jsonl" };
-    const html = await renderAgentPane({ workspaceId, conversationId }, agent, emptyPaneState);
-
-    expect(await readInitialPromptDraft(workspaceId, conversationId)).toEqual({ prompt: "Wait for a model", accepted: true });
-    expect(html).toContain(">Wait for a model</textarea>");
-    expect(html).not.toContain("initial-prompt-draft/accept");
+    expect(await readInitialPromptDraft("workspace-1", "agent-a")).toBeUndefined();
   });
 
   test("removes one conversation draft without consuming its sibling", async () => {
     await useTemporaryDataDir();
-    await stageInitialPrompt("workspace-1", "agent-a", "A", "suggestion");
-    await stageInitialPrompt("workspace-1", "agent-b", "B", "suggestion");
+    await stageInitialPrompt("workspace-1", "agent-a", "A");
+    await stageInitialPrompt("workspace-1", "agent-b", "B");
 
     await removeInitialPromptDraft("workspace-1", "agent-a");
     expect(await readInitialPromptDraft("workspace-1", "agent-a")).toBeUndefined();
-    expect(await readInitialPromptDraft("workspace-1", "agent-b")).toEqual({ prompt: "B", accepted: false });
+    expect(await readInitialPromptDraft("workspace-1", "agent-b")).toEqual({ prompt: "B" });
 
     await removeWorkspaceInitialPromptDrafts("workspace-1");
     expect(await readInitialPromptDraft("workspace-1", "agent-b")).toBeUndefined();

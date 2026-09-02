@@ -274,7 +274,7 @@ export type AgentServiceTier = "default" | "priority";
 
 export interface AgentWorkspaceParameters {
   initialPrompt?: string;
-  initialPromptMode?: "suggestion" | "composer";
+  initialPromptMode?: "composer";
   model?: string;
   thinkingLevel?: string;
   serviceTier?: AgentServiceTier;

@@ -2,10 +2,11 @@ import { readJsonObject, requestAcceptsJson } from "@atelier/core";
 import { agentAttachmentDraftId, deliverAttachmentDraft, removeStagedAttachments } from "./attachment-drafts.ts";
 import { maybeNameAgentFromPrompt, renameAgentFromContext, setAgentSessionTitle } from "./agent-title-suggestion.ts";
 import { turboStreamResponse } from "./html.ts";
-import { removeInitialPromptAfterAcceptedAction } from "./initial-prompt-routes.ts";
+import { removeInitialPromptDraft } from "./initial-prompt-draft.ts";
 import { expandPromptTemplate, parseAgentSessionNameCommand, parseCompactCommand } from "./prompt-templates.ts";
 import { matchRoute, requireAgentConversation, resolveAgentRuntime, type AgentRouteHandler, type AgentRouteOptions } from "./route-support.ts";
 import type { SubmitMode } from "./runtime.ts";
+
 export const handleMessageRequest: AgentRouteHandler = async (request, url, options) => {
   const params = matchRoute(url, /^\/workspaces\/([^/]+)\/agents\/([^/]+)\/messages$/);
   if (!params || request.method !== "POST") return undefined;
@@ -20,21 +21,21 @@ async function submitMessage(workspaceId: string, conversationId: string, reques
   if (text.trim() === "/new") {
     const runtime = await resolveAgentRuntime(agent, options);
     await runtime.newSession();
-    const promptRemoved = await removeInitialPromptAfterAcceptedAction(request, options, workspaceId, conversationId);
-    return json ? Response.json({ agent: { conversationId, state: "idle" } }) : turboStreamResponse(promptRemoved);
+    await removeInitialPromptDraft(workspaceId, conversationId);
+    return json ? Response.json({ agent: { conversationId, state: "idle" } }) : turboStreamResponse("");
   }
   if (text.trim() === "/park") {
     await options.events?.emit("workspace_park_requested", { workspaceId });
-    const promptRemoved = await removeInitialPromptAfterAcceptedAction(request, options, workspaceId, conversationId);
-    return json ? Response.json({ agent: { conversationId, state: "idle" }, workspace: { id: workspaceId, parked: true } }) : turboStreamResponse(promptRemoved);
+    await removeInitialPromptDraft(workspaceId, conversationId);
+    return json ? Response.json({ agent: { conversationId, state: "idle" }, workspace: { id: workspaceId, parked: true } }) : turboStreamResponse("");
   }
   const compactCommand = parseCompactCommand(text);
   if (compactCommand) {
     const runtime = await resolveAgentRuntime(agent, options);
     await options.events?.emit("workspace_user_activity", { workspaceId });
     await runtime.compact(compactCommand.customInstructions);
-    const promptRemoved = await removeInitialPromptAfterAcceptedAction(request, options, workspaceId, conversationId);
-    return json ? Response.json({ agent: { conversationId, state: "idle", compacted: true } }) : turboStreamResponse(promptRemoved);
+    await removeInitialPromptDraft(workspaceId, conversationId);
+    return json ? Response.json({ agent: { conversationId, state: "idle", compacted: true } }) : turboStreamResponse("");
   }
   const nameCommand = parseAgentSessionNameCommand(text);
   if (nameCommand) {
@@ -44,8 +45,8 @@ async function submitMessage(workspaceId: string, conversationId: string, reques
       const runtime = await resolveAgentRuntime(agent, options);
       renameAgentFromContext(agent, runtime.userMessages(), { events: options.events, agentModel: runtime.currentModel() });
     }
-    const promptRemoved = await removeInitialPromptAfterAcceptedAction(request, options, workspaceId, conversationId);
-    return json ? Response.json({ agent: { conversationId, state: "idle" } }) : turboStreamResponse(promptRemoved);
+    await removeInitialPromptDraft(workspaceId, conversationId);
+    return json ? Response.json({ agent: { conversationId, state: "idle" } }) : turboStreamResponse("");
   }
 
   const mode: SubmitMode = (json?.mode ?? form?.get("mode")) === "steer" ? "steer" : "send";
@@ -73,9 +74,9 @@ async function submitMessage(workspaceId: string, conversationId: string, reques
   }
   await removeStagedAttachments(attachmentDraft, attachmentIds);
   if (reviewCommentIds.length) await options.events?.emit("workspace_agent_prompt_submitted", { workspaceId, reviewCommentIds });
-  const promptRemoved = await removeInitialPromptAfterAcceptedAction(request, options, workspaceId, conversationId);
+  await removeInitialPromptDraft(workspaceId, conversationId);
   const acceptedHeaders = { "x-atelier-attachment-draft-consumed": "true" };
   return json
     ? Response.json({ agent: { conversationId, state: "running" } }, { status: 202, headers: acceptedHeaders })
-    : turboStreamResponse(promptRemoved, { headers: acceptedHeaders });
+    : turboStreamResponse("", { headers: acceptedHeaders });
 }

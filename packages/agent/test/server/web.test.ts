@@ -3,14 +3,11 @@ import { mkdtemp, rm } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { createAtelierEventBus } from "@atelier/core";
-import type { WorkspaceAgentViewInvalidatedEvent } from "@atelier/workspace";
-import { atelierCableConnectionHeader } from "@atelier/shared";
 import { createNextWorkspaceAgentConversation, ensureDefaultWorkspaceAgentConversation, listWorkspaceAgentConversations } from "../../src/server/session-store.ts";
 import { createWorkspaceAgentTabProvider, workspaceAgentTabProvider } from "../../src/server/web.ts";
 import { handleAgentRequest } from "../../src/server/routes.ts";
 import { agentAttachmentDraftId, findStagedAttachment, stageAttachment } from "../../src/server/attachment-drafts.ts";
 import { readInitialPromptDraft, stageInitialPrompt } from "../../src/server/initial-prompt-draft.ts";
-import { ids } from "../../src/server/render.ts";
 import { getWorkspaceAgentRuntime } from "../../src/server/runtime.ts";
 
 function deferred() {
@@ -140,28 +137,6 @@ describe("Workspace Agent-tab provider", () => {
     expect((await listWorkspaceAgentConversations("workspace-1")).map(({ conversationId }) => conversationId)).toEqual([second.conversationId]);
   });
 
-  test("browser-facing Agent actions resolve the immutable conversation id, not its label", async () => {
-    await dataDir();
-    const conversation = await ensureDefaultWorkspaceAgentConversation("workspace-1");
-    const events = createAtelierEventBus();
-    const invalidations: WorkspaceAgentViewInvalidatedEvent[] = [];
-    events.on("workspace_agent_view_invalidated", (event) => {
-      invalidations.push(event);
-    });
-    const request = (identity: string) => new Request(`http://atelier.test/workspaces/workspace-1/agents/${encodeURIComponent(identity)}/initial-prompt-draft/decline`, { method: "POST" });
-
-    expect(handleAgentRequest(request(conversation.label), new URL(request(conversation.label).url), { events })).rejects.toMatchObject({ code: "agent_conversation_not_found" });
-    const response = await handleAgentRequest(request(conversation.conversationId), new URL(request(conversation.conversationId).url), { events });
-
-    expect(response?.status).toBe(200);
-    expect(response?.headers.get("content-type")).toContain("text/vnd.turbo-stream.html");
-    expect(invalidations).toEqual([{
-      workspaceId: "workspace-1",
-      conversationId: conversation.conversationId,
-      html: expect.stringContaining(`action="remove" target="${ids.initialPromptSuggestion({ workspaceId: "workspace-1", conversationId: conversation.conversationId })}"`),
-    }]);
-  });
-
   test("Agent file completions reject a display label in place of the immutable conversation id", async () => {
     await dataDir();
     const conversation = await ensureDefaultWorkspaceAgentConversation("workspace-1");
@@ -245,18 +220,13 @@ describe("Workspace Agent-tab provider", () => {
     expect(renamed).toEqual(["investigate-name-command"]);
   });
 
-  test("accepts a message with the exact Agent draft and removes the prompt suggestion in the response", async () => {
+  test("accepts a message with the exact Agent draft and consumes the initial composer text", async () => {
     await dataDir();
     const conversation = await ensureDefaultWorkspaceAgentConversation("workspace-1");
     const draftId = agentAttachmentDraftId("workspace-1", conversation.conversationId);
     const attachment = await stageAttachment(draftId, new File(["image"], "reference.png", { type: "image/png" }));
-    await stageInitialPrompt("workspace-1", conversation.conversationId, "Suggested task", "suggestion");
-    const events = createAtelierEventBus();
-    const invalidations: WorkspaceAgentViewInvalidatedEvent[] = [];
+    await stageInitialPrompt("workspace-1", conversation.conversationId, "Draft task");
     const submissions: Array<{ text: string; imageCount: number }> = [];
-    events.on("workspace_agent_view_invalidated", (event) => {
-      invalidations.push(event);
-    });
     const runtime = {
       async submit(text: string, options: { images?: unknown[] }): Promise<void> {
         submissions.push({ text, imageCount: options.images?.length ?? 0 });
@@ -266,15 +236,11 @@ describe("Workspace Agent-tab provider", () => {
     };
     const request = new Request(`http://atelier.test/workspaces/workspace-1/agents/${conversation.conversationId}/messages`, {
       method: "POST",
-      headers: {
-        accept: "text/vnd.turbo-stream.html",
-        [atelierCableConnectionHeader]: "origin-connection",
-      },
+      headers: { accept: "text/vnd.turbo-stream.html" },
       body: new URLSearchParams({ attachmentDraft: draftId, attachment: attachment.id }),
     });
 
     const response = await handleAgentRequest(request, new URL(request.url), {
-      events,
       // SAFETY: This focused route test supplies exactly the runtime methods exercised by message acceptance.
       getRuntime: async () => runtime as never,
     });
@@ -282,16 +248,10 @@ describe("Workspace Agent-tab provider", () => {
 
     expect(response?.status).toBe(200);
     expect(response?.headers.get("x-atelier-attachment-draft-consumed")).toBe("true");
-    expect(html).toContain(`action="remove" target="${ids.initialPromptSuggestion({ workspaceId: "workspace-1", conversationId: conversation.conversationId })}"`);
+    expect(html).toBe("");
     expect(submissions).toEqual([{ text: "", imageCount: 1 }]);
     expect(await readInitialPromptDraft("workspace-1", conversation.conversationId)).toBeUndefined();
     expect(await findStagedAttachment(draftId, attachment.id)).toBeUndefined();
-    expect(invalidations).toEqual([{
-      workspaceId: "workspace-1",
-      conversationId: conversation.conversationId,
-      exceptConnectionId: "origin-connection",
-      html: expect.stringContaining(`action="remove" target="${ids.initialPromptSuggestion({ workspaceId: "workspace-1", conversationId: conversation.conversationId })}"`),
-    }]);
   });
 
   test("failed prompt preflight retains the durable composer draft and staged attachments", async () => {
@@ -299,7 +259,7 @@ describe("Workspace Agent-tab provider", () => {
     const conversation = await ensureDefaultWorkspaceAgentConversation("workspace-1");
     const draftId = agentAttachmentDraftId("workspace-1", conversation.conversationId);
     const attachment = await stageAttachment(draftId, new File(["image"], "reference.png", { type: "image/png" }));
-    await stageInitialPrompt("workspace-1", conversation.conversationId, "Suggested task", "suggestion");
+    await stageInitialPrompt("workspace-1", conversation.conversationId, "Draft task");
     let suggestedTitle = false;
     const runtime = {
       async submit(): Promise<void> {
@@ -321,7 +281,7 @@ describe("Workspace Agent-tab provider", () => {
     })).rejects.toThrow("model authentication unavailable");
 
     expect(suggestedTitle).toBe(false);
-    expect(await readInitialPromptDraft("workspace-1", conversation.conversationId)).toEqual({ prompt: "Suggested task", accepted: false });
+    expect(await readInitialPromptDraft("workspace-1", conversation.conversationId)).toEqual({ prompt: "Draft task" });
     expect(await findStagedAttachment(draftId, attachment.id)).toBeDefined();
   });
 

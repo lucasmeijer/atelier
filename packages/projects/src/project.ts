@@ -70,7 +70,6 @@ export interface ProjectRecord extends ProjectSummary {
   secrets?: StoredProjectSecret[];
   sshKeys?: StoredProjectSshKey[];
   environment?: ProjectEnvironmentVariable[];
-  neverOfferPreparation?: boolean;
 }
 
 export interface ProjectListResult {
@@ -130,7 +129,6 @@ const projectStoreSchema = Type.Object({
       encryptedPrivateKey: Type.String(),
     }))),
     environment: Type.Optional(Type.Array(projectEnvironmentVariableSchema)),
-    neverOfferPreparation: Type.Optional(Type.Boolean()),
   })),
 });
 

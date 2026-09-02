@@ -29,12 +29,11 @@ async function initializeWorkspaceAgent(workspaceId: string, context: AgentWorks
   if (thinkingLevel) await runtime.setThinkingLevel(thinkingLevel);
   if (context.serviceTier) await runtime.setServiceTier(context.serviceTier);
 
-  const initialPromptMode = context.initialPromptMode;
-  if (initialPromptMode) {
+  if (context.initialPromptMode === "composer") {
     const prompt = context.initialPrompt ?? "";
-    if (prompt) await stageInitialPrompt(workspaceId, agent.conversationId, prompt, initialPromptMode);
+    if (prompt) await stageInitialPrompt(workspaceId, agent.conversationId, prompt);
     const attachmentDraft = context.attachmentDraft ?? "";
-    if (initialPromptMode === "composer" && validDraftId(attachmentDraft)) await moveAttachmentDraft(attachmentDraft, agentAttachmentDraftId(workspaceId, agent.conversationId));
+    if (validDraftId(attachmentDraft)) await moveAttachmentDraft(attachmentDraft, agentAttachmentDraftId(workspaceId, agent.conversationId));
     return;
   }
 

@@ -63,7 +63,6 @@ export const ids = {
   abortForm: (ctx: AgentRenderContext) => `${prefix(ctx)}_abort_form`,
   attachRow: (ctx: AgentRenderContext) => `${prefix(ctx)}_attach`,
   input: (ctx: AgentRenderContext) => `${prefix(ctx)}_input`,
-  initialPromptSuggestion: (ctx: AgentRenderContext) => `${prefix(ctx)}_initial_prompt_suggestion`,
   draftAttachRow: (draftId: string) => domId("agent_draft_attach", draftId),
   draftChip: (draftId: string, attachmentId: string) => domId("agent_draft_chip", draftId, attachmentId),
   notices: (ctx: AgentRenderContext) => `${prefix(ctx)}_notices`,
@@ -71,14 +70,6 @@ export const ids = {
 
 function agentPath(ctx: AgentRenderContext, suffix: string): string {
   return `/workspaces/${encodeURIComponent(ctx.workspaceId)}/agents/${encodeURIComponent(ctx.conversationId)}${suffix}`;
-}
-
-function initialPromptDraftAction(ctx: AgentRenderContext, decision: "accept" | "decline" | "never", label: string, primary = false): string {
-  return `<form method="post" action="${agentPath(ctx, `/initial-prompt-draft/${decision}`)}" data-turbo="true"><button class="button ${primary ? "primary" : "secondary"}" type="submit">${label}</button></form>`;
-}
-
-function renderInitialPromptDraftSuggestion(ctx: AgentRenderContext): string {
-  return `<aside class="agent-project-preparation-notice" id="${ids.initialPromptSuggestion(ctx)}"><div><b>This project does not have Atelier configuration yet.</b><span>Shall I craft a prompt you can use to get the project configured for remote development and the Atelier environment? Nothing will be committed or pushed without your approval.</span></div><div class="agent-project-preparation-actions">${initialPromptDraftAction(ctx, "never", "Never ask again for this project")}${initialPromptDraftAction(ctx, "decline", "Not right now")}${initialPromptDraftAction(ctx, "accept", "Yes please", true)}</div></aside>`;
 }
 
 function markdown(ctx: AgentRenderContext, text: string): string {
@@ -169,7 +160,7 @@ async function renderAgentPaneFrame(ctx: AgentRenderContext, agent: WorkspaceAge
   const draftId = agentAttachmentDraftId(ctx.workspaceId, ctx.conversationId);
   const attachments = await listStagedAttachments(draftId);
   const initialPromptDraft = await readInitialPromptDraft(ctx.workspaceId, ctx.conversationId);
-  const initialText = initialPromptDraft?.accepted ? initialPromptDraft.prompt : undefined;
+  const initialText = initialPromptDraft?.prompt;
   const attachRowId = ids.attachRow(ctx);
   const uploadUrl = `/agent-attachment-drafts/${encodeURIComponent(draftId)}/attachments?row=${encodeURIComponent(attachRowId)}`;
   return `<section id="${domId("agent_pane", ctx.workspaceId, agent.conversationId)}" class="agent-conversation-pane" data-agent-conversation-source="${escapeHtml(key)}">
@@ -186,7 +177,6 @@ async function renderAgentPaneFrame(ctx: AgentRenderContext, agent: WorkspaceAge
         attachments,
         placeholder: "Write your prompt here",
         initialText,
-        suggestionHtml: initialPromptDraft && !initialPromptDraft.accepted ? renderInitialPromptDraftSuggestion(ctx) : undefined,
         formTarget: true,
         includePaneActions: true,
         busy: state.busy,
@@ -211,7 +201,6 @@ interface SharedComposerRenderOptions {
   placeholder: string;
   initialText?: string;
   inputId?: string;
-  suggestionHtml?: string;
   formTarget?: boolean;
   includePaneActions?: boolean;
   busy?: boolean;
@@ -274,7 +263,6 @@ async function renderSharedComposer(options: SharedComposerRenderOptions): Promi
   return `<div class="composer ${options.kind === "agent-pane" ? "agent-pane-composer" : "launch-composer"}"${promptAttrs ? ` ${promptAttrs}` : ""}>
         ${composerOverlays ? `<div class="agent-pane-composer-overlays">${composerOverlays}</div>` : ""}
         <div class="composer-surface">
-          ${options.suggestionHtml ?? ""}
           <form id="${escapeHtml(formId)}" method="post" action="${escapeHtml(options.action)}"${turboAttr}${targetAttrs} data-action="${escapeHtml(formActions)}">
             <input type="hidden" name="attachmentDraft" value="${escapeHtml(draftId)}">
             <div class="agent-attach-row" id="${attachRowId}" data-agent-attachments-target="row">${(options.attachments ?? []).map((attachment) => renderAttachmentChip(attachment, draftId)).join("")}</div>

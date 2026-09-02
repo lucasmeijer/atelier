@@ -4,14 +4,9 @@ import { atelierDataPath, getAtelierRuntimeContext } from "@atelier/core";
 import { Type } from "typebox";
 import { Value } from "typebox/value";
 
-export interface InitialPromptDraft {
-  prompt: string;
-  accepted: boolean;
-}
-
 const initialPromptDraftSchema = Type.Object({
   prompt: Type.String(),
-  accepted: Type.Boolean(),
+  accepted: Type.Optional(Type.Boolean()),
 });
 
 function initialPromptDraftWorkspacePath(workspaceId: string): string {
@@ -22,31 +17,24 @@ function initialPromptDraftPath(workspaceId: string, conversationId: string): st
   return `${initialPromptDraftWorkspacePath(workspaceId)}/${conversationId}.json`;
 }
 
-async function persistInitialPromptDraft(workspaceId: string, conversationId: string, draft: InitialPromptDraft): Promise<void> {
+export async function stageInitialPrompt(workspaceId: string, conversationId: string, prompt: string): Promise<void> {
   const path = initialPromptDraftPath(workspaceId, conversationId);
   await mkdir(dirname(path), { recursive: true });
-  await writeFile(path, `${JSON.stringify(draft)}\n`, "utf8");
+  await writeFile(path, `${JSON.stringify({ prompt })}\n`, "utf8");
 }
 
-export async function stageInitialPrompt(workspaceId: string, conversationId: string, prompt: string, destination: "suggestion" | "composer"): Promise<void> {
-  await persistInitialPromptDraft(workspaceId, conversationId, { prompt, accepted: destination === "composer" });
-}
-
-export async function readInitialPromptDraft(workspaceId: string, conversationId: string): Promise<InitialPromptDraft | undefined> {
+export async function readInitialPromptDraft(workspaceId: string, conversationId: string): Promise<{ prompt: string } | undefined> {
   try {
-    return Value.Parse(initialPromptDraftSchema, JSON.parse(await readFile(initialPromptDraftPath(workspaceId, conversationId), "utf8")));
+    const draft = Value.Parse(initialPromptDraftSchema, JSON.parse(await readFile(initialPromptDraftPath(workspaceId, conversationId), "utf8")));
+    if (draft.accepted === false) {
+      await removeInitialPromptDraft(workspaceId, conversationId);
+      return undefined;
+    }
+    return { prompt: draft.prompt };
   } catch (error) {
     if (error instanceof Error && "code" in error && error.code === "ENOENT") return undefined;
     throw error;
   }
-}
-
-export async function acceptInitialPromptDraft(workspaceId: string, conversationId: string): Promise<InitialPromptDraft> {
-  const draft = await readInitialPromptDraft(workspaceId, conversationId);
-  if (!draft) throw new Error(`initial prompt draft not found for Agent ${conversationId} in workspace ${workspaceId}`);
-  const accepted = { ...draft, accepted: true };
-  await persistInitialPromptDraft(workspaceId, conversationId, accepted);
-  return accepted;
 }
 
 export async function removeInitialPromptDraft(workspaceId: string, conversationId: string): Promise<void> {
