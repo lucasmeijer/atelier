@@ -63,6 +63,7 @@ window.Turbo = Turbo;
 
 const { Application, Controller } = window.Stimulus;
 const workspaceBusyViewsSchema = Type.Array(Type.String());
+const workspaceAttentionTokensSchema = Type.Record(Type.String(), Type.Integer({ minimum: 1 }));
 
 class WorkspaceClientHookRegistry implements WorkspaceClientHooks {
   private readonly becomeVisibleHandlers: Array<(context: WorkspaceClientSurfaceVisibilityContext) => void> = [];
@@ -1820,8 +1821,17 @@ class WorkspaceResidencyController extends Controller {
     const workspaceId = this.visibleWorkspaceId();
     if (!workspaceId || workspaceId !== this.intendedWorkspaceId) return;
     const row = document.querySelector<HTMLElement>(`.fixed-shell-workspace-row[data-workspace-entry-id="${CSS.escape(workspaceId)}"]`);
-    const serializedTokens = row?.dataset.workspaceAttentionTokens;
+    let serializedTokens = row?.dataset.workspaceAttentionTokens;
     if (!serializedTokens) return;
+    if (window.matchMedia(phoneViewportMediaQuery).matches) {
+      const tokens = Value.Parse(workspaceAttentionTokensSchema, JSON.parse(serializedTokens));
+      const destination = document.querySelector<HTMLElement>(".workspace-detail-resident.visible .fixed-workspace-presentation")?.dataset.phoneDestination;
+      const visibleWorkViewKey = destination?.startsWith("work:") ? destination.slice(5) : undefined;
+      for (const key of Object.keys(tokens)) {
+        if (key !== "workspace" && !key.startsWith("agent:") && key !== visibleWorkViewKey) delete tokens[key];
+      }
+      serializedTokens = JSON.stringify(tokens);
+    }
     // The server acknowledges only these exact occurrences, so newer Attention survives a delayed request.
     void fetch(`/workspaces/${encodeURIComponent(workspaceId)}/attention/acknowledge?attentionTokens=${encodeURIComponent(serializedTokens)}`, { method: "POST" });
   }

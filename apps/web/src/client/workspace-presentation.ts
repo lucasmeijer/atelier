@@ -252,7 +252,7 @@ export function createWorkspacePresentationController(
 
     intendWorkView(key: string): void {
       const selector = this.element.querySelector<HTMLElement>(`[data-work-view-key="${CSS.escape(key)}"]`);
-      if (!selector) return;
+      if (!selector || this.isPhone) return;
       const alreadyVisible = this.visiblePanes().some((pane) => pane.dataset.workspacePaneRole === "work" && pane.dataset.workspacePaneId === key);
       this.selectWorkViewState(key, selector.dataset.workViewKind === "contextual");
       this.persist();
@@ -480,6 +480,7 @@ export function createWorkspacePresentationController(
     }
 
     private applyInitialAttentionIntent(): void {
+      if (this.isPhone) return;
       const selectors = [...this.element.querySelectorAll<HTMLElement>("[data-work-view-key][data-attention-sequence]")];
       if (!selectors.length) return;
       const latest = selectors.reduce((current, candidate) => Number(candidate.dataset.attentionSequence) > Number(current.dataset.attentionSequence) ? candidate : current);
@@ -667,6 +668,14 @@ export function createWorkspacePresentationController(
 
     private finishVisibleWorkViewPreparation(): void {
       if (document.visibilityState !== "visible") return;
+      if (this.isPhone && this.state.activeWorkViewKey) {
+        const key = this.state.activeWorkViewKey;
+        const token = this.element.querySelector<HTMLElement>(`[data-work-view-key="${CSS.escape(key)}"]`)?.dataset.attentionSequence;
+        if (token !== undefined) {
+          const attentionTokens = JSON.stringify({ [key]: Number(token) });
+          void fetch(`/workspaces/${encodeURIComponent(this.workspaceIdValue)}/attention/acknowledge?attentionTokens=${encodeURIComponent(attentionTokens)}`, { method: "POST" });
+        }
+      }
       document.dispatchEvent(new CustomEvent("atelier:workspace-preparation-request-acknowledged", { detail: { workspaceId: this.workspaceIdValue } }));
     }
 
@@ -814,7 +823,7 @@ export function installWorkspacePresentationTurboStream(Turbo: TurboLike, applic
     const key = this.dataset.workViewKey;
     if (!key) throw new Error("intend-work-view requires a Work view key");
     const workspaceId = behaviorWorkspaceId(this);
-    persistIntendedWorkView(workspaceId, key);
+    if (!window.matchMedia(phoneViewportMediaQuery).matches) persistIntendedWorkView(workspaceId, key);
     document.dispatchEvent(new CustomEvent("atelier:workspace-preparation-requested", { detail: { workspaceId } }));
     for (const target of this.targetElements) controllerFor(target, workspaceId)?.intendWorkView(key);
   };
