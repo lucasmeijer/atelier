@@ -6,7 +6,7 @@ import { Icons } from "@atelier/design-system/icons";
 import type { ToggleChangeEvent } from "@atelier/design-system/toggle/client";
 import { isWorkspacePaneVisible, type WorkspaceClientModule } from "@atelier/shared";
 import { reviewCommentsPrompt, type ReviewCommentModel } from "../model.ts";
-import { reviewDiffOptions } from "../pierre.ts";
+import { reviewDiffOptions, reviewViewKey } from "../pierre.ts";
 
 type StimulusControllerConstructor = new (...args: never[]) => { element: Element };
 
@@ -69,11 +69,13 @@ function fitTextarea(textarea: HTMLTextAreaElement): void {
 function createReviewController(Controller: StimulusControllerConstructor) {
   return class ReviewController extends Controller {
     static values = { workspaceId: String };
-    static targets = ["file", "diff"];
+    static targets = ["file", "diff", "tabTitle"];
     declare readonly element: HTMLElement;
     declare readonly workspaceIdValue: string;
     declare readonly fileTargets: HTMLDetailsElement[];
     declare readonly diffTargets: HTMLElement[];
+    declare readonly tabTitleTarget: HTMLTemplateElement;
+    declare readonly hasTabTitleTarget: boolean;
     private instances: FileDiff<AnnotationMetadata>[] = [];
     private containers = new Map<FileDiff<AnnotationMetadata>, HTMLElement>();
     private models = new Map<string, DiffModel>();
@@ -92,7 +94,13 @@ function createReviewController(Controller: StimulusControllerConstructor) {
       this.pane = this.element.closest<HTMLElement>('[data-workspace-pane-role="work"]')!;
       this.resident = this.element.closest<HTMLElement>(".workspace-detail-resident")!;
       this.pane.addEventListener("atelier:workspace-pane-visible", this.becameVisible);
+      if (this.hasTabTitleTarget) this.syncTabTitle();
       if (isWorkspacePaneVisible(this.element)) void this.becomeVisible();
+    }
+
+    syncTabTitle(): void {
+      const label = this.resident.querySelector<HTMLElement>(`[data-work-view-key="${CSS.escape(reviewViewKey)}"] .action-item__label-text`)!;
+      label.replaceChildren(this.tabTitleTarget.content.cloneNode(true));
     }
 
     disconnect(): void {

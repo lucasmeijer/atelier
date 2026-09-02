@@ -90,8 +90,10 @@ function renderGitStats(workspaceId: string, file: ReviewFileSummary, counts?: P
 }
 
 export function renderReviewStatsFrame(workspaceId: string, files: ReviewFileStats[]): string {
-  const streams = files.map((file) => `<turbo-stream action="replace" target="${reviewFileStatsId(workspaceId, file.path)}"><template>${renderGitStats(workspaceId, file, file)}</template></turbo-stream>`).join("");
-  return `<turbo-frame id="${reviewStatsFrameId(workspaceId)}">${streams}</turbo-frame>`;
+  const totals = files.reduce((sum, file) => ({ additions: sum.additions + file.additions, deletions: sum.deletions + file.deletions }), { additions: 0, deletions: 0 });
+  const title = `Review <span class="review-additions">+${totals.additions}</span> <span class="review-deletions">−${totals.deletions}</span>`;
+  const fileStreams = files.map((file) => `<turbo-stream action="replace" target="${reviewFileStatsId(workspaceId, file.path)}"><template>${renderGitStats(workspaceId, file, file)}</template></turbo-stream>`).join("");
+  return `<turbo-frame id="${reviewStatsFrameId(workspaceId)}"><template data-review-target="tabTitle">${title}</template>${fileStreams}</turbo-frame>`;
 }
 
 function renderFile(workspaceId: string, file: ReviewFileSummary, comments: ReviewComment[]): string {
@@ -210,7 +212,7 @@ export function renderReviewBody(workspaceId: string, index: ReviewIndex, commen
     : `<div class="review-no-changes"><h2>No changes to review</h2><p>The working tree matches HEAD.</p></div>`;
   const commentModels = comments.map(commentModel);
   const statsUrl = `/workspaces/${encodeURIComponent(workspaceId)}/review/stats`;
-  return `<section id="${reviewBodyId(workspaceId)}" class="review-body" data-controller="review" data-review-workspace-id-value="${escapeHtml(workspaceId)}">${toolbar(workspaceId, comments)}${content}<turbo-frame id="${reviewStatsFrameId(workspaceId)}" src="${escapeHtml(statsUrl)}"></turbo-frame><script id="${reviewCommentsModelId(workspaceId)}" type="application/json" data-review-comments>${jsonForHtml(commentModels)}</script></section>`;
+  return `<section id="${reviewBodyId(workspaceId)}" class="review-body" data-controller="review" data-review-workspace-id-value="${escapeHtml(workspaceId)}">${toolbar(workspaceId, comments)}${content}<turbo-frame id="${reviewStatsFrameId(workspaceId)}" src="${escapeHtml(statsUrl)}" data-action="turbo:frame-load->review#syncTabTitle"></turbo-frame><script id="${reviewCommentsModelId(workspaceId)}" type="application/json" data-review-comments>${jsonForHtml(commentModels)}</script></section>`;
 }
 
 export const reviewWorkViewPresentation: WorkspaceWorkViewPresentation = {
