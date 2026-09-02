@@ -12,6 +12,13 @@ interface ProviderKnowledgeRegistry {
   readonly [provider: string]: ProviderKnowledge;
 }
 
+const hardcodedPopularModels: readonly (ProviderModelReference & { provider: string })[] = [
+  { provider: "anthropic", id: "claude-opus-4-8" },
+  { provider: "openai", id: "gpt-5.6-sol" },
+  { provider: "openai-codex", id: "gpt-5.6-sol" },
+  { provider: "xai", id: "grok-4.6" },
+];
+
 const hardcodedProviderKnowledge: ProviderKnowledgeRegistry = {
   openai: {
     apiKeyExample: "sk-proj-abc123def456...",
@@ -33,4 +40,9 @@ export function getProviderApiKeyExample(provider: string): string | undefined {
 
 export function getProviderFastModel(provider: string): ProviderModelReference | undefined {
   return hardcodedProviderKnowledge[provider]?.fastModel;
+}
+
+export function getPopularModelRank(provider: string, id: string): number | undefined {
+  const rank = hardcodedPopularModels.findIndex((model) => model.provider === provider && model.id === id);
+  return rank < 0 ? undefined : rank;
 }

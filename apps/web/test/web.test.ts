@@ -255,6 +255,7 @@ describe("web app contracts", () => {
       expect(body).not.toContain("settings-btn");
       expect(body).not.toContain("settings-button");
       expect(body.match(/class="managed-list__item" data-search-text=/g)?.length).toBe(50);
+      expect(body).toContain("grok-4.6");
       expect(body).toContain('<div class="managed-list__item model-catalogue-more" role="status" aria-disabled="true">Many results, use the filter box</div>');
 
       const filteredResponse = await app.fetch(new Request(`http://test.local/settings/models/catalogue?surface=settings&q=${encodeURIComponent(catalogueModel.id)}`));

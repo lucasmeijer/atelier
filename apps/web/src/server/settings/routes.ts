@@ -8,6 +8,7 @@ import {
   connectModelProviderApiKey,
   createPiModelRuntime,
   disconnectModelProvider,
+  getPopularModelRank,
   getProviderApiKeyExample,
   hasAvailableConfiguredAgentModel,
   loginPiOAuthProvider,
@@ -205,6 +206,9 @@ async function modelSetupData(): Promise<ModelSetupData> {
   }
 
   models.sort((a, b) => {
+    const aPopular = getPopularModelRank(a.provider, a.id);
+    const bPopular = getPopularModelRank(b.provider, b.id);
+    if (aPopular !== undefined || bPopular !== undefined) return (aPopular ?? Number.MAX_SAFE_INTEGER) - (bPopular ?? Number.MAX_SAFE_INTEGER);
     const aConnected = providers.get(a.provider)?.connected ?? false;
     const bConnected = providers.get(b.provider)?.connected ?? false;
     return Number(bConnected) - Number(aConnected) || a.provider.localeCompare(b.provider) || a.label.localeCompare(b.label);

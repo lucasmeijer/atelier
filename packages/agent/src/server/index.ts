@@ -55,4 +55,4 @@ export {
   setPickerAgentModels,
   type ConfiguredAgentModel,
 } from "./pi-config-models.ts";
-export { getProviderApiKeyExample } from "./hardcoded-provider-knowledge.ts";
+export { getPopularModelRank, getProviderApiKeyExample } from "./hardcoded-provider-knowledge.ts";
