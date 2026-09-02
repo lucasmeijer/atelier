@@ -14,13 +14,13 @@ function keyEvent(overrides: Partial<Parameters<typeof composerSubmitKey>[0]> = 
 }
 
 describe("composer submit key", () => {
-  test("classifies keyboard submit gestures by viewport", () => {
+  test("classifies keyboard submit gestures by input behavior", () => {
     expect(composerSubmitKey(keyEvent({ metaKey: true }), false)).toBe("shortcut");
-    expect(composerSubmitKey(keyEvent(), true)).toBe("phone-keyboard");
+    expect(composerSubmitKey(keyEvent(), true)).toBe("software-keyboard");
     expect(composerSubmitKey(keyEvent(), false)).toBeUndefined();
   });
 
-  test("leaves modified and composing phone Enter keys available for editing", () => {
+  test("leaves modified and composing software-keyboard Enter keys available for editing", () => {
     expect(composerSubmitKey(keyEvent({ shiftKey: true }), true)).toBeUndefined();
     expect(composerSubmitKey(keyEvent({ altKey: true }), true)).toBeUndefined();
     expect(composerSubmitKey(keyEvent({ isComposing: true }), true)).toBeUndefined();

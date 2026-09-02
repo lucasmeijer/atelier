@@ -24,15 +24,12 @@ describe("transcript rendering", () => {
 
   test("AgentPaneComposer runs completion shortcuts before prompt submission", async () => {
     const html = await renderAgentPaneComposer({ action: "/messages", placeholder: "Ask", draftId: "draft", ctx, formTarget: true, includePaneActions: true, stats: { contextPercent: null, compactAvailable: false, inputTokens: 0, outputTokens: 0, cost: 0, modelName: undefined, thinkingLevel: "off", thinkingLevels: [], models: [] } });
-    expect(html).toContain('data-controller="agent-composer ');
     expect(html).toContain("agent-completions");
-    expect(html).toContain('tabindex="-1" data-action="keydown-&gt;agent-completions#keydown keydown-&gt;agent-pane#inputKeydown submit-&gt;transcription-composer#submit turbo:submit-end-&gt;agent-pane#submitted click-&gt;agent-pane#focusInput"');
+    expect(html).toContain('data-action="keydown-&gt;agent-completions#keydown keydown-&gt;agent-pane#inputKeydown submit-&gt;transcription-composer#submit turbo:submit-end-&gt;agent-pane#submitted click-&gt;agent-pane#focusInput"');
     expect(html).toContain('data-action="input->agent-completions#input input->agent-pane#promptChanged"');
     expect(html).toContain('enterkeyhint="send"');
-    expect(html).toContain("data-mobile-editing-region");
     expect(html).toContain('aria-label="Jump to beginning of latest message"');
     expect(html).toContain('data-agent-pane-target="sendStop"');
-    expect(html).toContain('data-action="pointerdown->agent-composer#primaryActionPointerdown"');
   });
 
   test("busy composers expose an actionable indeterminate stop button", () => {

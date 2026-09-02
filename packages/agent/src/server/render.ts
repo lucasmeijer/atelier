@@ -260,7 +260,7 @@ async function renderSharedComposer(options: SharedComposerRenderOptions): Promi
     : `<div class="composer-footer">${await renderLaunchComposerSettings({ ...options.launchComposerSettings!, formId })}</div>`;
   const turboAttr = options.formTurbo === undefined ? "" : ` data-turbo="${options.formTurbo ? "true" : "false"}"`;
   const dropTarget = options.dropTarget ?? true;
-  const promptControllers = ["agent-composer", dropTarget ? "agent-attachments" : "", completionsEnabled ? "agent-completions" : "", transcriptionComposerController].filter(Boolean).join(" ");
+  const promptControllers = [dropTarget ? "agent-attachments" : "", completionsEnabled ? "agent-completions" : "", transcriptionComposerController].filter(Boolean).join(" ");
   const promptAttrs = [
     `data-controller="${promptControllers}"`,
     dropTarget ? agentAttachmentDropAttrs(uploadUrl) : "",
@@ -271,12 +271,11 @@ async function renderSharedComposer(options: SharedComposerRenderOptions): Promi
   const textarea = options.ctx && options.formTarget
     ? renderAgentPanePromptInput(options.ctx, options.initialText ?? "")
     : `<textarea${options.inputId ? ` id="${escapeHtml(options.inputId)}"` : ""} class="composer-input" name="text" rows="${options.rows ?? 2}" enterkeyhint="send" placeholder="${escapeHtml(options.placeholder)}" aria-label="${escapeHtml(options.placeholder)}"${inputTarget ? ` ${inputTarget}` : ""}${inputActions}>${escapeHtml(options.initialText ?? "")}</textarea>`;
-  const mobileEditingRegion = options.kind === "agent-pane" ? " data-mobile-editing-region" : "";
-  return `<div class="composer ${options.kind === "agent-pane" ? "agent-pane-composer" : "launch-composer"}"${mobileEditingRegion}${promptAttrs ? ` ${promptAttrs}` : ""}>
+  return `<div class="composer ${options.kind === "agent-pane" ? "agent-pane-composer" : "launch-composer"}"${promptAttrs ? ` ${promptAttrs}` : ""}>
         ${composerOverlays ? `<div class="agent-pane-composer-overlays">${composerOverlays}</div>` : ""}
         <div class="composer-surface">
           ${options.suggestionHtml ?? ""}
-          <form id="${escapeHtml(formId)}" method="post" action="${escapeHtml(options.action)}"${turboAttr}${targetAttrs}${completionsEnabled ? ` tabindex="-1"` : ""} data-action="${escapeHtml(formActions)}">
+          <form id="${escapeHtml(formId)}" method="post" action="${escapeHtml(options.action)}"${turboAttr}${targetAttrs} data-action="${escapeHtml(formActions)}">
             <input type="hidden" name="attachmentDraft" value="${escapeHtml(draftId)}">
             <div class="agent-attach-row" id="${attachRowId}" data-agent-attachments-target="row">${(options.attachments ?? []).map((attachment) => renderAttachmentChip(attachment, draftId)).join("")}</div>
             <div class="composer-input-area">
@@ -382,7 +381,7 @@ function renderPromptActionButton(busy: boolean, ctx?: AgentRenderContext): stri
     state,
     initialContent: { kind: "html", html: '<svg viewBox="0 0 20 20" aria-hidden="true"><path d="M10 15V5m-4 4 4-4 4 4"/></svg>' },
     activeContent: { kind: "html", html: '<svg viewBox="0 0 20 20" aria-hidden="true"><rect x="6" y="6" width="8" height="8" rx="1.5" fill="currentColor" stroke="none"/></svg>' },
-    attributesHtml: `name="mode" value="${value}" data-agent-composer-target="primaryAction" data-action="pointerdown->agent-composer#primaryActionPointerdown"${paneAttrs}`,
+    attributesHtml: `name="mode" value="${value}"${paneAttrs}`,
   });
 }
 

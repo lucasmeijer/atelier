@@ -16,6 +16,8 @@ import {
   composerSubmitKey,
   copyTextToClipboard,
   escapeHtml,
+  focusLikelyOpensSoftwareKeyboard,
+  installSoftwareKeyboardTracking,
   looksLikeProjectSpec,
   isWorkspacePaneVisible,
   phoneViewportMediaQuery,
@@ -1059,7 +1061,11 @@ class LaunchComposerDialogController extends Controller {
     this.input.addEventListener("keydown", this.inputKeydown);
     this.input.addEventListener("input", this.inputChanged);
     this.element.showModal();
-    focusDialogPromptEnd(this.element);
+    if (focusLikelyOpensSoftwareKeyboard()) {
+      if (document.activeElement === this.input) this.input.blur();
+    } else {
+      focusDialogPromptEnd(this.element);
+    }
   }
 
   disconnect(): void {
@@ -2463,6 +2469,7 @@ class DevReloadController extends Controller {
   }
 }
 
+installSoftwareKeyboardTracking();
 const application = Application.start();
 installWorkspacePresentationTurboStream(Turbo, application);
 Turbo.StreamActions["select-workspace"] = function selectWorkspace(this: HTMLElement): void {

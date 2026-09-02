@@ -142,53 +142,13 @@ function createTerminalPaneController(Controller: StimulusControllerConstructor)
     declare readonly element: HTMLElement;
     declare readonly workspaceIdValue: string;
     declare readonly idValue: string;
-    private readonly viewport = window.visualViewport ?? window;
-    private keyboardRequested = false;
-    private keyboardAccessoryVisible = false;
-
-    private readonly requestKeyboardAccessory = (event: TouchEvent): void => {
-      if (!(event.target instanceof Element)) return;
-      if (!event.target.closest(".observable-terminal-host")) return;
-      this.keyboardRequested = true;
-      requestAnimationFrame(this.syncKeyboardAccessory);
-    };
-
-    private updateKeyboardAccessory(visible: boolean): void {
-      this.element.classList.toggle("terminal-keyboard-visible", visible);
-      if (visible) {
-        const viewportHeight = window.visualViewport?.height ?? window.innerHeight;
-        document.documentElement.classList.add("terminal-mobile-keyboard-visible");
-        document.documentElement.style.setProperty("--terminal-keyboard-viewport-height", `${viewportHeight}px`);
-      } else if (this.keyboardAccessoryVisible) {
-        document.documentElement.classList.remove("terminal-mobile-keyboard-visible");
-        document.documentElement.style.removeProperty("--terminal-keyboard-viewport-height");
-      }
-      this.keyboardAccessoryVisible = visible;
-    }
-
-    private readonly syncKeyboardAccessory = (): void => {
-      const focused = this.element.contains(document.activeElement) && document.activeElement?.classList.contains("gespenst__input") === true;
-      this.updateKeyboardAccessory(this.keyboardRequested && focused);
-      if (!focused) this.keyboardRequested = false;
-    };
-
     connect(): void {
-      this.element.addEventListener("touchstart", this.requestKeyboardAccessory, { passive: true });
-      this.element.addEventListener("focusin", this.syncKeyboardAccessory);
-      this.element.addEventListener("focusout", this.syncKeyboardAccessory);
-      this.viewport.addEventListener("resize", this.syncKeyboardAccessory);
       if (isWorkspacePaneVisible(this.element)) {
         void startTerminal(this.workspaceIdValue, this.idValue, { focus: document.hasFocus() });
       }
     }
 
     disconnect(): void {
-      this.element.removeEventListener("touchstart", this.requestKeyboardAccessory);
-      this.element.removeEventListener("focusin", this.syncKeyboardAccessory);
-      this.element.removeEventListener("focusout", this.syncKeyboardAccessory);
-      this.viewport.removeEventListener("resize", this.syncKeyboardAccessory);
-      this.keyboardRequested = false;
-      this.updateKeyboardAccessory(false);
       stopTerminal(this.workspaceIdValue, this.idValue);
     }
 

@@ -4,6 +4,7 @@ import { join } from "node:path";
 import { chromium, type Browser, type Page } from "@playwright/test";
 import { ids as agentIds, renderActiveToolContent, renderTranscriptItem, renderTranscriptItemDetailFrame, type AgentRenderContext } from "../../../packages/agent/src/server/render.ts";
 import { renderSlashCommandCatalog } from "../../../packages/agent/src/server/slash-commands.ts";
+import { renderTranscriptionComposerControl } from "../../../packages/transcription/src/server/composer.ts";
 import { actionItemHtml } from "../../../packages/design-system/src/action-item/action-item-html.ts";
 import { destructiveConfirmationHtml } from "../../../packages/design-system/src/destructive-confirmation/destructive-confirmation-html.ts";
 import type { ToolView, TranscriptItem } from "../../../packages/agent/src/server/transcript.ts";
@@ -25,6 +26,7 @@ let designSystemStyle: string;
 let workspaceStyle: string;
 let filesStyle: string;
 let agentStyle: string;
+let terminalStyle: string;
 let catalogueHtml: string;
 
 async function newTestPage(options: { viewport?: { width: number; height: number }; reducedMotion?: "reduce" | "no-preference"; mobile?: boolean } = {}): Promise<Page> {
@@ -41,6 +43,20 @@ async function newTestPage(options: { viewport?: { width: number; height: number
   if (options.viewport && !options.mobile) await page.setViewportSize(options.viewport);
   if (options.reducedMotion) await page.emulateMedia({ reducedMotion: options.reducedMotion });
   return page;
+}
+
+async function installFakeVisualViewport(page: Page, height = 844): Promise<void> {
+  await page.addInitScript((initialHeight) => {
+    class FakeVisualViewport extends EventTarget { height = initialHeight; }
+    Object.defineProperty(window, "visualViewport", { configurable: true, value: new FakeVisualViewport() });
+  }, height);
+}
+
+async function resizeFakeVisualViewport(page: Page, height: number): Promise<void> {
+  await page.evaluate((nextHeight) => {
+    Object.defineProperty(window.visualViewport!, "height", { configurable: true, value: nextHeight });
+    window.visualViewport!.dispatchEvent(new Event("resize"));
+  }, height);
 }
 
 function agentConversation(workspaceId: string, id: string, title = "Agent"): WorkspacePresentation["agentConversations"][number] {
@@ -113,6 +129,7 @@ beforeAll(async () => {
   workspaceStyle = `${designSystemStyle}\n${shellStyle}`;
   filesStyle = await Bun.file(new URL("../../../packages/files/src/client/style.css", import.meta.url)).text();
   agentStyle = await Bun.file(new URL("../../../packages/agent/src/client/style.css", import.meta.url)).text();
+  terminalStyle = await Bun.file(new URL("../../../packages/workspace-terminal/src/client/style.css", import.meta.url)).text();
   catalogueHtml = await Bun.file(new URL("../public/design-system-catalogue.html", import.meta.url)).text();
   const executablePath = process.platform === "darwin" ? "/Applications/Google Chrome.app/Contents/MacOS/Google Chrome" : "/usr/local/bin/chromium";
   browser = await chromium.launch({ executablePath, headless: true });
@@ -2835,38 +2852,58 @@ Comment: I don't think we need these tests`;
     await page.close();
   });
 
-  test("hides mobile navigation while the Agent composer is focused", async () => {
+  test("hides navigation only while a software keyboard occludes the app", async () => {
     const presentation: WorkspacePresentation = {
       workspace: { id: "mobile-compose", title: "Mobile compose" },
       agentConversations: [agentConversation("mobile-compose", "agent-1")],
       workViews: [],
     };
     const pane: WorkspacePanePresentation = { projects: [], projectlessWorkspaces: [{ id: "mobile-compose", title: "Mobile compose", active: true }] };
-    const page = await newTestPage({ viewport: { width: 390, height: 844 } });
+    const page = await newTestPage({ viewport: { width: 390, height: 844 }, mobile: true });
+    await installFakeVisualViewport(page);
     await page.route("http://atelier.test/workspaces/mobile-compose", (route) => route.fulfill({ contentType: "text/html", body: `<style>${workspaceStyle}</style>${renderShellFixture(presentation, pane)}<script type="module" src="${workspaceClientPath}"></script>` }));
-    await page.route("**/workspaces/mobile-compose/agents/agent-1/body", (route) => route.fulfill({ contentType: "text/html", body: renderAgentBodyFrame("mobile-compose", "agent-1", '<div data-mobile-editing-region><textarea aria-label="Agent prompt"></textarea></div>') }));
+    await page.route("**/workspaces/mobile-compose/agents/agent-1/body", (route) => route.fulfill({ contentType: "text/html", body: renderAgentBodyFrame("mobile-compose", "agent-1", '<div><textarea aria-label="Agent prompt"></textarea></div>') }));
     await page.route("**/workspaces/mobile-compose/active", (route) => route.fulfill({ status: 204 }));
     await page.goto("http://atelier.test/workspaces/mobile-compose");
 
-    const input = page.getByRole("textbox", { name: "Agent prompt" });
     const globalNavigation = page.locator(".fixed-shell-global-mobile-nav");
+    const input = page.getByRole("textbox", { name: "Agent prompt" });
+    await input.focus();
     expect(await globalNavigation.isVisible()).toBe(true);
 
-    await input.focus();
+    await resizeFakeVisualViewport(page, 500);
     expect(await globalNavigation.isVisible()).toBe(false);
 
-    await input.evaluate((textarea: HTMLTextAreaElement) => textarea.blur());
+    await resizeFakeVisualViewport(page, 844);
+    expect(await input.evaluate((element) => document.activeElement === element)).toBe(true);
     expect(await globalNavigation.isVisible()).toBe(true);
     await page.close();
   });
 
-  test("submits the focused phone Composer on the send button's first touch", async () => {
+  test("shows Terminal accessory keys from the shared software-keyboard state", async () => {
+    const page = await newTestPage({ viewport: { width: 390, height: 844 }, mobile: true });
+    await installFakeVisualViewport(page);
+    await page.route("http://atelier.test/terminal-keyboard", (route) => route.fulfill({
+      contentType: "text/html",
+      body: `<style>${terminalStyle}</style><div class="terminal-pane"><textarea class="gespenst__input" aria-label="Terminal input"></textarea><div class="terminal-accessory-bar"><button>Control</button></div></div><script type="module" src="${workspaceClientPath}"></script>`,
+    }));
+    await page.goto("http://atelier.test/terminal-keyboard");
+
+    const accessory = page.getByRole("button", { name: "Control" });
+    await page.getByRole("textbox", { name: "Terminal input" }).focus();
+    expect(await accessory.isVisible()).toBe(false);
+    await resizeFakeVisualViewport(page, 500);
+    expect(await accessory.isVisible()).toBe(true);
+    await page.close();
+  });
+
+  test("submits the focused software-keyboard Composer with native touch behavior", async () => {
     const agentBody = `<div class="agent-pane" data-controller="agent-pane" data-agent-pane-workspace-id-value="phone-touch-send" data-agent-pane-conversation-id-value="agent-1">
       <div class="agent-transcript" data-agent-pane-target="transcript"></div>
-      <div class="composer agent-pane-composer" data-controller="agent-composer" data-mobile-editing-region>
+      <div class="composer agent-pane-composer">
         <form method="post" action="/send" data-agent-pane-target="form">
           <textarea class="composer-input" name="text" aria-label="Agent prompt" data-agent-pane-target="input">Send from one touch</textarea>
-          <button type="submit" name="mode" value="send" aria-label="Send prompt" data-agent-composer-target="primaryAction" data-agent-pane-target="sendStop" data-agent-busy="false" data-action="pointerdown->agent-composer#primaryActionPointerdown">Send</button>
+          <button type="submit" name="mode" value="send" aria-label="Send prompt" data-agent-pane-target="sendStop" data-agent-busy="false">Send</button>
         </form>
       </div>
     </div>`;
@@ -2912,7 +2949,7 @@ Comment: I don't think we need these tests`;
         <div class="agent-transcript" data-agent-pane-target="transcript"></div>
         <div class="composer agent-pane-composer" data-controller="agent-completions" data-agent-completions-url-value="/workspaces/quick/agents/agent-1/completions">
           <div class="agent-pane-composer-overlays"><button type="button" data-agent-pane-target="transcriptNav" disabled></button></div>
-          <div class="composer-surface"><form method="post" action="/send" tabindex="-1" data-agent-pane-target="form" data-action="keydown->agent-completions#keydown keydown->agent-pane#inputKeydown"><textarea aria-label="Agent prompt" name="text" data-agent-pane-target="input" data-agent-completions-target="input" data-action="input->agent-completions#input input->agent-pane#promptChanged"></textarea><button type="submit" name="mode" value="send" data-agent-pane-target="sendStop" data-agent-busy="false">Send</button></form><div class="agent-completion-menu-host" data-agent-completions-target="menu" hidden></div></div>
+          <div class="composer-surface"><form method="post" action="/send" data-agent-pane-target="form" data-action="keydown->agent-completions#keydown keydown->agent-pane#inputKeydown"><textarea aria-label="Agent prompt" name="text" data-agent-pane-target="input" data-agent-completions-target="input" data-action="input->agent-completions#input input->agent-pane#promptChanged"></textarea><button type="submit" name="mode" value="send" data-agent-pane-target="sendStop" data-agent-busy="false">Send</button></form><div class="agent-completion-menu-host" data-agent-completions-target="menu" hidden></div></div>
         </div>
       </div></div><script type="module" src="${workspaceClientPath}"></script>`,
     }));
@@ -2976,20 +3013,53 @@ Comment: I don't think we need these tests`;
     await quickLaunch.click();
     await page.waitForFunction(() => document.querySelector<HTMLTextAreaElement>("textarea[name='text']")?.value === "Review and simplify all current changes.");
     expect(await input.inputValue()).toBe("Review and simplify all current changes.");
-    const form = page.locator("form[action='/send']");
-    expect(await form.evaluate((element) => document.activeElement === element)).toBe(true);
-    expect(submissions).toBe(1);
-    const sendResponse = page.waitForResponse((response) => new URL(response.url()).pathname === "/send");
-    await form.press("Control+Enter");
-    await sendResponse;
+    expect(await input.evaluate((element) => document.activeElement === element)).toBe(true);
+    const clickSendResponse = page.waitForResponse((response) => new URL(response.url()).pathname === "/send");
+    await page.keyboard.press("Control+Enter");
+    await clickSendResponse;
     expect(submissions).toBe(2);
     await page.close();
   });
 
-  test("uses the phone keyboard Send key to submit a completed slash command without restoring composer focus", async () => {
+  test("expands a prompt shortcut without focusing an input that opens a software keyboard", async () => {
+    const page = await newTestPage({ viewport: { width: 390, height: 844 }, mobile: true });
+    await page.addInitScript(() => {
+      class FakeWebSocket extends EventTarget {
+        static readonly OPEN = 1;
+        readonly readyState = FakeWebSocket.OPEN;
+        send(): void {}
+        close(): void { this.dispatchEvent(new CloseEvent("close")); }
+      }
+      Object.defineProperty(window, "WebSocket", { value: FakeWebSocket });
+    });
+    const catalog = renderSlashCommandCatalog([
+      { name: "review", trigger: "/review", description: "Review changes", prompt: "Review", quickLaunch: true },
+    ], []);
+    await page.route("http://atelier.test/quick-launch-touch", (route) => route.fulfill({
+      contentType: "text/html",
+      body: `<div class="agent-pane" data-controller="agent-pane" data-agent-pane-workspace-id-value="quick" data-agent-pane-conversation-id-value="agent-1"><div class="agent-transcript" data-agent-pane-target="transcript"></div><div class="composer" data-controller="agent-completions transcription-composer" data-agent-completions-url-value="/workspaces/quick/agents/agent-1/completions"><button type="button" data-agent-pane-target="transcriptNav" disabled></button><form data-agent-pane-target="form"><textarea aria-label="Agent prompt" name="text" data-agent-pane-target="input" data-agent-completions-target="input" data-action="input->agent-completions#input input->agent-pane#promptChanged"></textarea>${renderTranscriptionComposerControl()}<button data-agent-pane-target="sendStop" data-agent-busy="false">Send</button></form><div data-agent-completions-target="menu" hidden></div></div></div><script type="module" src="${workspaceClientPath}"></script>`,
+    }));
+    await page.route("**/workspaces/quick/completion-catalog", (route) => route.fulfill({ contentType: "text/html", body: catalog }));
+    await page.route("**/workspaces/quick/agents/agent-1/completions/prompt-template-expand", (route) => route.fulfill({ contentType: "text/plain", body: "Review all current changes." }));
+    await page.goto("http://atelier.test/quick-launch-touch");
+
+    const input = page.getByRole("textbox", { name: "Agent prompt" });
+    await page.getByRole("button", { name: "/review", exact: true }).tap();
+    await page.waitForFunction(() => document.querySelector<HTMLTextAreaElement>("textarea[name='text']")?.value === "Review all current changes.");
+    expect(await input.evaluate((element) => document.activeElement === element)).toBe(false);
+
+    await input.fill("");
+    await page.getByRole("button", { name: "/review", exact: true }).waitFor();
+    await page.getByRole("button", { name: "Dictate with microphone" }).click();
+    expect(await page.getByRole("button", { name: "/review", exact: true }).count()).toBe(0);
+    expect(await input.evaluate((element: HTMLTextAreaElement) => ({ focused: document.activeElement === element, readOnly: element.readOnly }))).toEqual({ focused: false, readOnly: true });
+    await page.close();
+  });
+
+  test("uses the software keyboard Send key without restoring composer focus", async () => {
     const agentBody = `<div class="agent-pane" data-controller="agent-pane agent-completions" data-agent-pane-workspace-id-value="phone-send" data-agent-pane-label-value="Agent" data-agent-completions-url-value="/workspaces/phone-send/agents/agent-1/completions">
       <div class="agent-transcript" data-agent-pane-target="transcript"></div>
-      <div class="composer agent-pane-composer" data-mobile-editing-region>
+      <div class="composer agent-pane-composer">
         <form method="post" action="/send" data-agent-pane-target="form" data-action="turbo:submit-end->agent-pane#submitted">
           <textarea class="composer-input" aria-label="Agent prompt" enterkeyhint="send" data-agent-pane-target="input" data-agent-completions-target="input" data-action="keydown->agent-completions#keydown input->agent-completions#input keydown->agent-pane#inputKeydown input->agent-pane#promptChanged"></textarea>
           <button class="agent-sendstop" type="submit" name="mode" value="send" data-agent-pane-target="sendStop" data-agent-busy="false">Send</button>
@@ -3003,7 +3073,7 @@ Comment: I don't think we need these tests`;
       workViews: [],
     };
     const pane: WorkspacePanePresentation = { projects: [], projectlessWorkspaces: [{ id: "phone-send", title: "Phone send", active: true }] };
-    const page = await newTestPage({ viewport: { width: 900, height: 844 } });
+    const page = await newTestPage({ viewport: { width: 390, height: 844 }, mobile: true });
     await page.route("http://atelier.test/workspaces/phone-send", (route) => route.fulfill({ contentType: "text/html", body: `${renderShellFixture(presentation, pane)}<script type="module" src="${workspaceClientPath}"></script>` }));
     await page.route("**/workspaces/phone-send/agents/agent-1/body", (route) => route.fulfill({ contentType: "text/html", body: renderAgentBodyFrame("phone-send", "agent-1", agentBody) }));
     await page.route("**/workspaces/phone-send/active", (route) => route.fulfill({ status: 204 }));
@@ -3020,13 +3090,7 @@ Comment: I don't think we need these tests`;
     await page.goto("http://atelier.test/workspaces/phone-send");
 
     const input = page.locator(".composer-input");
-    await input.fill("Desktop line");
-    await input.press("Enter");
-    await input.pressSequentially("Desktop continuation");
-    expect(await input.inputValue()).toBe("Desktop line\nDesktop continuation");
-
     await input.fill("First line");
-    await page.setViewportSize({ width: 390, height: 844 });
     await input.press("Shift+Enter");
     await input.pressSequentially("Second line");
     expect(await input.inputValue()).toBe("First line\nSecond line");
@@ -3655,6 +3719,7 @@ Comment: I don't think we need these tests`;
     const waitForComposer = () => page.locator("dialog[data-controller='launch-composer-dialog'][open]").waitFor();
     await page.goto("http://atelier.test/");
     await waitForComposer();
+    expect(await page.getByRole("textbox").evaluate((element) => document.activeElement === element)).toBe(true);
     await page.locator("form").dispatchEvent("submit");
     await page.locator("#host").evaluate((host, nextComposer) => { host.innerHTML = nextComposer; }, composer("Project two"));
     await waitForComposer();
@@ -3667,8 +3732,8 @@ Comment: I don't think we need these tests`;
     await page.close();
   });
 
-  test("uses the phone keyboard Send key to submit the LaunchComposer", async () => {
-    const page = await newTestPage({ viewport: { width: 900, height: 844 } });
+  test("uses the software keyboard Send key to submit the LaunchComposer", async () => {
+    const page = await newTestPage({ viewport: { width: 390, height: 844 }, mobile: true });
     await page.route("http://atelier.test/", (route) => route.fulfill({
       contentType: "text/html",
       body: `<turbo-frame id="launch_composer"><dialog class="launch-composer-dialog" data-controller="launch-composer-dialog submit-shortcut" data-launch-composer-dialog-discard-url-value="/draft/discard"><form method="post" action="/launch" data-action="keydown->submit-shortcut#keydown submit->submit-shortcut#submit submit->launch-composer-dialog#submit turbo:submit-end->submit-shortcut#submitted"><textarea name="text" enterkeyhint="send"></textarea><button type="submit">Send prompt</button></form></dialog></turbo-frame><script type="module" src="${workspaceClientPath}"></script>`,
@@ -3677,12 +3742,6 @@ Comment: I don't think we need these tests`;
     await page.goto("http://atelier.test/");
 
     const input = page.getByRole("textbox");
-    await input.fill("Desktop line");
-    await input.press("Enter");
-    await input.pressSequentially("Desktop continuation");
-    expect(await input.inputValue()).toBe("Desktop line\nDesktop continuation");
-
-    await page.setViewportSize({ width: 390, height: 844 });
     await input.fill("First line");
     await input.press("Shift+Enter");
     await input.pressSequentially("Second line");
@@ -3695,14 +3754,14 @@ Comment: I don't think we need these tests`;
     await page.close();
   });
 
-  test("submits and closes the focused LaunchComposer on the first phone touch", async () => {
+  test("submits and closes the focused LaunchComposer with native touch behavior", async () => {
     const page = await newTestPage({ viewport: { width: 390, height: 844 }, mobile: true });
     let finishRequest!: () => void;
     const requestMayFinish = new Promise<void>((resolve) => { finishRequest = resolve; });
     let discardRequests = 0;
     await page.route("http://atelier.test/", (route) => route.fulfill({
       contentType: "text/html",
-      body: `<turbo-frame id="launch_composer"><dialog class="launch-composer-dialog" data-controller="launch-composer-dialog" data-launch-composer-dialog-discard-url-value="/draft/discard"><div data-controller="agent-composer"><form method="post" action="/launch" data-action="submit->launch-composer-dialog#submit"><textarea name="text">Mobile prompt</textarea><button type="submit" data-agent-composer-target="primaryAction" data-action="pointerdown->agent-composer#primaryActionPointerdown">Send prompt</button></form></div></dialog></turbo-frame><script type="module" src="${workspaceClientPath}"></script>`,
+      body: `<turbo-frame id="launch_composer"><dialog class="launch-composer-dialog" data-controller="launch-composer-dialog" data-launch-composer-dialog-discard-url-value="/draft/discard"><div><form method="post" action="/launch" data-action="submit->launch-composer-dialog#submit"><textarea name="text">Mobile prompt</textarea><button type="submit">Send prompt</button></form></div></dialog></turbo-frame><script type="module" src="${workspaceClientPath}"></script>`,
     }));
     await page.route("http://atelier.test/draft/discard", (route) => {
       discardRequests += 1;
@@ -3719,6 +3778,7 @@ Comment: I don't think we need these tests`;
     const dialog = page.locator(".launch-composer-dialog");
     const input = page.getByRole("textbox");
     await dialog.waitFor({ state: "visible" });
+    expect(await input.evaluate((element) => document.activeElement === element)).toBe(false);
     await input.focus();
     const launchRequest = page.waitForRequest("http://atelier.test/launch");
     await page.getByRole("button", { name: "Send prompt" }).tap();

@@ -1,5 +1,5 @@
 import { describe, expect, mock, test } from "bun:test";
-import { type AgentCompletionInput, agentCompletionRequest, agentComposerPrimaryAction, agentComposerTextStorageKey, agentConnectionShouldRun, fileCompletionPrefix, focusAgentPaneComposerOnWideViewport, forwardAgentTerminalWheel, insertSlashCommand, messageNavigationDirection, navigatePromptHistory, promptTemplateHotkeyConflict, scrollMessageToTop, shouldPositionTranscriptAfterSnapshot, terminalOutputHasPrintableText, transcriptFollowingAfterScroll, workspaceSelectionScrollTop } from "../../src/client/agent-controllers.ts";
+import { type AgentCompletionInput, agentCompletionRequest, agentComposerPrimaryAction, agentComposerTextStorageKey, agentConnectionShouldRun, fileCompletionPrefix, focusAgentPaneComposerForTyping, forwardAgentTerminalWheel, insertSlashCommand, messageNavigationDirection, navigatePromptHistory, promptTemplateHotkeyConflict, scrollMessageToTop, shouldPositionTranscriptAfterSnapshot, terminalOutputHasPrintableText, transcriptFollowingAfterScroll, workspaceSelectionScrollTop } from "../../src/client/agent-controllers.ts";
 
 function input(value: string, cursor = value.length): AgentCompletionInput {
   return {
@@ -14,19 +14,19 @@ function input(value: string, cursor = value.length): AgentCompletionInput {
 }
 
 describe("AgentPaneComposer focus", () => {
-  test("focuses without scrolling the Agent pane on wider screens", () => {
+  test("focuses without scrolling when focus does not open a software keyboard", () => {
     const focus = mock(() => {});
     const pane = { querySelector: () => ({ focus }) };
 
-    expect(focusAgentPaneComposerOnWideViewport(pane, false, true)).toBe(true);
+    expect(focusAgentPaneComposerForTyping(pane, false, true)).toBe(true);
     expect(focus).toHaveBeenCalledWith({ preventScroll: true });
   });
 
-  test("leaves the Agent pane unfocused on phones", () => {
+  test("leaves the Agent pane unfocused when focus would open a software keyboard", () => {
     const focus = mock(() => {});
     const pane = { querySelector: () => ({ focus }) };
 
-    expect(focusAgentPaneComposerOnWideViewport(pane, true, true)).toBe(false);
+    expect(focusAgentPaneComposerForTyping(pane, true, true)).toBe(false);
     expect(focus).not.toHaveBeenCalled();
   });
 
@@ -34,7 +34,7 @@ describe("AgentPaneComposer focus", () => {
     const focus = mock(() => {});
     const pane = { querySelector: () => ({ focus }) };
 
-    expect(focusAgentPaneComposerOnWideViewport(pane, false, false)).toBe(false);
+    expect(focusAgentPaneComposerForTyping(pane, false, false)).toBe(false);
     expect(focus).not.toHaveBeenCalled();
   });
 });

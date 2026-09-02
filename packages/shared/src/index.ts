@@ -1,6 +1,7 @@
 import type { AtelierEventBus, JsonObject, JsonValue } from "@atelier/core";
 import type { TSchema } from "typebox";
 import { escapeHtml } from "./html.ts";
+import { focusLikelyOpensSoftwareKeyboard } from "./software-keyboard.ts";
 
 export { providerBrandColor, providerBrandIconHtml } from "./brand-icons.ts";
 export { escapeHtml } from "./html.ts";
@@ -353,15 +354,15 @@ export interface WorkspaceClientFocusContext {
 
 export const phoneViewportMediaQuery = "(max-width: 700px)";
 
-export type ComposerSubmitKey = "shortcut" | "phone-keyboard";
+type ComposerSubmitKey = "shortcut" | "software-keyboard";
 
 export function composerSubmitKey(
   event: Pick<KeyboardEvent, "key" | "metaKey" | "ctrlKey" | "altKey" | "shiftKey" | "isComposing">,
-  phoneViewport = window.matchMedia(phoneViewportMediaQuery).matches,
+  focusOpensSoftwareKeyboard?: boolean,
 ): ComposerSubmitKey | undefined {
   if (event.key !== "Enter") return undefined;
   if (event.metaKey || event.ctrlKey) return "shortcut";
-  if (phoneViewport && !event.altKey && !event.shiftKey && !event.isComposing) return "phone-keyboard";
+  if ((focusOpensSoftwareKeyboard ?? focusLikelyOpensSoftwareKeyboard()) && !event.altKey && !event.shiftKey && !event.isComposing) return "software-keyboard";
   return undefined;
 }
 
@@ -459,3 +460,5 @@ export {
   notifyInputListeners,
   setTextInputValue,
 } from "./text-input.ts";
+
+export { focusLikelyOpensSoftwareKeyboard, installSoftwareKeyboardTracking } from "./software-keyboard.ts";

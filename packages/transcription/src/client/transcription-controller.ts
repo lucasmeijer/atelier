@@ -1,7 +1,7 @@
 /// <reference lib="dom" />
 
 import { observableWebSocketUrl } from "@atelier/observable-terminal/client";
-import { composerSubmitKey, setTextInputValue, type WorkspaceClientControllerConstructor } from "@atelier/shared";
+import { composerSubmitKey, focusLikelyOpensSoftwareKeyboard, notifyInputListeners, setTextInputValue, type WorkspaceClientControllerConstructor } from "@atelier/shared";
 import { Type, type Static } from "typebox";
 import { Value } from "typebox/value";
 import { type MicrophoneLease, SharedMicrophone } from "./microphone.ts";
@@ -19,10 +19,11 @@ const transcriptionEventSchema = Type.Object({
 });
 type TranscriptionEvent = Static<typeof transcriptionEventSchema>;
 
-function joinedTranscript(prefix: string, committed: string, partial: string): string {
-  const spoken = `${committed}${partial}`;
-  if (!prefix || !spoken || /\s$/.test(prefix) || /^\s/.test(spoken)) return `${prefix}${spoken}`;
-  return `${prefix} ${spoken}`;
+function composeTranscript(prefix: string, spoken: string, suffix: string) {
+  const left = prefix && spoken && !/\s$/.test(prefix) && !/^\s/.test(spoken) ? " " : "";
+  const insertion = `${prefix}${left}${spoken}`;
+  const right = spoken && suffix && !/\s$/.test(spoken) && !/^[\s,.;:!?)]/.test(suffix) ? " " : "";
+  return { text: `${insertion}${right}${suffix}`, caret: insertion.length };
 }
 
 export function createTranscriptionComposerController(Controller: WorkspaceClientControllerConstructor, microphoneSource: SharedMicrophone) {
@@ -44,6 +45,7 @@ export function createTranscriptionComposerController(Controller: WorkspaceClien
     private readonly waveformSamples = new Float32Array(256);
     private waveformColor = "";
     private prefix = "";
+    private suffix = "";
     private committed = "";
     private partial = "";
     private submitPending = false;
@@ -62,6 +64,9 @@ export function createTranscriptionComposerController(Controller: WorkspaceClien
     private readonly keydown = (event: KeyboardEvent): void => {
       if (event.defaultPrevented || composerSubmitKey(event) !== "shortcut") return;
       if (this.state === "idle" || this.state === "error") return;
+      const target = event.target instanceof Element ? event.target : null;
+      const otherEditor = target?.closest("input, textarea, select, [contenteditable='true']");
+      if (otherEditor && !this.element.contains(otherEditor)) return;
       event.preventDefault();
       const form = this.element.querySelector<HTMLFormElement>("form")!;
       const submitter = form.querySelector<HTMLButtonElement | HTMLInputElement>('button[type="submit"], button:not([type]), input[type="submit"]');
@@ -90,16 +95,25 @@ export function createTranscriptionComposerController(Controller: WorkspaceClien
         this.finish();
         return;
       }
-      if (this.state === "loading" || this.state === "finishing") return;
+      if (this.state === "loading") {
+        this.socket?.close();
+        this.setState("idle", "Dictate");
+        this.focusAfterTranscription();
+        return;
+      }
+      if (this.state === "finishing") return;
       this.start();
     }
 
     private start(): void {
-      this.input.blur();
-      this.prefix = this.input.value;
+      const selectionStart = this.input.selectionStart;
+      const selectionEnd = this.input.selectionEnd;
+      this.prefix = this.input.value.slice(0, selectionStart);
+      this.suffix = this.input.value.slice(selectionEnd);
       this.committed = "";
       this.partial = "";
       this.setState("loading", "Preparing transcription model…");
+      this.input.blur();
       this.setProgress(0);
       const socket = new WebSocket(observableWebSocketUrl("/transcription/realtime"));
       this.socket = socket;
@@ -189,12 +203,26 @@ export function createTranscriptionComposerController(Controller: WorkspaceClien
     private transcriptionFinished(): void {
       this.socket?.close();
       this.setState("idle", "Dictate");
-      if (!this.submitPending) return;
+      if (!this.submitPending) {
+        this.focusAfterTranscription();
+        return;
+      }
       this.submitPending = false;
       const submitter = this.pendingSubmitter;
       this.pendingSubmitter = undefined;
       if (submitter) submitter.form!.requestSubmit(submitter);
       else this.element.querySelector<HTMLFormElement>("form")!.requestSubmit();
+    }
+
+    private focusAfterTranscription(): void {
+      if (focusLikelyOpensSoftwareKeyboard()) return;
+      this.input.focus({ preventScroll: true });
+      const { caret } = this.transcript();
+      this.input.setSelectionRange(caret, caret);
+    }
+
+    private transcript() {
+      return composeTranscript(this.prefix, `${this.committed}${this.partial}`, this.suffix);
     }
 
     private stopCapture(): void {
@@ -211,7 +239,7 @@ export function createTranscriptionComposerController(Controller: WorkspaceClien
     }
 
     private renderTranscript(): void {
-      setTextInputValue(this.input, joinedTranscript(this.prefix, this.committed, this.partial));
+      setTextInputValue(this.input, this.transcript().text);
       this.input.scrollTop = this.input.scrollHeight;
     }
 
@@ -248,6 +276,8 @@ export function createTranscriptionComposerController(Controller: WorkspaceClien
 
     private fail(message: string): void {
       this.stopCapture();
+      this.submitPending = false;
+      this.pendingSubmitter = undefined;
       this.setState("error", message);
       this.socket?.close();
     }
@@ -261,12 +291,16 @@ export function createTranscriptionComposerController(Controller: WorkspaceClien
       this.state = state;
       this.buttonTarget.dataset.state = state;
       this.buttonTarget.dataset.progressState = working ? "in-progress" : "initial";
-      this.buttonTarget.disabled = working;
+      this.buttonTarget.disabled = state === "finishing";
       this.buttonTarget.toggleAttribute("aria-busy", working);
       this.buttonTarget.ariaPressed = state === "recording" || state === "finishing" ? "true" : "false";
       this.buttonTarget.title = label;
       this.statusTarget.textContent = label;
-      this.input.readOnly = state === "loading" || state === "recording" || state === "finishing";
+      const transcribing = state === "loading" || state === "recording" || state === "finishing";
+      const transcriptionStateChanged = this.element.hasAttribute("data-transcribing") !== transcribing;
+      this.element.toggleAttribute("data-transcribing", transcribing);
+      this.input.readOnly = transcribing;
+      if (transcriptionStateChanged) notifyInputListeners(this.input);
       if (state === "finishing") this.setProgress(100);
       else if (!working) this.setProgress(0);
     }

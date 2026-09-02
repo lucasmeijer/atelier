@@ -2,7 +2,7 @@
 
 import { setActivityButtonState } from "@atelier/design-system/activity-button/client";
 import { atelierObservableTerminalTheme, createObservableTerminalViewer, observableWebSocketUrl, type ObservableTerminalTheme, type ObservableTerminalViewer } from "@atelier/observable-terminal/client";
-import { CableTopics, composerSubmitKey, copyTextToClipboard, notifyInputListeners, phoneViewportMediaQuery, recentWorkspaceProjectStorageKey, setTextInputValue, workspaceProxyUrl, type AtelierCableClient, type CableIdentifier, type CableSubscriptionOptions, type WorkspaceClientCommand, type WorkspaceClientController, type WorkspaceClientHooks, type WorkspaceClientModule } from "@atelier/shared";
+import { CableTopics, composerSubmitKey, copyTextToClipboard, focusLikelyOpensSoftwareKeyboard, notifyInputListeners, recentWorkspaceProjectStorageKey, setTextInputValue, workspaceProxyUrl, type AtelierCableClient, type CableIdentifier, type CableSubscriptionOptions, type WorkspaceClientCommand, type WorkspaceClientController, type WorkspaceClientHooks, type WorkspaceClientModule } from "@atelier/shared";
 import { agentTreeOwnsMenu, handleAgentTreeKeydown, handleAgentTreeMenuEvent, selectAgentTreeOption } from "./session-tree.ts";
 
 type StimulusControllerConstructor = new (...args: never[]) => { element: Element };
@@ -47,10 +47,6 @@ type HtmlAutocompleteActions = {
   close(): void;
   refresh(force?: boolean): void;
 };
-
-function isPhoneViewport(): boolean {
-  return window.matchMedia(phoneViewportMediaQuery).matches;
-}
 
 type StimulusApplication = {
   getControllerForElementAndIdentifier(element: Element, identifier: string): WorkspaceClientController | null;
@@ -178,19 +174,6 @@ export class PromptHistoryNavigator {
   }
 }
 
-function createAgentComposerController(Controller: StimulusControllerConstructor) {
-  return class AgentComposerController extends Controller {
-    static targets = ["primaryAction"];
-    declare readonly primaryActionTarget: HTMLButtonElement;
-
-    primaryActionPointerdown(event: PointerEvent): void {
-      if (!isPhoneViewport() || event.pointerType !== "touch" || event.button !== 0) return;
-      event.preventDefault();
-      this.primaryActionTarget.form!.requestSubmit(this.primaryActionTarget);
-    }
-  };
-}
-
 function createAgentPaneController(Controller: StimulusControllerConstructor) {
   return class AgentPaneController extends Controller implements AgentPaneControllerInstance {
     static values = { workspaceId: String, conversationId: String };
@@ -286,8 +269,8 @@ function createAgentPaneController(Controller: StimulusControllerConstructor) {
     private readonly cableDisconnected = (): void => {
       if (this.subscribed) this.setReconnecting(true);
     };
-    private relinquishPhoneComposerFocus(): void {
-      if (isPhoneViewport() && document.activeElement === this.inputTarget) this.inputTarget.blur();
+    private relinquishSoftwareKeyboardFocus(): void {
+      if (focusLikelyOpensSoftwareKeyboard() && document.activeElement === this.inputTarget) this.inputTarget.blur();
     }
     private readonly submitting = (): void => {
       const submittedText = this.inputTarget.value;
@@ -304,7 +287,7 @@ function createAgentPaneController(Controller: StimulusControllerConstructor) {
       this.stuck = true;
       this.clearTranscriptFollowingSuspension();
       this.transcriptLayoutChanged();
-      this.relinquishPhoneComposerFocus();
+      this.relinquishSoftwareKeyboardFocus();
     };
     connect(): void {
       this.transcriptLayoutObserver = new ResizeObserver(this.transcriptLayoutChanged);
@@ -467,15 +450,15 @@ function createAgentPaneController(Controller: StimulusControllerConstructor) {
       const completionMenuOpen = Boolean(this.element.querySelector(".agent-completion-menu-host:not([hidden])"));
       if (!completionMenuOpen && this.promptHistory.keydown(event, this.inputTarget, () => this.userPrompts())) return;
 
-      // Desktop Enter inserts a newline and ⌘/Ctrl+Enter sends. On phones,
-      // the keyboard's unmodified Send key submits; Shift+Enter still inserts a newline.
+      // Enter inserts a newline when typing with a hardware keyboard. A software
+      // keyboard's Send key and ⌘/Ctrl+Enter both submit.
       const submitKey = composerSubmitKey(event);
-      const phoneKeyboardSubmit = !completionMenuOpen && submitKey === "phone-keyboard";
-      if (submitKey === "shortcut" || phoneKeyboardSubmit) {
+      const softwareKeyboardSubmit = !completionMenuOpen && submitKey === "software-keyboard";
+      if (submitKey === "shortcut" || softwareKeyboardSubmit) {
         event.preventDefault();
         if (this.inputTarget.value.trim() || this.formTarget.querySelector(".agent-chip")) {
-          // Relinquish focus before requestSubmit so Turbo records the unfocused state before rendering the response.
-          if (phoneKeyboardSubmit) this.relinquishPhoneComposerFocus();
+          // Relinquish focus before requestSubmit so Turbo records the keyboard-closed state.
+          if (softwareKeyboardSubmit) this.relinquishSoftwareKeyboardFocus();
           const submitter = this.formTarget.querySelector<HTMLButtonElement>('button[value="send"], button[value="steer"]');
           this.formTarget.requestSubmit(submitter ?? undefined);
         }
@@ -554,7 +537,7 @@ function createAgentPaneController(Controller: StimulusControllerConstructor) {
           if (consumed.has(input.value)) input.closest(".agent-chip")!.remove();
         });
       }
-      focusAgentPaneComposerOnWideViewport(this.element);
+      focusAgentPaneComposerForTyping(this.element);
     }
   };
 }
@@ -1251,15 +1234,20 @@ async function expandedPromptTemplate(url: string, text: string): Promise<string
   return await response.text();
 }
 
+function composerIsTranscribing(element: Element): boolean {
+  return Boolean(element.closest(".composer")?.hasAttribute("data-transcribing"));
+}
+
 function createAgentCompletionsController(Controller: StimulusControllerConstructor, hooks: WorkspaceClientHooks) {
   const HtmlAutocompleteController = createHtmlAutocompleteController(Controller, {
     optionSelector: ".agent-completion-option:not([hidden]):not(:disabled)",
     loadingHtml: `<div class="popup-menu autocomplete-menu autocomplete-empty" role="status"><span class="agent-completion-spinner" aria-hidden="true"></span>Loading completions…</div>`,
     triggerKeysWhenClosed: ["/", "@"],
     fullscreenShortcut: (option) => option.dataset.completionKind === "prompt-template",
-    keepOpenOnBlur: (input, menu) => input.value === "" && Boolean(menu.querySelector(".agent-quick-launch")),
+    keepOpenOnBlur: (input, menu) => !composerIsTranscribing(input) && input.value === "" && Boolean(menu.querySelector(".agent-quick-launch")),
     menuEvent: handleAgentTreeMenuEvent,
     request(input, force) {
+      if (composerIsTranscribing(input)) return undefined;
       const completion = agentCompletionRequest(input, force);
       if (!completion) return completion;
       interface CompletionRequestParams {
@@ -1287,9 +1275,9 @@ function createAgentCompletionsController(Controller: StimulusControllerConstruc
       if (option.dataset.completionKind === "quick-launch") {
         const initialValue = input.value;
         void expandedPromptTemplate(url, option.dataset.commandTrigger!).then((expanded) => {
-          if (input.value !== initialValue) return;
+          if (input.value !== initialValue || composerIsTranscribing(input)) return;
           setTextInputValue(input, expanded);
-          input.form!.focus({ preventScroll: true });
+          if (!focusLikelyOpensSoftwareKeyboard()) input.focus({ preventScroll: true });
         });
       } else if (option.dataset.commandTrigger) insertSlashCommand(option, input);
       else if (option.dataset.completionKind === "file") insertFileCompletion(option, input);
@@ -1333,7 +1321,7 @@ function createAgentCompletionsController(Controller: StimulusControllerConstruc
     private readonly promptTemplateHotkey = (event: KeyboardEvent): void => {
       if (event.defaultPrevented || event.repeat || event.isComposing || !event.metaKey || !event.altKey || event.ctrlKey || event.shiftKey) return;
       const match = event.code.match(/^Key([A-Z])$/);
-      if (!match || this.element.getClientRects().length === 0) return;
+      if (!match || this.element.getClientRects().length === 0 || composerIsTranscribing(this.element)) return;
       const resident = this.element.closest<HTMLElement>(".workspace-detail-resident");
       if (resident && !resident.classList.contains("visible")) return;
       const catalog = slashCatalogCache.get(slashCatalogUrl(this.urlValue).href)?.html;
@@ -1347,7 +1335,7 @@ function createAgentCompletionsController(Controller: StimulusControllerConstruc
       event.stopImmediatePropagation();
       const initialValue = this.inputTarget.value;
       void expandedPromptTemplate(this.urlValue, trigger).then((expanded) => {
-        if (this.inputTarget.value !== initialValue) return;
+        if (this.inputTarget.value !== initialValue || composerIsTranscribing(this.element)) return;
         setTextInputValue(this.inputTarget, expanded);
         const form = this.inputTarget.form!;
         const submitter = form.querySelector<HTMLButtonElement>('button[value="send"], button[value="steer"]');
@@ -1758,17 +1746,17 @@ function focusAgentPaneComposer(pane?: AgentPaneComposerContainer | null): boole
   return true;
 }
 
-export function focusAgentPaneComposerOnWideViewport(
+export function focusAgentPaneComposerForTyping(
   pane?: AgentPaneComposerContainer | null,
-  isPhone = isPhoneViewport(),
+  focusOpensSoftwareKeyboard = focusLikelyOpensSoftwareKeyboard(),
   documentFocused = document.hasFocus(),
 ): boolean {
-  return documentFocused && !isPhone && focusAgentPaneComposer(pane);
+  return documentFocused && !focusOpensSoftwareKeyboard && focusAgentPaneComposer(pane);
 }
 
 function agentConversationBecameVisible(application: StimulusApplication, pane: HTMLElement): void {
   agentPaneController(application, pane)?.becomeVisible();
-  focusAgentPaneComposerOnWideViewport(pane);
+  focusAgentPaneComposerForTyping(pane);
 }
 
 function agentConversationNoLongerVisible(application: StimulusApplication, pane: HTMLElement): void {
@@ -1806,7 +1794,6 @@ function createAgentEditDiffController(Controller: StimulusControllerConstructor
 export const agentClientModule: WorkspaceClientModule = {
   id: "agent",
   install({ application, Controller, hooks }) {
-    application.register("agent-composer", createAgentComposerController(Controller));
     application.register("agent-pane", createAgentPaneController(Controller));
     application.register("agent-attachments", createAgentAttachmentsController(Controller));
     application.register("composer-selection-autosubmit", createComposerSelectionAutosubmitController(Controller));
@@ -1824,7 +1811,7 @@ export const agentClientModule: WorkspaceClientModule = {
 
     hooks.onBecomeVisible(({ pane }) => agentConversationBecameVisible(application, pane));
     hooks.onNoLongerVisible(({ pane }) => agentConversationNoLongerVisible(application, pane));
-    hooks.onFocusGroup(({ pane }) => focusAgentPaneComposerOnWideViewport(pane));
+    hooks.onFocusGroup(({ pane }) => focusAgentPaneComposerForTyping(pane));
     const openLaunchComposer = (): void => {
       const resident = document.querySelector<HTMLElement>(".workspace-detail-resident.visible");
       const projectId = resident ? resident.dataset.projectId : localStorage.getItem(recentWorkspaceProjectStorageKey);
