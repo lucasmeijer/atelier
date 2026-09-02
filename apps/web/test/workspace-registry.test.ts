@@ -67,7 +67,7 @@ describe("workspace registry", () => {
     const saved: Array<Record<string, import("../src/server/workspace-registry.ts").WorkspaceDeletionState>> = [];
     const deletionStore = {
       load: async () => ({
-        blocked: { status: "blocked" as const, fingerprint: "old-assessment", verification: "verified" as const },
+        blocked: { status: "blocked" as const, fingerprint: "old-assessment" },
         removed: { status: "deleting" as const, forced: true },
       }),
       save: async (deletions: Record<string, import("../src/server/workspace-registry.ts").WorkspaceDeletionState>) => { saved.push(structuredClone(deletions)); },

@@ -199,7 +199,7 @@ export async function executeDeleteCurrentWorkspace(
   const result = await deleteCurrentWorkspace(force);
   if (result.blocked) {
     return {
-      content: [{ type: "text" as const, text: "Current workspace was not deleted because the delete safety checks found outstanding local changes or unpushed commits." }],
+      content: [{ type: "text" as const, text: "Current workspace was not deleted because the delete safety checks found outstanding local changes." }],
       details: { workspaceId, ...result },
     };
   }

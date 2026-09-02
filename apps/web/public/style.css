@@ -255,10 +255,6 @@ turbo-frame { display: contents; }
 .workspace-deletion-repository > h2 { margin: 0 0 16px; font: var(--weight-semibold) var(--text-body)/var(--leading-tight) var(--font-sans); }
 .workspace-deletion-change-group + .workspace-deletion-change-group { margin-top: 20px; }
 .workspace-deletion-change-group > h3 { margin: 0 0 8px; color: var(--text); font: var(--weight-semibold) var(--text-body)/var(--leading-tight) var(--font-sans); }
-.workspace-deletion-note { margin: -2px 0 10px; color: var(--text-subtle); }
-.workspace-deletion-verification-error { margin-bottom: 16px; padding: 12px; border: 1px solid color-mix(in srgb, var(--danger) 35%, var(--line)); border-radius: var(--radius-control); background: var(--danger-soft); }
-.workspace-deletion-verification-error p { margin: 4px 0 0; }
-.workspace-deletion-commits { display: grid; gap: 8px; }
 .workspace-deletion-commit { border: 1px solid var(--fixed-shell-border); border-radius: 6px; overflow: clip; }
 .workspace-deletion-commit > summary { display: grid; grid-template-columns: max-content minmax(0, 1fr) max-content; gap: 10px; padding: 10px 12px; cursor: pointer; }
 .workspace-deletion-commit > summary > span { min-width: 0; overflow-wrap: anywhere; }

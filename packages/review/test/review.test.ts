@@ -3,7 +3,7 @@ import { mkdtemp, mkdir, rm, writeFile } from "node:fs/promises";
 import { join } from "node:path";
 import { tmpdir } from "node:os";
 import { reviewCommentsPrompt, type ReviewCommentModel } from "../src/model.ts";
-import { collectCommitFile, collectCommitStats, collectReviewFile, collectReviewIndex, collectReviewStats, type ReviewFile, type ReviewFileStats } from "../src/server/diff.ts";
+import { collectReviewFile, collectReviewIndex, collectReviewStats, type ReviewFile, type ReviewFileStats } from "../src/server/diff.ts";
 import { renderReviewBody, renderReviewFileDetails, renderReviewStatsFrame, reviewWorkViewPresentation } from "../src/server/render.ts";
 import { readReviewDiffLayouts, writeReviewDiffLayout } from "../src/server/settings.ts";
 import { addReviewComment, deleteReviewState, listReviewComments, remapReviewComment, updateReviewComment, type ReviewComment } from "../src/server/state.ts";
@@ -106,18 +106,6 @@ describe("Review collection", () => {
     expect((await reviewFiles(root))[0]!.kind).toBe("binary");
   });
 
-  test("collects changed files and lazy diff details for an unpushed commit", async () => {
-    const root = await repository();
-    await writeFile(join(root, "committed.ts"), "export const committed = true;\n");
-    await command(root, "git", "add", "committed.ts");
-    await command(root, "git", "commit", "-qm", "local work");
-    const commit = (await Bun.$`git -C ${root} rev-parse HEAD`.text()).trim();
-
-    expect(await collectCommitStats(root, commit)).toEqual([{ path: "committed.ts", change: "added", additions: 1, deletions: 0 }]);
-    const file = await collectCommitFile(root, commit, "committed.ts");
-    expect(file?.kind).toBe("text");
-    expect(file?.newContents).toBe("export const committed = true;\n");
-  });
 });
 
 describe("Review comment state", () => {

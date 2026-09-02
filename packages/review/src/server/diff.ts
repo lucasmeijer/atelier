@@ -203,52 +203,6 @@ export async function collectReviewFile(root: string, path: string): Promise<Rev
   return entry ? await reviewFile(root, entry) : undefined;
 }
 
-async function commitFile(root: string, commit: string, entry: StatusEntry): Promise<ReviewFile | undefined> {
-  const oldPath = entry.previousPath ?? entry.path;
-  const [oldResult, newResult] = await Promise.all([
-    gitResult(root, ["show", `${commit}^:${oldPath}`]),
-    gitResult(root, ["show", `${commit}:${entry.path}`]),
-  ]);
-  const oldBuffer = oldResult.exitCode === 0 ? oldResult.stdout : undefined;
-  const newBuffer = newResult.exitCode === 0 ? newResult.stdout : undefined;
-  return reviewFileFromContents(entry, oldBuffer, newBuffer, entry.previousPath ? "File renamed" : "No textual changes");
-}
-
-function parseCommitEntries(output: Buffer): StatusEntry[] {
-  const fields = output.toString("utf8").split("\0");
-  const entries: StatusEntry[] = [];
-  for (let index = 0; index < fields.length;) {
-    const code = fields[index++];
-    if (!code) continue;
-    if (code.startsWith("R") || code.startsWith("C")) {
-      const previousPath = fields[index++]!;
-      const path = fields[index++]!;
-      entries.push({ code, path, previousPath });
-    } else {
-      const path = fields[index++]!;
-      entries.push({ code, path });
-    }
-  }
-  return entries;
-}
-
-async function commitEntries(root: string, commit: string): Promise<StatusEntry[]> {
-  return parseCommitEntries(await git(root, ["diff-tree", "--root", "--no-commit-id", "--name-status", "-r", "-M", "-z", commit]));
-}
-
-async function collectCommitIndex(root: string, commit: string): Promise<ReviewFileSummary[]> {
-  return (await commitEntries(root, commit)).map((entry) => {
-    const file: ReviewFileSummary = { path: entry.path, change: statusChange(entry) };
-    if (entry.previousPath) file.previousPath = entry.previousPath;
-    return file;
-  }).sort((left, right) => left.path.localeCompare(right.path));
-}
-
-export async function collectCommitFile(root: string, commit: string, path: string): Promise<ReviewFile | undefined> {
-  const entry = (await commitEntries(root, commit)).find((candidate) => candidate.path === path);
-  return entry ? await commitFile(root, commit, entry) : undefined;
-}
-
 function parseNumstat(output: Buffer): Map<string, ChangeCounts> {
   const fields = output.toString("utf8").split("\0");
   const stats = new Map<string, ChangeCounts>();
@@ -267,15 +221,6 @@ function parseNumstat(output: Buffer): Map<string, ChangeCounts> {
     });
   }
   return stats;
-}
-
-export async function collectCommitStats(root: string, commit: string): Promise<ReviewFileStats[]> {
-  const [files, output] = await Promise.all([
-    collectCommitIndex(root, commit),
-    git(root, ["diff-tree", "--root", "--no-commit-id", "--numstat", "-r", "-z", commit]),
-  ]);
-  const counts = parseNumstat(output);
-  return files.map((file) => ({ ...file, ...(counts.get(file.path) ?? { additions: 0, deletions: 0 }) }));
 }
 
 function textFileLineCount(content: Buffer | undefined): number {

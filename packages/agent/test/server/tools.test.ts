@@ -64,7 +64,7 @@ describe("workspace agent tools", () => {
     const result = await executeDeleteCurrentWorkspace("abc", async (force) => ({
       deleted: false,
       blocked: !force,
-      details: { workspaceId: "abc", issues: [{ repo: "demo", uncommittedPaths: ["wip.txt"], outgoingCommits: [] }] },
+      details: { workspaceId: "abc", issues: [{ repo: "demo", uncommittedPaths: ["wip.txt"] }] },
     }), false);
 
     const content = result.content[0];

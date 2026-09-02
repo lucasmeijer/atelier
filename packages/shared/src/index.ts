@@ -199,9 +199,9 @@ export interface WorkspaceModuleRouteHandler {
 
 export type WorkspaceDeletionAssessment =
   | { status: "clear" }
-  | { status: "blocked"; fingerprint: string; verification: "verified" | "incomplete"; details: JsonValue };
+  | { status: "blocked"; fingerprint: string; details: JsonValue };
 
-/** Supplies the Git-loss check and read-only evidence used by workspace deletion. */
+/** Supplies the local-change check and read-only evidence used by workspace deletion. */
 export interface WorkspaceDeletionReview {
   inspect(workspaceId: string): Promise<WorkspaceDeletionAssessment>;
   renderEvidence(workspaceId: string, details: JsonValue): string;

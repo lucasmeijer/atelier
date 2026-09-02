@@ -315,7 +315,6 @@ printf changed > /work/deps/sub/tracked.txt`);
       issues: expect.arrayContaining([expect.objectContaining({
         repo: "deps/sub",
         uncommittedPaths: ["tracked.txt"],
-        outgoingCommits: [expect.objectContaining({ subject: "submodule work" })],
       })]),
     }));
 

@@ -1184,7 +1184,7 @@ ${moduleStylesHtml()}
   async function showBlockedAssessment(id: string, assessment: Extract<Awaited<ReturnType<WorkspaceDeletionReview["inspect"]>>, { status: "blocked" }>): Promise<DeleteCurrentWorkspaceResult> {
     const html = deletionReview.renderEvidence(id, assessment.details);
     deletionEvidence.set(id, { details: assessment.details, html });
-    const deletion: WorkspaceDeletionState = { status: "blocked", fingerprint: assessment.fingerprint, verification: assessment.verification };
+    const deletion: WorkspaceDeletionState = { status: "blocked", fingerprint: assessment.fingerprint };
     registry.markViewAttention(id, "workspace");
     registry.setDeletion(id, deletion);
     const pane = workspacePaneCollectionsTurboStream(await workspacePaneCollections(""));

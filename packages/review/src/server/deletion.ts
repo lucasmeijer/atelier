@@ -5,7 +5,7 @@ import { domId, escapeHtml, type WorkspaceDeletionAssessment, type WorkspaceDele
 import { workspaceWorkHostPath } from "@atelier/workspace";
 import { Type, type Static } from "typebox";
 import { Value } from "typebox/value";
-import { collectCommitFile, collectCommitStats, collectReviewFile, collectReviewIndex, collectReviewStats, git, gitResult, type ReviewFileStats } from "./diff.ts";
+import { collectReviewFile, collectReviewIndex, collectReviewStats, git, gitResult, type ReviewFileStats } from "./diff.ts";
 import { renderChangeCounts, renderFilePath, renderFileSummary, renderReadOnlyReviewFile } from "./render.ts";
 
 const fileSchema = Type.Object({
@@ -16,17 +16,9 @@ const fileSchema = Type.Object({
   additions: Type.Number(),
   deletions: Type.Number(),
 });
-const commitSchema = Type.Object({
-  hash: Type.String(),
-  subject: Type.String(),
-  files: Type.Array(fileSchema),
-});
 const repositorySchema = Type.Object({
   relativePath: Type.String(),
   uncommitted: Type.Array(fileSchema),
-  outgoingCommits: Type.Array(commitSchema),
-  noUpstream: Type.Boolean(),
-  verificationError: Type.Optional(Type.String()),
 });
 const deletionDetailsSchema = Type.Object({ repositories: Type.Array(repositorySchema) });
 type DeletionDetails = Static<typeof deletionDetailsSchema>;
@@ -42,24 +34,6 @@ async function repositoryPaths(root: string): Promise<string[]> {
   return ["", ...submodules.stdout.toString("utf8").split("\0").filter(Boolean)];
 }
 
-async function outgoingCommits(root: string): Promise<{ commits: Array<{ hash: string; subject: string; files: ReviewFileStats[] }>; noUpstream: boolean }> {
-  const head = await gitResult(root, ["rev-parse", "--verify", "HEAD"]);
-  if (head.exitCode !== 0) return { commits: [], noUpstream: false };
-  const upstream = await gitResult(root, ["rev-parse", "--verify", "@{upstream}"]);
-  const noUpstream = upstream.exitCode !== 0;
-  const args = upstream.exitCode === 0
-    ? ["log", "--format=%H%x1f%s%x1e", "@{upstream}..HEAD"]
-    : ["log", "--format=%H%x1f%s%x1e", "HEAD", "--not", "--remotes"];
-  const output = (await git(root, args)).toString("utf8");
-  const commits = await Promise.all(output.split("\x1e").map((record) => record.trim()).filter(Boolean).map(async (record) => {
-    const separator = record.indexOf("\x1f");
-    const hash = separator === -1 ? record : record.slice(0, separator);
-    const subject = separator === -1 ? "" : record.slice(separator + 1);
-    return { hash, subject, files: await collectCommitStats(root, hash) };
-  }));
-  return { commits, noUpstream };
-}
-
 async function inspect(workspaceId: string): Promise<WorkspaceDeletionAssessment> {
   const workspaceRoot = workspaceWorkHostPath(workspaceId);
   const repositories: DeletionRepository[] = [];
@@ -68,22 +42,17 @@ async function inspect(workspaceId: string): Promise<WorkspaceDeletionAssessment
     const root = join(workspaceRoot, relativePath);
     const index = await collectReviewIndex(root);
     if (index.phase !== "ready") continue;
-    const fetch = await gitResult(root, ["fetch", "--quiet"]);
-    const outgoing = await outgoingCommits(root);
+    const uncommitted = await collectReviewStats(root, index);
+    if (!uncommitted.length) continue;
     const entry: DeletionRepository = {
       relativePath,
-      uncommitted: await collectReviewStats(root, index),
-      outgoingCommits: outgoing.commits,
-      noUpstream: outgoing.noUpstream,
+      uncommitted,
     };
-    if (fetch.exitCode !== 0) entry.verificationError = fetch.stderr || "Could not fetch remote refs";
-    if (entry.uncommitted.length || entry.outgoingCommits.length || entry.verificationError) {
-      repositories.push(entry);
-      const head = await gitResult(root, ["rev-parse", "--verify", "HEAD"]);
-      fingerprintMaterial.push(head.exitCode === 0 ? (await git(root, ["diff", "--binary", "HEAD", "--"])).toString("base64") : "no-head");
-      for (const file of entry.uncommitted.filter((candidate) => candidate.untracked)) {
-        fingerprintMaterial.push(`${file.path}:${(await git(root, ["hash-object", "--no-filters", "--", file.path])).toString("utf8").trim()}`);
-      }
+    repositories.push(entry);
+    const head = await gitResult(root, ["rev-parse", "--verify", "HEAD"]);
+    fingerprintMaterial.push(head.exitCode === 0 ? (await git(root, ["diff", "--binary", "HEAD", "--"])).toString("base64") : "no-head");
+    for (const file of entry.uncommitted.filter((candidate) => candidate.untracked)) {
+      fingerprintMaterial.push(`${file.path}:${(await git(root, ["hash-object", "--no-filters", "--", file.path])).toString("utf8").trim()}`);
     }
   }
   if (!repositories.length) {
@@ -95,17 +64,15 @@ async function inspect(workspaceId: string): Promise<WorkspaceDeletionAssessment
   const assessment: Extract<WorkspaceDeletionAssessment, { status: "blocked" }> = {
     status: "blocked",
     fingerprint,
-    verification: repositories.some((repository) => repository.verificationError) ? "incomplete" : "verified",
     details,
   };
   assessments.set(workspaceId, assessment);
   return assessment;
 }
 
-function fileSummary(workspaceId: string, fingerprint: string, repository: DeletionRepository, file: ReviewFileStats, commit?: string): string {
-  const frameId = domId("deletion_review", workspaceId, fingerprint, repository.relativePath || "root", commit ?? "working", file.path);
+function fileSummary(workspaceId: string, fingerprint: string, repository: DeletionRepository, file: ReviewFileStats): string {
+  const frameId = domId("deletion_review", workspaceId, fingerprint, repository.relativePath || "root", "working", file.path);
   const query = new URLSearchParams({ fingerprint, repository: repository.relativePath, path: file.path });
-  if (commit) query.set("commit", commit);
   const summary = renderFileSummary(
     { kind: "html", html: renderFilePath(file.path) },
     `<span class="review-git-stats">${renderChangeCounts(file)}</span>`,
@@ -119,11 +86,9 @@ function renderEvidence(workspaceId: string, value: JsonValue): string {
   const assessment = assessments.get(workspaceId);
   if (!assessment) throw new Error("Deletion review assessment is no longer current");
   return `<div data-controller="deletion-review">${details.repositories.map((repository) => {
-    const error = repository.verificationError ? `<div class="workspace-deletion-verification-error" role="alert"><strong>Remote verification failed</strong><p>${escapeHtml(repository.verificationError)}</p><p>Local changes are shown, but Atelier could not verify whether every commit exists remotely.</p></div>` : "";
     const working = repository.uncommitted.length ? `<section class="workspace-deletion-change-group"><div class="review-files action-list">${repository.uncommitted.map((file) => fileSummary(workspaceId, assessment.fingerprint, repository, file)).join("")}</div></section>` : "";
-    const commits = repository.outgoingCommits.length ? `<section class="workspace-deletion-change-group"><h3>Unpushed commits</h3>${repository.noUpstream ? `<p class="workspace-deletion-note">No upstream branch is configured; these commits were not found on any remote ref.</p>` : ""}<div class="workspace-deletion-commits">${repository.outgoingCommits.map((commit) => `<details class="workspace-deletion-commit"><summary><code>${escapeHtml(commit.hash.slice(0, 12))}</code><span>${escapeHtml(commit.subject)}</span><span>${commit.files.length} file${commit.files.length === 1 ? "" : "s"}</span></summary><div class="review-files action-list">${commit.files.map((file) => fileSummary(workspaceId, assessment.fingerprint, repository, file, commit.hash)).join("")}</div></details>`).join("")}</div></section>` : "";
     const repositoryHeading = repository.relativePath ? `<h2>${escapeHtml(repository.relativePath)}</h2>` : "";
-    return `<section class="workspace-deletion-repository">${repositoryHeading}${error}${working}${commits}</section>`;
+    return `<section class="workspace-deletion-repository">${repositoryHeading}${working}</section>`;
   }).join("")}</div>`;
 }
 
@@ -136,16 +101,13 @@ export async function deletionReviewFileResponse(workspaceId: string, url: URL):
   const details = Value.Parse(deletionDetailsSchema, assessment.details);
   const relativePath = url.searchParams.get("repository") ?? "";
   const path = url.searchParams.get("path") ?? "";
-  const commit = url.searchParams.get("commit") ?? undefined;
   const repository = details.repositories.find((candidate) => candidate.relativePath === relativePath);
-  const listed = commit
-    ? repository?.outgoingCommits.find((candidate) => candidate.hash === commit)?.files.some((file) => file.path === path)
-    : repository?.uncommitted.some((file) => file.path === path);
+  const listed = repository?.uncommitted.some((file) => file.path === path);
   if (!repository || !listed) return new Response("Review file is no longer available", { status: 404 });
   const root = join(workspaceWorkHostPath(workspaceId), repository.relativePath);
-  const file = commit ? await collectCommitFile(root, commit, path) : await collectReviewFile(root, path);
+  const file = await collectReviewFile(root, path);
   if (!file) return new Response("Review file is no longer available", { status: 409 });
-  const frameId = domId("deletion_review", workspaceId, fingerprint, repository.relativePath || "root", commit ?? "working", path);
+  const frameId = domId("deletion_review", workspaceId, fingerprint, repository.relativePath || "root", "working", path);
   return new Response(await renderReadOnlyReviewFile(frameId, file), { headers: { "content-type": "text/html; charset=utf-8", "cache-control": "no-store" } });
 }
 

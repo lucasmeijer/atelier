@@ -8,7 +8,7 @@ export type WorkspacePhase = "starting" | "ready" | "checking_delete" | "deletin
 
 export type WorkspaceDeletionState =
   | { status: "checking" }
-  | { status: "blocked"; fingerprint: string; verification: "verified" | "incomplete" }
+  | { status: "blocked"; fingerprint: string }
   | { status: "deleting"; forced: boolean }
   | { status: "failed"; operation: "checking"; error: string }
   | { status: "failed"; operation: "deleting"; forced: boolean; error: string };
@@ -91,7 +91,7 @@ const workspaceUnreadSchema = Type.Object({
 }, { additionalProperties: false });
 const workspaceDeletionStateSchema = Type.Union([
   Type.Object({ status: Type.Literal("checking") }),
-  Type.Object({ status: Type.Literal("blocked"), fingerprint: Type.String(), verification: Type.Union([Type.Literal("verified"), Type.Literal("incomplete")]) }),
+  Type.Object({ status: Type.Literal("blocked"), fingerprint: Type.String() }),
   Type.Object({ status: Type.Literal("deleting"), forced: Type.Boolean() }),
   Type.Object({ status: Type.Literal("failed"), operation: Type.Literal("checking"), error: Type.String() }),
   Type.Object({ status: Type.Literal("failed"), operation: Type.Literal("deleting"), forced: Type.Boolean(), error: Type.String() }),

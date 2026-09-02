@@ -133,7 +133,7 @@ function testDeletionReview(inspect: (id: string) => Promise<string[]>): Workspa
       const risks = await inspect(workspaceId);
       if (!risks.length) return { status: "clear" };
       const details = { risks };
-      return { status: "blocked", fingerprint: String(Bun.hash(JSON.stringify(details))), verification: "verified", details };
+      return { status: "blocked", fingerprint: String(Bun.hash(JSON.stringify(details))), details };
     },
     renderEvidence(_workspaceId, details) {
       return Value.Parse(testDeletionDetailsSchema, details).risks.join("\n");
