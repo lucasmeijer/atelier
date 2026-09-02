@@ -610,16 +610,16 @@ ${moduleStylesHtml()}
     const body = problem === "missing-token"
       ? `<p><b>${escapeHtml(project.name)}</b> looks private, and Atelier does not have a GitHub token yet.</p><p>Connect GitHub in workspace settings, then try creating this workspace again.</p>`
       : `<p>Atelier has a GitHub token, but GitHub would not allow it to read <b>${escapeHtml(project.name)}</b>.</p><p>Reconnect GitHub with a token that has access to this project, then try again.</p>`;
-    return `<dialog id="github-token-required-modal" class="dialog dialog--compact" data-controller="modal" data-modal-auto-show-value="true">
-  <form class="dialog__form" method="dialog">
-    <header class="dialog__header"><h2 class="title modal-brand-title"><span class="settings-provider-icon" style="--provider-color:${providerBrandColor("github")}">${providerBrandIconHtml("github", "GitHub")}</span>${escapeHtml(title)}</h2></header>
-    <div class="dialog__body">${body}</div>
-    <footer class="dialog__actions">
-      <button class="button secondary" value="cancel">Cancel</button>
-      <a class="button primary" href="/settings?section=github" data-turbo-frame="_top" data-turbo-stream="true">Open GitHub settings</a>
-    </footer>
-  </form>
-</dialog>`;
+    return dialogHtml({
+      element: {
+        className: "dialog--compact",
+        attributesHtml: "data-dialog-auto-show",
+      },
+      iconHtml: `<span class="settings-provider-icon" style="--provider-color:${providerBrandColor("github")}">${providerBrandIconHtml("github", "GitHub")}</span>`,
+      titleCaption: title,
+      bodyHtml: body,
+      footerHtml: `<form method="dialog"><button class="button secondary">Cancel</button></form><a class="button primary" href="/settings?section=github" data-turbo-frame="_top" data-turbo-stream="true">Open GitHub settings</a>`,
+    });
   }
 
   // ---------------------------------------------------------------------------
