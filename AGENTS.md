@@ -1,6 +1,6 @@
 # Agent instructions
 
-Follow the [UI testing policy](docs/ui-testing-policy.md) when adding or changing UI tests.
+Do not write UI tests. Follow the [UI testing policy](docs/ui-testing-policy.md).
 
 - When working on the web app, prefer server-rendered HTML over client-rendered UI.
 - Prefer Turbo Frames and Turbo Streams for webpage/server interactions whenever possible.

@@ -20,14 +20,13 @@
     "docker:dev": "bun run scripts/run-atelier-docker-dev.ts",
     "check": "bun run generate:workspace-modules && bun run lint && bunx tsc --noEmit -p tsconfig.json",
     "lint": "oxlint .",
-    "test": "bun run generate:workspace-modules && bun test --parallel=4 --parallel-delay=0 --path-ignore-patterns='apps/web/test/atelier-ui.test.ts' --path-ignore-patterns='apps/web/test/transcription-ui.test.ts' && bun test apps/web/test/atelier-ui.test.ts apps/web/test/transcription-ui.test.ts",
+    "test": "bun run generate:workspace-modules && bun test --parallel=4 --parallel-delay=0",
     "ci": "bun ci && bun run check && bun run test",
     "web": "bun run --cwd apps/web dev",
     "preview:redesign": "bun run scripts/run-redesign-preview.ts",
     "prototype:dark-foundation": "bun run scripts/serve-dark-foundation-prototypes.ts",
     "kill": "bun run --cwd apps/web kill",
     "list": "bun run --cwd apps/web list",
-    "smoke:vscode": "node apps/web/smoke/vscode-smoke.mjs",
     "demo:recording": "bun apps/web/demo/recording/example.ts"
   },
   "devDependencies": {
