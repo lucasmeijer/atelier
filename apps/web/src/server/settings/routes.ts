@@ -242,6 +242,21 @@ async function modelSetupData(): Promise<ModelSetupData> {
   return { configured, models, providers, working: configured.some((model) => available.has(modelKey(model))) };
 }
 
+async function initiatedModel(provider: string, value: string): Promise<ConfiguredAgentModel | undefined> {
+  const separator = value.indexOf("::");
+  if (separator < 1 || value.slice(0, separator) !== provider) return undefined;
+  const id = value.slice(separator + 2);
+  const model = (await createPiModelRuntime()).getModels(provider).find((candidate) => candidate.id === id);
+  return model ? { provider: model.provider, id: model.id, label: model.name ?? model.id } : undefined;
+}
+
+async function addConfiguredModel(model: ConfiguredAgentModel): Promise<void> {
+  const current = await getConfiguredAgentModels();
+  if (current.some((candidate) => modelKey(candidate) === modelKey(model))) return;
+  current.push(model);
+  await setPickerAgentModels(current, current.find((candidate) => candidate.active));
+}
+
 function providerState(provider: ProviderSummary): string {
   return `<span class="model-provider-state ${domId("model_provider_state", provider.provider)}" data-connected="${provider.connected}" hidden></span>`;
 }
@@ -268,9 +283,9 @@ function catalogueProviderForms(provider: ProviderSummary, surface: ModelSetupSu
   return `<form id="${domId("model_catalogue_add", surface, provider.provider)}" method="post" action="/settings/models/add" data-turbo="true" hidden></form>${authentication}`;
 }
 
-function catalogueAuthenticationButtons(provider: ProviderSummary, surface: ModelSetupSurface): string {
+function catalogueAuthenticationButtons(model: ModelCatalogueEntry, provider: ProviderSummary, surface: ModelSetupSurface): string {
   if (!provider.methods.length) return `<span class="settings-provider-desc">Provider unavailable</span>`;
-  return provider.methods.map((method) => `<button class="button secondary" type="submit" form="${providerAuthFormId(provider, method, surface)}">${providerAuthLabel(method)}</button>`).join("");
+  return provider.methods.map((method) => `<button class="button secondary" type="submit" form="${providerAuthFormId(provider, method, surface)}" name="model" value="${escapeHtml(modelKey(model))}">${providerAuthLabel(method)}</button>`).join("");
 }
 
 function configuredModelRow(model: ConfiguredAgentModel, provider: ProviderSummary, surface: ModelSetupSurface): string {
@@ -296,7 +311,7 @@ function catalogueModelAction(model: ModelCatalogueEntry, provider: ProviderSumm
   return `<div class="managed-list__actions model-catalogue-action ${actionClass}">
     ${model.configured
       ? `<span class="settings-provider-desc">Already added</span>`
-      : `<span class="model-provider-disconnected-actions">${catalogueAuthenticationButtons(provider, surface)}</span><span class="model-provider-connected-actions"><button class="button primary" type="submit" form="${domId("model_catalogue_add", surface, provider.provider)}" name="model" value="${escapeHtml(modelKey(model))}">Add</button></span>`}
+      : `<span class="model-provider-disconnected-actions">${catalogueAuthenticationButtons(model, provider, surface)}</span><span class="model-provider-connected-actions"><button class="button primary" type="submit" form="${domId("model_catalogue_add", surface, provider.provider)}" name="model" value="${escapeHtml(modelKey(model))}">Add</button></span>`}
   </div>`;
 }
 
@@ -398,10 +413,11 @@ export async function renderDevelopmentSettingsDialog(): Promise<string> {
   return settingsDialogHtml("Development settings", `<main class="settings-main settings-main-dev">${backLink}${await renderDevelopmentSettings()}</main>`);
 }
 
-function apiKeyModal(id: string, label: string, surface: SettingsSurface, error = ""): string {
+function apiKeyModal(id: string, label: string, surface: SettingsSurface, model?: ConfiguredAgentModel, error = ""): string {
   const inputId = domId("provider_api_key", id);
   const formId = domId("provider_api_key_form", id);
   const action = `/settings/providers/${encodeURIComponent(id)}/connect${surface === "onboarding" ? "?surface=onboarding" : ""}`;
+  const initiatedModel = model ? `<input type="hidden" name="model" value="${escapeHtml(modelKey(model))}">` : "";
   return dialogHtml({
     element: {
       id: "settings_flow_dialog",
@@ -411,6 +427,7 @@ function apiKeyModal(id: string, label: string, surface: SettingsSurface, error 
     iconHtml: providerIcon(id, label),
     titleCaption: `Connect ${label}`,
     bodyHtml: `<form id="${formId}" class="form-stack" method="post" action="${action}" data-turbo="true">
+      ${initiatedModel}
       ${error ? `<p class="settings-error">${escapeHtml(error)}</p>` : ""}
       <label for="${inputId}">API key</label>
       <input id="${inputId}" class="settings-input text-field" type="password" name="secret" placeholder="${escapeHtml(getProviderApiKeyExample(id) ?? "API key")}" autocomplete="off" required autofocus>
@@ -435,13 +452,14 @@ type PendingOAuthFlow = {
   prompt?: PendingPrompt;
   redirectSubmitted?: boolean;
   error?: string;
+  initiatedModel?: ConfiguredAgentModel;
 };
 
 const pendingOAuthFlows = new Map<string, PendingOAuthFlow>();
 
-async function startOAuthFlow(provider: string, label: string): Promise<PendingOAuthFlow> {
+async function startOAuthFlow(provider: string, label: string, initiatedModel?: ConfiguredAgentModel): Promise<PendingOAuthFlow> {
   if (!(await createPiModelRuntime()).getProvider(provider)?.auth.oauth) throw new Error(`${label} does not support OAuth in this pi installation.`);
-  const flow: PendingOAuthFlow = { id: crypto.randomUUID(), provider, label, status: "pending", startedAt: Date.now(), abort: new AbortController() };
+  const flow: PendingOAuthFlow = { id: crypto.randomUUID(), provider, label, status: "pending", startedAt: Date.now(), abort: new AbortController(), initiatedModel };
   pendingOAuthFlows.set(flow.id, flow);
   void loginPiOAuthProvider(provider, {
     signal: flow.abort.signal,
@@ -451,7 +469,8 @@ async function startOAuthFlow(provider: string, label: string): Promise<PendingO
       else if (event.type === "progress") { /* progress is reflected by polling status rows */ }
     },
     prompt: (prompt) => handleOAuthPrompt(flow, prompt),
-  }).then(() => {
+  }).then(async () => {
+    if (flow.initiatedModel) await addConfiguredModel(flow.initiatedModel);
     flow.status = "complete";
     flow.prompt = undefined;
   }).catch((error) => {
@@ -523,7 +542,7 @@ function oauthDeviceCodeBody(flow: PendingOAuthFlow, complete = false): string {
   });
   const confirmationName = flow.provider === "openai-codex" ? "OpenAI-Codex" : flow.label;
   const status = complete
-    ? `<p class="settings-oauth-waiting-status" role="status"><span class="settings-oauth-complete-marker" aria-hidden="true">✓</span><span>${escapeHtml(flow.label)} connected — You can now add models from this provider.</span></p>`
+    ? `<p class="settings-oauth-waiting-status" role="status"><span class="settings-oauth-complete-marker" aria-hidden="true">✓</span><span>${escapeHtml(flow.label)} connected${flow.initiatedModel ? ` — ${escapeHtml(flow.initiatedModel.label)} was added to your models.` : " — You can now add models from this provider."}</span></p>`
     : `<p class="settings-oauth-waiting-status" data-oauth-waiting-status hidden><span class="status-spinner" aria-hidden="true"></span><span>This step will complete when ${escapeHtml(confirmationName)} confirms they have received the code</span></p>`;
   return `<div class="settings-oauth-card">
     ${copyButton}
@@ -550,7 +569,8 @@ function oauthBrowserRedirectBody(flow: PendingOAuthFlow): string {
 
 function oauthCompleteBody(flow: PendingOAuthFlow): string {
   if (flow.verificationUri) return oauthDeviceCodeBody(flow, true);
-  return `<div class="settings-oauth-card">${oauthStatus("done", `${flow.label} connected`, "You can now add models from this provider.")}</div>`;
+  const detail = flow.initiatedModel ? `${flow.initiatedModel.label} was added to your models.` : "You can now add models from this provider.";
+  return `<div class="settings-oauth-card">${oauthStatus("done", `${flow.label} connected`, detail)}</div>`;
 }
 
 function oauthFlowModal(flow: PendingOAuthFlow): string {
@@ -681,15 +701,17 @@ export async function handleSettingsRequest(request: Request, url: URL, options:
     const surface = url.searchParams.get("surface") === "onboarding" ? "onboarding" : "settings";
     const runtime = await createPiModelRuntime();
     const label = runtime.getProvider(provider)?.name ?? provider;
+    const form = request.body ? await request.formData() : new FormData();
+    const model = await initiatedModel(provider, String(form.get("model") ?? ""));
     if (method === "oauth") {
       try {
-        const flow = await startOAuthFlow(provider, label);
+        const flow = await startOAuthFlow(provider, label, model);
         return stream(append(surface === "onboarding" ? "onboarding_modal_host" : "settings_modal_host", oauthFlowModal(flow)));
       } catch (error) {
-        return stream(append(surface === "onboarding" ? "onboarding_modal_host" : "settings_modal_host", apiKeyModal(provider, label, surface, error instanceof Error ? error.message : String(error))));
+        return stream(append(surface === "onboarding" ? "onboarding_modal_host" : "settings_modal_host", apiKeyModal(provider, label, surface, model, error instanceof Error ? error.message : String(error))));
       }
     }
-    return stream(append(surface === "onboarding" ? "onboarding_modal_host" : "settings_modal_host", apiKeyModal(provider, label, surface)));
+    return stream(append(surface === "onboarding" ? "onboarding_modal_host" : "settings_modal_host", apiKeyModal(provider, label, surface, model)));
   }
   match = url.pathname.match(/^\/settings\/providers\/([^/]+)\/connect$/);
   if (match && request.method === "POST") {
@@ -699,12 +721,15 @@ export async function handleSettingsRequest(request: Request, url: URL, options:
     const label = runtime.getProvider(provider)?.name ?? provider;
     const form = await request.formData();
     const secret = String(form.get("secret") ?? "");
+    const model = await initiatedModel(provider, String(form.get("model") ?? ""));
     try {
       await connectModelProviderApiKey(provider, secret);
+      if (model) await addConfiguredModel(model);
     } catch (error) {
-      return stream(replace("settings_flow_dialog", apiKeyModal(provider, label, surface, error instanceof Error ? error.message : String(error))));
+      return stream(replace("settings_flow_dialog", apiKeyModal(provider, label, surface, model, error instanceof Error ? error.message : String(error))));
     }
-    return stream(`${await refreshProviderState(provider)}${remove("settings_flow_dialog")}`);
+    const configuredModelState = model ? await refreshConfiguredModelState(model) : "";
+    return stream(`${await refreshProviderState(provider)}${configuredModelState}${remove("settings_flow_dialog")}`);
   }
   match = url.pathname.match(/^\/settings\/providers\/([^/]+)\/oauth\/([^/]+)\/(status|prompt|finish|cancel)$/);
   if (match && request.method === "POST") {
@@ -727,9 +752,12 @@ export async function handleSettingsRequest(request: Request, url: URL, options:
     }
     if (action === "finish") {
       pendingOAuthFlows.delete(flowId);
-      return stream(`${await refreshProviderState(provider)}${remove("settings_flow_dialog")}`);
+      const configuredModelState = flow.initiatedModel && flow.status === "complete" ? await refreshConfiguredModelState(flow.initiatedModel) : "";
+      return stream(`${await refreshProviderState(provider)}${configuredModelState}${remove("settings_flow_dialog")}`);
     }
-    return stream(replace("settings_flow_dialog", oauthFlowModal(flow)));
+    const providerState = flow.status === "complete" ? await refreshProviderState(provider) : "";
+    const configuredModelState = flow.initiatedModel && flow.status === "complete" ? await refreshConfiguredModelState(flow.initiatedModel) : "";
+    return stream(`${replace("settings_flow_dialog", oauthFlowModal(flow))}${providerState}${configuredModelState}`);
   }
   match = url.pathname.match(/^\/settings\/providers\/([^/]+)\/disconnect$/);
   if (match && request.method === "POST") {
