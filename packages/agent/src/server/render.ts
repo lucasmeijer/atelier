@@ -353,13 +353,15 @@ function renderTranscriptNavigation(): string {
 }
 
 function renderPromptActionButton(busy: boolean, ctx?: AgentRenderContext): string {
-  const value = busy ? "steer" : "send";
   const initialLabel = busy ? "Deliver a steering note while the agent keeps working" : "Send prompt";
   const activeLabel = "Agent is working — click to stop";
   const state = busy ? "active" : "initial";
   const paneAttrs = ctx
     ? ` data-agent-pane-target="sendStop" data-agent-busy="${busy}"${busy ? ` data-agent-abort-form-id="${ids.abortForm(ctx)}"` : ""}`
     : "";
+  const actionAttrs = busy && ctx
+    ? `form="${ids.abortForm(ctx)}"`
+    : `name="mode" value="${busy ? "steer" : "send"}"`;
   return activityButtonHtml({
     variant: "primary",
     iconOnly: true,
@@ -369,7 +371,7 @@ function renderPromptActionButton(busy: boolean, ctx?: AgentRenderContext): stri
     state,
     initialContent: { kind: "html", html: '<svg viewBox="0 0 20 20" aria-hidden="true"><path d="M10 15V5m-4 4 4-4 4 4"/></svg>' },
     activeContent: { kind: "html", html: '<svg viewBox="0 0 20 20" aria-hidden="true"><rect x="6" y="6" width="8" height="8" rx="1.5" fill="currentColor" stroke="none"/></svg>' },
-    attributesHtml: `name="mode" value="${value}"${paneAttrs}`,
+    attributesHtml: `${actionAttrs}${paneAttrs}`,
   });
 }
 
