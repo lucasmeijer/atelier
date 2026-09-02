@@ -348,11 +348,24 @@ Comment: I don't think we need these tests`;
       expect(await renderedDiff.getAttribute("data-diff-type")).toBe("split");
 
       const layoutRequest = page.waitForRequest("http://atelier.test/review/settings/diff-layout");
-      await unified.click();
+      const busyState = await unified.evaluate((element) => {
+        // SAFETY: unified resolves the named toggle button.
+        const button = element as HTMLButtonElement;
+        button.click();
+        const review = button.closest<HTMLElement>(".review-body")!;
+        const status = review.querySelector<HTMLElement>(".review-layout-status")!;
+        return {
+          selected: button.getAttribute("aria-pressed"),
+          busy: review.querySelector(".review-files")?.getAttribute("aria-busy"),
+          statusHidden: status.hidden,
+          statusText: status.textContent?.trim(),
+        };
+      });
+      expect(busyState).toEqual({ selected: "true", busy: "true", statusHidden: false, statusText: "Switching to unified…" });
       expect((await layoutRequest).postData()).toBe("review-diff-layout=unified");
-      expect(await unified.getAttribute("aria-pressed")).toBe("true");
       expect(await sideBySide.getAttribute("aria-pressed")).toBe("false");
-      expect(await renderedDiff.getAttribute("data-diff-type")).toBe("single");
+      await page.waitForFunction(() => document.querySelector("diffs-container")?.shadowRoot?.querySelector("pre[data-diff]")?.getAttribute("data-diff-type") === "single");
+      await page.locator(".review-layout-status").waitFor({ state: "hidden" });
       expect(await lines.getAttribute("aria-pressed")).toBe("true");
       expect(await words.getAttribute("aria-pressed")).toBe("false");
       expect(await wordHighlights.count()).toBe(0);

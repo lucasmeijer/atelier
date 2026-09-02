@@ -66,15 +66,21 @@ function fitTextarea(textarea: HTMLTextAreaElement): void {
   textarea.style.height = `${textarea.scrollHeight}px`;
 }
 
+function nextAnimationFrame(): Promise<void> {
+  return new Promise((resolve) => requestAnimationFrame(() => resolve()));
+}
+
 function createReviewController(Controller: StimulusControllerConstructor) {
   return class ReviewController extends Controller {
     static values = { workspaceId: String };
-    static targets = ["file", "diff", "tabTitle"];
+    static targets = ["file", "diff", "tabTitle", "layoutStatus", "layoutStatusText"];
     declare readonly element: HTMLElement;
     declare readonly workspaceIdValue: string;
     declare readonly fileTargets: HTMLDetailsElement[];
     declare readonly diffTargets: HTMLElement[];
     declare readonly tabTitleTarget: HTMLTemplateElement;
+    declare readonly layoutStatusTarget: HTMLElement;
+    declare readonly layoutStatusTextTarget: HTMLElement;
     declare readonly hasTabTitleTarget: boolean;
     private instances: FileDiff<AnnotationMetadata>[] = [];
     private containers = new Map<FileDiff<AnnotationMetadata>, HTMLElement>();
@@ -161,11 +167,30 @@ function createReviewController(Controller: StimulusControllerConstructor) {
       for (const file of this.fileTargets) file.open = true;
     }
 
-    setDiffLayout(event: ToggleChangeEvent): void {
+    async setDiffLayout(event: ToggleChangeEvent): Promise<void> {
       this.diffStyle = event.detail.value === "split" ? "split" : "unified";
-      for (const instance of this.instances) {
-        instance.setOptions({ ...instance.options, diffStyle: this.diffStyle });
-        instance.rerender();
+      const files = this.element.querySelector<HTMLElement>(".review-files");
+      const controls = this.element.querySelectorAll<HTMLButtonElement>(".review-display-toggles button");
+      this.layoutStatusTarget.hidden = false;
+      this.layoutStatusTextTarget.textContent = `Switching to ${this.diffStyle === "split" ? "side by side" : "unified"}…`;
+      files?.setAttribute("aria-busy", "true");
+      this.element.dataset.reviewLayoutBusy = "true";
+
+      await nextAnimationFrame();
+      for (const button of controls) button.disabled = true;
+      await nextAnimationFrame();
+      try {
+        for (const instance of this.instances) {
+          instance.setOptions({ ...instance.options, diffStyle: this.diffStyle });
+          instance.rerender();
+          await nextAnimationFrame();
+        }
+      } finally {
+        this.layoutStatusTarget.hidden = true;
+        this.layoutStatusTextTarget.textContent = "";
+        files?.removeAttribute("aria-busy");
+        delete this.element.dataset.reviewLayoutBusy;
+        for (const button of controls) button.disabled = false;
       }
     }
 

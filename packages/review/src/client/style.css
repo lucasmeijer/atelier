@@ -33,8 +33,18 @@
   gap: 16px;
   margin-left: auto;
 }
+.review-layout-status {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  color: var(--text-muted);
+  white-space: nowrap;
+}
+.review-layout-status[hidden] { display: none; }
+.review-layout-status .status-spinner { width: 14px; height: 14px; }
 
-.review-files { padding: 16px; }
+.review-files { padding: 16px; transition: opacity 120ms ease; }
+.review-body[data-review-layout-busy="true"] .review-files { opacity: .55; }
 
 .review-file { scroll-margin-top: 54px; }
 .review-file > summary { box-sizing: border-box; list-style: none; }

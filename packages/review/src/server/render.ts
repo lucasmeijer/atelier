@@ -194,7 +194,7 @@ function toolbar(workspaceId: string, comments: ReviewComment[], diffLayout: Rev
       <form method="post" action="/workspaces/${encodeURIComponent(workspaceId)}/review/comments/delete" data-turbo="true"><button class="button danger icon-only" type="submit" aria-label="Delete all review comments" title="Delete all review comments"${commentsDisabled}>${Icons.Trash}</button></form>
       ${refreshForm(workspaceId)}
       ${collapse}${expand}
-      <div class="review-display-toggles">${diffLayoutToggle}${diffHighlighting}${longLines}</div>
+      <div class="review-display-toggles"><span class="review-layout-status" data-review-target="layoutStatus" role="status" aria-live="polite" hidden><span class="status-spinner" aria-hidden="true"></span><span data-review-target="layoutStatusText"></span></span>${diffLayoutToggle}${diffHighlighting}${longLines}</div>
       <span data-copy-source hidden>${escapeHtml(reviewCommentsPrompt(comments))}</span>
     </div>
   </header>`;
