@@ -1,4 +1,5 @@
 export type ReviewSide = "deletions" | "additions";
+export type ReviewDiffLayout = "unified" | "split";
 
 export interface ReviewCommentModel {
   id: string;

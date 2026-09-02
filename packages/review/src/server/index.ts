@@ -6,6 +6,7 @@ import { Value } from "typebox/value";
 import { reviewCommentsPrompt, type ReviewSide } from "../model.ts";
 import { collectReviewFile, collectReviewIndex, collectReviewStats, reviewSnippet, type ReviewIndex } from "./diff.ts";
 import { renderReviewBody, renderReviewFileDetails, renderReviewStatsFrame, reviewBodyId, reviewFileFrameId, reviewReference, reviewWorkViewPresentation } from "./render.ts";
+import { isReviewDiffLayout, readReviewDiffLayout, writeReviewDiffLayout } from "./settings.ts";
 import { addReviewComment, deleteReviewComments, deleteReviewState, listReviewComments, reconcileReviewComments, remapReviewFileComments, reviewCommentsForPrompt, updateReviewComment, type ReviewComment } from "./state.ts";
 
 const reviewReferenceSchema = Type.Object({ type: Type.Literal("review") });
@@ -31,13 +32,13 @@ async function current(workspaceId: string): Promise<{ index: ReviewIndex; comme
   return index ? { index, comments: listReviewComments(workspaceId) } : await refresh(workspaceId);
 }
 
-function bodyStream(workspaceId: string, index: ReviewIndex, comments: ReviewComment[]): string {
-  return turboStream("replace", reviewBodyId(workspaceId), renderReviewBody(workspaceId, index, comments));
+async function bodyStream(workspaceId: string, index: ReviewIndex, comments: ReviewComment[]): Promise<string> {
+  return turboStream("replace", reviewBodyId(workspaceId), renderReviewBody(workspaceId, index, comments, await readReviewDiffLayout()));
 }
 
 async function refreshedResponse(workspaceId: string): Promise<Response> {
   const { index, comments } = await refresh(workspaceId);
-  return turboStreamResponse(bodyStream(workspaceId, index, comments));
+  return turboStreamResponse(await bodyStream(workspaceId, index, comments));
 }
 
 function positiveLine(value: FormDataEntryValue | null): number | undefined {
@@ -60,7 +61,7 @@ async function createComment(workspaceId: string, request: Request): Promise<Res
   if (!snippet && startLine !== 1) return textResponse("Review line is no longer available", 409);
   addReviewComment(workspaceId, { path, side, startLine, endLine, body, snippet });
   const { index } = await refresh(workspaceId);
-  return turboStreamResponse(bodyStream(workspaceId, index, listReviewComments(workspaceId)));
+  return turboStreamResponse(await bodyStream(workspaceId, index, listReviewComments(workspaceId)));
 }
 
 async function updateComment(workspaceId: string, id: string, request: Request): Promise<Response> {
@@ -68,7 +69,7 @@ async function updateComment(workspaceId: string, id: string, request: Request):
   if (!body || body.length > 20_000) return textResponse("Invalid review comment", 422);
   const { index } = await current(workspaceId);
   if (!updateReviewComment(workspaceId, id, body)) return textResponse("Review comment not found", 404);
-  return turboStreamResponse(bodyStream(workspaceId, index, listReviewComments(workspaceId)));
+  return turboStreamResponse(await bodyStream(workspaceId, index, listReviewComments(workspaceId)));
 }
 
 export const reviewWorkspaceModule: WorkspaceModule = {
@@ -82,13 +83,20 @@ export const reviewWorkspaceModule: WorkspaceModule = {
     identity: (_reference: ReviewReference) => "workspace",
     async render({ workspaceId }) {
       const { index, comments } = await current(workspaceId);
-      return renderReviewBody(workspaceId, index, comments);
+      return renderReviewBody(workspaceId, index, comments, await readReviewDiffLayout());
     },
   }],
   commands: [{ id: "review.open", execute: () => ({ createdWorkView: reviewReference }) }],
   staticFiles: { "/review.css": { url: new URL("../client/style.css", import.meta.url), contentType: "text/css; charset=utf-8" } },
   routes: [{
     async handle(request, url) {
+      if (url.pathname === "/review/settings/diff-layout") {
+        if (request.method !== "POST") return textResponse("Method not allowed", 405);
+        const value = String((await request.formData()).get("review-diff-layout") ?? "");
+        if (!isReviewDiffLayout(value)) return textResponse("Invalid review diff layout", 422);
+        await writeReviewDiffLayout(value);
+        return turboStreamResponse("");
+      }
       let match = url.pathname.match(/^\/workspaces\/([^/]+)\/review\/refresh$/);
       if (match) return request.method === "POST" ? await refreshedResponse(decodeURIComponent(match[1]!)) : textResponse("Method not allowed", 405);
       match = url.pathname.match(/^\/workspaces\/([^/]+)\/review\/stats$/);
@@ -117,7 +125,7 @@ export const reviewWorkspaceModule: WorkspaceModule = {
         const workspaceId = decodeURIComponent(match[1]!);
         const { index, comments } = await current(workspaceId);
         deleteReviewComments(workspaceId, comments.map((comment) => comment.id));
-        return turboStreamResponse(bodyStream(workspaceId, index, []));
+        return turboStreamResponse(await bodyStream(workspaceId, index, []));
       }
       match = url.pathname.match(/^\/workspaces\/([^/]+)\/review\/comments\/([^/]+)\/update$/);
       if (match) return request.method === "POST" ? await updateComment(decodeURIComponent(match[1]!), decodeURIComponent(match[2]!), request) : textResponse("Method not allowed", 405);
@@ -127,13 +135,13 @@ export const reviewWorkspaceModule: WorkspaceModule = {
       const workspaceId = decodeURIComponent(match[1]!);
       const { index } = await current(workspaceId);
       deleteReviewComments(workspaceId, [decodeURIComponent(match[2]!)]);
-      return turboStreamResponse(bodyStream(workspaceId, index, listReviewComments(workspaceId)));
+      return turboStreamResponse(await bodyStream(workspaceId, index, listReviewComments(workspaceId)));
     },
   }],
   initialize(context) {
     context.events.on("workspace_agent_turn_finished", async ({ workspaceId }) => {
       const { index, comments } = await refresh(workspaceId);
-      context.broadcastWorkspace(workspaceId, bodyStream(workspaceId, index, comments));
+      context.broadcastWorkspace(workspaceId, await bodyStream(workspaceId, index, comments));
     });
     context.events.on("workspace_agent_prompt_preparing", (event) => {
       const section = reviewCommentsPrompt(reviewCommentsForPrompt(event.workspaceId, event.reviewCommentIds));
@@ -142,7 +150,7 @@ export const reviewWorkspaceModule: WorkspaceModule = {
     context.events.on("workspace_agent_prompt_submitted", async ({ workspaceId, reviewCommentIds }) => {
       deleteReviewComments(workspaceId, reviewCommentIds);
       const { index, comments } = await current(workspaceId);
-      context.broadcastWorkspace(workspaceId, bodyStream(workspaceId, index, comments));
+      context.broadcastWorkspace(workspaceId, await bodyStream(workspaceId, index, comments));
     });
     context.onWorkspaceRemoved((workspaceId) => {
       indexes.delete(workspaceId);

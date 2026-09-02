@@ -294,7 +294,7 @@ Comment: I don't think we need these tests`;
       if (index.phase !== "ready") throw new Error("expected ready review");
       const reviewFile = await collectReviewFile(root, "changed.ts");
       if (!reviewFile) throw new Error("expected review file");
-      const reviewBody = renderReviewBody("word-diff", index, []);
+      const reviewBody = renderReviewBody("word-diff", index, [], "split");
       const fileDetails = await renderReviewFileDetails("word-diff", reviewFile, []);
       const statsFrame = renderReviewStatsFrame("word-diff", await collectReviewStats(root, index));
       const fixture = `<div class="workspace-detail-resident visible"><section class="fixed-shell-surface is-active" data-workspace-pane-role="work">${reviewBody}</section></div>`;
@@ -313,6 +313,7 @@ Comment: I don't think we need these tests`;
         detailRequests += 1;
         return route.fulfill({ contentType: "text/html", body: fileDetails });
       });
+      await page.route("http://atelier.test/review/settings/diff-layout", (route) => route.fulfill({ contentType: "text/vnd.turbo-stream.html", body: "" }));
       await page.addInitScript(() => localStorage.setItem("atelier.review.collapsed:word-diff", "[]"));
       await page.goto("http://atelier.test/");
 
@@ -341,16 +342,14 @@ Comment: I don't think we need these tests`;
       expect(await file.locator(".review-additions").count()).toBe(1);
       await file.locator("summary").click();
       const renderedDiff = page.locator("diffs-container").locator("pre[data-diff]");
-      expect(await unified.getAttribute("aria-pressed")).toBe("true");
-      expect(await sideBySide.getAttribute("aria-pressed")).toBe("false");
-      expect(await renderedDiff.getAttribute("data-diff-type")).toBe("single");
-
-      await sideBySide.click();
+      await page.waitForFunction(() => document.querySelector("diffs-container")?.shadowRoot?.querySelector("pre[data-diff]")?.getAttribute("data-diff-type") === "split");
       expect(await unified.getAttribute("aria-pressed")).toBe("false");
       expect(await sideBySide.getAttribute("aria-pressed")).toBe("true");
       expect(await renderedDiff.getAttribute("data-diff-type")).toBe("split");
 
+      const layoutRequest = page.waitForRequest("http://atelier.test/review/settings/diff-layout");
       await unified.click();
+      expect((await layoutRequest).postData()).toBe("review-diff-layout=unified");
       expect(await unified.getAttribute("aria-pressed")).toBe("true");
       expect(await sideBySide.getAttribute("aria-pressed")).toBe("false");
       expect(await renderedDiff.getAttribute("data-diff-type")).toBe("single");

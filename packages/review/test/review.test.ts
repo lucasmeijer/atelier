@@ -5,6 +5,7 @@ import { tmpdir } from "node:os";
 import { reviewCommentsPrompt, type ReviewCommentModel } from "../src/model.ts";
 import { collectReviewFile, collectReviewIndex, collectReviewStats, type ReviewFile, type ReviewFileStats } from "../src/server/diff.ts";
 import { renderReviewBody, renderReviewFileDetails, renderReviewStatsFrame, reviewWorkViewPresentation } from "../src/server/render.ts";
+import { readReviewDiffLayout, writeReviewDiffLayout } from "../src/server/settings.ts";
 import { addReviewComment, deleteReviewState, listReviewComments, remapReviewComment, updateReviewComment, type ReviewComment } from "../src/server/state.ts";
 import { command, createReviewRepository } from "./support/repository.ts";
 
@@ -160,6 +161,22 @@ Comment: I don't think we need these tests`);
   });
 });
 
+describe("Review settings", () => {
+  test("persists the global diff layout and defaults to unified", async () => {
+    const root = await mkdtemp(join(tmpdir(), "atelier-review-settings-"));
+    roots.push(root);
+    const path = join(root, "review-settings.json");
+
+    expect(await readReviewDiffLayout(path)).toBe("unified");
+    await writeReviewDiffLayout("split", path);
+    expect(await readReviewDiffLayout(path)).toBe("split");
+
+    const html = renderReviewBody("workspace 1", { phase: "ready", files: [] }, [], "split");
+    expect(html).toContain('data-review-diff-layout="split"');
+    expect(html).toContain('name="review-diff-layout" value="split" aria-pressed="true">Side by side</button>');
+  });
+});
+
 describe("Review presentation", () => {
   test("describes the Work view without collecting or rendering its diff", () => {
     expect(reviewWorkViewPresentation).toEqual({
@@ -226,7 +243,7 @@ describe("Review presentation", () => {
     expect(html).toContain('aria-label="Refresh review"');
     expect(html).toContain('aria-label="Collapse all files"');
     expect(html).toContain('aria-label="Expand all files"');
-    expect(html).toContain('role="group" aria-label="Diff layout" data-controller="toggle" data-action="change-&gt;review#setDiffLayout"');
+    expect(html).toContain('role="group" aria-label="Diff layout" data-controller="toggle" data-action="change-&gt;review#setDiffLayout" method="post" action="/review/settings/diff-layout"');
     expect(html).toContain('name="review-diff-layout" value="unified" aria-pressed="true">Unified</button>');
     expect(html).toContain('name="review-diff-layout" value="split" aria-pressed="false">Side by side</button>');
     expect(html).toContain('role="group" aria-label="Diff highlighting" data-controller="toggle" data-action="change-&gt;review#setWordDiff"');

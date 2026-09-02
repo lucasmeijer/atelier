@@ -5,7 +5,7 @@ import { setActivityButtonState } from "@atelier/design-system/activity-button/c
 import { Icons } from "@atelier/design-system/icons";
 import type { ToggleChangeEvent } from "@atelier/design-system/toggle/client";
 import { isWorkspacePaneVisible, type WorkspaceClientModule } from "@atelier/shared";
-import { reviewCommentsPrompt, type ReviewCommentModel } from "../model.ts";
+import { reviewCommentsPrompt, type ReviewCommentModel, type ReviewDiffLayout } from "../model.ts";
 import { reviewDiffOptions, reviewViewKey } from "../pierre.ts";
 
 type StimulusControllerConstructor = new (...args: never[]) => { element: Element };
@@ -82,7 +82,7 @@ function createReviewController(Controller: StimulusControllerConstructor) {
     private hydratedHosts = new WeakSet<HTMLElement>();
     private draft?: DraftModel;
     private hydrated = false;
-    private diffStyle: "unified" | "split" = "unified";
+    private diffStyle!: ReviewDiffLayout;
     private wordDiffEnabled = false;
     private lineWrappingEnabled = true;
     private pane!: HTMLElement;
@@ -90,6 +90,7 @@ function createReviewController(Controller: StimulusControllerConstructor) {
     private readonly becameVisible = (): void => { void this.becomeVisible(); };
 
     connect(): void {
+      this.diffStyle = this.element.dataset.reviewDiffLayout === "split" ? "split" : "unified";
       this.restoreDraft();
       this.pane = this.element.closest<HTMLElement>('[data-workspace-pane-role="work"]')!;
       this.resident = this.element.closest<HTMLElement>(".workspace-detail-resident")!;
@@ -215,7 +216,11 @@ function createReviewController(Controller: StimulusControllerConstructor) {
       const draft = this.draft?.path === path ? this.draft : undefined;
       const lineAnnotations = this.annotations(path);
       instance.hydrate({ fileContainer: container, fileDiff: model.fileDiff, lineAnnotations, prerenderedHTML });
-      if (draft || this.diffStyle !== reviewDiffOptions.diffStyle) instance.render({ fileDiff: model.fileDiff, lineAnnotations: [...lineAnnotations] });
+      if (draft) instance.render({ fileDiff: model.fileDiff, lineAnnotations: [...lineAnnotations] });
+      if (this.diffStyle !== reviewDiffOptions.diffStyle) {
+        instance.setOptions({ ...instance.options, diffStyle: this.diffStyle });
+        instance.rerender();
+      }
       this.instances.push(instance);
       this.enableTextCommenting(container, path, instance);
       this.decorateExpansionControls(container);
