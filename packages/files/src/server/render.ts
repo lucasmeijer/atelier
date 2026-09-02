@@ -1,6 +1,7 @@
 import { posix } from "node:path";
 import { actionItemHtml } from "@atelier/design-system/action-item";
 import { copyButtonHtml } from "@atelier/design-system/copy-button";
+import { dialogHtml } from "@atelier/design-system/dialog";
 import { Icons } from "@atelier/design-system/icons";
 import { toggleHtml } from "@atelier/design-system/toggle";
 import { domId, escapeHtml, workspaceFileOpenUrl, workspaceProxyUrl, type WorkspaceWorkViewPresentation } from "@atelier/shared";
@@ -138,6 +139,20 @@ export function renderLazyFilesTreeFrame(workspaceId: string, view: FilesView): 
   return `<turbo-frame id="${filesTreeFrameId(workspaceId, view.id)}" class="files-frame" src="/workspaces/${encodeURIComponent(workspaceId)}/files?${query}" loading="lazy"><div class="files-loading"><span class="status-spinner"></span> Loading files…</div></turbo-frame>`;
 }
 
+function fileConflictDialog(): string {
+  return dialogHtml({
+    element: {
+      className: "dialog--compact",
+      attributesHtml: 'data-controller="dialog" data-file-editor-target="conflict"',
+    },
+    iconHtml: Icons.Files,
+    titleCaption: "File changed on disk",
+    bodyHtml: "Choose which version should remain.",
+    footerHtml: '<button class="button secondary" type="button" data-action="file-editor#useTheirs">Use theirs</button><button class="button primary" type="button" data-action="file-editor#useMine">Use mine</button>',
+    closeLabel: "Dismiss file conflict",
+  });
+}
+
 function markdownDisplayToggle(): string {
   return toggleHtml({
     variant: "text",
@@ -165,7 +180,7 @@ export function renderFilesEditorFrame(workspaceId: string, view: FilesView): st
     <header class="file-editor-toolbar work-view-toolbar"><span class="file-editor-path" title="${escapeHtml(view.path)}">${escapeHtml(view.path)}</span><span class="file-editor-toolbar-actions">${markdown ? markdownDisplayToggle() : ""}<span class="file-editor-status" data-file-editor-target="status">Loading…</span>${selectedFileActions(workspaceId, view)}${filesPaneToggle("expand")}</span></header>
     <div class="file-editor-host" data-file-editor-target="host"><div class="file-editor-loading" data-file-editor-target="loading" role="status"><i class="status-spinner sm" aria-hidden="true"></i><span>Loading file…</span></div></div>
     ${markdown ? `<div class="file-editor-preview agent-md" data-file-editor-target="preview" hidden></div>` : ""}
-    <dialog class="dialog dialog--compact file-editor-conflict" data-file-editor-target="conflict"><form class="dialog__form" method="dialog"><header class="dialog__header"><strong>File changed on disk</strong></header><div class="dialog__body"><p>Choose which version should remain.</p></div><footer class="dialog__actions"><button class="button secondary" type="button" data-action="file-editor#useTheirs">Use theirs</button><button class="button primary" type="button" data-action="file-editor#useMine">Use mine</button></footer></form></dialog>
+    ${fileConflictDialog()}
   </section></turbo-frame>`;
 }
 
