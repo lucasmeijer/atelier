@@ -38,7 +38,7 @@ function renderKeypressProbe(): string {
 async function renderKeypressProbeSettings(): Promise<string> {
   const enabled = await isKeypressProbeEnabled();
   const toggle = toggleHtml({
-    variant: "button",
+    variant: "text",
     label: "Keylogging probe",
     name: "enabled",
     value: String(enabled),
