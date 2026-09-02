@@ -52,6 +52,7 @@ const templateLocks = new Map<string, Promise<void>>();
 const reflinkSupportByDir = new Map<string, Promise<boolean>>();
 const regularCopyWarnings = new Set<string>();
 const provisionLog = new AsyncLocalStorage<string>();
+const cloneProvisionStep = { id: "project.git", label: "Clone project", parentId: "workspace.source" } as const;
 
 function sourceRoot(): string {
   return getAtelierRuntimeContext().atelierDataDir;
@@ -231,7 +232,7 @@ printf '%s\n' "$effective_branch" > "$effective_branch_file"
     command: script,
     env: token ? { GH_TOKEN: token } : undefined,
     onSessionStarted: async (session) => {
-      await options.events?.emit("workspace_provision_step", { workspaceId: options.workspaceId, id: "project.git", label: "Clone project", parentId: "workspace.init", status: "running", terminal: { kind: "host-tmux", session } });
+      await options.events?.emit("workspace_provision_step", { workspaceId: options.workspaceId, ...cloneProvisionStep, status: "running", terminal: { kind: "host-tmux", session } });
     },
   });
   await appendFile(options.logPath, result.output).catch(() => undefined);
@@ -365,7 +366,7 @@ export async function prepareWorkspaceSource(options: { workspaceId: string; git
       };
       await writeFile(join(cleanupPath, "metadata.json"), `${JSON.stringify(metadata, null, 2)}\n`);
 
-      await options.events?.emit("workspace_provision_step", { workspaceId: options.workspaceId, id: "project.git", label: "Clone project", parentId: "workspace.init", status: "done", output: tailTerminalText(await readFile(logPath, "utf8").catch(() => "")) });
+      await options.events?.emit("workspace_provision_step", { workspaceId: options.workspaceId, ...cloneProvisionStep, status: "done", output: tailTerminalText(await readFile(logPath, "utf8").catch(() => "")) });
       return {
         workspaceId: options.workspaceId,
         worktreePath,
@@ -377,7 +378,7 @@ export async function prepareWorkspaceSource(options: { workspaceId: string; git
       };
     } catch (error) {
       await rm(tmpWorkPath, { recursive: true, force: true }).catch(() => undefined);
-      await options.events?.emit("workspace_provision_step", { workspaceId: options.workspaceId, id: "project.git", label: "Clone project", parentId: "workspace.init", status: "failed", output: tailTerminalText(await readFile(logPath, "utf8").catch(() => "")), error: error instanceof Error ? error.message : String(error) });
+      await options.events?.emit("workspace_provision_step", { workspaceId: options.workspaceId, ...cloneProvisionStep, status: "failed", output: tailTerminalText(await readFile(logPath, "utf8").catch(() => "")), error: error instanceof Error ? error.message : String(error) });
       throw error;
     }
   });

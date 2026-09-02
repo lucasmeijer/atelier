@@ -1,20 +1,16 @@
 @import url("/observable-terminal.css");
 
-.provision-heading { display: flex; align-items: center; gap: 8px; }
-.provision-heading b { font-size: var(--text-body); }
+.provision-list { margin-top: 0; }
+.provision-step { align-items: flex-start; }
+.provision-step > .status-list__marker { flex: 0 0 auto; }
+.provision-step-content { min-width: 0; flex: 1; }
+.provision-step-label { display: block; line-height: 20px; }
+.provision-step-detail { display: block; margin-top: 2px; }
+.provision-children { margin-top: 12px; }
+.provision-output-disclosure { margin-top: 8px; }
+.provision-output-disclosure > summary { width: fit-content; }
 .provision-output-log { max-height: min(52vh, 520px); overflow: auto; white-space: pre-wrap; word-break: break-word; background: #0f172a; color: #dbeafe; border-radius: var(--radius-surface); padding: 12px; font: var(--text-body)/var(--leading-standard) ui-monospace, SFMono-Regular, Menlo, monospace; }
-.workspace-provision { padding: 16px; display: flex; flex-direction: column; gap: 12px; }
-.provision-list, .provision-children { list-style: none; margin: 0; padding: 0; display: flex; flex-direction: column; gap: 8px; }
-.provision-children { margin: 8px 0 0 24px; }
-.provision-step { border-left: 2px solid var(--line); padding-left: 8px; }
-.provision-step.done { border-left-color: var(--success); }
-.provision-step.running { border-left-color: var(--accent); }
-.provision-step.failed { border-left-color: var(--danger); }
-.provision-step-row { display: flex; align-items: flex-start; gap: 8px; }
-.provision-step-icon { width: 16px; text-align: center; color: var(--text); }
-.provision-step.done .provision-step-icon { color: var(--success); }
-.provision-step.running .provision-step-icon { color: var(--accent); }
-.provision-step.failed .provision-step-icon, .provision-error { color: var(--danger); }
-.provision-terminal { height: 300px; margin: 8px 0 0 24px; border-radius: var(--radius-surface); overflow: hidden; border: 1px solid var(--line); }
-.provision-output { margin: 8px 0 0 24px; }
-.provision-error { margin: 8px 0 0 24px; white-space: pre-wrap; }
+.provision-terminal.observable-terminal-host { height: 300px; flex: none; margin-top: 12px; border-radius: var(--radius-surface); overflow: hidden; border: 1px solid var(--line); }
+.provision-terminal-progress { height: 300px; max-height: none; margin: 12px 0 0; }
+.provision-output { margin: 4px 0 0; }
+.provision-error { margin-top: 8px; color: var(--danger); white-space: pre-wrap; }

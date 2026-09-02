@@ -165,16 +165,25 @@ async function assertCarrierBase(baseImage: string, preload: ResolvedDockerImage
   for (const image of preload.images) if (await dockerPlatform(image.sourceRef) !== platform) throw new Error(`${image.sourceRef} platform does not match ${platform}`);
 }
 
-export async function buildWorkspaceImageCarrier(options: { baseImage: string; baseIdentity: string; platform: string; preload: ResolvedDockerImagePreload }): Promise<WorkspaceImageCarrierResult> {
+export async function buildWorkspaceImageCarrier(options: { baseImage: string; baseIdentity: string; platform: string; preload: ResolvedDockerImagePreload; onProgress?: (message: string) => void | Promise<void> }): Promise<WorkspaceImageCarrierResult> {
   const { platform } = options;
+  const progress = async (message: string): Promise<void> => { await options.onProgress?.(message); };
   const identity = carrierIdentity(options);
   const { image: tag, key, labels } = identity;
-  if (await findCarrier(identity)) return { image: tag, key, kind: "local hit" };
+  await progress("Checking for a cached preloaded workspace image…");
+  if (await findCarrier(identity)) {
+    await progress("Using cached preloaded workspace image.");
+    return { image: tag, key, kind: "local hit" };
+  }
   const existing = carrierTasks.get(key);
-  if (existing) return await existing;
+  if (existing) {
+    await progress("Waiting for the preloaded workspace image already being prepared…");
+    return await existing;
+  }
 
   const task = (async (): Promise<WorkspaceImageCarrierResult> => {
     const buildStartedAt = new Date();
+    await progress("Checking image compatibility…");
     await assertCarrierBase(options.baseImage, options.preload, platform);
     const suffix = crypto.randomUUID().slice(0, 8);
     const seed = `atelier-carrier-seed-${key.slice(0, 10)}-${suffix}`;
@@ -184,27 +193,35 @@ export async function buildWorkspaceImageCarrier(options: { baseImage: string; b
     const baseEntrypoint = (await requireDocker(["image", "inspect", "--format", "{{json .Config.Entrypoint}}", options.baseImage])).stdout.trim();
     try {
       await mkdir(dir, { recursive: true });
+      await progress(`Saving ${options.preload.images.length} nested Docker image${options.preload.images.length === 1 ? "" : "s"}…`);
       await requireDocker(["save", "--output", tar, ...options.preload.refs]);
+      await progress("Creating the image carrier…");
       await requireDocker(["create", "--name", seed, "--privileged", options.baseImage, "sh", "-lc", "sleep infinity"]);
       await requireDocker(["start", seed]);
       await exec(seed, "command -v dockerd >/dev/null && command -v fuse-overlayfs >/dev/null");
+      await progress("Starting nested Docker…");
       await exec(seed, carrierDaemonStartScript);
       await requireDocker(["cp", tar, `${seed}:/.atelier/carrier-images.tar`]);
+      await progress("Loading nested Docker images…");
       await exec(seed, "docker load --input /.atelier/carrier-images.tar >/dev/null; rm -f /.atelier/carrier-images.tar");
+      await progress("Verifying nested Docker images…");
       await verifySeededImages(seed, options.preload);
       await stopNestedDaemon(seed);
       await requireDocker(["stop", "--time", "30", seed]);
+      await progress("Committing the preloaded workspace image…");
       const changes = Object.entries({ ...labels, [workspaceImageKindLabel]: "carrier" }).flatMap(([name, value]) => ["--change", `LABEL ${name}=${JSON.stringify(value)}`]);
       await requireDocker(["commit", ...changes, seed, tag]);
       const carrierEntrypoint = (await requireDocker(["image", "inspect", "--format", "{{json .Config.Entrypoint}}", tag])).stdout.trim();
       if (carrierEntrypoint !== baseEntrypoint) throw new Error("carrier commit changed the workspace image ENTRYPOINT");
 
+      await progress("Testing the preloaded workspace image…");
       await requireDocker(["create", "--name", verify, "--privileged", tag, "sh", "-lc", "sleep infinity"]);
       await requireDocker(["start", verify]);
       await exec(verify, carrierDaemonStartScript);
       await verifySeededImages(verify, options.preload);
       await stopNestedDaemon(verify);
       pruneSupersededWorkspaceImages("carrier", buildStartedAt);
+      await progress("Preloaded workspace image ready.");
       return { image: tag, key, kind: "locally built" };
     } finally {
       await runDocker(["rm", "-f", verify]);

@@ -58,7 +58,7 @@ export const workspaceProvisioningStaticFiles = {
 
 const workspaceCreationSeedSteps: WorkspaceProvisionSeedStep[] = [
   { id: "workspace.workdir", label: "Create workspace directory" },
-  { id: "workspace.init", label: "Prepare workspace" },
+  { id: "workspace.source", label: "Prepare workspace source" },
   { id: "workspace.plan", label: "Prepare workspace container plan" },
   { id: "workspace.image", label: "Resolve workspace image" },
   { id: "workspace.container", label: "Start workspace container" },
@@ -67,20 +67,46 @@ const workspaceCreationSeedSteps: WorkspaceProvisionSeedStep[] = [
 
 const workspaceIntegrationSeedStep: WorkspaceProvisionSeedStep = { id: "workspace.integrations", label: "Run workspace startup integrations" };
 
-function statusIcon(status: WorkspaceProvisionStepStatus): string {
-  if (status === "done") return "✓";
-  if (status === "failed") return "✕";
-  if (status === "running") return "⟳";
-  return "•";
+const workspaceProvisionStepRanks = new Map([
+  "workspace.workdir",
+  "workspace.fork",
+  "workspace.source",
+  "workspace.plan",
+  "workspace.image",
+  "workspace.docker-images",
+  "workspace.image-carrier",
+  "workspace.container",
+  "workspace.startup",
+  "workspace.setup",
+  "workspace.agent",
+  "workspace.integrations",
+].map((id, index) => [id, index]));
+
+function stepStatusAttributes(status: WorkspaceProvisionStepStatus): string {
+  if (status === "done") return ' role="checkbox" aria-checked="true"';
+  if (status === "pending") return ' role="checkbox" aria-checked="false"';
+  if (status === "running") return ' aria-busy="true"';
+  return ' data-status="failed"';
+}
+
+function renderStatusMarker(status: WorkspaceProvisionStepStatus): string {
+  const failedAttributes = status === "failed" ? ' role="img" aria-label="Failed"' : "";
+  const marker = status === "done" ? "✓" : status === "failed" ? "✕" : "";
+  return `<span class="status-list__marker"${failedAttributes}>${marker}</span>`;
 }
 
 function renderProvisionStep(step: WorkspaceProvisionStep, children: WorkspaceProvisionStep[]): string {
   const childHtml = children.map((child) => renderProvisionStep(child, [])).join("");
-  const output = step.output ? `<pre class="provision-output-log provision-output" data-controller="auto-scroll">${escapeHtml(step.output)}</pre>` : "";
-  const terminal = step.terminal ? `<div class="provision-terminal observable-terminal-host" data-controller="provision-terminal" data-provision-terminal-session-value="${escapeHtml(step.terminal.session)}"></div>` : "";
+  const liveOutput = step.status === "running" ? step.output : undefined;
+  const activity = liveOutput
+    ? `<pre class="provision-terminal-progress provision-output-log" data-controller="auto-scroll">${escapeHtml(liveOutput)}</pre>`
+    : step.status === "running" && step.terminal
+      ? `<div class="provision-terminal observable-terminal-host" data-controller="provision-terminal" data-provision-terminal-session-value="${escapeHtml(step.terminal.session)}"></div>`
+      : "";
+  const output = step.output && step.status !== "running" ? `<details class="provision-output-disclosure"${step.status === "failed" ? " open" : ""}><summary class="action-item action-item__primary"><svg class="disclosure-icon" aria-hidden="true" viewBox="0 0 24 24"><path d="m6 9 6 6 6-6"/></svg><span class="action-item__label"><span class="action-item__label-text">View output</span></span></summary><pre class="provision-output-log provision-output" data-controller="auto-scroll">${escapeHtml(step.output)}</pre></details>` : "";
   const error = step.error ? `<div class="provision-error">${escapeHtml(step.error)}</div>` : "";
-  const detail = step.detail ? `<div class="r-sub">${escapeHtml(step.detail)}</div>` : "";
-  return `<li class="provision-step ${step.status}"><div class="provision-step-row"><span class="provision-step-icon">${statusIcon(step.status)}</span><div><b>${escapeHtml(step.label)}</b>${detail}</div></div>${terminal}${output}${error}${childHtml ? `<ol class="provision-children">${childHtml}</ol>` : ""}</li>`;
+  const detail = step.detail ? `<span class="r-sub provision-step-detail">${escapeHtml(step.detail)}</span>` : "";
+  return `<li class="status-list__item provision-step"${stepStatusAttributes(step.status)}>${renderStatusMarker(step.status)}<div class="provision-step-content"><span class="provision-step-label">${escapeHtml(step.label)}</span>${detail}${activity}${output}${error}${childHtml ? `<ol class="status-list provision-children">${childHtml}</ol>` : ""}</div></li>`;
 }
 
 export function createWorkspaceProvisioningStore(options: { onChange: (workspaceId: string) => void; seedSteps: WorkspaceProvisionSeedStep[] }): WorkspaceProvisioningStore {
@@ -89,6 +115,13 @@ export function createWorkspaceProvisioningStore(options: { onChange: (workspace
 
   function steps(workspaceId: string): WorkspaceProvisionStep[] {
     return Array.from(stepsByWorkspace.get(workspaceId)?.values() ?? []).sort((a, b) => a.order - b.order);
+  }
+
+  function compareTopLevelSteps(a: WorkspaceProvisionStep, b: WorkspaceProvisionStep): number {
+    const aRank = workspaceProvisionStepRanks.get(a.id);
+    const bRank = workspaceProvisionStepRanks.get(b.id);
+    if (aRank !== undefined && bRank !== undefined) return aRank - bRank;
+    return a.order - b.order;
   }
 
   function apply(event: WorkspaceProvisionStepEvent): void {
@@ -121,16 +154,15 @@ export function createWorkspaceProvisioningStore(options: { onChange: (workspace
 
     render(workspaceId, renderOptions = {}) {
       const allSteps = steps(workspaceId);
-      const top = allSteps.filter((step) => !step.parentId);
+      const top = allSteps.filter((step) => !step.parentId).sort(compareTopLevelSteps);
       const childrenByParent = new Map<string, WorkspaceProvisionStep[]>();
       for (const step of allSteps) if (step.parentId) childrenByParent.set(step.parentId, [...(childrenByParent.get(step.parentId) ?? []), step]);
       const body = top.length
         ? top.map((step) => renderProvisionStep(step, childrenByParent.get(step.id) ?? [])).join("")
-        : `<li class="provision-step running"><div class="provision-step-row"><span class="provision-step-icon">⟳</span><div><b>Preparing workspace</b></div></div></li>`;
+        : '<li class="status-list__item provision-step" aria-busy="true"><span class="status-list__marker"></span><div class="provision-step-content"><span class="provision-step-label">Preparing workspace</span></div></li>';
       const failed = allSteps.find((step) => step.status === "failed");
-      const heading = renderOptions.failed ? "Workspace creation failed" : "Preparing workspace";
-      const detail = failed?.label ? `Failed while: ${failed.label}` : renderOptions.failed ? (renderOptions.error ?? "unknown error") : "Workspace setup is running.";
-      return `<div class="workspace-provision"><div class="provision-heading"><div><b>${escapeHtml(heading)}</b><div class="r-sub">${escapeHtml(detail)}</div></div></div><ol class="provision-list">${body}</ol></div>`;
+      const failure = failed?.label ? `Failed while: ${failed.label}` : renderOptions.failed ? (renderOptions.error ?? "unknown error") : "";
+      return `<section aria-label="Workspace preparation">${failure ? `<p class="provision-error">${escapeHtml(failure)}</p>` : ""}<ol class="status-list provision-list">${body}</ol></section>`;
     },
 
     delete(workspaceId) {

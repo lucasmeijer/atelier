@@ -398,8 +398,8 @@ function carrierInitScripts(preload: ResolvedDockerImagePreload): string[] {
   return [nestedDockerDaemonInitScript(), dockerImagePreloadVerificationInitScript(preload.refs)];
 }
 
-export async function prepareWorkspaceImageCarrier(options: { resolution: WorkspaceImageResolution; platform: string; preload: ResolvedDockerImagePreload }): Promise<WorkspaceImageCarrierResolution> {
-  const carrier = await buildWorkspaceImageCarrier({ baseImage: options.resolution.image, baseIdentity: await dockerImageId(options.resolution.image), platform: options.platform, preload: options.preload });
+export async function prepareWorkspaceImageCarrier(options: { resolution: WorkspaceImageResolution; platform: string; preload: ResolvedDockerImagePreload; onProgress?: (message: string) => void | Promise<void> }): Promise<WorkspaceImageCarrierResolution> {
+  const carrier = await buildWorkspaceImageCarrier({ baseImage: options.resolution.image, baseIdentity: await dockerImageId(options.resolution.image), platform: options.platform, preload: options.preload, onProgress: options.onProgress });
   return { image: carrier.image, key: carrier.key, path: carrier.kind, initScripts: carrierInitScripts(options.preload) };
 }
 
