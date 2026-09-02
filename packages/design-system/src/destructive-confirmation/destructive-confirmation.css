@@ -14,6 +14,14 @@
   top: 0;
   right: 0;
 }
+/* Keep server-rendered controls in normal flow until Stimulus has measured them. */
+.destructive-confirmation:not([data-destructive-confirmation-state]) {
+  width: max-content;
+  height: auto;
+}
+.destructive-confirmation:not([data-destructive-confirmation-state]) .destructive-confirmation__trigger {
+  position: relative;
+}
 .destructive-confirmation__trigger {
   transition: opacity 100ms ease, transform 180ms cubic-bezier(.2, .8, .2, 1);
 }

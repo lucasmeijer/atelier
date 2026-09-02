@@ -2843,7 +2843,7 @@ Comment: I don't think we need these tests`;
     });
     await page.setContent(`<base href="http://atelier.test/"><form method="post" action="/save-secret" data-controller="settings-autosave" data-action="focusout->settings-autosave#saveWhenLeaving"><input name="envName" value="API_TOKEN">${confirmation}</form>`);
     await page.addScriptTag({ url: `http://atelier.test${workspaceClientPath}`, type: "module" });
-    await page.waitForFunction(() => document.querySelector(".destructive-confirmation")?.getAttribute("data-controller") === "destructive-confirmation");
+    await page.waitForFunction(() => document.querySelector(".destructive-confirmation")?.getAttribute("data-destructive-confirmation-state") === "initial");
 
     const deleteButtons = page.getByRole("button", { name: "Delete secret" });
     await deleteButtons.first().click();
@@ -2878,7 +2878,7 @@ Comment: I don't think we need these tests`;
     });
     await page.setContent(`<base href="http://atelier.test/"><style>${workspaceStyle}</style><div style="display:flex;width:110px;margin-left:200px">${item}</div>`);
     await page.addScriptTag({ url: `http://atelier.test${workspaceClientPath}`, type: "module" });
-    await page.waitForFunction(() => document.querySelector(".destructive-confirmation")?.getAttribute("data-controller") === "destructive-confirmation");
+    await page.waitForFunction(() => document.querySelector(".destructive-confirmation")?.getAttribute("data-destructive-confirmation-state") === "initial");
 
     const close = page.getByRole("button", { name: "Close Server" });
     const tabBox = (await page.getByRole("tab", { name: "Server" }).locator("..").boundingBox())!;

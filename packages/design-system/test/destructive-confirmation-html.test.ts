@@ -9,6 +9,7 @@ describe("destructiveConfirmationHtml", () => {
       cancelCaption: "Oops & stay",
     });
 
+    expect(html).toStartWith('<div class="destructive-confirmation" data-controller="destructive-confirmation">');
     expect(html).toContain('<div class="destructive-confirmation__trigger"><button class="button danger icon-only" type="button">×</button></div>');
     expect(html).toContain('<div class="destructive-confirmation__decision" inert>');
     expect(html).toContain('<button class="button danger destructive-confirmation__action" type="submit">Yes, close &lt;now&gt;</button>');
