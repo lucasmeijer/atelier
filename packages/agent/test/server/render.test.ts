@@ -202,6 +202,13 @@ describe("transcript rendering", () => {
     expect(bash.indexOf('class="agent-tool-result', bashWindow)).toBeGreaterThan(bash.indexOf('class="agent-more-lines"', bashWindow));
   });
 
+  test("streaming edits show a pending message until an edit is available", () => {
+    const item: TranscriptItem = { type: "tool", key: "edit-stream", tool: tool({ name: "edit", status: "streaming", args: undefined, argsStream: '{"path":"a.ts"' }) };
+    const html = renderTranscriptItem(ctx, item, { live: true });
+    expect(html).toContain("Edit toolcall still streaming in");
+    expect(html).not.toContain("copy-button");
+  });
+
   test("running edits are open disclosures with live detail", () => {
     const item: TranscriptItem = { type: "tool", key: "edit-live", tool: tool({ name: "edit", status: "running", args: { path: "a.ts", oldText: "old", newText: "new" } }) };
     const html = renderTranscriptItem(ctx, item, { live: true });

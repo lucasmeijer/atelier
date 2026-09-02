@@ -744,6 +744,7 @@ function editDiffHtml(tool: ToolView, contextual: boolean): string {
 
 function renderEditDetail(tool: ToolView): string {
   const preview = editDiffHtml(tool, true) || genericParamsHtml(tool);
+  if (tool.status === "streaming" && !preview) return `<div class="agent-tool-pending">Edit toolcall still streaming in</div>`;
   const full = editDiffHtml(tool, false) || genericParamsHtml(tool);
   const edits = fullscreenSourceRegion("Edit", `<section class="agent-tool-region agent-edit-result">${copyableToolBody(`<div class="agent-edit-details agent-tool-region-body">${preview}</div>`, "edit")}</section>`, `<div class="agent-edit-details agent-tool-region-body">${full}</div>`);
   const error = tool.status === "error" && tool.resultText ? `<pre class="agent-tool-error-output">${escapeHtml(trimResult(tool))}</pre>` : "";

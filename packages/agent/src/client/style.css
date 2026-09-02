@@ -356,6 +356,7 @@ summary > .agent-tool-head { width: 100%; }
 .agent-tool-images .agent-tool-image { width: auto; max-width: 100%; max-height: none; margin: 0; }
 .agent-tool-note { margin: 0; padding: 8px 8px; color: var(--text); white-space: pre-wrap; font-family: var(--font-mono); font-size: var(--text-code); }
 .agent-tool-error-output { margin: 0; padding: 8px 8px; color: var(--danger); background: color-mix(in srgb, var(--danger) 8%, var(--bg)); font-family: var(--font-mono); font-size: var(--text-code); }
+.agent-tool-pending { padding: 8px; color: var(--text-muted); }
 
 .agent-edit-details { background: var(--panel); }
 .agent-edit-pierre + .agent-edit-pierre { border-top: 7px solid var(--panel); }
