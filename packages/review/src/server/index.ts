@@ -5,7 +5,7 @@ import { Type, type Static } from "typebox";
 import { Value } from "typebox/value";
 import { reviewCommentsPrompt, type ReviewSide } from "../model.ts";
 import { collectReviewFile, collectReviewIndex, collectReviewStats, reviewSnippet, type ReviewIndex } from "./diff.ts";
-import { renderReviewBody, renderReviewFileDetails, renderReviewStatsFrame, renderReviewTitle, reviewBodyId, reviewFileFrameId, reviewReference, reviewWorkViewPresentation } from "./render.ts";
+import { renderReviewBody, renderReviewFileDetails, renderReviewStatsFrame, renderReviewTitle, renderReviewTitleStream, reviewBodyId, reviewFileFrameId, reviewReference, reviewWorkViewPresentation } from "./render.ts";
 import { isReviewDiffLayout, isReviewViewport, readReviewDiffLayouts, writeReviewDiffLayout } from "./settings.ts";
 import { clearDeletionReview, deletionReviewFileResponse, reviewDeletionReview } from "./deletion.ts";
 import { addReviewComment, deleteReviewComments, deleteReviewState, listReviewComments, reconcileReviewComments, remapReviewFileComments, reviewCommentsForPrompt, updateReviewComment, type ReviewComment } from "./state.ts";
@@ -36,6 +36,13 @@ async function current(workspaceId: string): Promise<{ index: ReviewIndex; comme
 
 async function bodyStream(workspaceId: string, index: ReviewIndex, comments: ReviewComment[]): Promise<string> {
   return turboStream("replace", reviewBodyId(workspaceId), renderReviewBody(workspaceId, index, comments, await readReviewDiffLayouts()));
+}
+
+async function refreshStats(workspaceId: string, index: ReviewIndex) {
+  const files = await collectReviewStats(workspaceWorkHostPath(workspaceId), index);
+  const title = index.phase === "ready" ? renderReviewTitle(files) : reviewWorkViewPresentation.label;
+  reviewTitles.set(workspaceId, title);
+  return { files, title };
 }
 
 async function refreshedResponse(workspaceId: string): Promise<Response> {
@@ -110,9 +117,8 @@ export const reviewWorkspaceModule: WorkspaceModule = {
         if (request.method !== "GET") return textResponse("Method not allowed", 405);
         const workspaceId = decodeURIComponent(match[1]!);
         const { index } = await current(workspaceId);
-        const stats = await collectReviewStats(workspaceWorkHostPath(workspaceId), index);
-        reviewTitles.set(workspaceId, renderReviewTitle(stats));
-        return htmlResponse(renderReviewStatsFrame(workspaceId, stats));
+        const { files } = await refreshStats(workspaceId, index);
+        return htmlResponse(renderReviewStatsFrame(workspaceId, files));
       }
       match = url.pathname.match(/^\/workspaces\/([^/]+)\/review\/files\/([^/]+)$/);
       if (match) {
@@ -148,7 +154,8 @@ export const reviewWorkspaceModule: WorkspaceModule = {
   initialize(context) {
     context.events.on("workspace_agent_turn_finished", async ({ workspaceId }) => {
       const { index, comments } = await refresh(workspaceId);
-      context.broadcastWorkspace(workspaceId, await bodyStream(workspaceId, index, comments));
+      const { title } = await refreshStats(workspaceId, index);
+      context.broadcastWorkspace(workspaceId, `${renderReviewTitleStream(workspaceId, title)}${await bodyStream(workspaceId, index, comments)}`);
     });
     context.events.on("workspace_agent_prompt_preparing", (event) => {
       const section = reviewCommentsPrompt(reviewCommentsForPrompt(event.workspaceId, event.reviewCommentIds));

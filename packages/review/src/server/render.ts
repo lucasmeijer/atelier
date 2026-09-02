@@ -96,9 +96,12 @@ export function renderReviewTitle(files: ReviewFileStats[]): string {
   return `Review <span class="review-additions">+${totals.additions}</span> <span class="review-deletions">−${totals.deletions}</span>`;
 }
 
+export function renderReviewTitleStream(workspaceId: string, title: string): string {
+  return turboStream("update", workspaceWorkViewLabelDomId(workspaceId, reviewViewKey), title);
+}
+
 export function renderReviewStatsFrame(workspaceId: string, files: ReviewFileStats[]): string {
-  const title = renderReviewTitle(files);
-  const titleStream = turboStream("update", workspaceWorkViewLabelDomId(workspaceId, reviewViewKey), title);
+  const titleStream = renderReviewTitleStream(workspaceId, renderReviewTitle(files));
   const fileStreams = files.map((file) => `<turbo-stream action="replace" target="${reviewFileStatsId(workspaceId, file.path)}"><template>${renderGitStats(workspaceId, file, file)}</template></turbo-stream>`).join("");
   return `<turbo-frame id="${reviewStatsFrameId(workspaceId)}">${titleStream}${fileStreams}</turbo-frame>`;
 }
