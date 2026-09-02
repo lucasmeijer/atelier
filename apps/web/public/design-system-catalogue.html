@@ -199,7 +199,7 @@
         <p>Shipped foundations, components, and patterns from <code>design-system.css</code>. Change the theme while the preview selector controls the responsive platform.</p>
         <div class="catalogue-toolbar">
           <div class="catalogue-field popup-menu-anchor"><span>Theme</span>
-            <button class="button secondary catalogue-theme-trigger popup-menu-trigger" type="button" aria-haspopup="menu" aria-expanded="false" aria-controls="catalogue-theme-popup" popovertarget="catalogue-theme-popup"><span data-catalogue-theme-value>Nord</span><svg class="disclosure-icon" aria-hidden="true" viewBox="0 0 24 24"><path d="m6 9 6 6 6-6"/></svg></button>
+            <button class="button secondary catalogue-theme-trigger" type="button" data-popup-menu-trigger aria-haspopup="menu" aria-expanded="false" aria-controls="catalogue-theme-popup" popovertarget="catalogue-theme-popup"><span data-catalogue-theme-value>Nord</span><svg class="disclosure-icon" aria-hidden="true" viewBox="0 0 24 24"><path d="m6 9 6 6 6-6"/></svg></button>
             <div class="floating-surface popup-menu action-list popup-menu-anchored catalogue-theme-popup" id="catalogue-theme-popup" role="menu" aria-label="Catalogue theme" popover="auto">
               <button class="action-item action-item__primary" type="button" role="menuitemradio" aria-checked="false" data-theme-value=""><span class="action-item__label"><span class="action-item__label-text">Daylight</span></span></button>
               <button class="action-item action-item__primary" type="button" role="menuitemradio" aria-checked="false" data-theme-value="cappuccino"><span class="action-item__label"><span class="action-item__label-text">Cappuccino</span></span></button>
@@ -395,7 +395,7 @@ bun test</pre></div>
               <p class="catalogue-note">Icon-only buttons require an accessible name and a visible tooltip. They automatically use the 44px mobile target.</p>
             </article>
             <article class="catalogue-card">
-              <div class="catalogue-card-title"><span>Icon + caption</span><code>composable anatomy</code></div>
+              <div class="catalogue-card-title"><span>Caption + adornment</span><code>composable anatomy</code></div>
               <div class="catalogue-demo button-anatomy button-group">
                 <button class="button primary" type="button"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M12 5v14M5 12h14"/></svg>New workspace</button>
                 <button class="button secondary" type="button"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M4 12h16M14 6l6 6-6 6"/></svg>Open</button>
@@ -473,29 +473,40 @@ bun test</pre></div>
               <div class="catalogue-demo progress-button-demo">
                 <div class="transient-feedback" id="transient-feedback-demo" data-controller="transient-feedback" data-transient-feedback-state-value="initial">
                   <div class="transient-feedback__content" data-transient-feedback-content="initial"><button class="button secondary" id="transient-feedback-demo-action" type="button">Check now</button></div>
-                  <div class="transient-feedback__content" data-transient-feedback-content="feedback" role="status" hidden><span class="button secondary">You’re up to date!</span></div>
+                  <div class="transient-feedback__content" data-transient-feedback-content="feedback" role="status" hidden><span class="transient-feedback__status">You’re up to date!</span></div>
                 </div>
                 <span class="button-demo__status">Only the visible state contributes to natural layout</span>
               </div>
               <p class="catalogue-note">Use this after an action succeeds. The shared two-second timer restores the initial content. Server responses may arrive in the feedback state; browser-only actions such as Copy trigger the same pattern after their work succeeds.</p>
             </article>
             <article class="catalogue-card wide">
-              <div class="catalogue-card-title"><span>Groups</span><code>.button-group + optional .vertical</code></div>
+              <div class="catalogue-card-title"><span>Groups</span><code>.button-group + orientation modifier</code></div>
               <div class="catalogue-demo button-group-demo">
-                <div class="button-group-specimen"><span>horizontal</span><div class="button-group"><button class="button primary" type="button">Save</button><button class="button secondary" type="button">Cancel</button></div></div>
-                <div class="button-group-specimen"><span>vertical</span><div class="button-group vertical"><button class="button primary" type="button">Save</button><button class="button secondary" type="button">Cancel</button></div></div>
+                <div class="button-group-specimen"><span>horizontal</span><div class="button-group button-group--horizontal"><button class="button primary" type="button">Save</button><button class="button secondary" type="button">Cancel</button></div></div>
+                <div class="button-group-specimen"><span>vertical</span><div class="button-group button-group--vertical"><button class="button primary" type="button">Save</button><button class="button secondary" type="button">Cancel</button></div></div>
               </div>
               <p class="catalogue-note">The group owns the 8px space between controls; buttons continue to own only their internal padding.</p>
             </article>
             <article class="catalogue-card wide">
-              <div class="catalogue-card-title"><span>Interface</span><code>.button + variant; .button-group + orientation</code></div>
-              <pre class="button-code">&lt;div class="button-group"&gt;
-  &lt;button class="button primary"&gt;Create workspace&lt;/button&gt;
-  &lt;button class="button secondary"&gt;Cancel&lt;/button&gt;
-&lt;/div&gt;
+              <div class="catalogue-card-title"><span>Interface</span><code>buttonHtml() · actionLinkHtml() · buttonGroupHtml()</code></div>
+              <pre class="button-code">buttonHtml({
+  type: "submit",
+  variant: "primary",
+  content: { kind: "caption", caption: "Create workspace" },
+});
 
-&lt;div class="button-group vertical"&gt;…&lt;/div&gt;</pre>
+actionLinkHtml({
+  href: "/settings",
+  variant: "secondary",
+  content: { kind: "icon-only", iconHtml: Icons.Settings, label: "Settings" },
+});
 
+buttonGroupHtml({
+  orientation: "horizontal",
+  semantics: "layout",
+  itemsHtml: `${createButton}${cancelButton}`,
+});</pre>
+              <p class="catalogue-note">Buttons perform actions; action links navigate. Both render the same visual anatomy while preserving native semantics. Variants and button types are always explicit, and icon-only controls derive their accessible name and tooltip from one required label.</p>
             </article>
           </div>
         </section>
@@ -517,8 +528,8 @@ bun test</pre></div>
                       <button class="button danger icon-only" type="button" aria-label="Delete workspace" title="Delete workspace"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M4 7h16M9 7V4h6v3M7 7l1 14h8l1-14M10 11v6M14 11v6"/></svg></button>
                     </div>
                     <div class="destructive-confirmation__decision" inert>
-                      <button class="button danger destructive-confirmation__action" type="button">Delete workspace</button>
-                      <button class="button secondary destructive-confirmation__cancel" type="button">Keep workspace</button>
+                      <button class="button danger" type="button" data-destructive-confirmation-action>Delete workspace</button>
+                      <button class="button secondary" type="button" data-destructive-confirmation-cancel>Keep workspace</button>
                     </div>
                   </div>
                 </div>
@@ -529,14 +540,15 @@ bun test</pre></div>
             <article class="catalogue-card wide">
               <div class="catalogue-card-title"><span>Interface</span><code>automatic behavior</code></div>
               <pre class="button-code">destructiveConfirmationHtml({
-  buttonHtml: `&lt;button class="button danger icon-only" type="button"
-    aria-label="Delete workspace" title="Delete workspace"&gt;
-    &lt;svg aria-hidden="true"&gt;…&lt;/svg&gt;
-  &lt;/button&gt;`,
+  trigger: {
+    type: "button",
+    variant: "danger",
+    content: { kind: "icon-only", iconHtml: Icons.Trash, label: "Delete workspace" },
+  },
   confirmCaption: "Delete workspace",
   cancelCaption: "Keep workspace",
 })</pre>
-              <p class="catalogue-note">The caller supplies the complete trigger button and both decision captions. The trigger must be a <code>type="button"</code> button. The controller owns Escape, sizing, and focus restoration while preserving the confirmation action’s native form submission.</p>
+              <p class="catalogue-note">The caller supplies structured trigger options and both decision captions. The trigger is statically restricted to <code>type="button"</code>. The controller owns Escape, sizing, and focus restoration while preserving the confirmation action’s native form submission.</p>
             </article>
           </div>
         </section>
@@ -552,7 +564,7 @@ bun test</pre></div>
               <i class="status-dot danger" aria-label="Danger"></i>
               <i class="status-dot running" aria-label="In progress"></i>
             </div></div><p class="catalogue-note">Attention and warning intentionally share amber but remain distinct semantics and placements. All colors are full strength with no outer ring.</p></article>
-            <article class="catalogue-card"><div class="catalogue-card-title"><span>Status leads</span><code>dot before caption</code></div><div class="catalogue-demo button-anatomy"><div class="button-group vertical">
+            <article class="catalogue-card"><div class="catalogue-card-title"><span>Status leads</span><code>dot before caption</code></div><div class="catalogue-demo button-anatomy"><div class="button-group button-group--vertical">
               <span class="button-group"><i class="status-dot success" aria-hidden="true"></i>Connected</span>
               <span class="button-group"><i class="status-dot warning" aria-hidden="true"></i>Needs review</span>
               <span class="button-group"><i class="status-dot danger" aria-hidden="true"></i>Failed</span>
@@ -604,7 +616,7 @@ bun test</pre></div>
           <article class="catalogue-card wide"><div class="catalogue-card-title"><span>Task dialog</span><code>.dialog</code></div><div class="catalogue-demo">
             <dialog class="dialog dialog--panel catalogue-dialog" open>
               <div class="panel dialog__panel">
-                <header class="panel__header"><h2 class="panel__title dialog__title"><svg aria-hidden="true" viewBox="0 0 24 24" width="17" height="17" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="3"/><path d="M12 3v3M12 18v3M3 12h3M18 12h3"/></svg><span>Connect Anthropic</span></h2><form class="dialog__close-form" method="dialog"><button class="dialog__close button secondary icon-only" aria-label="Close dialog"><svg aria-hidden="true" viewBox="0 0 24 24" width="17" height="17" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"><path d="M6 6l12 12M18 6L6 18"/></svg></button></form></header>
+                <header class="panel__header"><h2 class="panel__title dialog__title"><svg aria-hidden="true" viewBox="0 0 24 24" width="17" height="17" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="3"/><path d="M12 3v3M12 18v3M3 12h3M18 12h3"/></svg><span>Connect Anthropic</span></h2><form class="dialog__close-form" method="dialog"><button class="button secondary icon-only" type="submit" title="Close dialog" aria-label="Close dialog"><svg aria-hidden="true" viewBox="0 0 24 24" width="17" height="17" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"><path d="M6 6l12 12M18 6L6 18"/></svg></button></form></header>
                 <div class="panel__body dialog__body"><label for="catalogue-dialog-filter">API key</label><input class="text-field" id="catalogue-dialog-filter" placeholder="sk-ant-…"></div>
                 <footer class="panel__footer"><button class="button secondary" type="button">Cancel</button><button class="button primary" type="button">Connect</button></footer>
               </div>
@@ -663,7 +675,7 @@ bun test</pre></div>
                     <span class="action-item__label"><span class="action-item__label-text">Gemini 2.5 Pro</span></span>
                   </button>
                 </div>
-                <button class="button secondary popup-trigger popup-menu-trigger" type="button" aria-haspopup="menu" aria-expanded="true" aria-controls="catalogue-popup"><span class="popup-brand-mark" aria-hidden="true">O</span> GPT-5.2 Codex <svg class="disclosure-icon" aria-hidden="true" viewBox="0 0 24 24"><path d="m6 9 6 6 6-6"/></svg></button>
+                <button class="button secondary popup-trigger" type="button" data-popup-menu-trigger aria-haspopup="menu" aria-expanded="true" aria-controls="catalogue-popup"><span class="popup-brand-mark" aria-hidden="true">O</span> GPT-5.2 Codex <svg class="disclosure-icon" aria-hidden="true" viewBox="0 0 24 24"><path d="m6 9 6 6 6-6"/></svg></button>
               </div>
               <p class="catalogue-note">This menu prefers to open upward like the composer, then flips horizontally or vertically whenever the preferred placement would cross a viewport edge.</p>
             </article>
@@ -676,7 +688,7 @@ bun test</pre></div>
                     <button class="action-item action-item__primary" type="button" role="menuitemradio" aria-checked="false" data-theme-value="tokyo-night"><span class="action-item__label"><span class="action-item__label-text">Tokyo Night</span></span></button>
                     <button class="action-item action-item__primary" type="button" role="menuitemradio" aria-checked="true" data-theme-value="nord"><span class="action-item__label"><span class="action-item__label-text">Nord</span></span></button>
                   </div>
-                  <button class="button secondary simple-popup-trigger popup-menu-trigger" type="button" aria-haspopup="menu" aria-expanded="true" aria-controls="simple-theme-popup">Theme: <span data-simple-popup-value>Nord</span><svg class="disclosure-icon" aria-hidden="true" viewBox="0 0 24 24"><path d="m6 9 6 6 6-6"/></svg></button>
+                  <button class="button secondary simple-popup-trigger" type="button" data-popup-menu-trigger aria-haspopup="menu" aria-expanded="true" aria-controls="simple-theme-popup">Theme: <span data-simple-popup-value>Nord</span><svg class="disclosure-icon" aria-hidden="true" viewBox="0 0 24 24"><path d="m6 9 6 6 6-6"/></svg></button>
                 </div>
               </div>
               <p class="catalogue-note">For short, familiar choices, the popup can be nothing more than a list of Action Items.</p>

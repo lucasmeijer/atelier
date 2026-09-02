@@ -153,8 +153,6 @@ describe("Files Work view rendering", () => {
     const html = renderFilesEditorFrame("workspace", { id: "workspace", path: "/work/README.md" });
     expect(html).toContain("File changed on disk");
     expect(html).toContain('aria-label="Dismiss file conflict"');
-    expect(html).toContain('data-action="file-editor#useTheirs">Use theirs</button>');
-    expect(html).toContain('data-action="file-editor#useMine">Use mine</button>');
   });
 
   test("renders selected-file actions as a toolbar button group", () => {

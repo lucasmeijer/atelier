@@ -14,6 +14,8 @@ import {
   type JsonObject,
   type JsonValue,
 } from "@atelier/core";
+import { actionLinkHtml } from "@atelier/design-system/action-link";
+import { buttonHtml } from "@atelier/design-system/button";
 import { Icons } from "@atelier/design-system/icons";
 import { isGitProjectInit, listProjects, projectWorkspaceInit, type ProjectSummary } from "@atelier/projects";
 import { createWorkspacePresentationStore, generateWorkspaceId, listWorkspaces, setWorkspaceParked, setWorkspaceTitle, type WorkspaceCreationContext, type WorkspaceInitInstruction, type WorkspaceWorkViewReference, type WorkspaceWorkViewState } from "@atelier/workspace";
@@ -252,10 +254,15 @@ export function createWebApp(deps: WebAppDeps): WebApp {
 
   async function renderLaunchComposerFrame(options: { titleHtml: string; action: string }): Promise<string> {
     const draftId = crypto.randomUUID();
+    const closeButton = buttonHtml({
+      type: "submit",
+      variant: "secondary",
+      content: { kind: "icon-only", iconHtml: Icons.Close, label: "Close launch composer" },
+    });
     return `<turbo-frame id="${launchComposerFrameId}"><dialog class="launch-composer-dialog" data-controller="launch-composer-dialog submit-shortcut" data-launch-composer-dialog-discard-url-value="/agent-attachment-drafts/${encodeURIComponent(draftId)}/discard">
   <header class="launch-composer-header">
     <div class="launch-composer-title">${options.titleHtml}</div>
-    <form method="dialog"><button class="launch-composer-close button secondary icon-only" value="close" title="Close launch composer" aria-label="Close launch composer">${Icons.Close}</button></form>
+    <form method="dialog">${closeButton}</form>
   </header>
   ${await renderLaunchComposer({
     action: options.action,
@@ -284,6 +291,7 @@ export function createWebApp(deps: WebAppDeps): WebApp {
       action: `/project-agent-workspaces/${encodeURIComponent(project.id)}`,
     });
   }
+
 
   // ---------------------------------------------------------------------------
   // Workspace detail residency host
@@ -423,7 +431,8 @@ export function createWebApp(deps: WebAppDeps): WebApp {
   }
 
   function workspaceBootResidentHtml(entry: WorkspaceEntry, options: { visible?: boolean } = {}): string {
-    const deleteAction = entry.phase === "failed" ? `<form class="fixed-shell-delete-workspace" method="post" action="/workspaces/${encodeURIComponent(entry.id)}/delete"><button class="button danger" type="submit" aria-label="Delete workspace">Delete workspace</button></form>` : "";
+    const deleteButton = buttonHtml({ type: "submit", variant: "danger", content: { kind: "caption", caption: "Delete workspace" } });
+    const deleteAction = entry.phase === "failed" ? `<form class="fixed-shell-delete-workspace" method="post" action="/workspaces/${encodeURIComponent(entry.id)}/delete">${deleteButton}</form>` : "";
     const inner = `${provisioning.render(entry.id, { failed: entry.phase === "failed", error: entry.error })}${deleteAction}`;
     const projectAttr = isGitProjectInit(entry.init) ? ` data-project-id="${escapeHtml(entry.init.projectId)}"` : "";
     return `<div class="workspace-detail-resident workspace-boot ${options.visible ? "visible" : ""}" id="${workspaceBootId(entry.id)}" data-workspace-residency-target="resident" data-workspace-id="${escapeHtml(entry.id)}"${projectAttr}><div class="main"><div class="body"><div class="workspace-boot-content">${inner}</div></div></div></div>`;
@@ -1186,7 +1195,8 @@ export function createWebApp(deps: WebAppDeps): WebApp {
         : error instanceof AtelierCoreError && error.code === "last_agent_conversation" ? 409
           : 500;
     const message = error.message;
-    return response(layout(`<div class="app no-sidebar"><div class="main"><header class="header"><h1>Error</h1></header><div class="body"><p>${escapeHtml(message)}</p><p><a class="button secondary" href="/">Back home</a></p></div></div></div>`), { status });
+    const backLink = actionLinkHtml({ href: "/", variant: "secondary", content: { kind: "caption", caption: "Back home" } });
+    return response(layout(`<div class="app no-sidebar"><div class="main"><header class="header"><h1>Error</h1></header><div class="body"><p>${escapeHtml(message)}</p><p>${backLink}</p></div></div></div>`), { status });
   }
 
   async function route(request: Request): Promise<Response> {

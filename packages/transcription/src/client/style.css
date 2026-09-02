@@ -1,21 +1,21 @@
-.button.transcription-button {
+.button[data-transcription-composer-target="button"] {
   padding: 0;
   border-radius: var(--radius-round);
   overflow: hidden;
 }
-.transcription-button .progress-button__content { width: 100%; height: 100%; }
-.transcription-button .transcription-microphone { stroke-width: 1.65; }
-.transcription-button canvas { display: none; width: 24px; height: 22px; color: var(--accent); }
-.transcription-button[data-state="recording"],
-.transcription-button[data-state="finishing"] {
+[data-transcription-composer-target="button"] .progress-button__content { width: 100%; height: 100%; }
+[data-transcription-composer-target="button"] .transcription-microphone { stroke-width: 1.65; }
+[data-transcription-composer-target="button"] canvas { display: none; width: 24px; height: 22px; color: var(--accent); }
+[data-transcription-composer-target="button"][data-state="recording"],
+[data-transcription-composer-target="button"][data-state="finishing"] {
   --button-border: color-mix(in srgb, var(--accent) 50%, var(--line));
   --button-background: var(--accent-soft);
   --button-foreground: var(--accent);
 }
-.transcription-button[data-state="recording"] .transcription-microphone { display: none; }
-.transcription-button[data-state="recording"] canvas { display: block; }
-.composer-surface:has(.transcription-button[data-state="error"]) { overflow: visible; }
-.transcription-button[data-state="error"] {
+[data-transcription-composer-target="button"][data-state="recording"] .transcription-microphone { display: none; }
+[data-transcription-composer-target="button"][data-state="recording"] canvas { display: block; }
+.composer-surface:has([data-transcription-composer-target="button"][data-state="error"]) { overflow: visible; }
+[data-transcription-composer-target="button"][data-state="error"] {
   --button-border: var(--danger);
   --button-foreground: var(--danger);
   overflow: visible;
@@ -31,7 +31,7 @@
   white-space: nowrap;
   border: 0;
 }
-.transcription-button[data-state="error"] .transcription-status {
+[data-transcription-composer-target="button"][data-state="error"] + .transcription-status {
   position: absolute;
   right: 0;
   bottom: calc(100% + 6px);

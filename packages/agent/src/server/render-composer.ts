@@ -1,5 +1,6 @@
 import { activityButtonHtml } from "@atelier/design-system/activity-button";
 import { actionItemHtml } from "@atelier/design-system/action-item";
+import { buttonHtml } from "@atelier/design-system/button";
 import { popupMenuHtml } from "@atelier/design-system/popup";
 import { renderTranscriptionComposerControl, transcriptionComposerController } from "@atelier/transcription/server";
 import { providerBrandIconHtml } from "@atelier/shared";
@@ -211,7 +212,7 @@ function renderModelSelection(formId: string, models: AgentModelOption[]): strin
   const setupAction = 'data-controller="agent-model-setup" data-action="click->agent-model-setup#open"';
   const triggerContent = hasAvailableModel && selected ? modelLabelHtml(selected) : "Configure models";
   const directSetup = hasAvailableModel ? "" : ` ${setupAction}`;
-  const trigger = `<button class="composer-selection-button agent-model-button popup-menu-trigger" type="button" title="Model" aria-label="Model${selected ? `: ${escapeHtml(selected.name)}` : ""}" aria-haspopup="menu" aria-expanded="false" aria-controls="${escapeHtml(menuId)}" popovertarget="${escapeHtml(menuId)}"${directSetup}>${triggerContent}</button>`;
+  const trigger = `<button class="composer-selection-button agent-model-button" type="button" data-popup-menu-trigger title="Model" aria-label="Model${selected ? `: ${escapeHtml(selected.name)}` : ""}" aria-haspopup="menu" aria-expanded="false" aria-controls="${escapeHtml(menuId)}" popovertarget="${escapeHtml(menuId)}"${directSetup}>${triggerContent}</button>`;
   const configure = actionItemHtml({ kind: "single", label: { kind: "text", text: "Configure models" }, element: { tag: "button", attributesHtml: `type="button" role="menuitem" ${setupAction}` } });
   const modelItems = models.map((model) => {
     const description = model.unavailableReason && model.unavailableReason !== "Provider disconnected"
@@ -256,11 +257,18 @@ ${renderSharedComposerSelections({
 }
 
 function renderTranscriptNavigation(): string {
-  return `<div class="agent-transcript-navs">
-    <button class="button icon-only agent-transcript-nav" type="button" data-agent-pane-target="transcriptNav" data-action="agent-pane#jumpToLatestMessage" title="Jump to beginning of latest message" aria-label="Jump to beginning of latest message" aria-hidden="true" disabled>
-      <svg viewBox="0 0 20 20" aria-hidden="true"><path d="M4 16h12M10 4v9m-4-4 4 4 4-4"/></svg>
-    </button>
-  </div>`;
+  const button = buttonHtml({
+    type: "button",
+    variant: "secondary",
+    content: {
+      kind: "icon-only",
+      iconHtml: '<svg viewBox="0 0 20 20" aria-hidden="true"><path d="M4 16h12M10 4v9m-4-4 4 4 4-4"/></svg>',
+      label: "Jump to beginning of latest message",
+    },
+    disabled: true,
+    attributesHtml: 'data-agent-pane-target="transcriptNav" data-action="agent-pane#jumpToLatestMessage" aria-hidden="true"',
+  });
+  return `<div class="agent-transcript-navs">${button}</div>`;
 }
 
 function renderPromptActionButton(busy: boolean, ctx?: AgentRenderContext): string {

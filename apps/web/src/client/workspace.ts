@@ -9,6 +9,7 @@ import * as Turbo from "@hotwired/turbo";
 import { createHtmlAutocompleteController, PromptHistoryNavigator } from "@atelier/agent/client";
 import { actionItemElement, actionItemHtml } from "@atelier/design-system/action-item";
 import { autocompleteHtml } from "@atelier/design-system/autocomplete";
+import { buttonHtml } from "@atelier/design-system/button";
 import { Icons } from "@atelier/design-system/icons";
 import { showTransientFeedback } from "@atelier/design-system/transient-feedback/client";
 import {
@@ -739,7 +740,7 @@ class AtelierShortcutsController extends Controller {
       <svg class="palette-search-icon" viewBox="0 0 24 24" aria-hidden="true"><circle cx="11" cy="11" r="7"></circle><path d="m16 16 4 4"></path></svg>
       <input class="text-field palette-input" id="atelier-palette-input" type="search" role="combobox" spellcheck="false" autocomplete="off" placeholder="Search commands, workspaces, and destinations…" aria-label="Search command palette" aria-autocomplete="list" aria-controls="atelier-palette-results" aria-expanded="true">
       <kbd class="palette-shortcut" aria-hidden="true">⌘⌥K</kbd>
-      <form class="contents" method="dialog"><button class="button icon-only palette-close" aria-label="Close command palette">${Icons.Close}</button></form>
+      <form class="contents" method="dialog">${buttonHtml({ type: "submit", variant: "secondary", content: { kind: "icon-only", iconHtml: Icons.Close, label: "Close command palette" }, attributesHtml: "data-palette-close" })}</form>
     </header>
     <div class="dialog__body palette-body"><div class="palette-results action-list" id="atelier-palette-results" role="listbox" aria-label="Command palette results"></div></div>`;
     dialog.addEventListener("close", () => this.paletteInput?.blur());
@@ -1792,7 +1793,12 @@ class WorkspaceResidencyController extends Controller {
     this.loadingTargets.forEach((loading) => {
       loading.hidden = false;
       const pad = loading.querySelector<HTMLElement>(".pad");
-      if (pad) pad.innerHTML = `<p>Could not load workspace: ${escapeHtml(message)}</p><button class="button primary" type="button" data-action="click->workspace-navigation#selectWorkspace" data-workspace-entry-id="${escapeHtml(workspaceId)}">Retry</button>`;
+      if (pad) pad.innerHTML = `<p>Could not load workspace: ${escapeHtml(message)}</p>${buttonHtml({
+        type: "button",
+        variant: "primary",
+        content: { kind: "caption", caption: "Retry" },
+        attributesHtml: `data-action="click->workspace-navigation#selectWorkspace" data-workspace-entry-id="${escapeHtml(workspaceId)}"`,
+      })}`;
     });
   }
 
@@ -2337,7 +2343,7 @@ class ClipboardController extends Controller {
 }
 
 const ProjectGithubSearchController = createHtmlAutocompleteController(Controller, {
-  optionSelector: ".agent-completion-option",
+  optionSelector: ":is(.agent-completion-option, [data-agent-completion-option])",
   loadingHtml: autocompleteHtml({ kind: "message", role: "status", content: { kind: "html", html: '<span class="agent-completion-spinner" aria-hidden="true"></span>Searching GitHub…' } }),
   request(input) {
     const query = input.value.trim();

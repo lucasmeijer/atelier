@@ -1,5 +1,6 @@
 import { AtelierCoreError } from "@atelier/core";
 import { actionItemHtml } from "@atelier/design-system/action-item";
+import { buttonHtml } from "@atelier/design-system/button";
 import { contentText } from "@earendil-works/pi-ai";
 import type { SessionEntry, SessionManager, SessionTreeNode } from "@earendil-works/pi-coding-agent";
 import { escapeHtml } from "./html.ts";
@@ -152,6 +153,18 @@ export function renderAgentTreeMenu(tree: readonly SessionTreeNode[], leafId: st
   const query = options.query?.trim() ?? "";
   const entries = flattenTree(tree, leafId, filter, query);
   const controls = `<header class="agent-tree-header"><span class="agent-tree-heading"><b>Session tree</b><span>Select a point to continue from</span></span><span class="agent-tree-controls"><input class="agent-tree-search text-field" type="search" value="${escapeHtml(query)}" placeholder="Search entries…" aria-label="Search session tree"><select class="agent-tree-filter" aria-label="Filter session tree">${treeFilterOptions.map(([value, label]) => `<option value="${value}"${filter === value ? " selected" : ""}>${label}</option>`).join("")}</select></span></header>`;
+  const cancelLabelButton = buttonHtml({
+    type: "button",
+    variant: "secondary",
+    content: { kind: "caption", caption: "Cancel" },
+    attributesHtml: 'data-tree-action="label-cancel"',
+  });
+  const addLabelButton = buttonHtml({
+    type: "button",
+    variant: "primary",
+    content: { kind: "caption", caption: "Add" },
+    attributesHtml: 'data-tree-action="label-save"',
+  });
   const rows = entries.length === 0 ? `<div class="agent-completion-menu empty">No matching entries</div>` : entries.map((entry) => {
     const { node, lane } = entry;
     const current = node.entry.id === leafId;
@@ -169,7 +182,7 @@ export function renderAgentTreeMenu(tree: readonly SessionTreeNode[], leafId: st
     });
     return `<div class="agent-tree-row" data-tree-entry="${escapeHtml(node.entry.id)}" style="--tree-lane:${lane}">
       ${item}
-      <span class="agent-tree-label-editor" hidden><input class="text-field" type="text" value="" placeholder="Add a label" aria-label="New node label"><button class="button" type="button" data-tree-action="label-cancel">Cancel</button><button type="button" class="button primary" data-tree-action="label-save">Add</button></span>
+      <span class="agent-tree-label-editor" hidden><input class="text-field" type="text" value="" placeholder="Add a label" aria-label="New node label">${cancelLabelButton}${addLabelButton}</span>
     </div>`;
   }).join("");
   return `<div class="agent-completion-menu action-list agent-tree-menu" role="listbox" aria-label="Session tree">${controls}${rows}</div>`;
@@ -202,6 +215,18 @@ function treeSummaryOptionHtml(mode: "none" | "summary" | "custom", title: strin
 }
 
 export function renderAgentTreeSummaryMenu(entryId: string): string {
+  const backButton = buttonHtml({
+    type: "button",
+    variant: "secondary",
+    content: { kind: "caption", caption: "Back" },
+    attributesHtml: 'data-completion-kind="tree-summary-back"',
+  });
+  const confirmButton = buttonHtml({
+    type: "button",
+    variant: "primary",
+    content: { kind: "caption", caption: "Summarize and continue" },
+    attributesHtml: 'data-completion-kind="tree-summary-confirm"',
+  });
   return `<div class="agent-completion-menu agent-tree-summary-menu" role="listbox" aria-label="Branch summary choice" data-tree-entry="${escapeHtml(entryId)}">
     <header class="agent-tree-header"><span class="agent-tree-heading"><b>Continue from this point</b><span>What should happen to the branch you’re leaving?</span></span></header>
     <div class="agent-tree-summary-choices action-list">
@@ -212,7 +237,7 @@ export function renderAgentTreeSummaryMenu(entryId: string): string {
     <div class="agent-tree-custom" hidden>
       <label for="agent-tree-custom-instructions">Additional summary instructions</label>
       <textarea class="textarea" id="agent-tree-custom-instructions" rows="3" placeholder="For example: preserve the API decisions and unresolved risks."></textarea>
-      <div><button type="button" class="button" data-completion-kind="tree-summary-back">Back</button><button type="button" class="button primary" data-completion-kind="tree-summary-confirm">Summarize and continue</button></div>
+      <div>${backButton}${confirmButton}</div>
     </div>
   </div>`;
 }

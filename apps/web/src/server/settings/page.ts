@@ -36,7 +36,7 @@ export type WorkspaceCleanupResult = { deleted: number; errors: string[] };
 
 function renderForceDeleteWorkspaces(result?: WorkspaceCleanupResult): string {
   const confirmation = destructiveConfirmationHtml({
-    buttonHtml: '<button class="button danger" type="button">Force delete all workspaces</button>',
+    trigger: { type: "button", variant: "danger", content: { kind: "caption", caption: "Force delete all workspaces" } },
     confirmCaption: "Force delete all workspaces",
     cancelCaption: "Cancel",
   });

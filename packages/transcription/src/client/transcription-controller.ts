@@ -295,6 +295,7 @@ export function createTranscriptionComposerController(Controller: WorkspaceClien
       this.buttonTarget.toggleAttribute("aria-busy", working);
       this.buttonTarget.ariaPressed = state === "recording" || state === "finishing" ? "true" : "false";
       this.buttonTarget.title = label;
+      this.buttonTarget.setAttribute("aria-label", label);
       this.statusTarget.textContent = label;
       const transcribing = state === "loading" || state === "recording" || state === "finishing";
       const transcriptionStateChanged = this.element.hasAttribute("data-transcribing") !== transcribing;

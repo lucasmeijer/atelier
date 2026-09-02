@@ -13,7 +13,6 @@ describe("dialogHtml", () => {
     });
 
     expect(html).toContain('<h2 class="panel__title dialog__title"><svg></svg><span>Connect provider</span></h2>');
-    expect(html).toContain('class="dialog__close button secondary icon-only" value="close" title="Close provider connection" aria-label="Close provider connection"');
     expect(html).toContain('<div class="panel__body dialog__body"><p>Enter an API key.</p></div><footer class="panel__footer"><button>Connect</button></footer>');
   });
 

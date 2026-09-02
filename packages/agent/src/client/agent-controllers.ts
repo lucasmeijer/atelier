@@ -1202,7 +1202,7 @@ function filterSlashCompletionCatalog(html: string, query: string, compactAvaila
     compact.querySelector<HTMLElement>(".action-item__label-text")!.textContent = "/compact [instructions] — Available after more conversation history.";
   }
   const normalized = query.toLowerCase();
-  const options = [...menu.querySelectorAll<HTMLButtonElement>(".agent-completion-option")]
+  const options = [...menu.querySelectorAll<HTMLButtonElement>(":is(.agent-completion-option, [data-agent-completion-option])")]
     .filter((option) => option.dataset.commandTrigger!.slice(1).toLowerCase().includes(normalized))
     .sort((a, b) => {
       const aName = a.dataset.commandTrigger!.slice(1).toLowerCase();
@@ -1259,11 +1259,11 @@ function composerIsTranscribing(element: Element): boolean {
 
 function createAgentCompletionsController(Controller: StimulusControllerConstructor, hooks: WorkspaceClientHooks) {
   const HtmlAutocompleteController = createHtmlAutocompleteController(Controller, {
-    optionSelector: ".agent-completion-option:not([hidden]):not(:disabled)",
+    optionSelector: ":is(.agent-completion-option, [data-agent-completion-option]):not([hidden]):not(:disabled)",
     loadingHtml: autocompleteHtml({ kind: "message", role: "status", content: { kind: "html", html: '<span class="agent-completion-spinner" aria-hidden="true"></span>Loading completions…' } }),
     triggerKeysWhenClosed: ["/", "@"],
     fullscreenShortcut: (option) => option.dataset.completionKind === "prompt-template",
-    keepOpenOnBlur: (input, menu) => !composerIsTranscribing(input) && input.value === "" && Boolean(menu.querySelector(".agent-quick-launch")),
+    keepOpenOnBlur: (input, menu) => !composerIsTranscribing(input) && input.value === "" && Boolean(menu.querySelector("[data-agent-quick-launch]")),
     menuEvent: handleAgentTreeMenuEvent,
     request(input, force) {
       if (composerIsTranscribing(input)) return undefined;

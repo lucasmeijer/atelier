@@ -1,5 +1,7 @@
 import { actionItemHtml, type ActionItemLabel } from "@atelier/design-system/action-item";
 import { activityButtonHtml } from "@atelier/design-system/activity-button";
+import { buttonHtml } from "@atelier/design-system/button";
+import { buttonGroupHtml } from "@atelier/design-system/button-group";
 import { copyButtonHtml } from "@atelier/design-system/copy-button";
 import { Icons } from "@atelier/design-system/icons";
 import { toggleHtml } from "@atelier/design-system/toggle";
@@ -139,7 +141,12 @@ export async function renderReadOnlyReviewFile(frameId: string, file: ReviewFile
 }
 
 function renderUnanchoredComment(workspaceId: string, comment: ReviewComment): string {
-  return `<div class="review-unanchored-entry"><div class="review-unanchored-context"><strong>${escapeHtml(comment.path)}</strong><pre>${escapeHtml(comment.snippet)}</pre></div><article class="review-inline-comment"><form method="post" action="/workspaces/${encodeURIComponent(workspaceId)}/review/comments/${encodeURIComponent(comment.id)}/delete" data-turbo="true"><button class="button secondary icon-only review-comment-close" type="submit" aria-label="Delete review comment" title="Delete review comment">${Icons.Close}</button></form><div class="review-comment-content"><p>${escapeHtml(comment.body)}</p></div></article></div>`;
+  const deleteButton = buttonHtml({
+    type: "submit",
+    variant: "secondary",
+    content: { kind: "icon-only", iconHtml: Icons.Close, label: "Delete review comment" },
+  });
+  return `<div class="review-unanchored-entry"><div class="review-unanchored-context"><strong>${escapeHtml(comment.path)}</strong><pre>${escapeHtml(comment.snippet)}</pre></div><article class="review-inline-comment"><form data-review-comment-close method="post" action="/workspaces/${encodeURIComponent(workspaceId)}/review/comments/${encodeURIComponent(comment.id)}/delete" data-turbo="true">${deleteButton}</form><div class="review-comment-content"><p>${escapeHtml(comment.body)}</p></div></article></div>`;
 }
 
 function reviewUnanchoredId(workspaceId: string): string {
@@ -160,7 +167,13 @@ function renderUnanchoredSlot(workspaceId: string, comments: ReviewComment[]): s
 }
 
 function iconButton(label: string, action: string, iconHtml: string, disabled = false): string {
-  return `<button class="button secondary icon-only" type="button" aria-label="${escapeHtml(label)}" title="${escapeHtml(label)}" data-action="${escapeHtml(action)}"${disabled ? " disabled" : ""}>${iconHtml}</button>`;
+  return buttonHtml({
+    type: "button",
+    variant: "secondary",
+    content: { kind: "icon-only", iconHtml, label },
+    disabled,
+    attributesHtml: `data-action="${escapeHtml(action)}"`,
+  });
 }
 
 function refreshForm(workspaceId: string, caption = ""): string {
@@ -178,11 +191,16 @@ function refreshForm(workspaceId: string, caption = ""): string {
 }
 
 function toolbar(workspaceId: string, comments: ReviewComment[], diffLayouts: ReviewDiffLayouts): string {
-  const commentsDisabled = comments.length === 0 ? " disabled" : "";
   const collapse = iconButton("Collapse all files", "review#collapseAll", Icons.CollapseAll);
   const expand = iconButton("Expand all files", "review#expandAll", Icons.ExpandAll);
   const copyButton = copyButtonHtml({
     label: "Copy review comments to clipboard",
+    disabled: comments.length === 0,
+  });
+  const deleteCommentsButton = buttonHtml({
+    type: "submit",
+    variant: "danger",
+    content: { kind: "icon-only", iconHtml: Icons.Trash, label: "Delete all review comments" },
     disabled: comments.length === 0,
   });
   const diffLayoutToggle = toggleHtml({
@@ -209,16 +227,19 @@ function toolbar(workspaceId: string, comments: ReviewComment[], diffLayouts: Re
     element: { dataAction: "change->review#setLineWrapping" },
     options: [{ label: "Scroll", value: "false" }, { label: "Wrap", value: "true" }],
   });
-  return `<header class="review-toolbar">
-    <div class="review-toolbar-actions button-group copy-region">
-      ${iconButton("Copy review comments into composer", "click->review#copyCommentsToComposer", Icons.ArrowDown, comments.length === 0)}
+  const controls = buttonGroupHtml({
+    orientation: "horizontal",
+    semantics: "group",
+    label: "Review actions and display",
+    itemsHtml: `${iconButton("Copy review comments into composer", "click->review#copyCommentsToComposer", Icons.ArrowDown, comments.length === 0)}
       ${copyButton}
-      <form method="post" action="/workspaces/${encodeURIComponent(workspaceId)}/review/comments/delete" data-turbo="true"><button class="button danger icon-only" type="submit" aria-label="Delete all review comments" title="Delete all review comments"${commentsDisabled}>${Icons.Trash}</button></form>
+      <form method="post" action="/workspaces/${encodeURIComponent(workspaceId)}/review/comments/delete" data-turbo="true">${deleteCommentsButton}</form>
       ${refreshForm(workspaceId)}
       ${collapse}${expand}
-      <div class="review-display-toggles"><span class="review-layout-status" data-review-target="layoutStatus" role="status" aria-live="polite" hidden><span class="status-spinner" aria-hidden="true"></span><span data-review-target="layoutStatusText"></span></span>${diffLayoutToggle}${diffHighlighting}${longLines}</div>
-      <span data-copy-source hidden>${escapeHtml(reviewCommentsPrompt(comments))}</span>
-    </div>
+      <div class="review-display-toggles"><span class="review-layout-status" data-review-target="layoutStatus" role="status" aria-live="polite" hidden><span class="status-spinner" aria-hidden="true"></span><span data-review-target="layoutStatusText"></span></span>${diffLayoutToggle}${diffHighlighting}${longLines}</div>`,
+  });
+  return `<header class="review-toolbar">
+    <div class="review-toolbar-actions copy-region">${controls}<span data-copy-source hidden>${escapeHtml(reviewCommentsPrompt(comments))}</span></div>
   </header>`;
 }
 

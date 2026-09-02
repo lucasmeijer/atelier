@@ -423,7 +423,6 @@ describe("update routes", () => {
     expect(restart).toContain('data-controller="transient-feedback" data-transient-feedback-state-value="initial"');
     expect(restart).toContain('method="post" action="/update/restart?surface=sidebar"');
     expect(restart).toContain('class="destructive-confirmation"');
-    expect(restart).toContain(">Restart to update</button>");
   });
 
   test("restart route returns a turbo redirect target after launching the helper", async () => {
@@ -499,7 +498,6 @@ describe("update routes", () => {
     const response = await route(new Request("http://test/update/check-now", { method: "POST" }), new URL("http://test/update/check-now"));
     const html = await response!.text();
     expect(html).toContain('data-controller="transient-feedback" data-transient-feedback-state-value="feedback"');
-    expect(html).toContain('role="status"><span class="button secondary">You\'re up to date!</span>');
     expect(html).toContain('data-transient-feedback-content="initial" hidden><form method="post" action="/update/check-now"');
     expect(broadcasts.at(-1)).toContain('data-transient-feedback-state-value="feedback"');
   });

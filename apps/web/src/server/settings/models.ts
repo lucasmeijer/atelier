@@ -1,3 +1,5 @@
+import { actionLinkHtml } from "@atelier/design-system/action-link";
+import { buttonHtml } from "@atelier/design-system/button";
 import { copyButtonHtml } from "@atelier/design-system/copy-button";
 import { destructiveConfirmationHtml } from "@atelier/design-system/destructive-confirmation";
 import { dialogHtml } from "@atelier/design-system/dialog";
@@ -20,13 +22,13 @@ import { registerSettingsContribution } from "./registry.ts";
 import { providerIcon, type SettingsSurface } from "./views.ts";
 
 const providerDisconnectConfirmation = destructiveConfirmationHtml({
-  buttonHtml: '<button class="button danger" type="button">Disconnect</button>',
+  trigger: { type: "button", variant: "danger", content: { kind: "caption", caption: "Disconnect" } },
   confirmCaption: "Disconnect",
   cancelCaption: "Cancel",
 });
 
 const modelRemovalConfirmation = destructiveConfirmationHtml({
-  buttonHtml: `<button class="button danger icon-only" type="button" title="Remove configured model" aria-label="Remove configured model">${Icons.Trash}</button>`,
+  trigger: { type: "button", variant: "danger", content: { kind: "icon-only", iconHtml: Icons.Trash, label: "Remove configured model" } },
   confirmCaption: "Remove model",
   cancelCaption: "Cancel",
 });
@@ -133,7 +135,11 @@ function providerAuthAction(provider: ProviderSummary, method: string, surface: 
 
 function providerAuthenticationActions(provider: ProviderSummary, surface: ModelSetupSurface): string {
   if (!provider.methods.length) return `<span class="settings-provider-desc">Provider unavailable</span>`;
-  return provider.methods.map((method) => `<form method="post" action="${providerAuthAction(provider, method, surface)}" data-turbo="true"><button class="button secondary" type="submit">${providerAuthLabel(method)}</button></form>`).join("");
+  return provider.methods.map((method) => `<form method="post" action="${providerAuthAction(provider, method, surface)}" data-turbo="true">${buttonHtml({
+    type: "submit",
+    variant: "secondary",
+    content: { kind: "caption", caption: providerAuthLabel(method) },
+  })}</form>`).join("");
 }
 
 function catalogueProviderForms(provider: ProviderSummary, surface: ModelSetupSurface): string {
@@ -143,7 +149,12 @@ function catalogueProviderForms(provider: ProviderSummary, surface: ModelSetupSu
 
 function catalogueAuthenticationButtons(model: ModelCatalogueEntry, provider: ProviderSummary, surface: ModelSetupSurface): string {
   if (!provider.methods.length) return `<span class="settings-provider-desc">Provider unavailable</span>`;
-  return provider.methods.map((method) => `<button class="button secondary" type="submit" form="${providerAuthFormId(provider, method, surface)}" name="model" value="${escapeHtml(modelKey(model))}">${providerAuthLabel(method)}</button>`).join("");
+  return provider.methods.map((method) => buttonHtml({
+    type: "submit",
+    variant: "secondary",
+    content: { kind: "caption", caption: providerAuthLabel(method) },
+    attributesHtml: `form="${providerAuthFormId(provider, method, surface)}" name="model" value="${escapeHtml(modelKey(model))}"`,
+  })).join("");
 }
 
 function configuredModelRow(model: ConfiguredAgentModel, provider: ProviderSummary, surface: ModelSetupSurface): string {
@@ -167,10 +178,16 @@ function renderConfiguredModelsSection(data: ModelSetupData, surface: ModelSetup
 
 function catalogueModelAction(model: ModelCatalogueEntry, provider: ProviderSummary, surface: ModelSetupSurface): string {
   const actionClass = domId("model_catalogue_action", surface, model.provider, model.id);
+  const addButton = buttonHtml({
+    type: "submit",
+    variant: "primary",
+    content: { kind: "caption", caption: "Add" },
+    attributesHtml: `form="${domId("model_catalogue_add", surface, provider.provider)}" name="model" value="${escapeHtml(modelKey(model))}"`,
+  });
   return `<div class="managed-list__actions model-catalogue-action ${actionClass}">
     ${model.configured
       ? `<span class="settings-provider-desc">Already added</span>`
-      : `<span class="model-provider-disconnected-actions">${catalogueAuthenticationButtons(model, provider, surface)}</span><span class="model-provider-connected-actions"><button class="button primary" type="submit" form="${domId("model_catalogue_add", surface, provider.provider)}" name="model" value="${escapeHtml(modelKey(model))}">Add</button></span>`}
+      : `<span class="model-provider-disconnected-actions">${catalogueAuthenticationButtons(model, provider, surface)}</span><span class="model-provider-connected-actions">${addButton}</span>`}
   </div>`;
 }
 
@@ -249,6 +266,13 @@ function apiKeyModal(id: string, label: string, surface: SettingsSurface, model?
   const formId = domId("provider_api_key_form", id);
   const action = `/settings/providers/${encodeURIComponent(id)}/connect${surface === "onboarding" ? "?surface=onboarding" : ""}`;
   const initiatedModel = model ? `<input type="hidden" name="model" value="${escapeHtml(modelKey(model))}">` : "";
+  const cancelButton = buttonHtml({ type: "submit", variant: "secondary", content: { kind: "caption", caption: "Cancel" } });
+  const connectButton = buttonHtml({
+    type: "submit",
+    variant: "primary",
+    content: { kind: "caption", caption: "Connect" },
+    attributesHtml: `form="${formId}"`,
+  });
   return dialogHtml({
     element: {
       id: "settings_flow_dialog",
@@ -263,7 +287,7 @@ function apiKeyModal(id: string, label: string, surface: SettingsSurface, model?
       <label for="${inputId}">API key</label>
       <input id="${inputId}" class="settings-input text-field" type="password" name="secret" placeholder="${escapeHtml(getProviderApiKeyExample(id) ?? "API key")}" autocomplete="off" required autofocus>
     </form>`,
-    footerHtml: `<form method="dialog"><button class="button secondary">Cancel</button></form><button class="button primary" type="submit" form="${formId}">Connect</button>`,
+    footerHtml: `<form method="dialog">${cancelButton}</form>${connectButton}`,
   });
 }
 
@@ -359,8 +383,12 @@ function oauthStatus(kind: "pending" | "done", title: string, detail: string): s
 
 function oauthAuthenticationAction(flow: PendingOAuthFlow, url: string, hidden = false): string {
   const authenticationName = flow.provider === "openai-codex" ? "OpenAI" : flow.label;
-  const action = hidden ? ' data-action="oauth-flow#showWaitingStatus"' : "";
-  return `<a class="button primary" href="${escapeHtml(url)}" target="_blank" rel="noreferrer"${hidden ? " data-oauth-device-auth hidden" : ""}${action}>Open ${escapeHtml(authenticationName)} Authentication page so I can paste the button there</a>`;
+  return actionLinkHtml({
+    href: url,
+    variant: "primary",
+    content: { kind: "caption", caption: `Open ${authenticationName} Authentication page so I can paste the button there` },
+    attributesHtml: `target="_blank" rel="noreferrer"${hidden ? ' data-oauth-device-auth hidden data-action="oauth-flow#showWaitingStatus"' : ""}`,
+  });
 }
 
 function oauthDeviceCodeBody(flow: PendingOAuthFlow, complete = false): string {
@@ -405,6 +433,14 @@ function oauthCompleteBody(flow: PendingOAuthFlow): string {
 
 function oauthFlowModal(flow: PendingOAuthFlow): string {
   const pollMs = Math.max(1500, Math.min(15000, (flow.intervalSeconds ?? 3) * 1000));
+  const doneButton = buttonHtml({ type: "submit", variant: "primary", content: { kind: "caption", caption: "Done" } });
+  const cancelButton = buttonHtml({ type: "submit", variant: "secondary", content: { kind: "caption", caption: "Cancel" } });
+  const submitUrlButton = buttonHtml({
+    type: "submit",
+    variant: "primary",
+    content: { kind: "caption", caption: "Submit URL" },
+    attributesHtml: `form="${oauthRedirectFormId(flow)}"`,
+  });
   const body = flow.status === "complete"
     ? oauthCompleteBody(flow)
     : flow.status === "error"
@@ -415,10 +451,10 @@ function oauthFlowModal(flow: PendingOAuthFlow): string {
           ? oauthBrowserRedirectBody(flow)
           : `<div class="settings-oauth-card">${oauthStatus("pending", "Starting OAuth flow", "Waiting for the provider to respond.")}</div>`;
   const action = flow.status === "complete"
-    ? `<form method="post" action="/settings/providers/${encodeURIComponent(flow.provider)}/oauth/${encodeURIComponent(flow.id)}/finish" data-turbo="true"><button class="button primary" type="submit">Done</button></form>`
+    ? `<form method="post" action="/settings/providers/${encodeURIComponent(flow.provider)}/oauth/${encodeURIComponent(flow.id)}/finish" data-turbo="true">${doneButton}</form>`
     : flow.status === "pending"
-      ? `<form method="post" action="/settings/providers/${encodeURIComponent(flow.provider)}/oauth/${encodeURIComponent(flow.id)}/cancel" data-turbo="true"><button class="button secondary" type="submit">Cancel</button></form>${flow.authUrl && flow.prompt ? `<button class="button primary" type="submit" form="${oauthRedirectFormId(flow)}">Submit URL</button>` : ""}`
-      : `<form method="post" action="/settings/providers/${encodeURIComponent(flow.provider)}/oauth/${encodeURIComponent(flow.id)}/finish" data-turbo="true"><button class="button secondary" type="submit">Close</button></form>`;
+      ? `<form method="post" action="/settings/providers/${encodeURIComponent(flow.provider)}/oauth/${encodeURIComponent(flow.id)}/cancel" data-turbo="true">${cancelButton}</form>${flow.authUrl && flow.prompt ? submitUrlButton : ""}`
+      : `<form method="post" action="/settings/providers/${encodeURIComponent(flow.provider)}/oauth/${encodeURIComponent(flow.id)}/finish" data-turbo="true">${buttonHtml({ type: "submit", variant: "secondary", content: { kind: "caption", caption: "Close" } })}</form>`;
   return dialogHtml({
     element: {
       id: "settings_flow_dialog",
@@ -438,7 +474,12 @@ function modelSetupWorkingState(working: boolean): string {
 }
 
 function modelSetupDialogButton(working: boolean): string {
-  return `<button class="button model-setup-ok-button ${working ? "secondary" : "warning"}">${working ? "OK" : "No model configured yet"}</button>`;
+  return buttonHtml({
+    type: "submit",
+    variant: "secondary",
+    content: { kind: "caption", caption: working ? "OK" : "No model configured yet" },
+    attributesHtml: "data-model-setup-dialog-button",
+  });
 }
 
 async function refreshProviderState(providerId: string): Promise<string> {
@@ -456,7 +497,7 @@ async function refreshConfiguredModelState(model: { provider: string; id: string
   const catalogueActions = view && provider
     ? modelSetupSurfaces.map((surface) => replaceTargets(`.${domId("model_catalogue_action", surface, model.provider, model.id)}`, catalogueModelAction(view, provider, surface))).join("")
     : "";
-  return `${configuredSections}${catalogueActions}${replaceTargets(".model-setup-working-state", modelSetupWorkingState(working))}${replaceTargets(".model-setup-ok-button", modelSetupDialogButton(working))}`;
+  return `${configuredSections}${catalogueActions}${replaceTargets(".model-setup-working-state", modelSetupWorkingState(working))}${replaceTargets("[data-model-setup-dialog-button]", modelSetupDialogButton(working))}`;
 }
 
 

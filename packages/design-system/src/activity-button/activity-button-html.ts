@@ -1,16 +1,16 @@
 import { escapeHtml } from "@atelier/shared";
+import type { ButtonVariant } from "../button/button-content.ts";
 import { type HtmlContent } from "../html.ts";
 import { perimeterButtonHtml } from "../perimeter-button/perimeter-button-html.ts";
 
 export type ActivityButtonContent = HtmlContent;
 export type ActivityButtonState = "initial" | "active";
-export type ActivityButtonVariant = "primary" | "secondary" | "danger";
 
 interface ActivityButtonBase {
   initialContent: ActivityButtonContent;
   activeContent: ActivityButtonContent;
   state: ActivityButtonState;
-  variant: ActivityButtonVariant;
+  variant: ButtonVariant;
   /** Caller-owned attributes. Do not supply activity state, aria-busy, title, or aria-label attributes here. Attribute values containing external input must be escaped. */
   attributesHtml?: string;
   type?: "button" | "submit";

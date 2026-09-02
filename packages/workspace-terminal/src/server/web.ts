@@ -1,6 +1,7 @@
 import { registerWorkspacePresenter } from "@atelier/agent/server";
 import type { JsonValue } from "@atelier/core";
 import { actionItemHtml } from "@atelier/design-system/action-item";
+import { buttonHtml } from "@atelier/design-system/button";
 import { dialogHtml } from "@atelier/design-system/dialog";
 import { Icons } from "@atelier/design-system/icons";
 import { domId, escapeHtml, turboStream, type WorkspaceCommandContribution, type WorkspaceModule, type WorkspaceWorkViewPresentation, type WorkspaceWorkViewReference } from "@atelier/shared";
@@ -83,7 +84,19 @@ async function renderAttachDialog(workspaceId: string): Promise<string> {
     ${sessions[0] ? `<input type="hidden" name="session" value="${escapeHtml(sessions[0].name)}" data-terminal-session-picker-target="input">` : ""}
     <div class="terminal-session-list action-list" role="listbox" aria-label="Tmux sessions" data-controller="linear-navigation">${rows || `<div class="terminal-session-empty empty-state">No tmux sessions are running yet.</div>`}</div>
   </form>`;
-  const footerHtml = `<form method="dialog"><button class="button secondary" value="cancel">Cancel</button></form><button class="button primary" type="submit" form="${formId}"${rows ? "" : " disabled"}>Attach</button>`;
+  const cancelButton = buttonHtml({
+    type: "submit",
+    variant: "secondary",
+    content: { kind: "caption", caption: "Cancel" },
+  });
+  const attachButton = buttonHtml({
+    type: "submit",
+    variant: "primary",
+    content: { kind: "caption", caption: "Attach" },
+    disabled: sessions.length === 0,
+    attributesHtml: `form="${formId}"`,
+  });
+  const footerHtml = `<form method="dialog">${cancelButton}</form>${attachButton}`;
   return dialogHtml({
     element: {
       id: attachDialogId(workspaceId),

@@ -23,7 +23,7 @@ function createBrowserAddressController(Controller: WorkspaceClientControllerCon
     }
 
     private updateExternalLink(frameHref?: string): void {
-      const external = this.element.querySelector<HTMLAnchorElement>(".browser-open-external");
+      const external = this.element.querySelector<HTMLAnchorElement>('[data-browser-address-target="external"]');
       if (!external) return;
       const href = frameHref ?? this.iframe()?.src;
       if (href) external.href = href;
@@ -54,7 +54,7 @@ const browserClientModule: WorkspaceClientModule = {
   install({ application, Controller, hooks }) {
     application.register("browser-address", createBrowserAddressController(Controller));
     hooks.onWorkspaceAppFrameUrl(({ frame, url }) => {
-      frame.closest(".browser-shell")?.querySelector<HTMLAnchorElement>(".browser-open-external")?.setAttribute("href", url.toString());
+      frame.closest(".browser-shell")?.querySelector<HTMLAnchorElement>('[data-browser-address-target="external"]')?.setAttribute("href", url.toString());
     });
     hooks.onWorkspaceAppFrameRefresh(({ appKey, frame, load }) => {
       if (isBrowserAppKey(appKey) && frame.src) load();

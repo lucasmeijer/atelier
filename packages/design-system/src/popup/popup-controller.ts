@@ -2,6 +2,7 @@
 
 import { Controller } from "@hotwired/stimulus";
 import { actionItemElement } from "../action-item/action-item-html.ts";
+import { buttonElement } from "../button/button-html.ts";
 
 let menuSequence = 0;
 
@@ -11,7 +12,7 @@ export class PopupController extends Controller<HTMLElement> {
   private menu!: HTMLElement;
 
   connect(): void {
-    this.trigger = this.element.querySelector<HTMLButtonElement>(".popup-menu-trigger")!;
+    this.trigger = this.element.querySelector<HTMLButtonElement>("[data-popup-menu-trigger]")!;
     this.menu = this.element.querySelector<HTMLElement>(".popup-menu[popover]")!;
     this.menu.addEventListener("click", this.choose);
     this.menu.addEventListener("toggle", this.syncOpenState);
@@ -61,9 +62,12 @@ export class PopupSelectController extends Controller<HTMLSelectElement> {
     this.anchor.classList.add("popup-menu-anchor");
     this.element.classList.add("popup-select-native");
 
-    this.button = document.createElement("button");
-    this.button.type = "button";
-    this.button.className = "button secondary popup-select-trigger popup-menu-trigger";
+    this.button = buttonElement({
+      type: "button",
+      variant: "secondary",
+      content: { kind: "caption", caption: this.element.selectedOptions[0]?.textContent?.trim() || this.element.value },
+      attributesHtml: "data-popup-menu-trigger data-popup-select-trigger",
+    });
     this.button.setAttribute("aria-haspopup", "menu");
     this.button.setAttribute("aria-expanded", "false");
 

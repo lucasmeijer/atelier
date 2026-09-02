@@ -4,6 +4,7 @@ import { progressButtonHtml } from "../src/progress-button/progress-button-html.
 const content = {
   initialContent: { kind: "text" as const, text: "Download <update>" },
   progressContent: { kind: "html" as const, html: "<i>Downloading…</i>" },
+  variant: "primary" as const,
 };
 
 describe("progressButtonHtml", () => {
@@ -11,14 +12,13 @@ describe("progressButtonHtml", () => {
     const html = progressButtonHtml({
       ...content,
       id: "update_submit",
-      className: "primary custom",
       attributesHtml: 'name="update" data-action="updates#start"',
       type: "submit",
       state: "initial",
     });
 
     expect(html).toContain('id="update_submit"');
-    expect(html).toContain('class="button primary custom progress-button"');
+    expect(html).toContain('class="button primary progress-button"');
     expect(html).toContain('type="submit" data-progress-state="initial"');
     expect(html).toContain('name="update" data-action="updates#start"');
     expect(html).toContain('data-progress-content="initial">Download &lt;update&gt;');

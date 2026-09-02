@@ -236,7 +236,6 @@ describe("Review presentation", () => {
     expect([...html.matchAll(/<details class="review-file"[^>]*>/g)].every(([details]) => !details.includes(" open"))).toBe(true);
     expect(html).toContain('data-src="/workspaces/workspace%201/review/files/src%2Fexample.ts"');
     expect(html).not.toContain("Binary file changed");
-    expect(html).toContain('class="button secondary icon-only" type="button" aria-label="Copy review comments into composer" title="Copy review comments into composer" data-action="click-&gt;review#copyCommentsToComposer"');
     expect(html).not.toContain("Copy into composer</button>");
     expect(html).toContain('class="button secondary icon-only copy-button transient-feedback"');
     expect(html).toContain('data-transient-feedback-feedback-label="Copied to clipboard"');

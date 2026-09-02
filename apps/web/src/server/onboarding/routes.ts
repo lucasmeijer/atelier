@@ -1,4 +1,5 @@
 import { listOnboardingContributions, registerOnboardingContribution } from "./registry.ts";
+import { buttonHtml } from "@atelier/design-system/button";
 import { dialogHtml } from "@atelier/design-system/dialog";
 import { Icons } from "@atelier/design-system/icons";
 import { escapeHtml, turboStreamResponse } from "@atelier/shared";
@@ -46,6 +47,18 @@ export async function renderOnboardingDialog(options: { includeCompleted?: boole
     const isComplete = isDone || (contribution ? completionById.get(contribution.id) === true : false);
     return `<section class="onboarding-pane" data-onboarding-target="pane" data-onboarding-complete="${isComplete}" data-onboarding-kind="${isDone ? "done" : contribution?.id ?? ""}"${index === initialIndex ? "" : " hidden"}>${html}</section>`;
   });
+  const backButton = buttonHtml({
+    type: "button",
+    variant: "secondary",
+    content: { kind: "caption", caption: "‹ Back" },
+    attributesHtml: 'data-onboarding-target="back" data-action="onboarding#prev"',
+  });
+  const continueButton = buttonHtml({
+    type: "button",
+    variant: "secondary",
+    content: { kind: "caption", caption: "Continue" },
+    attributesHtml: 'data-onboarding-target="continue" data-action="onboarding#next"',
+  });
   return dialogHtml({
     element: {
       id: "onboarding_dialog",
@@ -56,7 +69,7 @@ export async function renderOnboardingDialog(options: { includeCompleted?: boole
     titleCaption: "Set up Atelier",
     bodyHtml: `<div class="onboarding-progress" aria-label="Onboarding progress">${rendered.map((_, index) => `<span class="onboarding-progress-item" data-onboarding-target="dot"${index === initialIndex ? ' aria-current="step"' : ""}></span>`).join("")}</div><div class="onboarding-body">${steps.join("")}</div>`,
     bodyLayout: "full-bleed",
-    footerHtml: `<button class="button secondary" type="button" data-onboarding-target="back" data-action="onboarding#prev">‹ Back</button><button class="button secondary" type="button" data-onboarding-target="continue" data-action="onboarding#next">Continue</button>`,
+    footerHtml: `${backButton}${continueButton}`,
     omitCancelButton: true,
   });
 }

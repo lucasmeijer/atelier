@@ -1,3 +1,4 @@
+import { buttonHtml } from "@atelier/design-system/button";
 import { destructiveConfirmationHtml } from "@atelier/design-system/destructive-confirmation";
 import { clearWorkspaceGitHubToken, hasWorkspaceGitHubToken, setWorkspaceGitHubToken } from "@atelier/proxy-egress";
 import { getStoredGitIdentity, setGitIdentity } from "@atelier/projects";
@@ -10,7 +11,7 @@ import { registerSettingsContribution } from "./registry.ts";
 import { providerIcon, type SettingsSurface } from "./views.ts";
 
 const githubDisconnectConfirmation = destructiveConfirmationHtml({
-  buttonHtml: '<button class="button danger" type="button">Disconnect</button>',
+  trigger: { type: "button", variant: "danger", content: { kind: "caption", caption: "Disconnect" } },
   confirmCaption: "Disconnect GitHub",
   cancelCaption: "Cancel",
 });
@@ -18,13 +19,14 @@ const githubDisconnectConfirmation = destructiveConfirmationHtml({
 function githubConnectionForm(surface: SettingsSurface, error: string): string {
   const action = surface === "onboarding" ? "/settings/github/connect?surface=onboarding" : "/settings/github/connect";
   const rowClass = surface === "settings" ? " github-connect-form--row" : "";
+  const connectButton = buttonHtml({ type: "submit", variant: "primary", content: { kind: "caption", caption: "Connect" } });
   return `<form class="github-connect-form${rowClass} form-stack" method="post" action="${action}" data-turbo="true">
     <p>On your machine, sign in with GitHub CLI if needed, then print your token:</p>
     <pre class="settings-command">gh auth login
 gh auth token</pre>
     <p>Paste the token output below. Atelier stores and encrypts it outside of the agent sandbox so the agent never sees it, but can still read and write from your github repo’s.</p>
     ${error ? `<p class="settings-error">${escapeHtml(error)}</p>` : ""}
-    <div class="github-connect-controls"><input class="settings-input text-field" type="password" name="token" placeholder="Paste output from gh auth token" aria-label="GitHub token" autocomplete="off" required><button class="button primary" type="submit">Connect</button></div>
+    <div class="github-connect-controls"><input class="settings-input text-field" type="password" name="token" placeholder="Paste output from gh auth token" aria-label="GitHub token" autocomplete="off" required>${connectButton}</div>
   </form>`;
 }
 

@@ -1,3 +1,6 @@
+import { actionLinkHtml } from "@atelier/design-system/action-link";
+import { buttonHtml } from "@atelier/design-system/button";
+import { buttonGroupHtml } from "@atelier/design-system/button-group";
 import { escapeHtml, type WorkspaceWorkViewPresentation } from "@atelier/shared";
 import { browserFrameId, type WorkspaceBrowserView } from "./state.ts";
 import { browserProxyUrl } from "../shared.ts";
@@ -54,18 +57,50 @@ export function renderBrowserFrame(workspaceId: string, view: WorkspaceBrowserVi
   const frameControllerAttributes = target && workspaceLocal
     ? ` data-controller="workspace-app-frame" data-workspace-app-frame-workspace-id-value="${escapeHtml(workspaceId)}" data-workspace-app-frame-app-key-value="${escapeHtml(appKey)}" data-workspace-app-frame-initial-path-value="${escapeHtml(initialPath)}" allow="${workspacePreviewPermissions}" allowfullscreen`
     : target ? ` src="${escapeHtml(target.toString())}"` : "";
-  const externalLinkAttributes = target ? ` href="${escapeHtml(target.toString())}"` : ` aria-disabled="true"`;
+  const externalLinkContent = {
+    kind: "icon-only" as const,
+    iconHtml: '<svg viewBox="0 0 24 24" aria-hidden="true"><path d="M14 5h5v5M19 5l-8 8M18 13v6H5V6h6"/></svg>',
+    label: "Open preview in a new view",
+  };
+  const externalLink = target
+    ? actionLinkHtml({
+      href: target.toString(),
+      variant: "secondary",
+      content: externalLinkContent,
+      attributesHtml: 'data-browser-address-target="external" target="_blank" rel="noreferrer"',
+    })
+    : buttonHtml({ type: "button", variant: "secondary", content: externalLinkContent, disabled: true });
+  const backButton = buttonHtml({
+    type: "button",
+    variant: "secondary",
+    content: { kind: "icon-only", iconHtml: '<svg viewBox="0 0 24 24" aria-hidden="true"><path d="M15 18l-6-6 6-6"/></svg>', label: "Back" },
+    disabled: true,
+  });
+  const forwardButton = buttonHtml({
+    type: "button",
+    variant: "secondary",
+    content: { kind: "icon-only", iconHtml: '<svg viewBox="0 0 24 24" aria-hidden="true"><path d="M9 18l6-6-6-6"/></svg>', label: "Forward" },
+    disabled: true,
+  });
+  const reloadButton = buttonHtml({
+    type: "button",
+    variant: "secondary",
+    content: { kind: "icon-only", iconHtml: '<svg viewBox="0 0 24 24" aria-hidden="true"><path d="M20 6v5h-5M4 18v-5h5M6.1 9a7 7 0 0 1 11.5-2.6L20 9M4 15l2.4 2.6A7 7 0 0 0 17.9 15"/></svg>', label: "Reload" },
+    attributesHtml: 'data-action="browser-address#reload"',
+  });
+  const navigation = buttonGroupHtml({
+    orientation: "horizontal",
+    semantics: "group",
+    label: "Browser navigation",
+    itemsHtml: `${backButton}${forwardButton}${reloadButton}`,
+  });
   return `<turbo-frame id="${browserFrameId(workspaceId, appKey)}" class="browser-frame">
     <div class="browser-shell">
       <form class="browser-toolbar work-view-toolbar" method="post" action="/workspaces/${encodeURIComponent(workspaceId)}/browser/${encodeURIComponent(appKey)}/navigate" data-turbo-frame="${browserFrameId(workspaceId, appKey)}" data-controller="browser-address" data-action="submit->browser-address#submit">
         <div class="browser-window-controls" aria-hidden="true"><span class="red"></span><span class="amber"></span><span class="green"></span></div>
-        <div class="browser-navigation button-group" role="group" aria-label="Browser navigation">
-          <button class="browser-nav-button button secondary icon-only" type="button" title="Back" aria-label="Back" disabled><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M15 18l-6-6 6-6"/></svg></button>
-          <button class="browser-nav-button button secondary icon-only" type="button" title="Forward" aria-label="Forward" disabled><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M9 18l6-6-6-6"/></svg></button>
-          <button class="browser-nav-button button secondary icon-only" type="button" data-action="browser-address#reload" title="Reload" aria-label="Reload"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M20 6v5h-5M4 18v-5h5M6.1 9a7 7 0 0 1 11.5-2.6L20 9M4 15l2.4 2.6A7 7 0 0 0 17.9 15"/></svg></button>
-        </div>
+        <div class="browser-navigation">${navigation}</div>
         <input class="browser-address-input text-field" name="url" value="${escapeHtml(view.targetUrl)}" placeholder="http://localhost:3000/" spellcheck="false" autocomplete="off" aria-label="Browser URL">
-        <a class="browser-open-external button secondary icon-only"${externalLinkAttributes} data-browser-address-target="external" target="_blank" rel="noreferrer" title="Open preview in a new view" aria-label="Open preview in a new view"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M14 5h5v5M19 5l-8 8M18 13v6H5V6h6"/></svg></a>
+        ${externalLink}
       </form>
       <div class="browser-viewport">
         <iframe${frameControllerAttributes} title="Workspace browser preview" loading="eager" referrerpolicy="no-referrer"></iframe>

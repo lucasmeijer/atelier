@@ -8,6 +8,8 @@
 @import "/perimeter-button.css";
 @import "/activity-button.css";
 @import "/progress-button.css";
+@import "/button.css";
+@import "/button-group.css";
 @import "/copy-button.css";
 @import "/destructive-confirmation.css";
 @import "/transient-feedback.css";
@@ -302,64 +304,6 @@
   .viewport-overlay { max-width: calc(100vw - 16px); max-height: calc(100vh - 16px); }
 }
 
-/* Compact actions. Variants set state roles; the shared implementation owns every visual value. */
-.button {
-  --button-background: color-mix(in srgb, var(--panel) 72%, transparent);
-  --button-foreground: var(--text);
-  --button-hover-background: var(--elev);
-  --button-hover-foreground: var(--text-bright);
-  height: 26px;
-  display: inline-flex;
-  align-items: center;
-  justify-content: center;
-  gap: 6px;
-  padding: 0 12px;
-  border: 1px solid var(--button-border);
-  border-radius: var(--radius-round);
-  background: var(--button-background);
-  color: var(--button-foreground);
-  font: 400 var(--text-body)/var(--leading-standard) var(--font-sans);
-  text-decoration: none;
-  white-space: nowrap;
-  cursor: pointer;
-  transition: background-color 120ms ease, border-color 120ms ease, color 120ms ease, transform 80ms ease;
-}
-.button.primary {
-  --button-border: color-mix(in srgb, var(--accent) 44%, var(--line));
-  --button-background: color-mix(in srgb, var(--accent) 7%, var(--panel));
-  --button-hover-background: color-mix(in srgb, var(--accent) 11%, var(--panel));
-}
-.button.danger {
-  --button-border: color-mix(in srgb, var(--danger) 24%, var(--line));
-  --button-background: color-mix(in srgb, var(--danger) 6%, var(--panel));
-  --button-foreground: var(--text);
-  --button-hover-border: var(--danger);
-  --button-hover-background: var(--danger-soft);
-  --button-hover-foreground: var(--text-bright);
-}
-.button:not(:disabled):not([aria-disabled="true"]):hover,
-.button:not(:disabled):not([aria-disabled="true"]):focus-visible {
-  border-color: var(--button-hover-border);
-  outline: none;
-  background: var(--button-hover-background);
-  color: var(--button-hover-foreground);
-}
-.button:active { transform: translateY(1px); }
-.button:disabled,
-.button[aria-disabled="true"] { opacity: .45; cursor: default; transform: none; }
-.button.icon-only { width: 26px; flex: 0 0 auto; padding: 0; }
-.button svg { width: 14px; height: 14px; flex: 0 0 auto; fill: none; stroke: currentColor; stroke-width: 2; stroke-linecap: round; stroke-linejoin: round; }
-.button svg circle { fill: currentColor; stroke: none; }
-
-/* A copy button owns clipboard behavior and transient confirmation inside a copy region. */
-/* Give compact controls a larger touch target on narrow screens without changing desktop density. */
-@media (max-width: 700px) {
-  .button { height: 44px; padding-inline: 16px; }
-  .button.icon-only { width: 50px; height: 50px; padding: 0; }
-  .button svg { width: 20px; height: 20px; }
-  .button.icon-only svg { width: 21px; height: 21px; }
-}
-
 .activity-spinner {
   width: 14px;
   height: 14px;
@@ -396,14 +340,8 @@
 }
 .status-dot:is(circle) { fill: currentColor; stroke: none; }
 
-/* Composition modules own the space between controls; individual items own only their anatomy. */
-.button-group { display: inline-flex; align-items: center; gap: 8px; }
+/* Composition modules own the space between independently rendered items. */
 .action-list { display: grid; gap: 2px; }
-.button-group.vertical { flex-direction: column; align-items: stretch; }
-.button-group > form { display: flex; }
-.button-group.vertical > form,
-.button-group.vertical > .button,
-.button-group.vertical > form > .button { width: 100%; }
 /* Text entry controls share one visual contract across single- and multi-line input. */
 .text-field,
 .textarea {

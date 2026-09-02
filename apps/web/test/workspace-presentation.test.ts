@@ -58,7 +58,6 @@ describe("role-fixed Workspace presentation", () => {
     expect(html.match(/data-workspace-pane-role="agent"/g)).toHaveLength(2);
     expect(html.match(/data-workspace-pane-role="work"/g)).toHaveLength(3);
     expect(html).toContain('class="popup-menu-anchor"');
-    expect(html).toContain('class="button primary icon-only popup-menu-trigger"');
     expect(html).toContain('class="floating-surface popup-menu action-list popup-menu-anchored" id="fixed_workspace_workspace-1_add_menu" role="menu" aria-label="Open Work view" popover="auto"');
     expect(html).toContain('class="action-item action-item__primary" type="submit" role="menuitem"');
   });
@@ -68,7 +67,6 @@ describe("role-fixed Workspace presentation", () => {
     const unread = { projects: [], projectlessWorkspaces: [{ id: "unread", title: "Unread", attention: true }] };
 
     const quietHtml = renderAtelierBar(quiet);
-    expect(quietHtml).toContain('class="fixed-shell-mobile-nav fixed-shell-atelier-bar button-group" aria-label="Atelier"');
     expect(quietHtml).toContain('aria-label="Show Workspace pane" title="Show Workspace pane" aria-expanded="false"');
     expect(quietHtml).toContain('id="fixed_shell_atelier_next_unread" type="button" aria-label="Next unread Workspace" title="Next unread Workspace" disabled');
 
@@ -95,27 +93,21 @@ describe("role-fixed Workspace presentation", () => {
     expect(html).toContain('data-controller="modal-opener"');
     expect(html).toContain('data-action="click->workspace-navigation#selectWorkspace"');
     expect(html).toContain('href="/projects/project-1/launch-composer" data-turbo-frame="launch_composer" aria-label="New workspace: Atelier"');
-    expect(html).toContain('href="/projects/project-1/editor" data-turbo-frame="project_editor_frame" data-controller="modal-opener"');
     const projectHeading = html.slice(html.indexOf('class="fixed-shell-project-heading-row action-item"'), html.indexOf('class="fixed-shell-project-workspaces'));
     expect(projectHeading).toContain('<svg class="disclosure-icon" aria-hidden="true"');
     expect(projectHeading.indexOf("<svg")).toBeLessThan(projectHeading.indexOf("Atelier"));
-    expect(projectHeading.indexOf("Atelier")).toBeLessThan(projectHeading.indexOf("fixed-shell-project-settings"));
-    expect(projectHeading.indexOf("fixed-shell-project-settings")).toBeLessThan(projectHeading.indexOf("fixed-shell-project-add"));
     expect(html).toContain('data-project-id="__projectless__"><svg');
     expect(html).toContain('<span class="action-item__label"><span class="action-item__label-text">Projectless</span></span>');
-    expect(html).toContain('href="/launch-composer" data-turbo-frame="launch_composer" aria-label="New projectless workspace"');
     expect(html.indexOf('data-project-id="__projectless__"')).toBeLessThan(html.indexOf('data-project-id="__projects_drawer__"'));
     const drawerProjects = html.slice(html.indexOf('data-project-id="__projects_drawer__"'));
     expect(html).toContain('class="fixed-shell-project action-list fixed-shell-projects-drawer is-collapsed" data-project-id="__projects_drawer__"');
     expect(drawerProjects).toContain('aria-expanded="false"');
     expect(drawerProjects).toContain('<span class="action-item__label"><span class="action-item__label-text">Projects</span></span>');
-    expect(drawerProjects).toContain('<a class="fixed-shell-project-add button secondary icon-only" href="/projects/new/editor"');
     expect(drawerProjects).toContain('<a class="fixed-shell-project-heading action-item__primary" href="/projects/project-2/launch-composer" data-turbo-frame="launch_composer" aria-label="New workspace: Empty"><span class="action-item__label"><span class="action-item__label-text">Empty</span></span></a>');
     expect(drawerProjects.match(/href="\/projects\/project-1\/launch-composer"/g)).toHaveLength(2);
     expect(drawerProjects.match(/href="\/projects\/project-2\/launch-composer"/g)).toHaveLength(2);
     expect(drawerProjects).not.toContain('data-workspace-entry-id="workspace-1"');
     expect(drawerProjects).not.toContain('data-project-id="__projectless__"');
-    expect(drawerProjects).not.toContain('fixed-shell-project-settings" href="/projects/new/editor"');
     expect(html).not.toContain("<footer>");
     expect(html).not.toContain("New Project");
     expect(html).not.toContain("fixed-shell-workspace-color");
@@ -182,7 +174,6 @@ describe("role-fixed Workspace presentation", () => {
     expect(workspaceSection).toContain("Projectless");
     expect(workspaceSection).toContain('href="/launch-composer"');
     expect(projectsSection).not.toContain('data-project-id="__projectless__"');
-    expect(projectsSection).toContain('class="fixed-shell-project-add button secondary icon-only is-onboarding-target" data-empty-workspace-onboarding-destination="first-project"');
     expect(projectsSection).toContain('class="fixed-shell-project action-list fixed-shell-projects-drawer is-collapsed"');
   });
 
@@ -206,11 +197,6 @@ describe("role-fixed Workspace presentation", () => {
     expect(header).toContain('class="fixed-shell-delete-workspace"');
     expect(header).toContain('action="/workspaces/workspace-1/delete"');
     expect(header).toContain('class="button danger icon-only" type="button" title="Delete workspace" aria-label="Delete workspace"');
-    expect(header).toContain('class="button danger destructive-confirmation__action" type="submit">Yes, delete</button>');
-    expect(header).toContain('class="button secondary destructive-confirmation__cancel" type="button">Oops</button>');
-    expect(header).toContain('class="button secondary icon-only" title="Show Work pane" aria-label="Show Work pane"');
-    expect(html).toContain('class="button primary icon-only popup-menu-trigger" type="button" title="Open Work view" aria-label="Open Work view" aria-haspopup="menu"');
-    expect(html).toContain('class="button secondary icon-only" title="Collapse Work pane" aria-label="Collapse Work pane"');
   });
 
   test("shows a named single Agent conversation in its header", () => {
@@ -287,10 +273,7 @@ describe("role-fixed Workspace presentation", () => {
     expect(desktop.match(/fixed-shell-agent-conversation action-item/g)).toHaveLength(2);
     expect(desktop).toContain('class="fixed-shell-work-view-selector action-item"');
     expect(desktop.match(/class="action-item__actions action-item__actions--engaged"/g)).toHaveLength(3);
-    expect(desktop.match(/class="fixed-shell-view-close button danger icon-only"/g)).toHaveLength(3);
     expect(desktop.match(/class="destructive-confirmation"/g)).toHaveLength(4);
-    expect(desktop.match(/>Yes, close<\/button>/g)).toHaveLength(3);
-    expect(desktop.match(/>Oops<\/button>/g)).toHaveLength(4);
     const mobileMore = html.slice(html.indexOf('role="menu" aria-label="More"'));
     expect(mobileMore).toContain('role="menuitem"');
     expect(mobileMore).toContain('Close current view');

@@ -1,0 +1,8 @@
+/* Composition owns spacing; individual controls own only their anatomy. */
+.button-group { display: inline-flex; gap: 8px; }
+.button-group--horizontal { flex-direction: row; align-items: center; }
+.button-group--vertical { flex-direction: column; align-items: stretch; }
+.button-group > form { display: flex; }
+.button-group--vertical > form,
+.button-group--vertical > .button,
+.button-group--vertical > form > .button { width: 100%; }

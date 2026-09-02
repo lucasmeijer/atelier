@@ -1,5 +1,6 @@
 import { actionItemHtml } from "@atelier/design-system/action-item";
 import { autocompleteHtml } from "@atelier/design-system/autocomplete";
+import { buttonHtml } from "@atelier/design-system/button";
 import type { Skill } from "@earendil-works/pi-coding-agent";
 import { escapeHtml } from "./html.ts";
 import type { PromptTemplate } from "./prompt-templates.ts";
@@ -33,8 +34,15 @@ export function renderSlashCommandCatalog(templates: readonly PromptTemplate[], 
   const quickLaunches = templates.filter((template) => template.quickLaunch).map((template) => {
     const hotkey = template.hotkey;
     const hotkeyData = hotkey ? ` data-prompt-template-hotkey="${escapeHtml(hotkey)}" aria-keyshortcuts="Meta+Alt+${escapeHtml(hotkey.toUpperCase())}"` : "";
-    const shortcut = hotkey ? `<kbd class="agent-quick-launch-shortcut" aria-hidden="true">⌘⌥${escapeHtml(hotkey.toUpperCase())}</kbd>` : "";
-    return `<button class="button secondary agent-completion-option agent-quick-launch" type="button" aria-label="${escapeHtml(template.trigger)}" data-completion-kind="quick-launch" data-command-trigger="${escapeHtml(template.trigger)}"${hotkeyData}><span>${escapeHtml(template.trigger)}</span>${shortcut}</button>`;
+    const shortcut = hotkey ? `<kbd class="agent-quick-launch-shortcut">⌘⌥${escapeHtml(hotkey.toUpperCase())}</kbd>` : "";
+    return buttonHtml({
+      type: "button",
+      variant: "secondary",
+      content: shortcut
+        ? { kind: "caption-adornment", caption: template.trigger, adornmentHtml: shortcut, adornmentPosition: "after" }
+        : { kind: "caption", caption: template.trigger },
+      attributesHtml: `data-agent-completion-option data-agent-quick-launch data-completion-kind="quick-launch" data-command-trigger="${escapeHtml(template.trigger)}"${hotkeyData}`,
+    });
   }).join("");
   const quickLaunchCatalog = quickLaunches ? `<div class="agent-quick-launches" role="group" aria-label="Quick launch">${quickLaunches}</div>` : "";
   const slashCommandCatalog = autocompleteHtml({ kind: "results", label: "Slash commands", contentHtml: commands.map((command, index) => {

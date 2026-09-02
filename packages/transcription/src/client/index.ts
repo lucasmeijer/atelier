@@ -3,13 +3,14 @@ import { createTranscriptionComposerController } from "./transcription-controlle
 import { SharedMicrophone } from "./microphone.ts";
 
 const sharedMicrophone = new SharedMicrophone();
+const transcriptionButtonSelector = '[data-transcription-composer-target="button"]';
 
 function activeTranscriptionButton(): HTMLButtonElement | null {
-  const dialogButton = document.querySelector<HTMLButtonElement>("dialog[open] .transcription-button");
+  const dialogButton = document.querySelector<HTMLButtonElement>(`dialog[open] ${transcriptionButtonSelector}`);
   if (dialogButton) return dialogButton;
-  const activeAgentButton = document.querySelector<HTMLButtonElement>('.workspace-detail-resident.visible [data-workspace-logically-visible="true"] .transcription-button');
+  const activeAgentButton = document.querySelector<HTMLButtonElement>(`.workspace-detail-resident.visible [data-workspace-logically-visible="true"] ${transcriptionButtonSelector}`);
   if (activeAgentButton) return activeAgentButton;
-  return [...document.querySelectorAll<HTMLButtonElement>(".transcription-button")]
+  return [...document.querySelectorAll<HTMLButtonElement>(transcriptionButtonSelector)]
     .find((button) => button.getClientRects().length > 0) ?? null;
 }
 

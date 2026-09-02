@@ -14,7 +14,7 @@ export class DestructiveConfirmationController extends Controller<HTMLElement> {
     this.trigger = this.element.querySelector<HTMLElement>(".destructive-confirmation__trigger")!;
     this.triggerButton = this.trigger.querySelector<HTMLButtonElement>("button")!;
     this.decision = this.element.querySelector<HTMLElement>(".destructive-confirmation__decision")!;
-    this.cancelButton = this.element.querySelector<HTMLButtonElement>(".destructive-confirmation__cancel")!;
+    this.cancelButton = this.element.querySelector<HTMLButtonElement>("[data-destructive-confirmation-cancel]")!;
     this.actionItem = this.element.closest<HTMLElement>(".action-item") ?? undefined;
     this.trigger.addEventListener("click", this.arm);
     this.cancelButton.addEventListener("click", this.cancel);

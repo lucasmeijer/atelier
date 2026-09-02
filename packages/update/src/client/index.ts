@@ -16,8 +16,8 @@ export const atelierClientModule: WorkspaceClientModule = {
         const theme = document.documentElement.dataset.theme ?? localStorage.getItem("atelier.theme") ?? "";
         const action = new URL(this.element.action, window.location.href);
         if (theme) action.searchParams.set("theme", theme);
-        const submit = this.element.querySelector<HTMLButtonElement>(".destructive-confirmation__action")!;
-        const cancel = this.element.querySelector<HTMLButtonElement>(".destructive-confirmation__cancel")!;
+        const submit = this.element.querySelector<HTMLButtonElement>("[data-destructive-confirmation-action]")!;
+        const cancel = this.element.querySelector<HTMLButtonElement>("[data-destructive-confirmation-cancel]")!;
         const spinner = document.createElement("i");
         spinner.className = "activity-spinner";
         submit.prepend(spinner);

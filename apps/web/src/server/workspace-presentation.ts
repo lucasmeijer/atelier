@@ -1,5 +1,8 @@
 import { untitledAgentConversationTitle } from "@atelier/agent/server";
 import { actionItemHtml } from "@atelier/design-system/action-item";
+import { actionLinkHtml } from "@atelier/design-system/action-link";
+import { buttonHtml, type ButtonVariant } from "@atelier/design-system/button";
+import { buttonGroupHtml } from "@atelier/design-system/button-group";
 import { destructiveConfirmationHtml } from "@atelier/design-system/destructive-confirmation";
 import { Icons } from "@atelier/design-system/icons";
 import { panelHtml } from "@atelier/design-system/panel";
@@ -91,7 +94,12 @@ export interface WorkspacePresentation {
 type WorkViewIconName = "Browser" | "Code" | "Files" | "Plus" | "Review" | "Terminal";
 
 function topBarButton(label: string, action: string, iconHtml: string, attributes = ""): string {
-  return `<button type="button" class="button secondary icon-only" title="${escapeHtml(label)}" aria-label="${escapeHtml(label)}" data-action="${action}" ${attributes}>${iconHtml}</button>`;
+  return buttonHtml({
+    type: "button",
+    variant: "secondary",
+    content: { kind: "icon-only", iconHtml, label },
+    attributesHtml: `data-action="${action}" ${attributes}`,
+  });
 }
 
 function closeForm(close: ViewCloseAction, buttonHtml: string): string {
@@ -103,9 +111,9 @@ function fullscreenViewAttributes(key: string, title: string): string {
 }
 
 function selectorCloseForm(close: ViewCloseAction): string {
-  const label = escapeHtml(`Close ${close.label}`);
+  const label = `Close ${close.label}`;
   const confirmation = destructiveConfirmationHtml({
-    buttonHtml: `<button class="fixed-shell-view-close button danger icon-only" type="button" title="${label}" aria-label="${label}">${Icons.Close}</button>`,
+    trigger: { type: "button", variant: "danger", content: { kind: "icon-only", iconHtml: Icons.Close, label } },
     confirmCaption: "Yes, close",
     cancelCaption: "Oops",
   });
@@ -171,17 +179,26 @@ interface WorkspaceGroupHeadingOptions {
 
 function renderWorkspaceGroupHeading(id: string, title: string, add: WorkspaceGroupAddAction, options: WorkspaceGroupHeadingOptions = {}): string {
   const mode = options.mode ?? "disclosure";
-  const escapedTitle = escapeHtml(title);
   const addTarget = add.frame === "project_editor_frame" ? projectEditorTarget : 'data-turbo-frame="launch_composer"';
   const primary = mode === "disclosure"
     ? { tag: "button" as const, className: "fixed-shell-project-heading", attributesHtml: `type="button" aria-expanded="${options.expanded ?? true}" data-action="click->workspace-navigation#toggleProject" data-project-id="${escapeHtml(id)}"` }
     : mode === "launcher"
       ? { tag: "a" as const, className: "fixed-shell-project-heading", attributesHtml: `href="${escapeHtml(add.href)}" ${addTarget} aria-label="${escapeHtml(add.label)}"` }
       : { tag: "span" as const, className: "fixed-shell-project-heading fixed-shell-project-heading-static" };
-  const settings = options.settingsHref ? `<a class="fixed-shell-project-settings button secondary icon-only" href="${escapeHtml(options.settingsHref)}" ${projectEditorTarget} aria-label="Project settings: ${escapedTitle}" title="Project settings: ${escapedTitle}">${Icons.More}</a>` : "";
-  const onboardingClass = options.onboardingDestination ? " is-onboarding-target" : "";
-  const onboardingAttribute = options.onboardingDestination ? ` data-empty-workspace-onboarding-destination="${options.onboardingDestination}"` : "";
-  const actions = `<span class="fixed-shell-project-actions button-group">${settings}<a class="fixed-shell-project-add button secondary icon-only${onboardingClass}"${onboardingAttribute} href="${escapeHtml(add.href)}" ${addTarget} aria-label="${escapeHtml(add.label)}" title="${escapeHtml(add.label)}">${Icons.Plus}</a></span>`;
+  const settings = options.settingsHref ? actionLinkHtml({
+    href: options.settingsHref,
+    variant: "secondary",
+    content: { kind: "icon-only", iconHtml: Icons.More, label: `Project settings: ${title}` },
+    attributesHtml: projectEditorTarget,
+  }) : "";
+  const onboardingAttribute = options.onboardingDestination ? `data-empty-workspace-onboarding-destination="${options.onboardingDestination}"` : "";
+  const addLink = actionLinkHtml({
+    href: add.href,
+    variant: "secondary",
+    content: { kind: "icon-only", iconHtml: Icons.Plus, label: add.label },
+    attributesHtml: `${onboardingAttribute} ${addTarget}`,
+  });
+  const actions = `<span class="fixed-shell-project-actions">${buttonGroupHtml({ orientation: "horizontal", semantics: "layout", itemsHtml: `${settings}${addLink}` })}</span>`;
   return actionItemHtml({ kind: "compound", label: { kind: "text", text: title }, leadingHtml: mode === "disclosure" ? Icons.Disclosure : "", container: { className: "fixed-shell-project-heading-row" }, primary, engagedActionsHtml: actions });
 }
 
@@ -247,10 +264,15 @@ const workspacePaneScrollDomId = "fixed_shell_workspace_scroll";
 const workspaceProjectsDrawerDomId = "fixed_shell_projects_drawer";
 
 export function renderWorkspacePane(presentation: WorkspacePanePresentation, sidebarContributionsHtml = ""): string {
-  const settings = `<a class="button secondary icon-only" href="/settings" title="Settings" aria-label="Settings" data-controller="settings-prefetch" data-action="pointerenter->settings-prefetch#prefetch focus->settings-prefetch#prefetch click->settings-prefetch#open">${Icons.Settings}</a>`;
+  const settings = actionLinkHtml({
+    href: "/settings",
+    variant: "secondary",
+    content: { kind: "icon-only", iconHtml: Icons.Settings, label: "Settings" },
+    attributesHtml: 'data-controller="settings-prefetch" data-action="pointerenter->settings-prefetch#prefetch focus->settings-prefetch#prefetch click->settings-prefetch#open"',
+  });
   return panelHtml({
     element: { tag: "aside", className: "fixed-shell-workspace-pane", attributesHtml: 'aria-label="Workspaces"' },
-    headerHtml: `<strong class="panel__title">${Icons.Atelier}Atelier</strong><div class="button-group">${settings}${topBarButton("Collapse Workspace pane", "click->workspace-navigation#toggleWorkspacePaneCollapsed", Icons.Panel, "data-collapse-workspace-pane")}</div>`,
+    headerHtml: `<strong class="panel__title">${Icons.Atelier}Atelier</strong>${buttonGroupHtml({ orientation: "horizontal", semantics: "layout", itemsHtml: `${settings}${topBarButton("Collapse Workspace pane", "click->workspace-navigation#toggleWorkspacePaneCollapsed", Icons.Panel, "data-collapse-workspace-pane")}` })}`,
     bodyHtml: renderWorkspacePaneCollections(presentation, sidebarContributionsHtml),
   });
 }
@@ -277,7 +299,7 @@ export function renderAtelierBar(presentation: WorkspacePanePresentation): strin
     contentHtml: Icons.Workspace,
     element: { tag: "button", className: "fixed-shell-mobile-fixed", attributesHtml: 'type="button" aria-label="Show Workspace pane" title="Show Workspace pane" aria-expanded="false" data-mobile-workspace-destination data-action="click->workspace-navigation#toggleWorkspacePane"' },
   });
-  return `<nav class="fixed-shell-mobile-nav fixed-shell-atelier-bar button-group" aria-label="Atelier">${workspace}${renderAtelierNextUnreadButton(presentation)}</nav>`;
+  return `<nav class="fixed-shell-mobile-nav fixed-shell-atelier-bar" aria-label="Atelier">${workspace}${renderAtelierNextUnreadButton(presentation)}</nav>`;
 }
 
 export function workspacePresentationDomId(workspaceId: string): string {
@@ -346,10 +368,14 @@ function renderAgentPaneSlot(workspaceId: string, agent: AgentPaneContribution):
 }
 
 function renderAgentActions(presentation: WorkspacePresentation): string {
-  const agentActions = (presentation.commands ?? []).filter((command) => command.placement === "agent-action").map((command) => `<form data-turbo="true" method="post" action="/workspaces/${encodeURIComponent(presentation.workspace.id)}/commands/${encodeURIComponent(command.id)}"><button class="button secondary icon-only" type="submit" title="${escapeHtml(command.label)}" aria-label="${escapeHtml(command.label)}">${Icons.Plus}</button></form>`).join("");
-  const parkWorkspace = `<form class="fixed-shell-park-workspace" method="post" action="/workspaces/${encodeURIComponent(presentation.workspace.id)}/park" data-action="submit->workspace-navigation#parkWorkspace"><button class="button secondary icon-only" type="submit" title="Park workspace" aria-label="Park workspace">${Icons.Park}</button></form>`;
+  const agentActions = (presentation.commands ?? []).filter((command) => command.placement === "agent-action").map((command) => {
+    const button = buttonHtml({ type: "submit", variant: "secondary", content: { kind: "icon-only", iconHtml: Icons.Plus, label: command.label } });
+    return `<form data-turbo="true" method="post" action="/workspaces/${encodeURIComponent(presentation.workspace.id)}/commands/${encodeURIComponent(command.id)}">${button}</form>`;
+  }).join("");
+  const parkButton = buttonHtml({ type: "submit", variant: "secondary", content: { kind: "icon-only", iconHtml: Icons.Park, label: "Park workspace" } });
+  const parkWorkspace = `<form class="fixed-shell-park-workspace" method="post" action="/workspaces/${encodeURIComponent(presentation.workspace.id)}/park" data-action="submit->workspace-navigation#parkWorkspace">${parkButton}</form>`;
   const deleteConfirmation = destructiveConfirmationHtml({
-    buttonHtml: `<button class="button danger icon-only" type="button" title="Delete workspace" aria-label="Delete workspace">${Icons.Trash}</button>`,
+    trigger: { type: "button", variant: "danger", content: { kind: "icon-only", iconHtml: Icons.Trash, label: "Delete workspace" } },
     confirmCaption: "Yes, delete",
     cancelCaption: "Oops",
   });
@@ -361,7 +387,7 @@ function renderAgentPane(presentation: WorkspacePresentation): string {
   const panes = presentation.agentConversations.map((agent) => renderAgentPaneSlot(presentation.workspace.id, agent)).join("");
   return panelHtml({
     element: { tag: "section", className: "fixed-shell-agent-pane", attributesHtml: 'data-workspace-role-region="agent" data-workspace-presentation-target="agentPane" aria-label="Agent"' },
-    headerHtml: `${topBarButton("Show Workspace pane", "click->workspace-navigation#toggleWorkspacePaneCollapsed", Icons.Panel, "data-show-workspace-pane")}<div id="${agentNavigationDomId(presentation.workspace.id)}" class="fixed-shell-agent-navigation">${renderAgentNavigation(presentation)}</div><div id="${agentActionsDomId(presentation.workspace.id)}" class="fixed-shell-agent-actions button-group">${renderAgentActions(presentation)}</div>`,
+    headerHtml: `${topBarButton("Show Workspace pane", "click->workspace-navigation#toggleWorkspacePaneCollapsed", Icons.Panel, "data-show-workspace-pane")}<div id="${agentNavigationDomId(presentation.workspace.id)}" class="fixed-shell-agent-navigation">${renderAgentNavigation(presentation)}</div><div id="${agentActionsDomId(presentation.workspace.id)}" class="fixed-shell-agent-actions">${buttonGroupHtml({ orientation: "horizontal", semantics: "layout", itemsHtml: renderAgentActions(presentation) })}</div>`,
     bodyHtml: `<div id="${agentBodiesDomId(presentation.workspace.id)}" class="fixed-shell-agent-bodies">${panes}</div>`,
   });
 }
@@ -469,8 +495,14 @@ function renderWorkPane(presentation: WorkspacePresentation): string {
   const panes = presentation.workViews.map((view) => renderWorkViewPane(presentation.workspace.id, view)).join("");
   const workCommands = (presentation.commands ?? []).filter((command) => command.placement === "work-launcher");
   const addMenuId = workViewDomId(presentation.workspace.id, "add_menu");
+  const addMenuButton = buttonHtml({
+    type: "button",
+    variant: "primary",
+    content: { kind: "icon-only", iconHtml: Icons.Plus, label: "Open Work view" },
+    attributesHtml: `data-popup-menu-trigger aria-haspopup="menu" aria-expanded="false" aria-controls="${addMenuId}" popovertarget="${addMenuId}"`,
+  });
   const addMenu = workCommands.length ? `<span class="popup-menu-anchor">
-    <button class="button primary icon-only popup-menu-trigger" type="button" title="Open Work view" aria-label="Open Work view" aria-haspopup="menu" aria-expanded="false" aria-controls="${addMenuId}" popovertarget="${addMenuId}">${Icons.Plus}</button>
+    ${addMenuButton}
     ${popupMenuHtml({ id: addMenuId, label: "Open Work view", placement: "below", contentHtml: workCommands.map((command) => renderWorkLauncherCommand(command, presentation.workspace.id)).join("") })}
   </span>` : "";
   return panelHtml({
@@ -547,8 +579,8 @@ function renderWorkspaceBar(presentation: WorkspacePresentation): string {
       ${launchers ? `<hr class="popup-menu__separator" data-mobile-overflow-separator hidden>${launchers}` : ""}
       <div id="${workViewDomId(presentation.workspace.id, "mobile_closers")}" class="fixed-shell-more-close-section">${closers}</div>`,
   });
-  return `<nav class="fixed-shell-mobile-nav fixed-shell-workspace-bar button-group" aria-label="Current Workspace destinations">
-    <div class="fixed-shell-mobile-scroll button-group" data-mobile-overflow-container>${agentsDestination}<span id="${workViewDomId(presentation.workspace.id, "mobile_destinations")}" class="fixed-shell-mobile-work-items button-group">${workViews.destinations}</span></div>
+  return `<nav class="fixed-shell-mobile-nav fixed-shell-workspace-bar" aria-label="Current Workspace destinations">
+    <div class="fixed-shell-mobile-scroll" data-mobile-overflow-container>${agentsDestination}<span id="${workViewDomId(presentation.workspace.id, "mobile_destinations")}" class="fixed-shell-mobile-work-items">${workViews.destinations}</span></div>
     ${moreTrigger}
     ${moreMenu}
   </nav>`;
@@ -556,6 +588,11 @@ function renderWorkspaceBar(presentation: WorkspacePresentation): string {
 
 export function renderWorkspaceDeletionPresentation(workspaceId: string, deletion: WorkspaceDeletionState, evidenceHtml = ""): string {
   const id = encodeURIComponent(workspaceId);
+  const deletionButton = (caption: string, variant: ButtonVariant = "secondary") => buttonHtml({
+    type: "submit",
+    variant,
+    content: { kind: "caption", caption },
+  });
   let content: string;
   if (deletion.status === "checking") {
     content = '<div class="workspace-deletion-heading"><span class="status-spinner" aria-hidden="true"></span><h1>Checking if it’s safe to delete…</h1><p>Atelier is checking for uncommitted changes.</p></div>';
@@ -564,10 +601,10 @@ export function renderWorkspaceDeletionPresentation(workspaceId: string, deletio
     const detail = deletion.forced ? "Local changes may be discarded." : "The safety check passed. Atelier is removing the workspace.";
     content = `<div class="workspace-deletion-heading"><span class="status-spinner" aria-hidden="true"></span><h1>${title}</h1><p>${detail}</p></div>`;
   } else if (deletion.status === "blocked") {
-    content = `<div class="workspace-deletion-evidence" aria-label="Git work that may be lost">${evidenceHtml}</div><footer class="workspace-deletion-actions"><form method="post" action="/workspaces/${id}/delete/cancel" data-turbo="true"><button class="button secondary" type="submit">Cancel deletion</button></form><form method="post" action="/workspaces/${id}/delete/confirm" data-turbo="true"><input type="hidden" name="fingerprint" value="${escapeHtml(deletion.fingerprint)}"><button class="button danger" type="submit">Delete anyway</button></form></footer>`;
+    content = `<div class="workspace-deletion-evidence" aria-label="Git work that may be lost">${evidenceHtml}</div><footer class="workspace-deletion-actions"><form method="post" action="/workspaces/${id}/delete/cancel" data-turbo="true">${deletionButton("Cancel deletion")}</form><form method="post" action="/workspaces/${id}/delete/confirm" data-turbo="true"><input type="hidden" name="fingerprint" value="${escapeHtml(deletion.fingerprint)}">${deletionButton("Delete anyway", "danger")}</form></footer>`;
   } else {
-    const bypass = deletion.operation === "checking" ? `<form method="post" action="/workspaces/${id}/delete?force=1" data-turbo="true"><button class="button danger" type="submit">Delete without review</button></form>` : "";
-    content = `<div class="workspace-deletion-heading"><h1>${deletion.operation === "checking" ? "Deletion review failed" : "Workspace deletion failed"}</h1><p class="workspace-deletion-error">${escapeHtml(deletion.error)}</p></div><footer class="workspace-deletion-actions"><form method="post" action="/workspaces/${id}/delete/cancel" data-turbo="true"><button class="button secondary" type="submit">Cancel deletion</button></form><form method="post" action="/workspaces/${id}/delete/retry" data-turbo="true"><button class="button secondary" type="submit">Retry review</button></form>${bypass}</footer>`;
+    const bypass = deletion.operation === "checking" ? `<form method="post" action="/workspaces/${id}/delete?force=1" data-turbo="true">${deletionButton("Delete without review", "danger")}</form>` : "";
+    content = `<div class="workspace-deletion-heading"><h1>${deletion.operation === "checking" ? "Deletion review failed" : "Workspace deletion failed"}</h1><p class="workspace-deletion-error">${escapeHtml(deletion.error)}</p></div><footer class="workspace-deletion-actions"><form method="post" action="/workspaces/${id}/delete/cancel" data-turbo="true">${deletionButton("Cancel deletion")}</form><form method="post" action="/workspaces/${id}/delete/retry" data-turbo="true">${deletionButton("Retry review")}</form>${bypass}</footer>`;
   }
   const role = deletion.status === "failed" ? ' role="alert"' : deletion.status === "blocked" ? "" : ' role="status"';
   return `<div id="${domId("fixed_workspace", workspaceId)}" class="fixed-workspace-presentation workspace-deletion-presentation" data-workspace-id="${escapeHtml(workspaceId)}" data-workspace-commands="[]"><main class="workspace-deletion-state" data-deletion-status="${deletion.status}"${role}>${content}</main></div>`;

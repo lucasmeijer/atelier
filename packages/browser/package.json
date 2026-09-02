@@ -10,6 +10,7 @@
   "dependencies": {
     "@atelier/agent": "workspace:*",
     "@atelier/core": "workspace:*",
+    "@atelier/design-system": "workspace:*",
     "@atelier/shared": "workspace:*",
     "@atelier/proxy-ingress": "workspace:*",
     "@earendil-works/pi-coding-agent": "catalog:",

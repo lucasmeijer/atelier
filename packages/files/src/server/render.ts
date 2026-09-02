@@ -1,5 +1,8 @@
 import { posix } from "node:path";
 import { actionItemHtml } from "@atelier/design-system/action-item";
+import { actionLinkHtml } from "@atelier/design-system/action-link";
+import { buttonHtml } from "@atelier/design-system/button";
+import { buttonGroupHtml } from "@atelier/design-system/button-group";
 import { copyButtonHtml } from "@atelier/design-system/copy-button";
 import { dialogHtml } from "@atelier/design-system/dialog";
 import { Icons } from "@atelier/design-system/icons";
@@ -35,7 +38,12 @@ export function renderFilesRefreshSignal(workspaceId: string): string {
 
 function filesPaneToggle(action: "expand" | "collapse"): string {
   const label = `${action === "expand" ? "Expand" : "Collapse"} Files pane`;
-  return `<button class="button secondary icon-only${action === "expand" ? " files-pane-expand" : ""}" type="button" title="${label}" aria-label="${label}" data-action="files-view#${action}"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M4 4h16v16H4zM15 4v16"/></svg></button>`;
+  return buttonHtml({
+    type: "button",
+    variant: "secondary",
+    content: { kind: "icon-only", iconHtml: Icons.Panel, label },
+    attributesHtml: `${action === "expand" ? "data-files-pane-expand " : ""}data-action="files-view#${action}"`,
+  });
 }
 
 function formatSize(bytes: number): string {
@@ -60,14 +68,31 @@ function selectedFileActions(workspaceId: string, view: FilesView): string {
     disabled: true,
     attributesHtml: 'data-file-editor-target="copyButton"',
   });
-  return `<span class="button-group" role="group" aria-label="Actions for selected file">
-    ${copyButton}
-    <a class="button secondary icon-only" href="${escapeHtml(contentUrl)}" download="${escapeHtml(name)}" data-turbo="false" title="Download file" aria-label="Download file"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M12 3v12M7 10l5 5 5-5M5 21h14"/></svg></a>
-    <form method="post" action="/workspaces/${encodeURIComponent(workspaceId)}/file-browser/delete" data-turbo-stream="true" data-turbo-confirm="Delete ${escapeHtml(name)}? This cannot be undone.">
-      <input type="hidden" name="path" value="${escapeHtml(path)}"><input type="hidden" name="filesView" value="${escapeHtml(view.id)}">
-      <button class="button danger icon-only" type="submit" title="Delete file" aria-label="Delete file">${Icons.Trash}</button>
-    </form>
-  </span>`;
+  const downloadButton = actionLinkHtml({
+    href: contentUrl,
+    variant: "secondary",
+    content: {
+      kind: "icon-only",
+      iconHtml: '<svg viewBox="0 0 24 24" aria-hidden="true"><path d="M12 3v12M7 10l5 5 5-5M5 21h14"/></svg>',
+      label: "Download file",
+    },
+    attributesHtml: `download="${escapeHtml(name)}" data-turbo="false"`,
+  });
+  const deleteButton = buttonHtml({
+    type: "submit",
+    variant: "danger",
+    content: { kind: "icon-only", iconHtml: Icons.Trash, label: "Delete file" },
+  });
+  const deleteForm = `<form method="post" action="/workspaces/${encodeURIComponent(workspaceId)}/file-browser/delete" data-turbo-stream="true" data-turbo-confirm="Delete ${escapeHtml(name)}? This cannot be undone.">
+    <input type="hidden" name="path" value="${escapeHtml(path)}"><input type="hidden" name="filesView" value="${escapeHtml(view.id)}">
+    ${deleteButton}
+  </form>`;
+  return buttonGroupHtml({
+    orientation: "horizontal",
+    semantics: "group",
+    label: "Actions for selected file",
+    itemsHtml: `${copyButton}${downloadButton}${deleteForm}`,
+  });
 }
 
 function renderEntryRow(workspaceId: string, viewId: string, entry: FileEntry, expanded: boolean, selectedPath?: string): string {
@@ -121,6 +146,12 @@ export function renderFilesTreeResultsFrame(workspaceId: string, viewId: string,
 
 export function renderFilesTreeFrame(workspaceId: string, viewId: string, entries: FileEntry[], selectedPath?: string): string {
   const resultsFrameId = filesTreeResultsFrameId(workspaceId, viewId);
+  const cancelUploadButton = buttonHtml({
+    type: "button",
+    variant: "secondary",
+    content: { kind: "caption", caption: "Cancel" },
+    attributesHtml: 'data-action="files#cancel"',
+  });
   return `<turbo-frame id="${filesTreeFrameId(workspaceId, viewId)}" class="files-frame">
     <div class="files-browser" data-controller="files" data-files-path-value="${escapeHtml(workspaceRoot)}" data-files-upload-url-value="/workspaces/${encodeURIComponent(workspaceId)}/file-browser/upload" data-action="dragenter->files#dragEnter dragover->files#dragOver dragleave->files#dragLeave drop->files#drop keydown->files#keydown">
       <form class="managed-list__filter files-filter" method="get" action="/workspaces/${encodeURIComponent(workspaceId)}/files" data-controller="server-filter" data-action="input->server-filter#submit" data-turbo-frame="${resultsFrameId}">
@@ -129,7 +160,7 @@ export function renderFilesTreeFrame(workspaceId: string, viewId: string, entrie
       </form>
       ${renderFilesTreeResultsFrame(workspaceId, viewId, entries, selectedPath)}
       <div class="files-drop-overlay" aria-hidden="true"><strong>Drop files to upload</strong><span>${escapeHtml(workspaceRoot)}</span></div>
-      <footer class="files-upload-status" hidden><div class="files-progress-track"><span data-files-target="progress"></span></div><span data-files-target="status">Uploading…</span><button class="button secondary" type="button" data-action="files#cancel">Cancel</button></footer>
+      <footer class="files-upload-status" hidden><div class="files-progress-track"><span data-files-target="progress"></span></div><span data-files-target="status">Uploading…</span>${cancelUploadButton}</footer>
     </div>
   </turbo-frame>`;
 }
@@ -140,6 +171,18 @@ export function renderLazyFilesTreeFrame(workspaceId: string, view: FilesView): 
 }
 
 function fileConflictDialog(): string {
+  const useTheirsButton = buttonHtml({
+    type: "button",
+    variant: "secondary",
+    content: { kind: "caption", caption: "Use theirs" },
+    attributesHtml: 'data-action="file-editor#useTheirs"',
+  });
+  const useMineButton = buttonHtml({
+    type: "button",
+    variant: "primary",
+    content: { kind: "caption", caption: "Use mine" },
+    attributesHtml: 'data-action="file-editor#useMine"',
+  });
   return dialogHtml({
     element: {
       className: "dialog--compact",
@@ -148,7 +191,7 @@ function fileConflictDialog(): string {
     iconHtml: Icons.Files,
     titleCaption: "File changed on disk",
     bodyHtml: "Choose which version should remain.",
-    footerHtml: '<button class="button secondary" type="button" data-action="file-editor#useTheirs">Use theirs</button><button class="button primary" type="button" data-action="file-editor#useMine">Use mine</button>',
+    footerHtml: `${useTheirsButton}${useMineButton}`,
     closeLabel: "Dismiss file conflict",
   });
 }

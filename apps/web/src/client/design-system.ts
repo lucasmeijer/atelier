@@ -2,6 +2,7 @@
 
 import { Application, Controller } from "@hotwired/stimulus";
 import { ActionItemController } from "@atelier/design-system/action-item/client";
+import { buttonElement } from "@atelier/design-system/button";
 import { CopyButtonController } from "@atelier/design-system/copy-button/client";
 import { DestructiveConfirmationController } from "@atelier/design-system/destructive-confirmation/client";
 import { DialogController } from "@atelier/design-system/dialog/client";
@@ -12,13 +13,11 @@ import { TransientFeedbackController } from "@atelier/design-system/transient-fe
 import { ToggleController } from "@atelier/design-system/toggle/client";
 
 export function createCloseButton(label: string): HTMLButtonElement {
-  const button = document.createElement("button");
-  button.type = "button";
-  button.className = "button secondary icon-only";
-  button.title = label;
-  button.setAttribute("aria-label", label);
-  button.innerHTML = Icons.Close;
-  return button;
+  return buttonElement({
+    type: "button",
+    variant: "secondary",
+    content: { kind: "icon-only", iconHtml: Icons.Close, label },
+  });
 }
 
 class ManagedListController extends Controller<HTMLElement> {

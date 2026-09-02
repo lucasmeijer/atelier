@@ -2,6 +2,7 @@
 
 import type { DiffLineAnnotation, FileDiff, FileDiffMetadata, SelectedLineRange } from "@pierre/diffs";
 import { setActivityButtonState } from "@atelier/design-system/activity-button/client";
+import { buttonElement, type ButtonVariant } from "@atelier/design-system/button";
 import { Icons } from "@atelier/design-system/icons";
 import { setToggleValue, type ToggleChangeEvent } from "@atelier/design-system/toggle/client";
 import { isWorkspacePaneVisible, phoneViewportMediaQuery, type WorkspaceClientModule } from "@atelier/shared";
@@ -41,22 +42,19 @@ function sideForLine(line: HTMLElement): ReviewCommentModel["side"] {
   return line.dataset.lineType === "change-deletion" ? "deletions" : "additions";
 }
 
-function textButton(label: string, action: () => void): HTMLButtonElement {
-  const button = document.createElement("button");
-  button.type = "button";
-  button.className = "button secondary";
-  button.textContent = label;
+function textButton(label: string, action: () => void, variant: ButtonVariant = "secondary"): HTMLButtonElement {
+  const button = buttonElement({ type: "button", variant, content: { kind: "caption", caption: label } });
   button.addEventListener("click", action);
   return button;
 }
 
 function closeButton(label: string, action: () => void): HTMLButtonElement {
-  const button = document.createElement("button");
-  button.type = "button";
-  button.className = "button secondary icon-only review-comment-close";
-  button.setAttribute("aria-label", label);
-  button.title = label;
-  button.innerHTML = Icons.Close;
+  const button = buttonElement({
+    type: "button",
+    variant: "secondary",
+    content: { kind: "icon-only", iconHtml: Icons.Close, label },
+    attributesHtml: "data-review-comment-close",
+  });
   button.addEventListener("click", action);
   return button;
 }
@@ -462,8 +460,7 @@ function createReviewController(Controller: StimulusControllerConstructor) {
       });
       const actions = document.createElement("footer");
       actions.className = "review-comment-actions";
-      const save = textButton("Comment", () => void this.saveDraft(draft, textarea));
-      save.className = "button primary";
+      const save = textButton("Comment", () => void this.saveDraft(draft, textarea), "primary");
       actions.append(save);
       body.append(textarea);
       editor.append(body, actions);

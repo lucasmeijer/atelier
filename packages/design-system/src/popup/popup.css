@@ -1,10 +1,10 @@
 .popup-select-native { display: none; }
-.popup-select-trigger::after { content: "▾"; color: var(--text-muted); font-size: var(--text-body); }
+[data-popup-select-trigger]::after { content: "▾"; color: var(--text-muted); font-size: var(--text-body); }
 
 /* Floating menus present compact choices near a disclosure control. Anchored menus choose
  * an alternate side when their preferred placement would cross the viewport edge. */
 .popup-menu-anchor { anchor-scope: --popup-menu-anchor; }
-.popup-menu-trigger { anchor-name: --popup-menu-anchor; }
+[data-popup-menu-trigger] { anchor-name: --popup-menu-anchor; }
 .popup-menu.popup-menu-anchored {
   position-anchor: --popup-menu-anchor;
   position-area: block-end span-inline-end;

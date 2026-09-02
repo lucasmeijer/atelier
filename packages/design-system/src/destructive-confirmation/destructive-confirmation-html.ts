@@ -1,16 +1,29 @@
 import { escapeHtml } from "@atelier/shared";
+import { buttonHtml, type ButtonOptions } from "../button/button-html.ts";
 
 export interface DestructiveConfirmationOptions {
-  /** Trusted HTML for the initial type="button" trigger. */
-  buttonHtml: string;
+  /** Initial control which arms the confirmation. Must be type="button". */
+  trigger: Omit<ButtonOptions, "type"> & { type: "button" };
   confirmCaption: string;
   cancelCaption: string;
-  variant?: "primary" | "danger";
   confirmFormAction?: string;
 }
 
 /** Renders an inline confirmation whose confirm action preserves native form submission. */
 export function destructiveConfirmationHtml(options: DestructiveConfirmationOptions): string {
+  const triggerButton = buttonHtml(options.trigger);
   const formAction = options.confirmFormAction === undefined ? "" : ` formaction="${escapeHtml(options.confirmFormAction)}"`;
-  return `<div class="destructive-confirmation" data-controller="destructive-confirmation"><div class="destructive-confirmation__trigger">${options.buttonHtml}</div><div class="destructive-confirmation__decision" inert><button class="button ${options.variant ?? "danger"} destructive-confirmation__action" type="submit"${formAction}>${escapeHtml(options.confirmCaption)}</button><button class="button secondary destructive-confirmation__cancel" type="button">${escapeHtml(options.cancelCaption)}</button></div></div>`;
+  const confirmButton = buttonHtml({
+    type: "submit",
+    variant: options.trigger.variant,
+    content: { kind: "caption", caption: options.confirmCaption },
+    attributesHtml: `data-destructive-confirmation-action${formAction}`,
+  });
+  const cancelButton = buttonHtml({
+    type: "button",
+    variant: "secondary",
+    content: { kind: "caption", caption: options.cancelCaption },
+    attributesHtml: "data-destructive-confirmation-cancel",
+  });
+  return `<div class="destructive-confirmation" data-controller="destructive-confirmation"><div class="destructive-confirmation__trigger">${triggerButton}</div><div class="destructive-confirmation__decision" inert>${confirmButton}${cancelButton}</div></div>`;
 }

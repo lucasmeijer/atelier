@@ -1,5 +1,7 @@
 import { AtelierCoreError, gitHubCredentialHelperCommand, invalidArguments, readJsonObject, requestAcceptsJson, type JsonObject } from "@atelier/core";
 import { actionItemHtml } from "@atelier/design-system/action-item";
+import { actionLinkHtml } from "@atelier/design-system/action-link";
+import { buttonHtml } from "@atelier/design-system/button";
 import { dialogHtml } from "@atelier/design-system/dialog";
 import { destructiveConfirmationHtml } from "@atelier/design-system/destructive-confirmation";
 import { Icons } from "@atelier/design-system/icons";
@@ -40,10 +42,16 @@ export function createProjectRoutes(deps: {
   workspaceCommandModalHostId: string;
 }): ProjectRoutes {
   function projectEnvironmentRow(project: ProjectSummary, variable: ProjectEnvironmentVariable): string {
+    const removeButton = buttonHtml({
+      type: "submit",
+      variant: "danger",
+      content: { kind: "icon-only", iconHtml: Icons.Close, label: "Remove environment variable" },
+      attributesHtml: `formaction="/projects/${encodeURIComponent(project.id)}/environment/${encodeURIComponent(variable.id)}/delete"`,
+    });
     return `<form class="project-configuration-row project-environment-row" method="post" action="/projects/${encodeURIComponent(project.id)}/environment/${encodeURIComponent(variable.id)}" data-turbo="true" data-controller="settings-autosave" data-action="focusout->settings-autosave#saveWhenLeaving">
     <input class="text-field" name="name" value="${escapeHtml(variable.name)}" aria-label="Name" autocomplete="off">
     <input class="text-field" name="value" value="${escapeHtml(variable.value)}" aria-label="Value" autocomplete="off">
-    <span class="project-configuration-actions"><button class="button danger icon-only" type="submit" formaction="/projects/${encodeURIComponent(project.id)}/environment/${encodeURIComponent(variable.id)}/delete" title="Remove environment variable" aria-label="Remove environment variable">${Icons.Close}</button></span>
+    <span class="project-configuration-actions">${removeButton}</span>
   </form>`;
   }
 
@@ -73,7 +81,7 @@ export function createProjectRoutes(deps: {
   function projectSecretRow(project: ProjectSummary, secret: ProjectSecretSummary): string {
     const secretPath = `/projects/${encodeURIComponent(project.id)}/secrets/${encodeURIComponent(secret.id)}`;
     const deleteButton = destructiveConfirmationHtml({
-      buttonHtml: '<button class="button danger" type="button">Delete secret</button>',
+      trigger: { type: "button", variant: "danger", content: { kind: "caption", caption: "Delete secret" } },
       confirmCaption: "Delete secret",
       cancelCaption: "Cancel",
       confirmFormAction: `${secretPath}/delete`,
@@ -110,7 +118,7 @@ export function createProjectRoutes(deps: {
     const projectPath = `/projects/${encodeURIComponent(project.id)}`;
     const configuredKeys = keys.map((key) => {
       const removeButton = destructiveConfirmationHtml({
-        buttonHtml: '<button class="button danger" type="button">Remove SSH key</button>',
+        trigger: { type: "button", variant: "danger", content: { kind: "caption", caption: "Remove SSH key" } },
         confirmCaption: "Remove SSH key",
         cancelCaption: "Cancel",
       });
@@ -130,7 +138,7 @@ export function createProjectRoutes(deps: {
 
   function projectDeleteControl(projectId: string, references: ProjectWorkspaceReference[] = []): string {
     const confirmation = destructiveConfirmationHtml({
-      buttonHtml: '<button class="button danger" type="button">Delete project</button>',
+      trigger: { type: "button", variant: "danger", content: { kind: "caption", caption: "Delete project" } },
       confirmCaption: "Delete project",
       cancelCaption: "Cancel",
     });
@@ -141,7 +149,7 @@ export function createProjectRoutes(deps: {
     return transientFeedbackHtml({
       element: { tag: "div", attributesHtml: `id="${domId("project_delete_control", projectId)}"` },
       initialContent: { kind: "html", html: form },
-      feedbackContent: { kind: "html", html: `<span class="button secondary">${escapeHtml(feedback)}</span>` },
+      feedbackContent: { kind: "html", html: `<span class="transient-feedback__status">${escapeHtml(feedback)}</span>` },
       state: references.length > 0 ? "feedback" : "initial",
     });
   }
@@ -160,7 +168,9 @@ export function createProjectRoutes(deps: {
   }
 
   function newProjectEditorFrame(): string {
-    return `<turbo-frame id="project_editor_frame" class="project-editor-frame"><div class="project-editor-page project-editor-detail-page"><form class="project-editor-new-form" aria-label="Add project" method="post" action="/projects" data-turbo="true" data-action="turbo:submit-end->dialog#submitted"><div><h3>Repository source</h3><p>Save a remote URL, local path, or search for a GitHub repository.</p><div class="project-github-search" data-controller="project-github-search" data-project-github-search-url-value="/projects/github-search"><input class="text-field" name="gitUrl" placeholder="github.com/org/repo, or /path/to/repo#branch" required autofocus data-project-github-search-target="input" data-action="keydown->project-github-search#keydown input->project-github-search#input"><div class="agent-completion-menu-host project-github-search-menu" data-project-github-search-target="menu" hidden></div></div></div><footer><button class="button secondary" type="button" data-action="dialog#close">Cancel</button><button class="button primary" type="submit" data-turbo-submits-with="Adding…">Add project</button></footer></form></div></turbo-frame>`;
+    const cancelButton = buttonHtml({ type: "button", variant: "secondary", content: { kind: "caption", caption: "Cancel" }, attributesHtml: 'data-action="dialog#close"' });
+    const addButton = buttonHtml({ type: "submit", variant: "primary", content: { kind: "caption", caption: "Add project" }, attributesHtml: 'data-turbo-submits-with="Adding…"' });
+    return `<turbo-frame id="project_editor_frame" class="project-editor-frame"><div class="project-editor-page project-editor-detail-page"><form class="project-editor-new-form" aria-label="Add project" method="post" action="/projects" data-turbo="true" data-action="turbo:submit-end->dialog#submitted"><div><h3>Repository source</h3><p>Save a remote URL, local path, or search for a GitHub repository.</p><div class="project-github-search" data-controller="project-github-search" data-project-github-search-url-value="/projects/github-search"><input class="text-field" name="gitUrl" placeholder="github.com/org/repo, or /path/to/repo#branch" required autofocus data-project-github-search-target="input" data-action="keydown->project-github-search#keydown input->project-github-search#input"><div class="agent-completion-menu-host project-github-search-menu" data-project-github-search-target="menu" hidden></div></div></div><footer>${cancelButton}${addButton}</footer></form></div></turbo-frame>`;
   }
 
   function projectEditorModal(): string {
@@ -205,6 +215,13 @@ export function createProjectRoutes(deps: {
     const body = problem === "missing-token"
       ? `<p><b>${escapeHtml(project.name)}</b> looks private, and Atelier does not have a GitHub token yet.</p><p>Connect GitHub in workspace settings, then try creating this workspace again.</p>`
       : `<p>Atelier has a GitHub token, but GitHub would not allow it to read <b>${escapeHtml(project.name)}</b>.</p><p>Reconnect GitHub with a token that has access to this project, then try again.</p>`;
+    const cancelButton = buttonHtml({ type: "submit", variant: "secondary", content: { kind: "caption", caption: "Cancel" } });
+    const settingsLink = actionLinkHtml({
+      href: "/settings?section=github",
+      variant: "primary",
+      content: { kind: "caption", caption: "Open GitHub settings" },
+      attributesHtml: 'data-turbo-frame="_top" data-turbo-stream="true"',
+    });
     return dialogHtml({
       element: {
         className: "dialog--compact",
@@ -213,7 +230,7 @@ export function createProjectRoutes(deps: {
       iconHtml: `<span class="settings-provider-icon" style="--provider-color:${providerBrandColor("github")}">${providerBrandIconHtml("github", "GitHub")}</span>`,
       titleCaption: title,
       bodyHtml: body,
-      footerHtml: `<form method="dialog"><button class="button secondary">Cancel</button></form><a class="button primary" href="/settings?section=github" data-turbo-frame="_top" data-turbo-stream="true">Open GitHub settings</a>`,
+      footerHtml: `<form method="dialog">${cancelButton}</form>${settingsLink}`,
     });
   }
 

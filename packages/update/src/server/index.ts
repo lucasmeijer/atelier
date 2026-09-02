@@ -1,3 +1,4 @@
+import { buttonHtml } from "@atelier/design-system/button";
 import { destructiveConfirmationHtml } from "@atelier/design-system/destructive-confirmation";
 import { progressButtonHtml } from "@atelier/design-system/progress-button";
 import { transientFeedbackHtml } from "@atelier/design-system/transient-feedback";
@@ -211,7 +212,7 @@ function renderCheckButton(state: "initial" | "in-progress"): string {
     initialContent: { kind: "text", text: "Check now" },
     progressContent: { kind: "text", text: "Checking…" },
     state,
-    className: "secondary",
+    variant: "secondary",
     type: "submit",
   });
 }
@@ -224,7 +225,7 @@ function renderDownloadControl(snapshot: StateSnapshot): string {
   const content = {
     initialContent: { kind: "text" as const, text: "Download Update" },
     progressContent: { kind: "text" as const, text: "Downloading…" },
-    className: "primary",
+    variant: "primary" as const,
     type: "submit" as const,
   };
   if (snapshot.state === "pulling") return progressButtonHtml({ ...content, state: "in-progress", progress: snapshot.percent ?? 1 });
@@ -240,10 +241,9 @@ function restartFeedbackId(surface: UpdateControlSurface): string {
 
 function restartFormHtml(surface: UpdateControlSurface): string {
   const confirmation = destructiveConfirmationHtml({
-    buttonHtml: '<button class="button primary" type="button">Restart to update</button>',
+    trigger: { type: "button", variant: "primary", content: { kind: "caption", caption: "Restart to update" } },
     confirmCaption: "Restart to update",
     cancelCaption: "Cancel",
-    variant: "primary",
   });
   return `<form method="post" action="/update/restart?surface=${surface}" data-turbo="false" data-controller="update-restart" data-action="submit->update-restart#submit">${confirmation}</form>`;
 }
@@ -252,7 +252,7 @@ function renderRestartFeedback(surface: UpdateControlSurface, message?: string):
   return transientFeedbackHtml({
     element: { tag: "div", className: "update-restart-feedback", attributesHtml: `id="${restartFeedbackId(surface)}"` },
     initialContent: { kind: "html", html: restartFormHtml(surface) },
-    feedbackContent: { kind: "html", html: `<span class="button secondary update-restart-error">Could not restart Atelier: ${escapeHtml(message ?? "")}</span>` },
+    feedbackContent: { kind: "html", html: `<span class="transient-feedback__status update-restart-error">Could not restart Atelier: ${escapeHtml(message ?? "")}</span>` },
     state: message === undefined ? "initial" : "feedback",
   });
 }
@@ -261,7 +261,7 @@ function renderCheckFeedback(state: "initial" | "in-progress", feedback = false)
   return transientFeedbackHtml({
     element: { tag: "div" },
     initialContent: { kind: "html", html: state === "initial" ? renderCheckForm() : renderCheckButton("in-progress") },
-    feedbackContent: { kind: "html", html: '<span class="button secondary">You\'re up to date!</span>' },
+    feedbackContent: { kind: "html", html: '<span class="transient-feedback__status">You\'re up to date!</span>' },
     state: feedback ? "feedback" : "initial",
   });
 }
@@ -275,7 +275,7 @@ function renderUpdateControl(snapshot: StateSnapshot, surface: UpdateControlSurf
     initialContent: { kind: "text", text: "Restart to update" },
     progressContent: { kind: "text", text: "Restarting…" },
     state: "in-progress",
-    className: "primary",
+    variant: "primary",
   });
 }
 
@@ -308,10 +308,16 @@ function installerCommand(channel: ReleaseChannel): string {
 function renderInstallerRequiredModal(updateManager: UpdateManager): string {
   const snapshot = updateManager.snapshot();
   const command = installerCommand(snapshot.releaseChannel);
+  const closeButton = buttonHtml({
+    type: "button",
+    variant: "primary",
+    content: { kind: "caption", caption: "Got it" },
+    attributesHtml: 'data-action="modal#close"',
+  });
   return `<dialog id="installer-required-modal" class="dialog dialog--compact update-restart-modal" data-controller="modal" data-modal-auto-show-value="true">
   <header class="dialog__header"><h2 class="title">Run the installer to update Atelier</h2></header>
   <div class="dialog__body"><p>This release changes how Atelier is hosted, so the smooth in-app restart cannot safely apply it.</p><p>SSH into the Atelier host and run:</p><pre><code>${escapeHtml(command)}</code></pre><p>Your projects, workspaces, and containers will remain in place.</p></div>
-  <footer class="dialog__actions button-group"><button class="button primary" type="button" data-action="modal#close">Got it</button></footer>
+  <footer class="dialog__actions">${closeButton}</footer>
 </dialog>`;
 }
 
