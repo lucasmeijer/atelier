@@ -2,7 +2,7 @@
   "name": "@atelier/syntax",
   "private": true,
   "type": "module",
-  "exports": { ".": "./src/index.ts", "./pierre": "./src/pierre.ts" },
+  "exports": { ".": "./src/index.ts", "./pierre": "./src/pierre.ts", "./shader-languages": "./src/shader-languages.ts" },
   "dependencies": {
     "@atelier/shared": "workspace:*",
     "@pierre/diffs": "1.3.6",

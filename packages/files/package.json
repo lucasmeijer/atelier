@@ -12,6 +12,7 @@
     "@atelier/design-system": "workspace:*",
     "@atelier/markdown": "workspace:*",
     "@atelier/shared": "workspace:*",
+    "@atelier/syntax": "workspace:*",
     "@atelier/workspace": "workspace:*",
     "@codemirror/autocomplete": "6.20.3",
     "@codemirror/commands": "6.10.4",

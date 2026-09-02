@@ -64,6 +64,17 @@ describe("Atelier syntax highlighting", () => {
     }
   });
 
+  test("highlights GLSL and HLSL shader paths", () => {
+    for (const extension of ["glsl", "vert", "frag", "geom", "tesc", "tese", "comp"]) {
+      expect(languageFromPath(`shader.${extension}`), extension).toBe("glsl");
+    }
+    for (const extension of ["hlsl", "fx", "fxh"]) {
+      expect(languageFromPath(`shader.${extension}`), extension).toBe("hlsl");
+    }
+    expect(highlightCodeHtml({ code: "uniform mat4 model;", language: "glsl" }).html).toContain("syntax-keyword");
+    expect(highlightCodeHtml({ code: "float4 main() : SV_Target { return 0; }", language: "hlsl" }).html).toContain("syntax-keyword");
+  });
+
   test("safely escapes unsupported and incomplete input", () => {
     expect(highlightCodeHtml({ code: '<script>&', language: "unknown" })).toEqual({ html: "&lt;script&gt;&amp;" });
     expect(() => highlightCodeHtml({ code: 'const value = "', language: "ts" })).not.toThrow();

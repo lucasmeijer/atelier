@@ -2,26 +2,15 @@
 
 import { closeBrackets, closeBracketsKeymap } from "@codemirror/autocomplete";
 import { defaultKeymap, history, historyKeymap, indentWithTab } from "@codemirror/commands";
-import { bracketMatching, HighlightStyle, indentOnInput, StreamLanguage, syntaxHighlighting } from "@codemirror/language";
-import { cpp } from "@codemirror/lang-cpp";
-import { css } from "@codemirror/lang-css";
-import { html } from "@codemirror/lang-html";
-import { java } from "@codemirror/lang-java";
-import { javascript } from "@codemirror/lang-javascript";
-import { json } from "@codemirror/lang-json";
-import { markdown } from "@codemirror/lang-markdown";
-import { python } from "@codemirror/lang-python";
-import { rust } from "@codemirror/lang-rust";
-import { go } from "@codemirror/legacy-modes/mode/go";
-import { ruby } from "@codemirror/legacy-modes/mode/ruby";
-import { shell } from "@codemirror/legacy-modes/mode/shell";
+import { bracketMatching, HighlightStyle, indentOnInput, syntaxHighlighting } from "@codemirror/language";
 import { highlightSelectionMatches, searchKeymap } from "@codemirror/search";
-import { EditorState, type Extension } from "@codemirror/state";
+import { EditorState } from "@codemirror/state";
 import { drawSelection, EditorView, highlightActiveLine, keymap } from "@codemirror/view";
 import { tags } from "@lezer/highlight";
 import { setToggleValue, type ToggleChangeEvent } from "@atelier/design-system/toggle/client";
 import { CableTopics, type WorkspaceClientApplication, type WorkspaceClientControllerConstructor } from "@atelier/shared";
 import { parseEditableFileResponse, parseFileSaveResponse, type EditableFileResponse } from "../protocol.ts";
+import { languageExtension } from "./editor-language.ts";
 
 const editorHighlightStyle = HighlightStyle.define([
   { tag: [tags.keyword, tags.operatorKeyword, tags.modifier], color: "var(--editor-keyword)" },
@@ -32,28 +21,6 @@ const editorHighlightStyle = HighlightStyle.define([
   { tag: [tags.variableName, tags.propertyName, tags.attributeName], color: "var(--editor-variable)" },
   { tag: [tags.typeName, tags.className, tags.tagName], color: "var(--editor-type)" },
 ]);
-
-function extensionOf(path: string): string {
-  return path.split("/").pop()?.split(".").pop()?.toLowerCase() ?? "";
-}
-
-function languageExtension(path: string): Extension {
-  const extension = extensionOf(path);
-  if (["js", "mjs", "cjs", "jsx"].includes(extension)) return javascript({ jsx: extension === "jsx" });
-  if (["ts", "mts", "cts", "tsx"].includes(extension)) return javascript({ typescript: true, jsx: extension === "tsx" });
-  if (["json", "jsonc"].includes(extension)) return json();
-  if (["html", "htm"].includes(extension)) return html();
-  if (extension === "css") return css();
-  if (["md", "markdown"].includes(extension)) return markdown();
-  if (extension === "py") return python();
-  if (extension === "rs") return rust();
-  if (extension === "java") return java();
-  if (["c", "h", "cc", "cpp", "cxx", "hpp"].includes(extension)) return cpp();
-  if (extension === "rb") return StreamLanguage.define(ruby);
-  if (extension === "go") return StreamLanguage.define(go);
-  if (["sh", "bash", "zsh"].includes(extension)) return StreamLanguage.define(shell);
-  return [];
-}
 
 type EditorRefreshDetail = { workspaceId: string };
 

@@ -8,7 +8,9 @@ import css from "@shikijs/langs/css";
 import docker from "@shikijs/langs/docker";
 import erb from "@shikijs/langs/erb";
 import go from "@shikijs/langs/go";
+import glsl from "@shikijs/langs/glsl";
 import hcl from "@shikijs/langs/hcl";
+import hlsl from "@shikijs/langs/hlsl";
 import html from "@shikijs/langs/html";
 import java from "@shikijs/langs/java";
 import javascript from "@shikijs/langs/javascript";
@@ -31,6 +33,7 @@ import vue from "@shikijs/langs/vue";
 import xml from "@shikijs/langs/xml";
 import yaml from "@shikijs/langs/yaml";
 import { escapeHtml } from "@atelier/shared";
+import { shaderLanguageFromExtension } from "./shader-languages.ts";
 
 const theme = createCssVariablesTheme({ name: "atelier-fragment", variablePrefix: "--syntax-", fontStyle: false });
 theme.tokenColors?.push(
@@ -44,7 +47,7 @@ theme.tokenColors?.push(
 const highlighter = createHighlighterCoreSync({
   engine: createJavaScriptRegexEngine(),
   themes: [theme],
-  langs: [astro, bash, csharp, css, docker, erb, go, hcl, html, java, javascript, json, jsonc, jsx, markdown, php, python, regex, ruby, rust, scss, sql, svelte, terraform, tsx, typescript, vue, xml, yaml],
+  langs: [astro, bash, csharp, css, docker, erb, go, glsl, hcl, hlsl, html, java, javascript, json, jsonc, jsx, markdown, php, python, regex, ruby, rust, scss, sql, svelte, terraform, tsx, typescript, vue, xml, yaml],
 });
 
 const extensionLanguages = new Map(Object.entries({
@@ -70,7 +73,7 @@ export function languageFromPath(filePath: string | undefined): string | undefin
   const basename = path.basename(filePath).toLowerCase();
   if (basename === "dockerfile") return "docker";
   const extension = path.extname(basename).slice(1);
-  return extensionLanguages.get(extension);
+  return extensionLanguages.get(extension) ?? shaderLanguageFromExtension(extension);
 }
 
 function resolveLanguage(language: string | undefined): string | undefined {
