@@ -705,11 +705,12 @@ describe("web app contracts", () => {
       expect(home).toContain("Create your <strong");
       expect(home).toContain("first project</strong> to get started!");
       expect(home).toContain('data-empty-workspace-onboarding-destination-value="first-project"');
-      const mobileNavigationStart = home.indexOf('class="fixed-shell-mobile-nav fixed-shell-global-mobile-nav button-group"');
+      const mobileNavigationStart = home.indexOf('class="fixed-shell-mobile-nav fixed-shell-atelier-bar button-group"');
       const mobileNavigation = home.slice(mobileNavigationStart, home.indexOf("</nav>", mobileNavigationStart));
       expect(mobileNavigation).toContain('class="fixed-shell-mobile-fixed action-item action-item__primary"');
       expect(mobileNavigation).toContain('data-mobile-workspace-destination data-action="click->workspace-navigation#toggleWorkspacePane"');
-      expect(mobileNavigation.match(/<button/g)).toHaveLength(1);
+      expect(mobileNavigation).toContain('aria-label="Next unread Workspace" title="Next unread Workspace" disabled');
+      expect(mobileNavigation.match(/<button/g)).toHaveLength(2);
     });
   });
 
@@ -740,7 +741,7 @@ describe("web app contracts", () => {
       const projectlessWorkspace = await (await app.fetch(new Request("http://test.local/workspaces/projectless"))).text();
 
       for (const workspace of [projectWorkspace, projectlessWorkspace]) {
-        expect(workspace).toContain('class="fixed-shell-mobile-nav fixed-shell-global-mobile-nav button-group"');
+        expect(workspace).toContain('class="fixed-shell-mobile-nav fixed-shell-atelier-bar button-group"');
         expect(workspace).toContain("agent.open-launch-composer");
         expect(workspace).toContain("New Workspace With Same Project");
         expect(workspace).toContain("Meta+Alt+Quote");

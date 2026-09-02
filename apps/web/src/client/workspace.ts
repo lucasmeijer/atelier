@@ -908,7 +908,7 @@ class AtelierShortcutsController extends Controller {
       ?? residencyController()?.visibleWorkspaceId();
   }
 
-  private async openOldestAttentionWorkspace(): Promise<void> {
+  async openOldestAttentionWorkspace(): Promise<void> {
     const response = await fetch("/workspaces/open-oldest-unread", {
       method: "POST",
       headers: { "Accept": "text/vnd.turbo-stream.html" },
@@ -1196,7 +1196,7 @@ class WorkspaceNavigationController extends Controller {
     const scroll = Number(localStorage.getItem("atelier:workspace-pane-scroll"));
     if (Number.isFinite(scroll)) this.scrollTarget.scrollTop = scroll;
     this.restoreProjectDisclosures();
-    this.setWorkspacePaneOpen(false);
+    this.setWorkspacePaneOpen(!this.element.querySelector(".workspace-detail-resident.visible"));
     this.setWorkspacePaneCollapsed(sessionStorage.getItem("atelier:workspace-pane-collapsed") === "true" && Boolean(this.visibleWorkspacePaneToggle()));
   }
 
@@ -1237,6 +1237,9 @@ class WorkspaceNavigationController extends Controller {
   private setWorkspacePaneOpen(open: boolean): void {
     this.element.classList.toggle("is-mobile-workspace-pane-open", open);
     const destination = this.element.querySelector<HTMLElement>("[data-mobile-workspace-destination]")!;
+    const label = open ? "Hide Workspace pane" : "Show Workspace pane";
+    destination.setAttribute("aria-label", label);
+    destination.setAttribute("title", label);
     destination.setAttribute("aria-expanded", String(open));
     destination.setAttribute("aria-current", open ? "page" : "false");
   }

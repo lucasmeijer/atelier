@@ -15,6 +15,7 @@ export const Icons = {
   ExpandAll: iconHtml('<path d="M7 9l5-5 5 5M7 15l5 5 5-5"/>'),
   Files: iconHtml('<path d="M4 5h6l2 2h8v12H4z"/>'),
   More: iconHtml('<circle cx="5" cy="12" r="1"/><circle cx="12" cy="12" r="1"/><circle cx="19" cy="12" r="1"/>'),
+  Next: iconHtml('<path d="M4 12h14M13 7l5 5-5 5"/><circle cx="5" cy="6" r="1.5" fill="currentColor" stroke="none"/>'),
   Panel: iconHtml('<path d="M4 4h16v16H4zM15 4v16"/>'),
   Park: iconHtml('<path d="M17.5 15.5A7 7 0 0 1 8.5 6.5a7 7 0 1 0 9 9z"/><path d="M16 5h4M18 3v4"/>'),
   Plus: iconHtml('<path d="M12 5v14M5 12h14"/>'),

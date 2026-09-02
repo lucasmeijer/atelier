@@ -87,7 +87,7 @@ import { atelierOpenApi } from "./openapi.ts";
 import { parseCloseWorkViewRequest, parseReorderWorkViewRequest } from "./work-view-api.ts";
 import { Type } from "typebox";
 import { Value } from "typebox/value";
-import { agentTabsTurboStream, openWorkViewTurboStream, presentWorkViewTurboStream, removeWorkspaceResidentTurboStream, renderAgentBodyFrame, renderGlobalMobileNavigation, renderWorkViewBodyFrame, renderWorkspaceDeletionPresentation, renderWorkspacePane, renderWorkspacePresentation, selectAgentTurboStream, workspacePaneCollectionsTurboStream, workspacePaneOnboardingState, workspacePreparationInvalidatedTurboStream, workspacePresentationDomId, workViewsTurboStream, type AgentPaneContribution, type WorkPaneContribution, type WorkspacePaneEntry, type WorkspacePanePresentation, type WorkspacePresentation as FixedWorkspacePresentation } from "./workspace-presentation.ts";
+import { agentTabsTurboStream, openWorkViewTurboStream, presentWorkViewTurboStream, removeWorkspaceResidentTurboStream, renderAgentBodyFrame, renderAtelierBar, renderWorkViewBodyFrame, renderWorkspaceDeletionPresentation, renderWorkspacePane, renderWorkspacePresentation, selectAgentTurboStream, workspacePaneCollectionsTurboStream, workspacePaneOnboardingState, workspacePreparationInvalidatedTurboStream, workspacePresentationDomId, workViewsTurboStream, type AgentPaneContribution, type WorkPaneContribution, type WorkspacePaneEntry, type WorkspacePanePresentation, type WorkspacePresentation as FixedWorkspacePresentation } from "./workspace-presentation.ts";
 import type { CableBroadcastOptions } from "./cable.ts";
 
 const jsonStringSchema = Type.String();
@@ -820,7 +820,7 @@ ${moduleStylesHtml()}
     return `<div class="app fixed-shell-app" data-controller="atelier-shortcuts workspace-navigation">
     ${renderWorkspacePane(pane, renderGlobalSidebarContributions())}
     <main class="fixed-shell-app-main">${options.mainHtml ?? await workspaceDetailHostHtml(pane, selectedId)}</main>
-    ${renderGlobalMobileNavigation()}
+    ${renderAtelierBar(pane)}
   </div>
   ${projectEditorModal()}
   <div id="update_modal_host"></div>

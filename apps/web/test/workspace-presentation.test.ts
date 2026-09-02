@@ -10,6 +10,7 @@ import {
   openWorkViewTurboStream,
   removeWorkspaceResidentTurboStream,
   renderAgentBodyFrame,
+  renderAtelierBar,
   renderWorkspacePane,
   renderWorkspacePresentation,
   renderWorkViewBodyFrame,
@@ -19,6 +20,7 @@ import {
   workViewPaneDomId,
   workViewSelectorDomId,
   workViewsTurboStream,
+  workspacePaneCollectionsTurboStream,
   type WorkspacePresentation,
 } from "../src/server/workspace-presentation.ts";
 
@@ -60,6 +62,22 @@ describe("role-fixed Workspace presentation", () => {
     expect(html).toContain('class="action-item action-item__primary" type="submit" role="menuitem"');
   });
 
+  test("server-renders the phone-only Atelier bar from Workspace Attention", () => {
+    const quiet = { projects: [], projectlessWorkspaces: [{ id: "quiet", title: "Quiet" }] };
+    const unread = { projects: [], projectlessWorkspaces: [{ id: "unread", title: "Unread", attention: true }] };
+
+    const quietHtml = renderAtelierBar(quiet);
+    expect(quietHtml).toContain('class="fixed-shell-mobile-nav fixed-shell-atelier-bar button-group" aria-label="Atelier"');
+    expect(quietHtml).toContain('aria-label="Show Workspace pane" title="Show Workspace pane" aria-expanded="false"');
+    expect(quietHtml).toContain('id="fixed_shell_atelier_next_unread" type="button" aria-label="Next unread Workspace" title="Next unread Workspace" disabled');
+
+    const unreadHtml = renderAtelierBar(unread);
+    const nextUnread = unreadHtml.slice(unreadHtml.indexOf('id="fixed_shell_atelier_next_unread"'), unreadHtml.indexOf("</button>", unreadHtml.indexOf('id="fixed_shell_atelier_next_unread"')));
+    expect(nextUnread).not.toContain(" disabled");
+    expect(nextUnread).toContain('data-action="click->atelier-shortcuts#openOldestAttentionWorkspace"');
+    expect(workspacePaneCollectionsTurboStream(unread)).toContain('<turbo-stream action="replace" target="fixed_shell_atelier_next_unread"');
+  });
+
   test("server-renders the Workspace pane once at the shell seam", () => {
     const html = renderWorkspacePane({ projects: [{ id: "project-1", title: "Atelier", workspaces: [
       { id: "workspace-1", title: "Typed shell", active: true, attention: true, attentionAt: 123, lastActivityAt: 456 },
@@ -68,7 +86,7 @@ describe("role-fixed Workspace presentation", () => {
 
     expect(html).toContain('class="panel fixed-shell-workspace-pane"');
     const workspaceHeader = html.slice(html.indexOf("<header"), html.indexOf("</header>"));
-    expect(workspaceHeader).toContain('<strong><svg aria-hidden="true"');
+    expect(workspaceHeader).toContain('<strong class="panel__title"><svg aria-hidden="true"');
     expect(workspaceHeader.indexOf("<svg")).toBeLessThan(workspaceHeader.indexOf("Atelier"));
     expect(workspaceHeader).toContain('href="/settings"');
     expect(workspaceHeader).toContain('aria-label="Settings"');
@@ -245,7 +263,7 @@ describe("role-fixed Workspace presentation", () => {
       ],
     }));
 
-    const desktop = html.slice(0, html.indexOf('aria-label="Current workspace destinations"'));
+    const desktop = html.slice(0, html.indexOf('aria-label="Current Workspace destinations"'));
     expect(desktop.match(/fixed-shell-agent-conversation action-item/g)).toHaveLength(2);
     expect(desktop).toContain('class="fixed-shell-work-view-selector action-item"');
     expect(desktop.match(/class="action-item__actions action-item__actions--engaged"/g)).toHaveLength(3);

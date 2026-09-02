@@ -16,7 +16,7 @@ import type { ReviewComment } from "../../../packages/review/src/server/state.ts
 import { createReviewRepository } from "../../../packages/review/test/support/repository.ts";
 import { turboStream } from "../../../packages/shared/src/index.ts";
 import { atelierUi } from "../smoke/support/atelier-ui.ts";
-import { agentTabsTurboStream, removeWorkspaceResidentTurboStream, renderAgentBodyFrame, renderGlobalMobileNavigation, renderWorkViewBodyFrame, renderWorkspacePane, renderWorkspacePresentation, workViewsTurboStream, workspacePaneCollectionsTurboStream, workspacePreparationInvalidatedTurboStream, type WorkspacePanePresentation, type WorkspacePresentation } from "../src/server/workspace-presentation.ts";
+import { agentTabsTurboStream, removeWorkspaceResidentTurboStream, renderAgentBodyFrame, renderAtelierBar, renderWorkViewBodyFrame, renderWorkspacePane, renderWorkspacePresentation, workViewsTurboStream, workspacePaneCollectionsTurboStream, workspacePreparationInvalidatedTurboStream, type WorkspacePanePresentation, type WorkspacePresentation } from "../src/server/workspace-presentation.ts";
 import { buildWebTestAssets, type WebTestAssets } from "./support/web-test-assets.ts";
 
 let browser: Browser;
@@ -78,7 +78,7 @@ function agentPaneBody(workspaceId: string, conversationId: string, transcriptHt
 }
 
 function renderShellResidents(pane: WorkspacePanePresentation, residentsHtml: string): string {
-  return `<div class="app fixed-shell-app" data-controller="workspace-navigation">${renderWorkspacePane(pane)}<main class="fixed-shell-app-main"><div id="workspace_detail" data-controller="workspace-residency" data-workspace-residency-max-resident-value="5"><div class="workspace-detail-empty" data-workspace-residency-target="empty" hidden></div><div class="workspace-detail-loading" data-workspace-residency-target="loading" hidden></div>${residentsHtml}</div></main>${renderGlobalMobileNavigation()}</div>`;
+  return `<div class="app fixed-shell-app" data-controller="workspace-navigation">${renderWorkspacePane(pane)}<main class="fixed-shell-app-main"><div id="workspace_detail" data-controller="workspace-residency" data-workspace-residency-max-resident-value="5"><div class="workspace-detail-empty" data-workspace-residency-target="empty" hidden></div><div class="workspace-detail-loading" data-workspace-residency-target="loading" hidden></div>${residentsHtml}</div></main>${renderAtelierBar(pane)}</div>`;
 }
 
 function renderShellFixture(presentation: WorkspacePresentation, pane: WorkspacePanePresentation, cached: readonly WorkspacePresentation[] = []): string {
@@ -2901,21 +2901,21 @@ Comment: I don't think we need these tests`;
     await page.route("**/workspaces/mobile-compose/active", (route) => route.fulfill({ status: 204 }));
     await page.goto("http://atelier.test/workspaces/mobile-compose");
 
-    const globalNavigation = page.locator(".fixed-shell-global-mobile-nav");
+    const atelierBar = page.locator(".fixed-shell-atelier-bar");
     const shell = page.locator(".fixed-shell-app");
     const input = page.getByRole("textbox", { name: "Agent prompt" });
     await input.focus();
-    expect(await globalNavigation.isVisible()).toBe(true);
+    expect(await atelierBar.isVisible()).toBe(true);
 
     await resizeFakeVisualViewport(page, 500, 344);
-    expect(await globalNavigation.isVisible()).toBe(false);
+    expect(await atelierBar.isVisible()).toBe(false);
     const shellBottom = await shell.evaluate((element) => element.getBoundingClientRect().bottom);
     const visualViewportBottom = await page.evaluate(() => window.visualViewport!.offsetTop + window.visualViewport!.height);
     expect(shellBottom).toBeGreaterThanOrEqual(visualViewportBottom);
 
     await resizeFakeVisualViewport(page, 844);
     expect(await input.evaluate((element) => document.activeElement === element)).toBe(true);
-    expect(await globalNavigation.isVisible()).toBe(true);
+    expect(await atelierBar.isVisible()).toBe(true);
     await page.close();
   });
 
@@ -3152,7 +3152,21 @@ Comment: I don't think we need these tests`;
     await page.close();
   });
 
-  test("keeps global mobile navigation available for a provisioning resident", async () => {
+  test("opens the Workspace pane and Atelier bar when no Workspace is selected", async () => {
+    const pane: WorkspacePanePresentation = { projects: [], projectlessWorkspaces: [] };
+    const page = await newTestPage({ viewport: { width: 390, height: 844 }, mobile: true });
+    await page.route("http://atelier.test/", (route) => route.fulfill({ contentType: "text/html", body: `<meta name="viewport" content="width=device-width, initial-scale=1"><style>${workspaceStyle}</style>${renderShellResidents(pane, "")}<script type="module" src="${workspaceClientPath}"></script>` }));
+    await page.goto("http://atelier.test/");
+
+    expect(await page.locator(".fixed-shell-app").getAttribute("class")).toContain("is-mobile-workspace-pane-open");
+    expect(await page.locator(".fixed-shell-workspace-pane").isVisible()).toBe(true);
+    expect(await page.getByRole("button", { name: "Hide Workspace pane" }).isVisible()).toBe(true);
+    expect(await page.getByRole("button", { name: "Next unread Workspace" }).isDisabled()).toBe(true);
+    expect((await page.getByRole("navigation", { name: "Atelier" }).boundingBox())!.width).toBeCloseTo((await page.locator(".fixed-shell-app").boundingBox())!.width, 0);
+    await page.close();
+  });
+
+  test("keeps the Workspace pane button available for a provisioning resident", async () => {
     const pane: WorkspacePanePresentation = { projects: [], projectlessWorkspaces: [{ id: "starting", title: "Starting", active: true, state: "starting" }] };
     const shell = renderShellResidents(pane, '<div class="workspace-detail-resident workspace-boot visible" data-workspace-residency-target="resident" data-workspace-id="starting"><p>Preparing workspace…</p></div>');
     const page = await newTestPage({ viewport: { width: 390, height: 844 } });
@@ -3162,14 +3176,14 @@ Comment: I don't think we need these tests`;
 
     const workspaceDestination = page.locator("[data-mobile-workspace-destination]");
     expect(await workspaceDestination.isVisible()).toBe(true);
-    expect(await page.locator(".fixed-shell-resident-mobile-nav").count()).toBe(0);
+    expect(await page.locator(".fixed-shell-workspace-bar").count()).toBe(0);
     await workspaceDestination.click();
     expect(await page.locator(".fixed-shell-workspace-pane").evaluate((pane) => getComputedStyle(pane).visibility)).toBe("visible");
     expect(await workspaceDestination.getAttribute("aria-expanded")).toBe("true");
     await page.close();
   });
 
-  test("parks the current Workspace on mobile without losing global navigation", async () => {
+  test("parks the current Workspace on mobile without losing the Workspace pane button", async () => {
     const current: WorkspacePresentation = {
       workspace: { id: "park-current", title: "Park current" },
       agentConversations: [agentConversation("park-current", "agent-current")],
@@ -3646,6 +3660,55 @@ Comment: I don't think we need these tests`;
     await page.close();
   });
 
+  test("expands the Atelier bar over the Workspace bar and opens the next unread Workspace", async () => {
+    const workspace = (id: string): WorkspacePresentation => ({
+      workspace: { id, title: `Workspace ${id}` },
+      agentConversations: [agentConversation(id, `agent-${id}`)],
+      workViews: [],
+    });
+    const pane: WorkspacePanePresentation = {
+      projects: [],
+      projectlessWorkspaces: [
+        { id: "a", title: "Workspace a", active: true },
+        { id: "b", title: "Workspace b", attention: true },
+      ],
+    };
+    const shell = renderShellFixture(workspace("a"), pane, [workspace("b")])
+      .replace('data-controller="workspace-navigation"', 'data-controller="atelier-shortcuts workspace-navigation"');
+    const page = await newTestPage({ viewport: { width: 390, height: 844 }, mobile: true });
+    await page.route("http://atelier.test/workspaces/a", (route) => route.fulfill({ contentType: "text/html", body: `<style>${workspaceStyle}</style>${shell}<script type="module" src="${workspaceClientPath}"></script>` }));
+    await page.route("**/workspaces/open-oldest-unread", (route) => route.fulfill({ contentType: "text/vnd.turbo-stream.html", headers: { location: "/workspaces/b" }, body: "" }));
+    await page.route("**/workspaces/*/active", (route) => route.fulfill({ status: 204 }));
+    await page.route("**/workspaces/*/attention/acknowledge*", (route) => route.fulfill({ status: 204 }));
+    await page.goto("http://atelier.test/workspaces/a");
+    await page.waitForFunction(() => document.querySelectorAll('[data-navigation-ready="true"]').length === 2);
+
+    const atelierBar = page.getByRole("navigation", { name: "Atelier" });
+    const workspaceBar = page.locator('.workspace-detail-resident.visible .fixed-shell-workspace-bar');
+    const workspacePaneButton = page.locator("[data-mobile-workspace-destination]");
+    const nextUnread = page.getByRole("button", { name: "Next unread Workspace", includeHidden: true });
+    expect(await nextUnread.isHidden()).toBe(true);
+    expect(await nextUnread.isEnabled()).toBe(true);
+    const compactWorkspaceButtonWidth = (await workspacePaneButton.boundingBox())!.width;
+    await workspaceBar.waitFor({ state: "visible" });
+
+    await page.getByRole("button", { name: "Show Workspace pane" }).click();
+    expect(await page.getByRole("button", { name: "Hide Workspace pane" }).isVisible()).toBe(true);
+    expect(await nextUnread.isVisible()).toBe(true);
+    const nextUnreadWidth = (await nextUnread.boundingBox())!.width;
+    expect((await workspacePaneButton.boundingBox())!.width).toBeCloseTo(nextUnreadWidth, 0);
+    expect(compactWorkspaceButtonWidth).toBeCloseTo(nextUnreadWidth, 0);
+    expect((await atelierBar.boundingBox())!.width).toBeCloseTo((await page.locator(".fixed-shell-app").boundingBox())!.width, 0);
+    expect(await workspaceBar.isHidden()).toBe(true);
+
+    await nextUnread.click();
+    await page.waitForFunction(() => document.querySelector('.workspace-detail-resident.visible')?.getAttribute('data-workspace-id') === "b");
+    expect(await page.locator(".fixed-shell-app").getAttribute("class")).not.toContain("is-mobile-workspace-pane-open");
+    expect(await page.getByRole("button", { name: "Show Workspace pane" }).isVisible()).toBe(true);
+    expect(await page.locator('.workspace-detail-resident.visible .fixed-shell-workspace-bar').isVisible()).toBe(true);
+    await page.close();
+  });
+
   test("prioritizes Agents, Browser, and Review in mobile navigation and moves surplus Work views into More", async () => {
     const presentation: WorkspacePresentation = {
       workspace: { id: "phone-demo", title: "Phone" },
@@ -3662,8 +3725,8 @@ Comment: I don't think we need these tests`;
       ],
       commands: [{ id: "files.create", label: "New Files", scope: "workspace", placement: "work-launcher" }, { id: "terminal.create", label: "New Terminal", scope: "workspace", placement: "work-launcher" }],
     };
-    const page = await newTestPage({ viewport: { width: 340, height: 844 } });
-    await page.route("http://atelier.test/workspaces/phone-demo", (route) => route.fulfill({ contentType: "text/html", body: `<style>${workspaceStyle}</style>${renderShellFixture(presentation, { projects: [] })}<script>
+    const page = await newTestPage({ viewport: { width: 390, height: 844 }, mobile: true });
+    await page.route("http://atelier.test/workspaces/phone-demo", (route) => route.fulfill({ contentType: "text/html", body: `<meta name="viewport" content="width=device-width, initial-scale=1"><style>${workspaceStyle}</style>${renderShellFixture(presentation, { projects: [] })}<script>
       window.AtelierCable = { subscribe() {}, unsubscribe() {}, connected() { return true; } };
     </script><script type="module" src="${workspaceClientPath}"></script>` }));
     await page.route("**/workspaces/phone-demo/agents/*/body", (route) => {
@@ -3686,7 +3749,7 @@ Comment: I don't think we need these tests`;
     await page.locator('[data-mobile-destination="agents"]').waitFor({ state: "visible" });
     await page.locator('[data-mobile-destination="work:browser:preview"]').waitFor({ state: "visible" });
     await page.locator('[data-mobile-destination="work:review:workspace"]').waitFor({ state: "visible" });
-    expect(await page.locator('[data-mobile-destination="work:terminal:2"]').isHidden()).toBe(true);
+    await page.locator('[data-mobile-destination="work:terminal:2"]').waitFor({ state: "hidden" });
     const workspaceDestination = page.locator("[data-mobile-workspace-destination]");
     await workspaceDestination.evaluate((button: HTMLButtonElement) => button.click());
     expect(await page.locator(".fixed-shell-app").getAttribute("class")).toContain("is-mobile-workspace-pane-open");
