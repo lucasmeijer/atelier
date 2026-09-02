@@ -7,7 +7,7 @@
 }
 .progress-button[data-progress-state="in-progress"],
 .progress-button[data-progress-state="in-progress"]:disabled,
-.progress-button[data-progress-state="in-progress"][aria-disabled="true"] { opacity: 1; cursor: progress; }
+.progress-button[data-progress-state="in-progress"][aria-disabled="true"] { opacity: 1; }
 .progress-button[data-progress-state="in-progress"]:disabled .progress-button__content,
 .progress-button[data-progress-state="in-progress"][aria-disabled="true"] .progress-button__content { pointer-events: none; }
 .progress-button:not([data-progress-state="in-progress"]) .progress-button__perimeter { opacity: 0; }
