@@ -690,7 +690,7 @@ describe("web app contracts", () => {
     expect(home.match(/<aside[^>]+aria-label="Workspaces"/g)).toHaveLength(1);
     expect(home).toContain('<section id="global_sidebar_contributions"><button data-update-probe>Restart to update</button></section>');
     expect(broadcasts.some((html) => html.includes('<turbo-stream action="update" target="global_sidebar_contributions" method="morph"'))).toBe(true);
-    expect(home).toContain("Welcome to Atelier!");
+    expect(home).toContain("Welcome to your Atelier!");
     expect(home).toContain('data-controller="empty-workspace-onboarding"');
     expect(home).toContain('class="workspace-empty-onboarding-arrow"');
   });
@@ -1125,7 +1125,7 @@ describe("web app contracts", () => {
     const home = await app.fetch(new Request("http://test.local/"));
     expect(home.status).toBe(200);
     const homeBody = await home.text();
-    expect(homeBody).toContain("Welcome to Atelier");
+    expect(homeBody).toContain("Welcome to your Atelier");
     expect(homeBody).toContain("Select a workspace");
     expect(homeBody).not.toContain('data-controller="empty-workspace-onboarding"');
     expect(homeBody).not.toContain('class="workspace-empty-onboarding-arrow"');

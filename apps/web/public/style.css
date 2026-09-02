@@ -193,9 +193,9 @@ turbo-frame { display: contents; }
 .workspace-detail-loading-status { display: flex; align-items: center; gap: 8px; color: var(--text); }
 .workspace-detail-empty:not([hidden]) { width: 100%; height: 100%; display: grid; place-items: center; }
 .workspace-empty-welcome { position: relative; z-index: 21; max-width: 640px; padding: 40px; text-align: center; }
-.workspace-empty-welcome h1 { margin: 0 0 12px; color: var(--text-bright); font-size: var(--text-title); line-height: 1.15; letter-spacing: -.025em; }
-.workspace-empty-welcome p { margin: 0; color: var(--text); font-size: var(--text-title); line-height: var(--leading-standard); }
-.workspace-empty-welcome strong { color: var(--text-bright); font-weight: var(--weight-semibold); }
+.workspace-empty-welcome h1 { margin: 0 0 12px; color: var(--text-bright); font: inherit; }
+.workspace-empty-welcome p { margin: 0; color: var(--text); font: inherit; }
+.workspace-empty-welcome strong { color: var(--text-bright); font-weight: inherit; }
 .fixed-shell-app .workspace-empty-onboarding-arrow { position: fixed; z-index: 20; inset: 0; width: 100vw; height: 100dvh; overflow: visible; pointer-events: none; }
 .workspace-empty-onboarding-arrow path { fill: none; stroke: var(--accent); stroke-width: 2.5; stroke-linecap: round; }
 .workspace-empty-onboarding-arrow marker path { fill: var(--accent); stroke: none; }
