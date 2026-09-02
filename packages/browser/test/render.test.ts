@@ -13,13 +13,16 @@ test("browser navigation uses the shared Button Group interface", () => {
   expect(navigation).toContain('data-action="browser-address#reload"');
 });
 
-test("workspace previews can request microphone permission without delegating it to external sites", () => {
+test("workspace previews can request browser capabilities without delegating them to external sites", () => {
   const workspaceId = `render_${crypto.randomUUID()}`;
   const view = createWorkspaceBrowserView(workspaceId);
 
   setWorkspaceBrowserTarget(workspaceId, view.key, "http://localhost:3000/");
-  expect(renderBrowserFrame(workspaceId, view)).toContain('allow="microphone"');
+  const workspacePreview = renderBrowserFrame(workspaceId, view);
+  expect(workspacePreview).toContain('allow="clipboard-write; camera; microphone; geolocation; display-capture; fullscreen; autoplay; picture-in-picture; web-share; payment; usb; serial; hid; bluetooth; midi; gamepad; accelerometer; gyroscope; magnetometer; xr-spatial-tracking"');
+  expect(workspacePreview).toContain("allowfullscreen");
+  expect(workspacePreview).not.toContain("clipboard-read");
 
   setWorkspaceBrowserTarget(workspaceId, view.key, "https://example.com/");
-  expect(renderBrowserFrame(workspaceId, view)).not.toContain('allow="microphone"');
+  expect(renderBrowserFrame(workspaceId, view)).not.toContain(" allow=");
 });

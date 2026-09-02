@@ -22,6 +22,29 @@ function renderBrowserPane(workspaceId: string, view: WorkspaceBrowserView): str
   </div>`;
 }
 
+const workspacePreviewPermissions = [
+  "clipboard-write",
+  "camera",
+  "microphone",
+  "geolocation",
+  "display-capture",
+  "fullscreen",
+  "autoplay",
+  "picture-in-picture",
+  "web-share",
+  "payment",
+  "usb",
+  "serial",
+  "hid",
+  "bluetooth",
+  "midi",
+  "gamepad",
+  "accelerometer",
+  "gyroscope",
+  "magnetometer",
+  "xr-spatial-tracking",
+].join("; ");
+
 export function renderBrowserFrame(workspaceId: string, view: WorkspaceBrowserView): string {
   const target = view.targetUrl ? new URL(view.targetUrl) : undefined;
   const workspaceLocal = target ? isWorkspaceLoopbackHost(target.hostname) : false;
@@ -29,7 +52,7 @@ export function renderBrowserFrame(workspaceId: string, view: WorkspaceBrowserVi
   const initialPath = proxy ? `${proxy.pathname}${proxy.search}${proxy.hash}` : "";
   const appKey = view.key;
   const frameControllerAttributes = target && workspaceLocal
-    ? ` data-controller="workspace-app-frame" data-workspace-app-frame-workspace-id-value="${escapeHtml(workspaceId)}" data-workspace-app-frame-app-key-value="${escapeHtml(appKey)}" data-workspace-app-frame-initial-path-value="${escapeHtml(initialPath)}" allow="microphone"`
+    ? ` data-controller="workspace-app-frame" data-workspace-app-frame-workspace-id-value="${escapeHtml(workspaceId)}" data-workspace-app-frame-app-key-value="${escapeHtml(appKey)}" data-workspace-app-frame-initial-path-value="${escapeHtml(initialPath)}" allow="${workspacePreviewPermissions}" allowfullscreen`
     : target ? ` src="${escapeHtml(target.toString())}"` : "";
   const externalLinkAttributes = target ? ` href="${escapeHtml(target.toString())}"` : ` aria-disabled="true"`;
   return `<turbo-frame id="${browserFrameId(workspaceId, appKey)}" class="browser-frame">
