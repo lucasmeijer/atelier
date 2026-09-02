@@ -111,12 +111,18 @@ function createReviewController(Controller: StimulusControllerConstructor) {
     private resident!: HTMLElement;
     private viewportMedia!: MediaQueryList;
     private readonly becameVisible = (): void => { void this.becomeVisible(); };
+    private readonly beforeStreamRender = (event: Event): void => {
+      if (!(event.target instanceof Element)) return;
+      if (event.target.getAttribute("action") !== "replace" || event.target.getAttribute("target") !== this.element.id) return;
+      this.rememberPosition();
+    };
     private readonly viewportChanged = (): void => {
       const layout = this.syncViewportLayout();
       if (this.diffStyle !== layout) void this.renderDiffLayout(layout);
     };
 
     connect(): void {
+      document.addEventListener("turbo:before-stream-render", this.beforeStreamRender);
       this.viewportMedia = window.matchMedia(phoneViewportMediaQuery);
       this.viewportMedia.addEventListener("change", this.viewportChanged);
       this.diffStyle = this.syncViewportLayout();
@@ -128,6 +134,7 @@ function createReviewController(Controller: StimulusControllerConstructor) {
     }
 
     disconnect(): void {
+      document.removeEventListener("turbo:before-stream-render", this.beforeStreamRender);
       this.viewportMedia.removeEventListener("change", this.viewportChanged);
       this.pane.removeEventListener("atelier:workspace-pane-visible", this.becameVisible);
       for (const instance of this.instances) instance.cleanUp();
