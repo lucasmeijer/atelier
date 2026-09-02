@@ -139,7 +139,11 @@ Work views can be selected, reordered, and closed inside the single contextual W
 
 ## 6. Previewing Apps and Outputs
 
-Atelier exposes workspace web servers on ports `3000` through `3010`. Start dev servers on one of those ports, then open a Browser view to preview them.
+Atelier exposes workspace web servers on ports `3000` through `3010`. Start dev servers on one of those ports, bind them to all interfaces (`0.0.0.0`), then open a Browser view to preview them.
+
+Preview requests pass through Atelier's reverse proxy, so the browser-facing `Host` header depends on the Atelier deployment. Configure development servers with strict host checks to accept requests from any hostname instead of adding the current deployment hostname to an allowlist. This keeps previews working when Atelier's hostname changes or the workspace runs on another Atelier installation.
+
+Atelier publishes preview ports only through its managed ingress. Do not use permissive host validation when the development server is exposed directly on an untrusted network.
 
 Agents can show generated files inline using:
 
