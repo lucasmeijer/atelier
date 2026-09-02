@@ -59,23 +59,30 @@
  * Markdown
  * ------------------------------------------------------------------------ */
 
-.agent-md p { margin: 0 0 8px; }
+.agent-md { line-height: 1.6; }
+.agent-md :is(h1, h2, h3, h4) { line-height: 1.3; letter-spacing: -.015em; }
+.agent-md h1 { margin: 0 0 14px; font-size: 1.75em; }
+.agent-md h2 { margin: 26px 0 10px; font-size: 1.35em; }
+.agent-md h3 { margin: 20px 0 8px; font-size: 1.1em; }
+.agent-md p { margin: 0 0 12px; }
+.agent-md p:has(+ p + hr) { margin-bottom: 6px; }
 .agent-md p:last-child { margin-bottom: 0; }
-.agent-md ul, .agent-md ol { margin: 0 0 8px 16px; }
-.agent-md .agent-table-scroll { max-width: 100%; overflow-x: auto; margin: 0 0 8px; }
+.agent-md ul, .agent-md ol { margin: 0 0 12px; padding-left: 1.35em; }
+.agent-md .agent-table-scroll { max-width: 100%; overflow-x: auto; margin: 0 0 12px; }
 .agent-md table { width: 100%; border-collapse: collapse; font-size: .95em; }
 .agent-md th, .agent-md td { padding: 6px 8px; border: 1px solid var(--line); text-align: left; vertical-align: top; }
 .agent-md th { background: var(--panel); font-weight: var(--weight-semibold); }
 .agent-md tbody tr:nth-child(even) { background: color-mix(in srgb, var(--panel) 45%, transparent); }
-.agent-md li { margin-bottom: 2px; }
+.agent-md li { margin-bottom: 3px; }
 .agent-md code { font-family: var(--font-mono); }
-.agent-code-block { position: relative; margin: 6px 0 8px; }
+.agent-md hr { margin: 24px 0; border: 0; border-top: 1px solid var(--line-strong); }
+.agent-code-block { position: relative; margin: 4px 0 14px; }
 .agent-code-block-header {
   min-height: 34px; display: flex; align-items: center; min-width: 0; overflow: hidden; padding: 6px 38px 6px 10px;
   border: 1px solid var(--line); border-bottom: 0; border-radius: var(--radius-control) var(--radius-control) 0 0;
   background: var(--panel); color: var(--text-muted); font-family: var(--font-mono); font-size: var(--text-code); text-overflow: ellipsis; white-space: nowrap;
 }
-.agent-md pre, .agent-code-block pre { background: color-mix(in srgb, var(--bg) 72%, #000 8%); color: var(--text-bright); border-radius: var(--radius-control); padding: 8px 8px; overflow-x: auto; margin: 6px 0 8px; }
+.agent-md pre, .agent-code-block pre { background: color-mix(in srgb, var(--bg) 72%, #000 8%); color: var(--text-bright); border-radius: var(--radius-control); padding: 12px; overflow-x: auto; margin: 6px 0 12px; }
 .agent-code-block pre { margin: 0; }
 .agent-code-block .agent-code-block-header + pre { border-radius: 0 0 var(--radius-control) var(--radius-control); }
 .agent-md pre code, .agent-code-block pre code { background: none; padding: 0; color: inherit; font-size: var(--text-code); line-height: var(--leading-standard); }
@@ -93,7 +100,7 @@
 .agent-tool-code .language-regex .syntax-keyword,
 .agent-tool-code .agent-bash-and { color: var(--warning); }
 .agent-tool-code .agent-bash-or { color: var(--text); }
-.agent-md blockquote { border-left: 1px solid var(--line-strong); padding-left: 8px; color: var(--text); margin: 0 0 8px; }
+.agent-md blockquote { border-left: 1px solid var(--line-strong); padding-left: 8px; color: var(--text); margin: 0 0 12px; }
 .agent-md a { color: var(--accent); text-decoration: none; }
 .agent-md a:hover { text-decoration: underline; }
 
