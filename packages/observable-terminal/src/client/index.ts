@@ -114,6 +114,11 @@ export async function createObservableTerminalViewer(options: ObservableTerminal
   });
   const terminalInput = term.element.querySelector<HTMLTextAreaElement>(".gespenst__input");
   if (terminalInput && options.mode === "fixed-readonly") terminalInput.readOnly = true;
+  if (options.mode === "fixed-readonly" && options.cols !== undefined && options.rows !== undefined) {
+    const devicePixelRatio = Math.max(1, globalThis.devicePixelRatio || 1);
+    options.host.style.width = `${term.geometry.widthPx / devicePixelRatio}px`;
+    options.host.style.height = `${term.geometry.heightPx / devicePixelRatio}px`;
+  }
 
   const ws = new WebSocket(options.websocketUrl);
   ws.binaryType = "arraybuffer";
