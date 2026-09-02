@@ -235,7 +235,7 @@
 }
 .agent-completion-menu-host[hidden] { display: none; }
 .agent-quick-launches { display: flex; flex-wrap: wrap; gap: 6px; }
-.agent-quick-launch { gap: 7px; font-family: var(--font-mono); }
+.agent-quick-launch { gap: 7px; }
 .agent-quick-launch-shortcut { color: var(--text-muted); font: inherit; }
 .agent-quick-launch-shortcut.conflict { color: var(--warning); }
 .agent-completion-menu { max-height: 260px; overflow: auto; padding: 4px; background: var(--panel); border: 1px solid var(--line-strong); border-radius: var(--radius-surface); }
