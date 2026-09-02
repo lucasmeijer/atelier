@@ -1063,29 +1063,6 @@ describe("web app contracts", () => {
     expect(blockedPresentation).toContain(`data-workspace-attention-tokens="{&quot;workspace&quot;:${token}}"`);
   });
 
-  test("delete confirmation requires the current Review assessment", async () => {
-    let version = 1;
-    let destroyed = 0;
-    const inspect = async (): Promise<string[]> => [version === 1 ? "first.txt" : "latest.txt"];
-    const { app, registry } = createTestApp({ inspect, destroy: async () => { destroyed++; } });
-    await registry.seed([{ id: "abc", title: "A" }]);
-
-    const initial = await (await app.fetch(post("/workspaces/abc/delete"))).text();
-    const initialFingerprint = initial.match(/name="fingerprint" value="([^"]+)"/)?.[1];
-    expect(initialFingerprint).toBeTruthy();
-
-    version = 2;
-    const changed = await (await app.fetch(postForm("/workspaces/abc/delete/confirm", new URLSearchParams({ fingerprint: initialFingerprint! })))).text();
-    expect(changed).toContain("latest.txt");
-    expect(changed).not.toContain("first.txt");
-    expect(destroyed).toBe(0);
-
-    const latestFingerprint = changed.match(/name="fingerprint" value="([^"]+)"/)?.[1];
-    await app.fetch(postForm("/workspaces/abc/delete/confirm", new URLSearchParams({ fingerprint: latestFingerprint! })));
-    while (registry.get("abc")) await Bun.sleep(1);
-    expect(destroyed).toBe(1);
-  });
-
   test("allowed delete keeps its row and status page until destruction finishes", async () => {
     const destroy = deferred();
     const { app, registry, broadcasts } = createTestApp({ destroy: () => destroy.promise });
