@@ -1,6 +1,6 @@
 /// <reference lib="dom" />
 
-import { type WorkspaceClientControllerConstructor, type WorkspaceClientModule } from "@atelier/shared";
+import { isWorkspacePaneVisible, type WorkspaceClientController, type WorkspaceClientControllerConstructor, type WorkspaceClientModule } from "@atelier/shared";
 import { installFileEditorControllers } from "./file-editor.ts";
 type UploadResult = { kind: "ok" | "conflict" | "error" | "cancelled"; message?: string };
 type UploadTask = { file: File; loaded: number; xhr?: XMLHttpRequest };
@@ -200,6 +200,15 @@ function createFilesController(Controller: WorkspaceClientControllerConstructor)
   };
 }
 
+interface FilesViewController extends WorkspaceClientController {
+  focusFilter(): Promise<void>;
+}
+
+type FilesTreeFrame = HTMLElement & {
+  loading: "eager" | "lazy";
+  loaded: Promise<void>;
+};
+
 function createFilesViewController(Controller: WorkspaceClientControllerConstructor): WorkspaceClientControllerConstructor {
   return class FilesViewController extends Controller {
     declare readonly element: HTMLElement;
@@ -215,15 +224,38 @@ function createFilesViewController(Controller: WorkspaceClientControllerConstruc
     selectFile(): void {
       this.collapse();
     }
+
+    async focusFilter(): Promise<void> {
+      this.expand();
+      const frame = this.element.querySelector<FilesTreeFrame>(".files-frame")!;
+      frame.loading = "eager";
+      await frame.loaded;
+      this.element.querySelector<HTMLInputElement>(".files-filter input[type='search']")!.focus();
+    }
   };
 }
 
 const filesClientModule: WorkspaceClientModule = {
   id: "files",
-  install({ application, Controller }) {
+  install({ application, Controller, hooks }) {
     application.register("files", createFilesController(Controller));
     application.register("files-view", createFilesViewController(Controller));
     installFileEditorControllers(application, Controller);
+    hooks.registerCommand({
+      id: "files.focus-filter",
+      label: "Filter files",
+      description: "Open the Files side view and focus its filter box.",
+      scope: "work-view",
+      binding: "Meta+Alt+KeyP",
+      run: async () => {
+        const workbench = [...document.querySelectorAll<HTMLElement>(".files-workbench")]
+          .find((candidate) => isWorkspacePaneVisible(candidate));
+        if (!workbench) return;
+        // SAFETY: Files workbenches are rendered with the connected files-view controller.
+        const controller = application.getControllerForElementAndIdentifier(workbench, "files-view") as FilesViewController;
+        await controller.focusFilter();
+      },
+    });
   },
 };
 
