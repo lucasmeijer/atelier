@@ -4,7 +4,8 @@ import { Icons } from "@atelier/design-system/icons";
 import { escapeHtml, turboStream, turboStreamResponse } from "@atelier/shared";
 import { hasWorkspaceGitHubToken } from "@atelier/proxy-egress";
 import { hasAvailableConfiguredAgentModel } from "@atelier/agent/server";
-import { isOnboarded, renderGitHubSetup, renderModelSetup } from "../settings/routes.ts";
+import { renderGitHubSetup } from "../settings/github.ts";
+import { renderModelSetup } from "../settings/models.ts";
 
 function response(body: string, init: ResponseInit = {}): Response {
   const headers = new Headers(init.headers);
@@ -26,7 +27,7 @@ async function renderGithubStep(): Promise<string> {
 }
 
 async function renderLlmStep(): Promise<string> {
-  return await renderModelSetup("onboarding");
+  return renderModelSetup("onboarding");
 }
 
 function renderDoneStep(items: Array<{ id: string; label: string; complete: boolean }>): string {
@@ -40,9 +41,9 @@ registerOnboardingContribution({ id: "github", label: "GitHub", order: 20, isCom
 registerOnboardingContribution({ id: "llm", label: "Models", order: 30, isComplete: hasAvailableConfiguredAgentModel, render: renderLlmStep });
 
 export async function renderOnboardingDialog(options: { includeCompleted?: boolean; resumeAfter?: string } = {}): Promise<string> {
-  if (!options.includeCompleted && !options.resumeAfter && await isOnboarded()) return "";
   const allContributions = listOnboardingContributions();
   const allCompletions = await Promise.all(allContributions.map((contribution) => contribution.isComplete()));
+  if (!options.includeCompleted && !options.resumeAfter && allCompletions.every(Boolean)) return "";
   const contributions = options.includeCompleted || options.resumeAfter ? allContributions : allContributions.filter((_, index) => !allCompletions[index]);
   if (!contributions.length) return "";
   const rendered = await Promise.all(contributions.map((contribution) => contribution.render()));
