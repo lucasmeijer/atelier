@@ -224,7 +224,7 @@ function toolbar(workspaceId: string, comments: ReviewComment[], diffLayouts: Re
 
 export function renderReviewBody(workspaceId: string, index: ReviewIndex, comments: ReviewComment[], diffLayouts: ReviewDiffLayouts = defaultReviewDiffLayouts): string {
   if (index.phase === "not-git") {
-    return `<section id="${reviewBodyId(workspaceId)}" class="review-body review-empty" data-controller="review" data-review-workspace-id-value="${escapeHtml(workspaceId)}"><div><h2>Not a git repository</h2><p>Review becomes available when this Workspace contains a Git repository.</p>${refreshForm(workspaceId, "Refresh")}</div></section>`;
+    return `<section id="${reviewBodyId(workspaceId)}" class="review-body review-empty" data-controller="review" data-review-workspace-id-value="${escapeHtml(workspaceId)}"><p>No git repo in /work yet</p></section>`;
   }
 
   const unanchoredComments = comments.filter((comment) => comment.outdated);

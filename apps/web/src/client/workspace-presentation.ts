@@ -464,7 +464,7 @@ export function createWorkspacePresentationController(
       return {
         activeAgentId: stored?.activeAgentId,
         activeWorkViewKey: stored?.activeWorkViewKey,
-        workPaneVisible: stored?.workPaneVisible ?? false,
+        workPaneVisible: stored?.workPaneVisible ?? !window.matchMedia(phoneViewportMediaQuery).matches,
         phoneDestination: stored?.phoneDestination ?? "agents",
         drawers: stored?.drawers ?? [],
       };
@@ -713,12 +713,18 @@ export function createWorkspacePresentationController(
     }
 
     private restorePreferences(): void {
-      if (this.preferredAgentWidth === undefined) {
-        const stored = Number(localStorage.getItem(agentPaneWidthStorageKey));
-        const defaultWidth = Number.parseFloat(getComputedStyle(this.element).getPropertyValue("--fixed-agent-width"));
-        this.preferredAgentWidth = Number.isFinite(stored) && stored > 0 ? stored : defaultWidth;
+      if (this.preferredAgentWidth !== undefined) {
+        this.setAgentWidth(this.preferredAgentWidth);
+        return;
       }
-      this.setAgentWidth(this.preferredAgentWidth);
+      const stored = Number(localStorage.getItem(agentPaneWidthStorageKey));
+      if (Number.isFinite(stored) && stored > 0) {
+        this.preferredAgentWidth = stored;
+        this.setAgentWidth(stored);
+        return;
+      }
+      const gap = Number.parseFloat(getComputedStyle(this.element).getPropertyValue("--fixed-shell-gap"));
+      this.setAgentWidth((this.element.clientWidth - gap) * 0.75);
     }
 
     private setAgentWidth(width: number, persist = false): void {

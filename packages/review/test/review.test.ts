@@ -209,7 +209,7 @@ describe("Review presentation", () => {
     expect(empty).toContain("/workspaces/workspace%201/review/refresh");
 
     const notGit = await renderReviewBody("workspace 1", { phase: "not-git" }, []);
-    expect(notGit).toContain("Not a git repository");
+    expect(notGit).toContain("No git repo in /work yet");
   });
 
   test("defers the server-rendered diff until its file frame is requested", async () => {
