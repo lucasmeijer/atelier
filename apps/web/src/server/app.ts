@@ -22,6 +22,7 @@ import { actionItemHtml } from "@atelier/design-system/action-item";
 import { dialogHtml } from "@atelier/design-system/dialog";
 import { destructiveConfirmationHtml } from "@atelier/design-system/destructive-confirmation";
 import { Icons } from "@atelier/design-system/icons";
+import { transientFeedbackHtml } from "@atelier/design-system/transient-feedback";
 import { discoverHostGitHubToken, hasWorkspaceGitHubToken } from "@atelier/proxy-egress";
 import {
   addProject,
@@ -399,20 +400,6 @@ ${moduleStylesHtml()}
 </html>`;
   }
 
-  const repoColorPalette = [
-    "#ef4444", "#f97316", "#f59e0b", "#eab308", "#84cc16", "#22c55e", "#10b981", "#14b8a6",
-    "#06b6d4", "#0ea5e9", "#3b82f6", "#6366f1", "#8b5cf6", "#a855f7", "#d946ef", "#ec4899",
-    "#f43f5e", "#fb7185", "#fdba74", "#facc15", "#a3e635", "#4ade80", "#34d399", "#2dd4bf",
-    "#22d3ee", "#38bdf8", "#60a5fa", "#818cf8", "#a78bfa", "#c084fc", "#e879f9", "#f472b6",
-  ];
-
-  function repoSwatch(projectId: string): string {
-    let sum = 0;
-    for (let i = 0; i < projectId.length; i++) sum += projectId.charCodeAt(i);
-    const color = repoColorPalette[sum % repoColorPalette.length]!;
-    return `<span class="repo-swatch" style="--repo-color:${color}" aria-hidden="true"></span>`;
-  }
-
   async function launchComposerSettingsFrame(selectedModel?: string): Promise<string> {
     return await renderLaunchComposerSettings({
       frameId: launchComposerSettingsFrameId,
@@ -546,6 +533,24 @@ ${moduleStylesHtml()}
     </section>`;
   }
 
+  function projectDeleteControl(projectId: string, references: WorkspaceEntry[] = []): string {
+    const confirmation = destructiveConfirmationHtml({
+      buttonHtml: '<button class="button danger" type="button">Delete project</button>',
+      confirmCaption: "Delete project",
+      cancelCaption: "Cancel",
+    });
+    const form = `<form method="post" action="/projects/${encodeURIComponent(projectId)}/delete" data-turbo="true" data-action="turbo:submit-end->dialog#submitted">${confirmation}</form>`;
+    const feedback = references.length === 1
+      ? `Delete workspace “${workspaceTitle(references[0]!)}” first`
+      : `Delete ${references.length} workspaces first`;
+    return transientFeedbackHtml({
+      element: { tag: "div", attributesHtml: `id="${domId("project_delete_control", projectId)}"` },
+      initialContent: { kind: "html", html: form },
+      feedbackContent: { kind: "html", html: `<span class="button secondary">${escapeHtml(feedback)}</span>` },
+      state: references.length > 0 ? "feedback" : "initial",
+    });
+  }
+
   async function projectEditorFrame(project: ProjectSummary): Promise<string> {
     const [environment, secrets, sshKeys] = await Promise.all([listProjectEnvironmentVariables(project.id), listProjectSecrets(project.id), listProjectSshKeys(project.id)]);
     return `<turbo-frame id="project_editor_frame" class="project-editor-frame">
@@ -553,7 +558,7 @@ ${moduleStylesHtml()}
         <div class="project-editor-detail-body">
           <section class="project-edit-section"><form class="project-edit-form" aria-label="Repository" method="post" action="/projects/${encodeURIComponent(project.id)}" data-controller="settings-autosave" data-action="change->settings-autosave#save"><label class="project-edit-field"><span>Display name</span><input class="text-field" name="name" value="${escapeHtml(project.name)}" required></label><label class="project-edit-field"><span>Repository</span><input class="text-field" name="gitUrl" value="${escapeHtml(formatProjectSpec(project))}" required></label></form></section>
           <div class="project-edit-config">${projectSecretEditor(project, secrets)}${projectSshKeyEditor(project, sshKeys)}${projectEnvironmentEditor(project, environment)}</div>
-          <section class="project-edit-danger-zone"><h3>Danger zone</h3><div class="project-edit-danger"><form method="post" action="/projects/${encodeURIComponent(project.id)}/delete" data-turbo="true" data-action="turbo:submit-end->dialog#submitted">${destructiveConfirmationHtml({ buttonHtml: '<button class="button danger" type="button">Delete project</button>', confirmCaption: "Delete project", cancelCaption: "Cancel" })}</form></div></section>
+          <section class="project-edit-danger-zone"><h3>Danger zone</h3><div class="project-edit-danger">${projectDeleteControl(project.id)}</div></section>
         </div>
       </div>
     </turbo-frame>`;
@@ -1458,26 +1463,6 @@ ${moduleStylesHtml()}
     return registry.list().filter((entry) => isGitProjectInit(entry.init) && entry.init.projectId === projectId);
   }
 
-  function deleteProjectBlockedModal(project: ProjectSummary, references: WorkspaceEntry[]): string {
-    const count = references.length;
-    return `<dialog id="delete-project-blocked-modal" class="dialog dialog--compact project-delete-blocked-modal" data-controller="modal" data-modal-auto-show-value="true">
-  <form class="dialog__form" method="dialog">
-    <header class="dialog__header project-delete-header">
-      <div class="modal-icon warning" aria-hidden="true">!</div>
-      <div>
-        <h2 class="title">Project is in use</h2>
-        <p><b>${escapeHtml(project.name)}</b> is referenced by ${count === 1 ? "1 workspace" : `${count} workspaces`}.</p>
-      </div>
-    </header>
-    <div class="dialog__body"><div class="project-delete-workspaces" aria-label="Referencing workspaces">
-      ${references.map((entry) => `<div class="project-delete-workspace">${repoSwatch(project.id)}<span class="project-delete-workspace-title">${escapeHtml(workspaceTitle(entry))}</span><span class="project-delete-workspace-id">${escapeHtml(entry.id)}</span></div>`).join("")}
-    </div>
-    <p class="project-delete-help">Delete these workspaces first, then try deleting the project again.</p></div>
-    <footer class="dialog__actions"><button class="button primary" value="close">OK</button></footer>
-  </form>
-</dialog>`;
-  }
-
   async function deleteProjectEndpoint(projectId: string, request: Request): Promise<Response> {
     const json = requestAcceptsJson(request);
     const project = await projectById(projectId);
@@ -1489,12 +1474,12 @@ ${moduleStylesHtml()}
         blocked: true,
         references: references.map((entry) => ({ workspaceId: entry.id, title: workspaceTitle(entry) })),
       });
-      return turboStreamResponse(turboUpdateStream(workspaceCommandModalHostId, deleteProjectBlockedModal(project, references)));
+      return turboStreamResponse(turboReplaceStream(domId("project_delete_control", project.id), projectDeleteControl(project.id, references)), { status: 422 });
     }
     await deleteProject(projectId);
     const paneStream = await refreshWorkspacePaneCollections();
     if (json) return jsonResponse({ deleted: true, blocked: false, project });
-    return turboStreamResponse(`${turboUpdateStream(workspaceCommandModalHostId, "")}${turboUpdateStream("project_editor_frame", "")}${paneStream}`);
+    return turboStreamResponse(`${turboUpdateStream("project_editor_frame", "")}${paneStream}`);
   }
 
   async function githubRepositorySearchEndpoint(url: URL): Promise<Response> {

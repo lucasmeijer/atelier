@@ -838,6 +838,8 @@ describe("web app contracts", () => {
       expect(sshConfiguredEditor).toContain("SHA256:");
       expect(editor).toContain("<h3>Danger zone</h3>");
       expect(editor).toContain(`action="/projects/${project.id}/delete"`);
+      expect(editor).toContain(`id="project_delete_control_${project.id}"`);
+      expect(editor).toContain('data-controller="transient-feedback"');
       expect(editor).toContain("destructive-confirmation__decision");
     });
   });
@@ -920,7 +922,6 @@ describe("web app contracts", () => {
       expect(response.status).toBe(200);
       expect((await listProjects()).projects).toEqual([]);
       expect(body).toContain('target="project_editor_frame"');
-      expect(body).toContain('target="workspace_command_modal_host"');
       expect(body).not.toContain("sample-project");
     });
   });
@@ -934,12 +935,12 @@ describe("web app contracts", () => {
       const response = await app.fetch(post(`/projects/${encodeURIComponent(project.id)}/delete`));
       const body = await response.text();
 
-      expect(response.status).toBe(200);
-      expect(body).toContain("Project is in use");
-      expect(body).toContain("A");
-      expect(body).toContain('target="workspace_command_modal_host"');
-      expect(body).not.toContain(`id="delete_project_modal_${project.id}"`);
-      expect(body).not.toContain(`action="remove" target="delete_project_modal_${project.id}"`);
+      expect(response.status).toBe(422);
+      expect(body).toContain(`action="replace" target="project_delete_control_${project.id}"`);
+      expect(body).toContain('data-transient-feedback-state-value="feedback"');
+      expect(body).toContain("Delete workspace “A” first");
+      expect(body).not.toContain("<dialog");
+      expect(body).not.toContain('target="workspace_command_modal_host"');
       expect((await listProjects()).projects).toEqual([project]);
     });
   });

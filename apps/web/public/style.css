@@ -136,17 +136,6 @@ a { color: inherit; text-decoration: none; }
 .status-spinner { display: inline-block; flex: 0 0 auto; width: 16px; height: 16px; border: 2px solid var(--line-strong); border-top-color: var(--text-muted); border-radius: 50%; animation: spin .7s linear infinite; }
 .status-spinner.sm { width: 10px; height: 10px; }
 @keyframes spin { to { transform: rotate(360deg); } }
-.modal-icon { width: 34px; height: 34px; border-radius: var(--radius-surface); display: grid; place-items: center; flex: 0 0 auto; font-weight: var(--weight-bold); }
-.modal-icon.warning { color: var(--warning); background: var(--warning-soft); }
-.project-delete-header h2 { margin: 0 0 2px; }
-.project-delete-header p { margin: 0; }
-.project-delete-blocked-modal { width: min(560px, calc(100vw - 40px)); }
-.project-delete-workspaces { display: grid; gap: 8px; max-height: min(260px, 38vh); overflow: auto; margin-top: 12px; }
-.project-delete-workspace { display: flex; align-items: center; justify-content: space-between; gap: 8px; padding: 8px 12px; border: 1px solid var(--line); border-radius: var(--radius-surface); background: var(--bg); }
-.project-delete-workspace .repo-swatch { width: 14px; height: 14px; }
-.project-delete-workspace-title { font-weight: var(--weight-semibold); min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; margin-right: auto; }
-.project-delete-workspace-id { color: var(--text-muted); font: var(--text-body)/var(--leading-none) var(--font-mono); flex: 0 0 auto; }
-.project-delete-help { margin: 12px 0 0; }
 .project-edit-field { display: grid; grid-template-columns: 140px minmax(0, 1fr); align-items: center; gap: 12px; }
 .project-configuration-list { display: grid; gap: 8px; margin-top: 16px; padding-top: 16px; }
 .project-configuration-head { display: grid; gap: 4px; }
