@@ -501,6 +501,7 @@ Comment: I don't think we need these tests`;
     expect(await page.evaluate(() => navigator.clipboard.readText())).toBe("bun run check\nbun test");
     expect(await copy.locator('[data-transient-feedback-content="feedback"] .copy-button__icon').textContent()).toBe("✓");
     expect(await copy.getAttribute("aria-label")).toBe("Copied to clipboard");
+    expect(await copy.isEnabled()).toBe(true);
     await page.waitForTimeout(2100);
     expect(await copy.locator('[data-transient-feedback-content="initial"] .copy-button__icon').textContent()).toBe("⧉");
     expect(await copy.getAttribute("aria-label")).toBe("Copy example to clipboard");

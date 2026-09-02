@@ -27,10 +27,11 @@ export class TransientFeedbackController extends Controller<HTMLElement> {
   stateValueChanged(): void {
     this.render();
     if (this.stateValue !== "feedback") return;
-    if (this.element instanceof HTMLButtonElement) this.element.disabled = true;
+    const disableDuringFeedback = this.element instanceof HTMLButtonElement && !this.element.hasAttribute("data-transient-feedback-keep-enabled");
+    if (disableDuringFeedback) this.element.disabled = true;
     if (this.timer) clearTimeout(this.timer);
     this.timer = setTimeout(() => {
-      if (this.element instanceof HTMLButtonElement) this.element.disabled = false;
+      if (disableDuringFeedback) this.element.disabled = false;
       this.stateValue = "initial";
       this.timer = undefined;
     }, feedbackDurationMs);

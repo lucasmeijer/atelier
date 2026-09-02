@@ -32,7 +32,8 @@ export function copyButtonHtml(options: CopyButtonOptions): string {
       attributesHtml: attributes,
     },
     initialContent: { kind: "html", html: `<span class="copy-button__icon" aria-hidden="true">⧉</span>${caption}` },
-    feedbackContent: { kind: "html", html: '<span class="copy-button__icon" aria-hidden="true">✓</span>' },
+    feedbackContent: { kind: "html", html: `<span class="copy-button__icon" aria-hidden="true">✓</span>${caption}` },
     state: "initial",
+    keepEnabledDuringFeedback: true,
   });
 }

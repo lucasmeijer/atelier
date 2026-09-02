@@ -34,6 +34,7 @@ export function dialogHtml(options: DialogOptions): string {
     element: { tag: "div", className: "dialog__panel" },
     headerHtml: `<h2 class="panel__title dialog__title">${options.iconHtml}<span>${escapeHtml(options.titleCaption)}</span></h2>${cancelButton}`,
     bodyHtml: options.bodyHtml,
+    bodyClassName: "dialog__body",
     footerHtml: options.footerHtml,
   });
   return `<dialog${id} class="${escapeHtml(classNames("dialog", "dialog--panel", element.className))}"${attributesHtml(element.attributesHtml)}>${panel}</dialog>`;

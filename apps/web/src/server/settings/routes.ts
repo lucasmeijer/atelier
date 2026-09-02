@@ -128,7 +128,7 @@ export function renderGitHubSetup(surface: GitHubSurface = "settings", error = "
   </div></div></div>`;
 }
 
-type ProviderSummary = { provider: string; label: string; connected: boolean; stored: boolean; methods: string[] };
+type ProviderSummary = { provider: string; label: string; connected: boolean; methods: string[] };
 
 async function providerSummaries(): Promise<ProviderSummary[]> {
   const runtime = await createPiModelRuntime();
@@ -138,7 +138,6 @@ async function providerSummaries(): Promise<ProviderSummary[]> {
       provider: provider.id,
       label: provider.name ?? provider.id,
       connected: status.configured,
-      stored: status.source === "stored",
       methods: [provider.auth.oauth && "oauth", provider.auth.apiKey?.login && "api_key"].filter((method): method is string => Boolean(method)),
     };
   }).sort((a, b) => Number(b.connected) - Number(a.connected) || a.label.localeCompare(b.label));
@@ -231,7 +230,7 @@ async function modelSetupData(): Promise<ModelSetupData> {
 }
 
 function providerState(provider: ProviderSummary): string {
-  return `<span class="model-provider-state ${domId("model_provider_state", provider.provider)}" data-connected="${provider.connected}" data-disconnectable="${provider.stored}" hidden></span>`;
+  return `<span class="model-provider-state ${domId("model_provider_state", provider.provider)}" data-connected="${provider.connected}" hidden></span>`;
 }
 
 function providerAuthLabel(method: string): string {
@@ -275,7 +274,7 @@ function configuredModelRow(model: ConfiguredAgentModel, provider: ProviderSumma
 
 function renderConfiguredModelsSection(data: ModelSetupData, surface: ModelSetupSurface): string {
   if (!data.configured.length) return "";
-  const models = managedList(data.configured.map((model) => configuredModelRow(model, data.providers.get(model.provider) ?? { provider: model.provider, label: model.provider, connected: false, stored: false, methods: [] }, surface)).join(""));
+  const models = managedList(data.configured.map((model) => configuredModelRow(model, data.providers.get(model.provider) ?? { provider: model.provider, label: model.provider, connected: false, methods: [] }, surface)).join(""));
   return `<section class="model-setup-section form-section"><h2>Configured models</h2>${models}</section>`;
 }
 
@@ -503,25 +502,30 @@ async function waitForOAuthFlowReady(flow: PendingOAuthFlow): Promise<void> {
 }
 
 function oauthStatus(kind: "pending" | "done", title: string, detail: string): string {
-  return `<ul class="status-list"><li class="status-list__item" ${kind === "done" ? 'role="checkbox" aria-checked="true"' : 'aria-busy="true"'}><span class="status-list__marker">${kind === "done" ? "✓" : ""}</span><span><strong>${escapeHtml(title)}</strong> — ${escapeHtml(detail)}</span></li></ul>`;
+  return `<ul class="status-list"><li class="status-list__item" ${kind === "done" ? 'role="checkbox" aria-checked="true"' : 'aria-busy="true"'}><span class="status-list__marker">${kind === "done" ? "✓" : ""}</span><span>${escapeHtml(title)} — ${escapeHtml(detail)}</span></li></ul>`;
 }
 
-function oauthAuthenticationAction(flow: PendingOAuthFlow, url: string, description: string, hidden = false): string {
-  return `<div class="managed-list"${hidden ? " data-oauth-device-auth hidden" : ""}><div class="managed-list__item"><div class="managed-list__content"><div class="managed-list__description">${escapeHtml(description)}</div></div><div class="managed-list__actions"><a class="button primary" href="${escapeHtml(url)}" target="_blank" rel="noreferrer">Authenticate at ${escapeHtml(flow.label)}</a></div></div></div>`;
+function oauthAuthenticationAction(flow: PendingOAuthFlow, url: string, hidden = false): string {
+  const authenticationName = flow.provider === "openai-codex" ? "OpenAI" : flow.label;
+  const action = hidden ? ' data-action="oauth-flow#showWaitingStatus"' : "";
+  return `<a class="button primary" href="${escapeHtml(url)}" target="_blank" rel="noreferrer"${hidden ? " data-oauth-device-auth hidden" : ""}${action}>Open ${escapeHtml(authenticationName)} Authentication page so I can paste the button there</a>`;
 }
 
-function oauthDeviceCodeBody(flow: PendingOAuthFlow): string {
-  const code = escapeHtml(flow.userCode ?? "");
+function oauthDeviceCodeBody(flow: PendingOAuthFlow, complete = false): string {
   const copyButton = copyButtonHtml({
-    label: "Copy code",
-    caption: "Copy code",
+    label: `Copy ${flow.userCode ?? ""} into clipboard`,
+    caption: `Copy ${flow.userCode ?? ""} into clipboard`,
+    copyText: flow.userCode ?? "",
     attributesHtml: 'data-oauth-copy-button="true" data-action="oauth-flow#showDeviceAuth"',
   });
+  const confirmationName = flow.provider === "openai-codex" ? "OpenAI-Codex" : flow.label;
+  const status = complete
+    ? `<p class="settings-oauth-waiting-status" role="status"><span class="settings-oauth-complete-marker" aria-hidden="true">✓</span><span>${escapeHtml(flow.label)} connected — You can now add models from this provider.</span></p>`
+    : `<p class="settings-oauth-waiting-status" data-oauth-waiting-status hidden><span class="status-spinner" aria-hidden="true"></span><span>This step will complete when ${escapeHtml(confirmationName)} confirms they have received the code</span></p>`;
   return `<div class="settings-oauth-card">
-    <div class="settings-oauth-code-label">Copy this code into your clipboard</div>
-    <div class="settings-oauth-code copy-region"><code data-copy-source>${code}</code>${copyButton}</div>
-    ${oauthAuthenticationAction(flow, flow.verificationUri ?? "#", "The next page will ask for your copied code.", true)}
-    ${oauthStatus("pending", `Waiting for ${flow.label} approval`, "Checking whether the code has been accepted.")}
+    ${copyButton}
+    ${oauthAuthenticationAction(flow, flow.verificationUri ?? "#", !complete)}
+    ${status}
   </div>`;
 }
 
@@ -535,13 +539,14 @@ function oauthBrowserRedirectBody(flow: PendingOAuthFlow): string {
   const promptForm = prompt ? `<form id="${oauthRedirectFormId(flow)}" class="settings-oauth-card" method="post" action="/settings/providers/${encodeURIComponent(flow.provider)}/oauth/${encodeURIComponent(flow.id)}/prompt" data-turbo="true"><label for="${inputId}">Redirect URL</label><input id="${inputId}" class="settings-input text-field" name="value" placeholder="http://localhost:1455/callback?code=abc123...&state=..." required></form>` : "";
   return `<div class="settings-oauth-card">
     <div class="settings-oauth-callout"><b>Before you start</b>${escapeHtml(flow.label)} assumes you will sign in on your local machine, but that’s not how Atelier works.<br><br>${escapeHtml(flow.label)} will redirect you to a localhost URL after you sign in. That URL will fail to load. You need to copy the long URL from the address bar, and paste it here.</div>
-    ${oauthAuthenticationAction(flow, flow.authUrl ?? "#", "Sign in, approve access, then copy the final localhost URL.")}
+    ${oauthAuthenticationAction(flow, flow.authUrl ?? "#")}
     ${promptForm}
     ${!prompt && flow.redirectSubmitted ? oauthStatus("pending", `Waiting for ${flow.label}`, "Confirming the pasted redirect URL.") : ""}
   </div>`;
 }
 
 function oauthCompleteBody(flow: PendingOAuthFlow): string {
+  if (flow.verificationUri) return oauthDeviceCodeBody(flow, true);
   return `<div class="settings-oauth-card">${oauthStatus("done", `${flow.label} connected`, "You can now add models from this provider.")}</div>`;
 }
 
@@ -556,16 +561,23 @@ function oauthFlowModal(flow: PendingOAuthFlow): string {
         : flow.authUrl
           ? oauthBrowserRedirectBody(flow)
           : `<div class="settings-oauth-card">${oauthStatus("pending", "Starting OAuth flow", "Waiting for the provider to respond.")}</div>`;
-  return `<dialog id="settings_flow_dialog" class="dialog" data-controller="oauth-flow" data-dialog-auto-show data-oauth-flow-status-url-value="/settings/providers/${encodeURIComponent(flow.provider)}/oauth/${encodeURIComponent(flow.id)}/status" data-oauth-flow-active-value="${flow.status === "pending" ? "true" : "false"}" data-oauth-flow-poll-ms-value="${pollMs}">
-    ${dialogHeader(`Sign in with ${flow.label}`, providerIcon(flow.provider, flow.label))}
-    <div class="dialog__body">${body}</div>
-    <div class="dialog__actions">
-      ${flow.status === "complete" ? `<form method="post" action="/settings/providers/${encodeURIComponent(flow.provider)}/oauth/${encodeURIComponent(flow.id)}/finish" data-turbo="true"><button class="button primary" type="submit">Done</button></form>` : ""}
-      ${flow.status === "pending" ? `<form method="post" action="/settings/providers/${encodeURIComponent(flow.provider)}/oauth/${encodeURIComponent(flow.id)}/cancel" data-turbo="true"><button class="button secondary" type="submit">Cancel</button></form>` : ""}
-      ${flow.status === "pending" && flow.authUrl && flow.prompt ? `<button class="button primary" type="submit" form="${oauthRedirectFormId(flow)}">Submit URL</button>` : ""}
-      ${flow.status === "error" ? `<form method="post" action="/settings/providers/${encodeURIComponent(flow.provider)}/oauth/${encodeURIComponent(flow.id)}/finish" data-turbo="true"><button class="button secondary" type="submit">Close</button></form>` : ""}
-    </div>
-  </dialog>`;
+  const action = flow.status === "complete"
+    ? `<form method="post" action="/settings/providers/${encodeURIComponent(flow.provider)}/oauth/${encodeURIComponent(flow.id)}/finish" data-turbo="true"><button class="button primary" type="submit">Done</button></form>`
+    : flow.status === "pending"
+      ? `<form method="post" action="/settings/providers/${encodeURIComponent(flow.provider)}/oauth/${encodeURIComponent(flow.id)}/cancel" data-turbo="true"><button class="button secondary" type="submit">Cancel</button></form>${flow.authUrl && flow.prompt ? `<button class="button primary" type="submit" form="${oauthRedirectFormId(flow)}">Submit URL</button>` : ""}`
+      : `<form method="post" action="/settings/providers/${encodeURIComponent(flow.provider)}/oauth/${encodeURIComponent(flow.id)}/finish" data-turbo="true"><button class="button secondary" type="submit">Close</button></form>`;
+  return dialogHtml({
+    element: {
+      id: "settings_flow_dialog",
+      className: "oauth-flow-dialog",
+      attributesHtml: `data-controller="oauth-flow" data-dialog-auto-show data-oauth-flow-status-url-value="/settings/providers/${encodeURIComponent(flow.provider)}/oauth/${encodeURIComponent(flow.id)}/status" data-oauth-flow-active-value="${flow.status === "pending" ? "true" : "false"}" data-oauth-flow-poll-ms-value="${pollMs}"`,
+    },
+    iconHtml: providerIcon(flow.provider, flow.label),
+    titleCaption: `Sign in with ${flow.label}`,
+    bodyHtml: body,
+    footerHtml: action,
+    omitCancelButton: true,
+  });
 }
 
 function modelSetupWorkingState(working: boolean): string {

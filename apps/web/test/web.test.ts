@@ -248,6 +248,7 @@ describe("web app contracts", () => {
       expect(body).toContain('action="/settings/models/add"');
       expect(body).toContain('action="/settings/models/remove"');
       expect(body).toContain("Disconnect</button>");
+      expect(body).not.toContain("data-disconnectable");
       expect(body).toContain("Remove model");
       expect(body).toContain("Add API key");
       expect(body).toContain("Git user name");

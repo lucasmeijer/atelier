@@ -15,6 +15,8 @@ export interface TransientFeedbackOptions {
   initialContent: TransientFeedbackContent;
   feedbackContent: TransientFeedbackContent;
   state: "initial" | "feedback";
+  /** Keeps button controls interactive while their feedback content is visible. */
+  keepEnabledDuringFeedback?: boolean;
 }
 
 /**
@@ -27,7 +29,8 @@ export function transientFeedbackHtml(options: TransientFeedbackOptions): string
   const contentTag = element.tag === "button" ? "span" : "div";
   const initialHidden = options.state === "feedback" ? " hidden" : "";
   const feedbackHidden = options.state === "initial" ? " hidden" : "";
-  const disabled = element.tag === "button" && options.state === "feedback" ? " disabled" : "";
+  const keepEnabled = options.keepEnabledDuringFeedback ? " data-transient-feedback-keep-enabled" : "";
+  const disabled = element.tag === "button" && options.state === "feedback" && !options.keepEnabledDuringFeedback ? " disabled" : "";
 
-  return `<${element.tag} class="${className}" data-controller="transient-feedback" data-transient-feedback-state-value="${options.state}"${attributesHtml(element.attributesHtml)}${disabled}><${contentTag} class="transient-feedback__content" data-transient-feedback-content="initial"${initialHidden}>${htmlContent(options.initialContent)}</${contentTag}><${contentTag} class="transient-feedback__content" data-transient-feedback-content="feedback" role="status"${feedbackHidden}>${htmlContent(options.feedbackContent)}</${contentTag}></${element.tag}>`;
+  return `<${element.tag} class="${className}" data-controller="transient-feedback" data-transient-feedback-state-value="${options.state}"${keepEnabled}${attributesHtml(element.attributesHtml)}${disabled}><${contentTag} class="transient-feedback__content" data-transient-feedback-content="initial"${initialHidden}>${htmlContent(options.initialContent)}</${contentTag}><${contentTag} class="transient-feedback__content" data-transient-feedback-content="feedback" role="status"${feedbackHidden}>${htmlContent(options.feedbackContent)}</${contentTag}></${element.tag}>`;
 }

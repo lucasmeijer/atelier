@@ -2041,9 +2041,10 @@ class OAuthFlowController extends Controller {
     this.polling = false;
     if (!response?.ok) return;
     const codeCopied = this.element.dataset.oauthCodeCopied === "true";
+    const authenticationStarted = this.element.dataset.oauthAuthenticationStarted === "true";
     const html = await response.text();
     window.Turbo?.renderStreamMessage(html);
-    if (codeCopied) window.requestAnimationFrame(() => this.restoreDeviceCodeState());
+    if (codeCopied || authenticationStarted) window.requestAnimationFrame(() => this.restoreDeviceCodeState(codeCopied, authenticationStarted));
   }
 
   showDeviceAuth(): void {
@@ -2051,14 +2052,25 @@ class OAuthFlowController extends Controller {
     this.element.querySelector<HTMLElement>("[data-oauth-device-auth]")!.hidden = false;
   }
 
-  private restoreDeviceCodeState(): void {
+  showWaitingStatus(): void {
+    this.element.dataset.oauthAuthenticationStarted = "true";
+    this.element.querySelector<HTMLElement>("[data-oauth-waiting-status]")!.hidden = false;
+  }
+
+  private restoreDeviceCodeState(codeCopied: boolean, authenticationStarted: boolean): void {
     const dialog = document.querySelector<HTMLElement>("#settings_flow_dialog")!;
     const deviceAuth = dialog.querySelector<HTMLElement>("[data-oauth-device-auth]");
     if (!deviceAuth) return;
-    dialog.dataset.oauthCodeCopied = "true";
-    deviceAuth.hidden = false;
-    const copyButton = dialog.querySelector<HTMLButtonElement>('[data-oauth-copy-button="true"]')!;
-    showTransientFeedback(copyButton);
+    if (codeCopied) {
+      dialog.dataset.oauthCodeCopied = "true";
+      deviceAuth.hidden = false;
+      const copyButton = dialog.querySelector<HTMLButtonElement>('[data-oauth-copy-button="true"]')!;
+      showTransientFeedback(copyButton);
+    }
+    if (authenticationStarted) {
+      dialog.dataset.oauthAuthenticationStarted = "true";
+      dialog.querySelector<HTMLElement>("[data-oauth-waiting-status]")!.hidden = false;
+    }
   }
 }
 
