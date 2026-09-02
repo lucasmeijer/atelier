@@ -45,6 +45,29 @@ const maxDisplayAnsiBytes = 200_000;
 const tmuxHistoryLimit = observableTerminalHistoryLimit;
 const pollIntervalMs = 350;
 
+/**
+ * Color conventions understood by the most common build-tool ecosystems.
+ *
+ * TERM/COLORTERM advertise terminal capabilities. CLICOLOR is the general
+ * opt-in convention and CLICOLOR_FORCE makes it unconditional. FORCE_COLOR is
+ * the equivalent convention used broadly by JavaScript and Rust CLIs. The
+ * remaining variables cover CMake/Make, Cargo/Rust loggers, Python tools, and
+ * .NET respectively.
+ */
+export const forcedColorEnvironment = {
+  TERM: "xterm-256color",
+  COLORTERM: "truecolor",
+  CLICOLOR: 1,
+  CLICOLOR_FORCE: 1,
+  FORCE_COLOR: 1,
+  COLOR: 1,
+  CMAKE_COLOR_DIAGNOSTICS: "ON",
+  CARGO_TERM_COLOR: "always",
+  RUST_LOG_STYLE: "always",
+  PY_COLORS: 1,
+  DOTNET_SYSTEM_CONSOLE_ALLOW_ANSI_COLOR_REDIRECTION: 1,
+} as const;
+
 type ExecWorkspaceShell = typeof execWorkspaceShell;
 
 interface LimitedModelLines {
@@ -101,11 +124,11 @@ export function createTmuxBashTool(
       // UI outputs are both captured from tmux's rendered scrollback and active
       // screen: plain capture for the model, ANSI-preserving capture for UI.
       const guards = shellExport({ EDITOR: "true", GIT_EDITOR: "true", VISUAL: "true", GIT_PAGER: "cat", PAGER: "cat", GIT_TERMINAL_PROMPT: 0 });
-      // Encourage color in tools that otherwise default to `auto` detection.
-      // COLOR is used by CMake-generated Makefiles, FORCE_COLOR by many JS/Rust
-      // tools, CLICOLOR_FORCE by BSD-ish tools, and NINJA_STATUS gives direct
-      // ninja invocations a colored progress prefix.
-      const colorEnv = shellExport({ TERM: "xterm-256color", COLORTERM: "truecolor", COLUMNS: agentTermCols, LINES: agentTermRows, CLICOLOR_FORCE: 1, FORCE_COLOR: 1, COLOR: 1 });
+      // Encourage color even when a tool second-guesses the PTY. NO_COLOR must
+      // be removed because it is the standard opt-out and may be inherited from
+      // the Atelier process. NINJA_STATUS has no boolean color switch, so give
+      // direct Ninja invocations an explicitly colored progress prefix.
+      const colorEnv = `unset NO_COLOR; ${shellExport({ ...forcedColorEnvironment, COLUMNS: agentTermCols, LINES: agentTermRows })}`;
       const ninjaStatus = "export NINJA_STATUS=$(printf '\\033[36m[%%f/%%t %%p]\\033[0m ')";
       // Force the tmux pane's tty size immediately before the command starts. If
       // the size is briefly reported as very narrow, carriage-return progress UIs

@@ -1,6 +1,6 @@
 import { beforeEach, describe, expect, mock, test } from "bun:test";
 
-import { agentTermCols, agentTermRows, createTmuxBashTool, stripTmuxPaneFraming } from "../../src/server/bash-tmux.ts";
+import { agentTermCols, agentTermRows, createTmuxBashTool, forcedColorEnvironment, stripTmuxPaneFraming } from "../../src/server/bash-tmux.ts";
 
 const success = { stdout: "", stderr: "", exitCode: 0, durationMs: 0 };
 
@@ -46,6 +46,19 @@ describe("tmux bash tool", () => {
     expect(command).toContain(`COLUMNS='\\''${agentTermCols}'\\''`);
     expect(command).toContain(`LINES='\\''${agentTermRows}'\\''`);
     expect(command).not.toContain("script -qefc");
+  });
+
+  test("enables the common color environment conventions", async () => {
+    await executeBash({ command: "run-build" });
+
+    const createCall = execWorkspaceShell.mock.calls.find(([, command]) => command.includes("new-session"));
+    expect(createCall).toBeDefined();
+    const command = createCall![1];
+    expect(command).toContain("unset NO_COLOR");
+    for (const [name, value] of Object.entries(forcedColorEnvironment)) {
+      expect(command).toContain(`${name}='\\''${value}'\\''`);
+    }
+    expect(command).toContain("NINJA_STATUS=$(printf");
   });
 
   test("returns plain model output from rendered pane while storing colored pane output", async () => {
