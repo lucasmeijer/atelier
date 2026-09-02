@@ -1,5 +1,8 @@
 @import "/icons.css";
+@import "/floating-surface.css";
+@import "/autocomplete.css";
 @import "/panel.css";
+@import "/popup.css";
 @import "/dialog.css";
 @import "/action-item.css";
 @import "/perimeter-button.css";
@@ -82,7 +85,7 @@
   --syntax-constant: #0550ae;
   --syntax-punctuation: var(--text-bright);
   --shadow: 0 14px 44px rgba(20, 30, 60, .13);
-  --popup-shadow: 0 14px 44px rgba(20, 30, 60, .039);
+  --floating-surface-shadow: 0 14px 44px rgba(20, 30, 60, .039);
 
   /* State colors are derived consistently for every theme. */
   --text-faint: color-mix(in srgb, var(--text-muted) 62%, var(--bg));
@@ -133,7 +136,7 @@
   --syntax-constant: #e0b07a;
   --syntax-punctuation: var(--text-bright);
   --shadow: 0 22px 56px rgba(0, 0, 0, .45);
-  --popup-shadow: 0 22px 56px rgba(0, 0, 0, .135);
+  --floating-surface-shadow: 0 22px 56px rgba(0, 0, 0, .135);
 }
 
 [data-theme="tokyo-night"] {
@@ -164,7 +167,7 @@
   --syntax-constant: #ff9e64;
   --syntax-punctuation: var(--text-bright);
   --shadow: 0 22px 56px rgba(0, 0, 0, .5);
-  --popup-shadow: 0 22px 56px rgba(0, 0, 0, .15);
+  --floating-surface-shadow: 0 22px 56px rgba(0, 0, 0, .15);
 }
 
 [data-theme="midnight"] {
@@ -195,7 +198,7 @@
   --syntax-constant: #79c0ff;
   --syntax-punctuation: var(--text-bright);
   --shadow: 0 22px 56px rgba(0, 0, 0, .6);
-  --popup-shadow: 0 22px 56px rgba(0, 0, 0, .18);
+  --floating-surface-shadow: 0 22px 56px rgba(0, 0, 0, .18);
 }
 
 [data-theme="nord"] {
@@ -226,7 +229,7 @@
   --syntax-constant: #b48ead;
   --syntax-punctuation: var(--text-bright);
   --shadow: 0 22px 56px rgba(0, 0, 0, .45);
-  --popup-shadow: 0 22px 56px rgba(0, 0, 0, .135);
+  --floating-surface-shadow: 0 22px 56px rgba(0, 0, 0, .135);
 }
 
 /* Shiki fragments emit stable role classes so existing markup recolors instantly. */
@@ -401,59 +404,6 @@
 .button-group.vertical > form,
 .button-group.vertical > .button,
 .button-group.vertical > form > .button { width: 100%; }
-.popup-select-native { display: none; }
-.popup-select-trigger::after { content: "▾"; color: var(--text-muted); font-size: var(--text-body); }
-
-/* Floating menus present compact choices near a disclosure control. Anchored menus choose
- * an alternate side when their preferred placement would cross the viewport edge. */
-.popup-menu-anchor { anchor-scope: --popup-menu-anchor; }
-.popup-menu-trigger { anchor-name: --popup-menu-anchor; }
-.popup-menu.popup-menu-anchored {
-  position-anchor: --popup-menu-anchor;
-  position-area: block-end span-inline-end;
-  position-try-fallbacks: flip-block, flip-inline, flip-block flip-inline;
-  margin-block-start: 8px;
-}
-.popup-menu.popup-menu-anchored[data-popup-select-menu] { position-anchor: auto; }
-.popup-menu.popup-menu-anchored.opens-above {
-  position-area: block-start span-inline-end;
-  margin-block: 0 8px;
-}
-
-.popup-menu {
-  position: fixed;
-  z-index: 1000;
-  inset: auto;
-  box-sizing: border-box;
-  width: max-content;
-  max-width: min(340px, calc(100vw - 16px));
-  max-height: min(420px, calc(100vh - 16px));
-  overflow-y: auto;
-  margin: 0;
-  padding: 6px;
-  border: 1px solid var(--line-strong);
-  border-radius: var(--radius-surface);
-  background: var(--elev);
-  color: var(--text-bright);
-  box-shadow: var(--popup-shadow);
-  font: var(--text-body)/var(--leading-standard) var(--font-sans);
-}
-.popup-menu[hidden], .popup-menu[popover]:not(:popover-open) { display: none; }
-.popup-menu .action-item { border-radius: var(--radius-round); font-weight: 400; }
-.popup-menu .action-item.is-danger { color: var(--danger); }
-.popup-menu .action-item.is-danger:not(:disabled):not([aria-disabled="true"]):hover,
-.popup-menu .action-item.is-danger:not(:disabled):not([aria-disabled="true"]):focus-visible { background: var(--danger-soft); color: var(--danger); }
-.popup-menu__icon { width: 16px; height: 16px; flex: 0 0 auto; display: grid; place-items: center; color: var(--text); }
-.popup-menu__icon svg { width: 16px; height: 16px; fill: none; stroke: currentColor; stroke-width: 1.8; stroke-linecap: round; stroke-linejoin: round; }
-.popup-menu__description { display: block; overflow: hidden; color: var(--text-muted); font-size: var(--text-body); font-weight: var(--weight-medium); text-overflow: ellipsis; white-space: nowrap; }
-.popup-menu__meta { flex: 0 0 auto; color: var(--text-muted); font-size: var(--text-body); font-weight: var(--weight-medium); white-space: nowrap; }
-.popup-menu__separator { height: 1px; margin: 4px 8px; border: 0; background: var(--line); }
-.popup-menu__heading { margin: 8px 8px 4px; color: var(--text-muted); font-size: var(--text-body); font-weight: var(--weight-bold); letter-spacing: .06em; text-transform: uppercase; }
-
-/* A popup menu can fill its anchor's width for type-ahead results. */
-.popup-menu.autocomplete-menu { position: static; width: 100%; max-width: none; max-height: min(360px, 48vh); }
-.autocomplete-empty { display: flex; min-height: 58px; align-items: center; justify-content: center; color: var(--text-muted); text-align: center; }
-
 /* Text entry controls share one visual contract across single- and multi-line input. */
 .text-field,
 .textarea {

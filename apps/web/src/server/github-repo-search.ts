@@ -1,5 +1,6 @@
 import { createHash } from "node:crypto";
 import { actionItemHtml } from "@atelier/design-system/action-item";
+import { autocompleteHtml } from "@atelier/design-system/autocomplete";
 import { discoverHostGitHubToken } from "@atelier/proxy-egress";
 import { escapeHtml, looksLikeProjectSpec } from "@atelier/shared";
 import { Type } from "typebox";
@@ -99,13 +100,13 @@ export async function searchGitHubRepositories(query: string): Promise<GitHubRep
 
 export function renderGitHubRepositorySearchRateLimitMenu(error: GitHubRepositorySearchRateLimitError): string {
   const wait = error.retryAfterSeconds ? ` Try again in ${error.retryAfterSeconds} seconds.` : " Try again in a few minutes.";
-  return `<div class="popup-menu autocomplete-menu autocomplete-empty">GitHub search is rate limited.${escapeHtml(wait)}</div>`;
+  return autocompleteHtml({ kind: "message", content: { kind: "text", text: `GitHub search is rate limited.${wait}` } });
 }
 
 export function renderGitHubRepositorySearchMenu(repositories: readonly GitHubRepositorySearchResult[], query: string): string {
   if (!shouldSearchGitHubRepositories(query)) return "";
-  if (repositories.length === 0) return `<div class="popup-menu autocomplete-menu autocomplete-empty">No GitHub repositories</div>`;
-  return `<div class="popup-menu autocomplete-menu action-list" role="listbox" aria-label="GitHub repositories">${repositories.map((repo, index) => {
+  if (repositories.length === 0) return autocompleteHtml({ kind: "message", content: { kind: "text", text: "No GitHub repositories" } });
+  return autocompleteHtml({ kind: "results", label: "GitHub repositories", contentHtml: repositories.map((repo, index) => {
     const description = repo.description || repo.htmlUrl;
     const visibility = repo.private ? " — Private repository" : "";
     return actionItemHtml({
@@ -117,5 +118,5 @@ export function renderGitHubRepositorySearchMenu(repositories: readonly GitHubRe
         attributesHtml: `type="button" role="option" aria-selected="${index === 0 ? "true" : "false"}" data-git-url="${escapeHtml(repo.cloneUrl)}" title="${escapeHtml(repo.htmlUrl)}"`,
       },
     });
-  }).join("")}</div>`;
+  }).join("") });
 }

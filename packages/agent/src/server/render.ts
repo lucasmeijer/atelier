@@ -2,6 +2,7 @@ import { actionItemHtml, type ActionItemLabel } from "@atelier/design-system/act
 import { activityButtonHtml } from "@atelier/design-system/activity-button";
 import { copyButtonHtml } from "@atelier/design-system/copy-button";
 import { Icons } from "@atelier/design-system/icons";
+import { popupMenuHtml } from "@atelier/design-system/popup";
 import { toggleHtml } from "@atelier/design-system/toggle";
 import { renderTranscriptionComposerControl, transcriptionComposerController } from "@atelier/transcription/server";
 import { isJsonObject, type JsonObject, type JsonValue } from "@atelier/core";
@@ -13,6 +14,7 @@ import { parseDiffFromFile, processPatch, type FileDiffMetadata } from "@pierre/
 import { embeddedBashCommand, formatBashCommandForDisplay, highlightedBashCommandHtml } from "./embedded-code.ts";
 import { renderMarkdown, renderStreamingMarkdownSnapshot } from "@atelier/markdown";
 import { highlightCodeHtmlForPath } from "@atelier/syntax";
+import { providerBrandIconHtml } from "@atelier/shared";
 import { domId, escapeHtml } from "./html.ts";
 import type { WorkspaceAgentConversationInfo } from "./session-store.ts";
 import { agentAttachmentDraftId, listStagedAttachments, type StagedAttachment } from "./attachment-drafts.ts";
@@ -282,13 +284,10 @@ async function renderSharedComposer(options: SharedComposerRenderOptions): Promi
       </div>`;
 }
 
-async function renderLaunchComposerModelOptions(selectedModel?: string): Promise<string> {
+async function launchComposerModels(selectedModel?: string): Promise<AgentModelOption[]> {
   const selected = await resolveNewWorkspaceAgentModel(selectedModel);
   const models = await configuredModelOptionViews(selected);
-  return models.map((model, index) => {
-    const value = modelRefValue(model);
-    return `<option value="${escapeHtml(value)}" data-provider="${escapeHtml(model.provider)}"${(selected ? value === modelRefValue(selected) : index === 0) ? " selected" : ""}${model.available ? "" : ` disabled data-unavailable-reason="${escapeHtml(model.unavailableReason ?? "Unavailable")}"`}>${escapeHtml(model.name)}</option>`;
-  }).join("");
+  return models.map((model, index) => ({ ...model, selected: selected ? model.selected : index === 0 }));
 }
 
 async function launchComposerSettingsState(selectedModel?: string): Promise<{ selected: ModelRef | undefined; selectedThinkingLevel: string | undefined; thinkingLevels: string[] }> {
@@ -303,27 +302,48 @@ async function launchComposerSettingsState(selectedModel?: string): Promise<{ se
 interface SharedComposerSelectionsOptions {
   modelFormId: string;
   thinkingFormId: string;
-  modelOptions: string;
+  models: AgentModelOption[];
   thinkingLevels: string[];
   selectedThinkingLevel: string;
-  autosubmitModel?: boolean;
   autosubmitThinking?: boolean;
 }
 
-function composerSelectionField(formId: string, autosubmit: boolean | undefined, control: string): string {
-  const autosubmitAttrs = autosubmit
-    ? ` data-controller="composer-selection-autosubmit" data-composer-selection-autosubmit-form-id-value="${escapeHtml(formId)}" data-action="change->composer-selection-autosubmit#submit"`
-    : "";
-  return `<span class="composer-selection-field"${autosubmitAttrs}>${control}</span>`;
+function modelLabelHtml(model: Pick<AgentModelOption, "provider" | "name">): string {
+  return `${providerBrandIconHtml(model.provider, model.name, "brand-icon agent-model-provider-icon")}<span>${escapeHtml(model.name)}</span>`;
+}
+
+function renderModelSelection(formId: string, models: AgentModelOption[]): string {
+  const selected = models.find((model) => model.selected) ?? models[0];
+  const hasAvailableModel = models.some((model) => model.available !== false);
+  const menuId = `${formId}_popup`;
+  const setupAction = 'data-controller="agent-model-setup" data-action="click->agent-model-setup#open"';
+  const triggerContent = hasAvailableModel && selected ? modelLabelHtml(selected) : "Configure models";
+  const directSetup = hasAvailableModel ? "" : ` ${setupAction}`;
+  const trigger = `<button class="composer-selection-button agent-model-button popup-menu-trigger" type="button" title="Model" aria-label="Model${selected ? `: ${escapeHtml(selected.name)}` : ""}" aria-haspopup="menu" aria-expanded="false" aria-controls="${escapeHtml(menuId)}" popovertarget="${escapeHtml(menuId)}"${directSetup}>${triggerContent}</button>`;
+  const configure = actionItemHtml({ kind: "single", label: { kind: "text", text: "Configure models" }, element: { tag: "button", attributesHtml: `type="button" role="menuitem" ${setupAction}` } });
+  const modelItems = models.map((model) => {
+    const description = model.unavailableReason && model.unavailableReason !== "Provider disconnected"
+      ? `<span class="popup-menu__description">${escapeHtml(model.unavailableReason)}</span>`
+      : "";
+    return actionItemHtml({
+      kind: "single",
+      label: { kind: "html", html: `${modelLabelHtml(model)}${description}`, className: "agent-model-option-label" },
+      element: { tag: "button", attributesHtml: `type="submit" name="model" value="${escapeHtml(`${model.provider}::${model.id}`)}" form="${escapeHtml(formId)}" role="menuitemradio" aria-checked="${model.selected}"${model.available === false ? " disabled" : ""}` },
+    });
+  }).join("");
+  const menu = popupMenuHtml({ id: menuId, label: "Model", placement: "above", contentHtml: `${configure}<hr class="popup-menu__separator">${modelItems}` });
+  return `<span class="composer-selection-field popup-menu-anchor">${trigger}${menu}</span>`;
 }
 
 function renderSharedComposerSelections(options: SharedComposerSelectionsOptions): string {
-  const thinkingSelection = options.thinkingLevels.length > 0
-    ? composerSelectionField(options.thinkingFormId, options.autosubmitThinking, `<select class="composer-selection popup-select" data-popup-select-trigger-class="composer-selection-button" data-popup-select-opens-above="true" name="level" form="${escapeHtml(options.thinkingFormId)}" title="Thinking level">${options.thinkingLevels.map((level) => `<option value="${escapeHtml(level)}"${level === options.selectedThinkingLevel ? " selected" : ""}>${escapeHtml(level)}</option>`).join("")}</select>`)
+  const autosubmit = options.autosubmitThinking
+    ? ` data-controller="composer-selection-autosubmit" data-composer-selection-autosubmit-form-id-value="${escapeHtml(options.thinkingFormId)}" data-action="change->composer-selection-autosubmit#submit"`
     : "";
-  const modelSelection = composerSelectionField(options.modelFormId, options.autosubmitModel, `<select class="composer-selection" data-controller="agent-model-menu" name="model" form="${escapeHtml(options.modelFormId)}" title="Model">${options.modelOptions}</select>`);
+  const thinkingSelection = options.thinkingLevels.length > 0
+    ? `<span class="composer-selection-field"${autosubmit}><select class="composer-selection popup-select" data-popup-placement="above" name="level" form="${escapeHtml(options.thinkingFormId)}" title="Thinking level">${options.thinkingLevels.map((level) => `<option value="${escapeHtml(level)}"${level === options.selectedThinkingLevel ? " selected" : ""}>${escapeHtml(level)}</option>`).join("")}</select></span>`
+    : "";
   return `<span class="composer-selections">
-${modelSelection}
+${renderModelSelection(options.modelFormId, options.models)}
 ${thinkingSelection}
 </span>`;
 }
@@ -337,10 +357,9 @@ export async function renderLaunchComposerSettings(options: { frameId: string; f
 ${renderSharedComposerSelections({
     modelFormId,
     thinkingFormId: options.formId,
-    modelOptions: await renderLaunchComposerModelOptions(selectedValue || undefined),
+    models: await launchComposerModels(selectedValue || undefined),
     thinkingLevels,
     selectedThinkingLevel: selectedThinkingLevel ?? "",
-    autosubmitModel: true,
   })}</turbo-frame>`;
 }
 
@@ -384,10 +403,7 @@ export function renderAgentPaneComposerFooter(ctx: AgentRenderContext, stats: Ag
   const meter = percent === null
     ? ""
     : `<span class="agent-stat" title="Context window used"><span class="agent-ctx-meter"><i style="width:${Math.min(100, Math.max(0, percent)).toFixed(0)}%"></i></span><b>${percent.toFixed(0)}%</b></span>`;
-  const modelOptions = stats.models.map((model) => {
-    const available = model.available !== false;
-    return `<option value="${escapeHtml(`${model.provider}::${model.id}`)}" data-provider="${escapeHtml(model.provider)}"${model.selected ? " selected" : ""}${available ? "" : ` disabled data-unavailable-reason="${escapeHtml(model.unavailableReason ?? "Unavailable")}"`}>${escapeHtml(model.name)}</option>`;
-  }).join("") || `<option>${escapeHtml(stats.modelName ?? "no model")}</option>`;
+  const models = stats.models.length > 0 ? stats.models : [{ provider: "", id: "", name: stats.modelName ?? "no model", selected: true, available: false }];
   const formPrefix = `${ids.stats(ctx)}_selection`;
   const modelFormId = `${formPrefix}_model`;
   const thinkingFormId = `${formPrefix}_thinking`;
@@ -402,10 +418,9 @@ ${selectionForms}
 ${renderSharedComposerSelections({
     modelFormId,
     thinkingFormId,
-    modelOptions,
+    models,
     thinkingLevels: stats.thinkingLevels,
     selectedThinkingLevel: stats.thinkingLevel,
-    autosubmitModel: true,
     autosubmitThinking: true,
   })}`;
 }

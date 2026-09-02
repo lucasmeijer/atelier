@@ -199,8 +199,8 @@
         <p>Shipped foundations, components, and patterns from <code>design-system.css</code>. Change the theme while the preview selector controls the responsive platform.</p>
         <div class="catalogue-toolbar">
           <div class="catalogue-field popup-menu-anchor"><span>Theme</span>
-            <button class="button secondary catalogue-theme-trigger popup-menu-trigger" type="button" aria-haspopup="menu" aria-expanded="false" aria-controls="catalogue-theme-popup"><span data-catalogue-theme-value>Nord</span><svg class="disclosure-icon" aria-hidden="true" viewBox="0 0 24 24"><path d="m6 9 6 6 6-6"/></svg></button>
-            <div class="popup-menu action-list popup-menu-anchored catalogue-theme-popup" id="catalogue-theme-popup" role="menu" aria-label="Catalogue theme" hidden>
+            <button class="button secondary catalogue-theme-trigger popup-menu-trigger" type="button" aria-haspopup="menu" aria-expanded="false" aria-controls="catalogue-theme-popup" popovertarget="catalogue-theme-popup"><span data-catalogue-theme-value>Nord</span><svg class="disclosure-icon" aria-hidden="true" viewBox="0 0 24 24"><path d="m6 9 6 6 6-6"/></svg></button>
+            <div class="floating-surface popup-menu action-list popup-menu-anchored catalogue-theme-popup" id="catalogue-theme-popup" role="menu" aria-label="Catalogue theme" popover="auto">
               <button class="action-item action-item__primary" type="button" role="menuitemradio" aria-checked="false" data-theme-value=""><span class="action-item__label"><span class="action-item__label-text">Daylight</span></span></button>
               <button class="action-item action-item__primary" type="button" role="menuitemradio" aria-checked="false" data-theme-value="cappuccino"><span class="action-item__label"><span class="action-item__label-text">Cappuccino</span></span></button>
               <button class="action-item action-item__primary" type="button" role="menuitemradio" aria-checked="false" data-theme-value="tokyo-night"><span class="action-item__label"><span class="action-item__label-text">Tokyo Night</span></span></button>
@@ -623,9 +623,9 @@ bun test</pre></div>
             <p>A full-width anchored result surface for type-ahead choices. Results are standard, single-line Action Items.</p>
           </div>
           <article class="catalogue-card wide">
-            <div class="catalogue-card-title"><span>Composer slash commands</span><code>.popup-menu.autocomplete-menu + Action Items</code></div>
+            <div class="catalogue-card-title"><span>Composer slash commands</span><code>autocompleteHtml() + Action Items</code></div>
             <div class="catalogue-demo">
-              <div class="popup-menu autocomplete-menu action-list catalogue-autocomplete" role="listbox" aria-label="Slash commands">
+              <div class="floating-surface autocomplete action-list catalogue-autocomplete" role="listbox" aria-label="Slash commands">
                 <button class="action-item action-item__primary" type="button" role="option" aria-selected="true">
                   <span class="action-item__label"><span class="action-item__label-text">/review [focus] — Review the current changes for correctness and maintainability.</span></span>
                 </button>
@@ -645,9 +645,9 @@ bun test</pre></div>
           </div>
           <div class="catalogue-grid">
             <article class="catalogue-card wide">
-              <div class="catalogue-card-title"><span>Composer model selection</span><code>.popup-menu</code></div>
+              <div class="catalogue-card-title"><span>Composer model selection</span><code>popupMenuHtml()</code></div>
               <div class="catalogue-demo popup-demo popup-menu-anchor">
-                <div class="popup-menu action-list popup-menu-anchored opens-above" id="catalogue-popup" role="menu" aria-label="Choose a model">
+                <div class="floating-surface popup-menu action-list popup-menu-anchored opens-above" id="catalogue-popup" role="menu" aria-label="Choose a model">
                   <button class="action-item action-item__primary" type="button" role="menuitem"><span class="action-item__label"><span class="action-item__label-text">Configure models</span></span></button>
                   <hr class="popup-menu__separator">
                   <button class="action-item action-item__primary" type="button" role="menuitemradio" aria-checked="false">
@@ -671,7 +671,7 @@ bun test</pre></div>
               <div class="catalogue-card-title"><span>Simple theme picker</span><code>3 action items</code></div>
               <div class="catalogue-demo simple-popup-demo">
                 <div class="simple-popup-stack popup-menu-anchor">
-                  <div class="popup-menu action-list popup-menu-anchored opens-above" id="simple-theme-popup" role="menu" aria-label="Choose a theme">
+                  <div class="floating-surface popup-menu action-list popup-menu-anchored opens-above" id="simple-theme-popup" role="menu" aria-label="Choose a theme">
                     <button class="action-item action-item__primary" type="button" role="menuitemradio" aria-checked="false" data-theme-value=""><span class="action-item__label"><span class="action-item__label-text">Daylight</span></span></button>
                     <button class="action-item action-item__primary" type="button" role="menuitemradio" aria-checked="false" data-theme-value="tokyo-night"><span class="action-item__label"><span class="action-item__label-text">Tokyo Night</span></span></button>
                     <button class="action-item action-item__primary" type="button" role="menuitemradio" aria-checked="true" data-theme-value="nord"><span class="action-item__label"><span class="action-item__label-text">Nord</span></span></button>
@@ -684,7 +684,7 @@ bun test</pre></div>
             <article class="catalogue-card">
               <div class="catalogue-card-title"><span>Action states</span><code>semantic attributes</code></div>
               <div class="popup-state-grid">
-                <div class="popup-menu action-list" role="menu" aria-label="Popup action states">
+                <div class="floating-surface popup-menu action-list" role="menu" aria-label="Popup action states">
                   <button class="action-item action-item__primary" type="button" role="menuitem"><span class="action-item__label"><span class="action-item__label-text">Default action</span></span><span class="popup-menu__meta">⌘D</span></button>
                   <button class="action-item action-item__primary" type="button" role="menuitem" disabled><span class="action-item__label"><span class="action-item__label-text">Unavailable action</span><span class="popup-menu__description">Requires a running workspace</span></span></button>
                   <hr class="popup-menu__separator">
@@ -693,17 +693,18 @@ bun test</pre></div>
               </div>
             </article>
             <article class="catalogue-card">
-              <div class="catalogue-card-title"><span>Interface</span><code>roles + composable slots</code></div>
-              <pre class="button-code">&lt;div class="popup-menu-anchor"&gt;
-  &lt;button class="button popup-menu-trigger"
-    aria-haspopup="menu" aria-controls="model-menu"&gt;…&lt;/button&gt;
-  &lt;div class="popup-menu action-list popup-menu-anchored opens-above"
-    id="model-menu" role="menu"&gt;
-    &lt;button class="action-item action-item__primary"
-      role="menuitemradio" aria-checked="true"&gt;…&lt;/button&gt;
-  &lt;/div&gt;
-&lt;/div&gt;</pre>
-              <p class="catalogue-note"><code>.opens-above</code> sets a preference, not a rigid position. Anchored menus automatically flip to remain visible. Use <code>menuitemradio</code> with <code>aria-checked</code> for a single-choice list.</p>
+              <div class="catalogue-card-title"><span>Interface</span><code>@atelier/design-system/popup</code></div>
+              <pre class="button-code">&lt;button popovertarget="model-menu" …&gt;
+  GPT-5.2 Codex
+&lt;/button&gt;
+
+${popupMenuHtml({
+  id: "model-menu",
+  label: "Choose a model",
+  placement: "above",
+  contentHtml: modelActionItemsHtml
+})}</pre>
+              <p class="catalogue-note"><code>placement: "above"</code> sets a preference, not a rigid position. Omit placement for caller-positioned menus such as mobile More. The caller owns its invoking control and connects it with native <code>popovertarget</code>. Native selects use <code>PopupSelectController</code> with optional semantic <code>data-popup-placement</code>.</p>
             </article>
           </div>
         </section>

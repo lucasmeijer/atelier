@@ -1,0 +1,20 @@
+.floating-surface {
+  position: fixed;
+  z-index: 1000;
+  inset: auto;
+  box-sizing: border-box;
+  width: max-content;
+  max-width: min(340px, calc(100vw - 16px));
+  max-height: min(420px, calc(100vh - 16px));
+  overflow-y: auto;
+  margin: 0;
+  padding: 6px;
+  border: 1px solid var(--line-strong);
+  border-radius: var(--radius-surface);
+  background: var(--elev);
+  color: var(--text-bright);
+  box-shadow: var(--floating-surface-shadow);
+  font: var(--text-body)/var(--leading-standard) var(--font-sans);
+}
+.floating-surface[hidden],
+.floating-surface[popover]:not(:popover-open) { display: none; }

@@ -7,9 +7,9 @@ import { DestructiveConfirmationController } from "@atelier/design-system/destru
 import { DialogController } from "@atelier/design-system/dialog/client";
 import { Icons } from "@atelier/design-system/icons";
 import { LinearNavigationController } from "@atelier/design-system/linear-navigation/client";
+import { PopupController, PopupSelectController } from "@atelier/design-system/popup/client";
 import { TransientFeedbackController } from "@atelier/design-system/transient-feedback/client";
 import { ToggleController } from "@atelier/design-system/toggle/client";
-import { PopupSelectController } from "./popup-select.ts";
 
 export function createCloseButton(label: string): HTMLButtonElement {
   const button = document.createElement("button");
@@ -51,98 +51,13 @@ class ManagedListController extends Controller<HTMLElement> {
   };
 }
 
-class PopupMenuController extends Controller<HTMLElement> {
-  private trigger!: HTMLButtonElement;
-  private menu!: HTMLElement;
-  private usesNativePopover = false;
-
-  connect(): void {
-    this.trigger = this.element.querySelector<HTMLButtonElement>(".popup-menu-trigger")!;
-    this.menu = this.element.querySelector<HTMLElement>(".popup-menu")!;
-    this.usesNativePopover = this.menu.hasAttribute("popover");
-    if (this.menu.dataset.popupSelectMenu) return;
-    this.menu.addEventListener("click", this.choose);
-    if (this.usesNativePopover) {
-      this.menu.addEventListener("toggle", this.syncNativePopoverState);
-      return;
-    }
-    this.trigger.addEventListener("click", this.toggle);
-    this.element.addEventListener("keydown", this.keydown);
-    document.addEventListener("click", this.closeFromOutside);
-  }
-
-  disconnect(): void {
-    if (this.menu.dataset.popupSelectMenu) return;
-    this.menu.removeEventListener("click", this.choose);
-    if (this.usesNativePopover) {
-      this.menu.removeEventListener("toggle", this.syncNativePopoverState);
-      return;
-    }
-    this.trigger.removeEventListener("click", this.toggle);
-    this.element.removeEventListener("keydown", this.keydown);
-    document.removeEventListener("click", this.closeFromOutside);
-  }
-
-  private open(): void {
-    this.menu.hidden = false;
-    this.trigger.setAttribute("aria-expanded", "true");
-    this.menu.querySelector<HTMLElement>("[role^='menuitem']:not(:disabled)")?.focus();
-  }
-
-  private close(): void {
-    if (this.usesNativePopover) this.menu.hidePopover();
-    else this.menu.hidden = true;
-    this.trigger.setAttribute("aria-expanded", "false");
-  }
-
-  private readonly syncNativePopoverState = (): void => {
-    this.trigger.setAttribute("aria-expanded", String(this.menu.matches(":popover-open")));
-  };
-
-  private readonly toggle = (event: MouseEvent): void => {
-    event.stopPropagation();
-    if (this.trigger.getAttribute("aria-expanded") === "true") this.close();
-    else this.open();
-  };
-
-  private readonly choose = (event: MouseEvent): void => {
-    const item = event.target instanceof Element ? event.target.closest<HTMLElement>("[role^='menuitem']:not(:disabled)") : null;
-    if (!item) return;
-    if (item.getAttribute("role") === "menuitemradio") {
-      for (const candidate of this.menu.querySelectorAll<HTMLElement>("[role='menuitemradio']")) candidate.setAttribute("aria-checked", String(candidate === item));
-    }
-    this.close();
-    this.trigger.focus();
-  };
-
-  private readonly keydown = (event: KeyboardEvent): void => {
-    if (event.key === "Escape" && this.trigger.getAttribute("aria-expanded") === "true") {
-      event.preventDefault();
-      this.close();
-      this.trigger.focus();
-      return;
-    }
-    if (event.key !== "ArrowDown" && event.key !== "ArrowUp") return;
-    const items = Array.from(this.menu.querySelectorAll<HTMLElement>("[role^='menuitem']:not(:disabled)"));
-    const current = event.target instanceof HTMLElement ? items.indexOf(event.target) : -1;
-    if (current < 0) return;
-    event.preventDefault();
-    const direction = event.key === "ArrowDown" ? 1 : -1;
-    items[(current + direction + items.length) % items.length]!.focus();
-  };
-
-  private readonly closeFromOutside = (event: MouseEvent): void => {
-    if (event.target instanceof Node && !this.element.contains(event.target)) this.close();
-  };
-}
-
 const automaticBehaviors = [
   ["body", "action-items"],
   [".copy-button", "copy-button", "click->copy-button#copy"],
   [".destructive-confirmation", "destructive-confirmation"],
   [".dialog", "dialog"],
   [".managed-list", "managed-list"],
-  [".popup-menu-anchor", "popup-menu"],
+  [".popup-menu-anchor:has(.popup-menu[popover])", "popup-menu"],
   [".popup-select", "popup-select"],
 ] as const;
 
@@ -172,7 +87,7 @@ export function registerDesignSystemControllers(application: Pick<Application, "
   application.register("dialog", DialogController);
   application.register("linear-navigation", LinearNavigationController);
   application.register("managed-list", ManagedListController);
-  application.register("popup-menu", PopupMenuController);
+  application.register("popup-menu", PopupController);
   application.register("popup-select", PopupSelectController);
   application.register("toggle", ToggleController);
   application.register("transient-feedback", TransientFeedbackController);

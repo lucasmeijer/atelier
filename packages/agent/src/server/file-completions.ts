@@ -1,5 +1,6 @@
 import { posix } from "node:path";
 import { actionItemHtml } from "@atelier/design-system/action-item";
+import { autocompleteHtml } from "@atelier/design-system/autocomplete";
 import { execWorkspaceCommand, workspaceRoot } from "@atelier/workspace";
 import { escapeHtml } from "./html.ts";
 
@@ -83,8 +84,8 @@ exec fd "$@" --base-directory "$base" --max-results 100 --ignore-case --type f -
 }
 
 export function renderFileCompletionMenu(completions: readonly FileCompletion[]): string {
-  if (completions.length === 0) return `<div class="popup-menu autocomplete-menu autocomplete-empty">No matching files</div>`;
-  return `<div class="popup-menu autocomplete-menu action-list" role="listbox" aria-label="Files and directories">${completions.map((completion, index) => {
+  if (completions.length === 0) return autocompleteHtml({ kind: "message", content: { kind: "text", text: "No matching files" } });
+  return autocompleteHtml({ kind: "results", label: "Files and directories", contentHtml: completions.map((completion, index) => {
     const path = completion.directory ? `${completion.path}/` : completion.path;
     return actionItemHtml({
       kind: "single",
@@ -95,5 +96,5 @@ export function renderFileCompletionMenu(completions: readonly FileCompletion[])
         attributesHtml: `type="button" role="option" aria-selected="${index === 0 ? "true" : "false"}" data-completion-kind="file" data-file-path="${escapeHtml(path)}" data-file-directory="${completion.directory}"`,
       },
     });
-  }).join("")}</div>`;
+  }).join("") });
 }

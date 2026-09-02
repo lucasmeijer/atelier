@@ -57,8 +57,9 @@ describe("role-fixed Workspace presentation", () => {
     expect(html).not.toContain('aria-selected="true"');
     expect(html.match(/data-workspace-pane-role="agent"/g)).toHaveLength(2);
     expect(html.match(/data-workspace-pane-role="work"/g)).toHaveLength(3);
-    expect(html).toContain('class="popup-menu-anchor"><button class="button primary icon-only popup-menu-trigger"');
-    expect(html).toContain('class="popup-menu action-list popup-menu-anchored" id="fixed_workspace_workspace-1_add_menu" role="menu" aria-label="Open Work view" popover="auto"');
+    expect(html).toContain('class="popup-menu-anchor"');
+    expect(html).toContain('class="button primary icon-only popup-menu-trigger"');
+    expect(html).toContain('class="floating-surface popup-menu action-list popup-menu-anchored" id="fixed_workspace_workspace-1_add_menu" role="menu" aria-label="Open Work view" popover="auto"');
     expect(html).toContain('class="action-item action-item__primary" type="submit" role="menuitem"');
   });
 
@@ -371,7 +372,7 @@ describe("role-fixed Workspace presentation", () => {
       ],
     }));
 
-    const more = html.slice(html.indexOf('class="fixed-shell-more-menu popup-menu action-list"'));
+    const more = html.slice(html.indexOf('id="fixed_workspace_workspace-1_mobile_more_menu"'));
     expect(more).toContain('role="menu" aria-label="More"');
     expect(more).not.toContain("Open or create");
     expect(more.indexOf('data-more-work-key="terminal:one"')).toBeLessThan(more.indexOf('/commands/files.create'));

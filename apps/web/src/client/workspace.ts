@@ -7,7 +7,8 @@ import { Value } from "typebox/value";
 // @ts-expect-error No declaration file is included in @hotwired/turbo.
 import * as Turbo from "@hotwired/turbo";
 import { createHtmlAutocompleteController, PromptHistoryNavigator } from "@atelier/agent/client";
-import { actionItemElement, actionItemHtml, type ActionItemLabel } from "@atelier/design-system/action-item";
+import { actionItemElement, actionItemHtml } from "@atelier/design-system/action-item";
+import { autocompleteHtml } from "@atelier/design-system/autocomplete";
 import { Icons } from "@atelier/design-system/icons";
 import { showTransientFeedback } from "@atelier/design-system/transient-feedback/client";
 import {
@@ -21,7 +22,6 @@ import {
   looksLikeProjectSpec,
   isWorkspacePaneVisible,
   phoneViewportMediaQuery,
-  providerBrandIconHtml,
   recentWorkspaceProjectStorageKey,
   workspaceProxyUrl,
   type AtelierCableClient,
@@ -38,7 +38,6 @@ import { createProvisionTerminalController } from "@atelier/workspace/client";
 import { workspaceClientModules } from "./workspace-client-modules.generated.ts";
 import { createAtelierCableClient } from "./cable.ts";
 import { createCloseButton, registerDesignSystemControllers } from "./design-system.ts";
-import { SelectPopupController } from "./popup-select.ts";
 import { createWorkspacePresentationController, installWorkspacePresentationTurboStream, markActiveWorkspaceRow } from "./workspace-presentation.ts";
 import { oldestAttentionFirst, prioritizedWorkspacePreloads, retainedWorkspaceIds, type AttentionWorkspace, type WorkspacePreloadCandidate, type WorkspaceRetentionCandidate } from "./workspace-residency-policy.ts";
 
@@ -629,7 +628,7 @@ class AtelierShortcutsController extends Controller {
       .sort((a, b) => a.label.localeCompare(b.label));
 
     const overlay = document.createElement("aside");
-    overlay.className = "shortcut-overlay popup-menu viewport-overlay";
+    overlay.className = "shortcut-overlay floating-surface viewport-overlay";
     overlay.setAttribute("role", "region");
     overlay.setAttribute("aria-labelledby", "shortcut-overlay-title");
     overlay.setAttribute("aria-live", "polite");
@@ -643,7 +642,7 @@ class AtelierShortcutsController extends Controller {
     overlay.append(title);
 
     const separator = document.createElement("hr");
-    separator.className = "popup-menu__separator";
+    separator.className = "shortcut-overlay-separator";
     overlay.append(separator);
 
     const actions = document.createElement("div");
@@ -652,7 +651,7 @@ class AtelierShortcutsController extends Controller {
       const button = actionItemElement<HTMLButtonElement>({
         kind: "single",
         label: { kind: "text", text: command.label },
-        trailingHtml: `<kbd class="shortcut-overlay-binding popup-menu__meta">${escapeHtml(this.formatBinding(command.binding))}</kbd>`,
+        trailingHtml: `<kbd class="shortcut-overlay-binding">${escapeHtml(this.formatBinding(command.binding))}</kbd>`,
         element: { tag: "button", className: "shortcut-overlay-item", attributesHtml: 'type="button"' },
       });
       button.addEventListener("click", () => {
@@ -805,7 +804,7 @@ class AtelierShortcutsController extends Controller {
     results.innerHTML = this.paletteItems.map((item, index) => actionItemHtml({
       kind: "single",
       label: { kind: "text", text: item.title },
-      trailingHtml: item.badge ? `<kbd class="popup-menu__meta">${escapeHtml(item.badge)}</kbd>` : "",
+      trailingHtml: item.badge ? `<kbd class="palette-item-meta">${escapeHtml(item.badge)}</kbd>` : "",
       element: { tag: "button", attributesHtml: `id="atelier-palette-option-${index}" type="button" data-palette-index="${index}" role="option" aria-selected="${index === this.paletteIndex ? "true" : "false"}"` },
     })).join("");
     const activeId = `atelier-palette-option-${this.paletteIndex}`;
@@ -2305,76 +2304,12 @@ class OnboardingController extends Controller {
   }
 }
 
-function agentModelLabelHtml(provider: string, label: string): string {
-  return `${providerBrandIconHtml(provider, label, "brand-icon agent-model-provider-icon")}<span>${escapeHtml(label)}</span>`;
-}
-
-class AgentModelMenuController extends SelectPopupController {
-  private form?: HTMLFormElement | null;
-
-  protected override get triggerClass(): string { return "composer-selection-button agent-model-button"; }
-  protected override get menuClass(): string { return " opens-above"; }
-  protected override get accessibleName(): string { return "Model"; }
-
-  override connect(): void {
-    super.connect();
-    this.form = this.element.form;
-    this.form?.addEventListener("submit", this.submit, true);
-  }
-
-  override disconnect(): void {
-    this.form?.removeEventListener("submit", this.submit, true);
-    super.disconnect();
-  }
-
-  private hasAvailableModel(): boolean {
-    return Array.from(this.element.options).some((option) => !option.disabled && option.value);
-  }
-
-  protected override renderTrigger(selected: HTMLOptionElement | undefined, label: string): void {
-    this.button.innerHTML = this.hasAvailableModel()
-      ? agentModelLabelHtml(selected?.dataset.provider ?? "", label || "Select model")
-      : "Configure models";
-  }
-
-  protected override renderMenu(): Node[] {
-    const configure = actionItemElement<HTMLButtonElement>({
-      kind: "single",
-      label: { kind: "text", text: "Configure models" },
-      element: { tag: "button", attributesHtml: 'type="button" role="menuitem"' },
-    });
-    configure.addEventListener("click", () => { this.close(); void this.openSetup(); });
-    const separator = document.createElement("hr");
-    separator.className = "popup-menu__separator";
-    return [configure, separator, ...super.renderMenu()];
-  }
-
-  protected override renderOptionLabel(option: HTMLOptionElement): ActionItemLabel {
-    const unavailableReason = option.dataset.unavailableReason;
-    const description = unavailableReason && unavailableReason !== "Provider disconnected"
-      ? `<span class="popup-menu__description">${escapeHtml(unavailableReason)}</span>`
-      : "";
-    return {
-      kind: "html",
-      html: `${agentModelLabelHtml(option.dataset.provider ?? "", option.textContent ?? option.value)}${description}`,
-      className: "agent-model-option-label",
-    };
-  }
-
-  protected override canOpen(): boolean {
-    if (this.hasAvailableModel()) return true;
-    void this.openSetup();
-    return false;
-  }
-
-  private submit = (event: Event): void => {
-    if (this.hasAvailableModel()) return;
+class AgentModelSetupController extends StimulusController<HTMLElement> {
+  async open(event: Event): Promise<void> {
     event.preventDefault();
-    event.stopImmediatePropagation();
-    void this.openSetup();
-  };
-
-  private async openSetup(): Promise<void> {
+    const controlledMenuId = this.element.getAttribute("aria-controls");
+    const menu = this.element.closest<HTMLElement>(".popup-menu[popover]") ?? (controlledMenuId ? document.getElementById(controlledMenuId) : null);
+    if (menu?.matches(":popover-open")) menu.hidePopover();
     const response = await fetch("/settings/models/dialog", { headers: { Accept: "text/vnd.turbo-stream.html" } });
     window.Turbo!.renderStreamMessage(await response.text());
   }
@@ -2403,7 +2338,7 @@ class ClipboardController extends Controller {
 
 const ProjectGithubSearchController = createHtmlAutocompleteController(Controller, {
   optionSelector: ".agent-completion-option",
-  loadingHtml: `<div class="agent-completion-menu empty"><span class="agent-completion-spinner" aria-hidden="true"></span>Searching GitHub…</div>`,
+  loadingHtml: autocompleteHtml({ kind: "message", role: "status", content: { kind: "html", html: '<span class="agent-completion-spinner" aria-hidden="true"></span>Searching GitHub…' } }),
   request(input) {
     const query = input.value.trim();
     if (query.length < 2 || looksLikeProjectSpec(query)) return undefined;
@@ -2525,7 +2460,7 @@ application.register("server-filter", ServerFilterController);
 application.register("model-catalogue", ModelCatalogueController);
 application.register("onboarding", OnboardingController);
 application.register("clipboard", ClipboardController);
-application.register("agent-model-menu", AgentModelMenuController);
+application.register("agent-model-setup", AgentModelSetupController);
 
 if ("serviceWorker" in navigator) {
   void navigator.serviceWorker.register("/service-worker.js");

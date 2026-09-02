@@ -3,6 +3,7 @@ import { actionItemHtml } from "@atelier/design-system/action-item";
 import { destructiveConfirmationHtml } from "@atelier/design-system/destructive-confirmation";
 import { Icons } from "@atelier/design-system/icons";
 import { panelHtml } from "@atelier/design-system/panel";
+import { popupMenuHtml } from "@atelier/design-system/popup";
 import { domId, escapeHtml, turboStream, workspaceWorkViewLabelDomId } from "@atelier/shared";
 import type { WorkspaceDeletionState } from "./workspace-registry.ts";
 
@@ -468,7 +469,10 @@ function renderWorkPane(presentation: WorkspacePresentation): string {
   const panes = presentation.workViews.map((view) => renderWorkViewPane(presentation.workspace.id, view)).join("");
   const workCommands = (presentation.commands ?? []).filter((command) => command.placement === "work-launcher");
   const addMenuId = workViewDomId(presentation.workspace.id, "add_menu");
-  const addMenu = workCommands.length ? `<span class="popup-menu-anchor"><button class="button primary icon-only popup-menu-trigger" type="button" title="Open Work view" aria-label="Open Work view" aria-haspopup="menu" aria-controls="${addMenuId}" popovertarget="${addMenuId}">${Icons.Plus}</button><div class="popup-menu action-list popup-menu-anchored" id="${addMenuId}" role="menu" aria-label="Open Work view" popover="auto">${workCommands.map((command) => renderWorkLauncherCommand(command, presentation.workspace.id)).join("")}</div></span>` : "";
+  const addMenu = workCommands.length ? `<span class="popup-menu-anchor">
+    <button class="button primary icon-only popup-menu-trigger" type="button" title="Open Work view" aria-label="Open Work view" aria-haspopup="menu" aria-expanded="false" aria-controls="${addMenuId}" popovertarget="${addMenuId}">${Icons.Plus}</button>
+    ${popupMenuHtml({ id: addMenuId, label: "Open Work view", placement: "below", contentHtml: workCommands.map((command) => renderWorkLauncherCommand(command, presentation.workspace.id)).join("") })}
+  </span>` : "";
   return panelHtml({
     element: { tag: "section", className: "fixed-shell-work-pane", attributesHtml: 'data-workspace-role-region="work" data-workspace-presentation-target="workPane" aria-label="Work"' },
     headerHtml: `<div id="${workViewDomId(presentation.workspace.id, "selectors")}" class="fixed-shell-work-view-selectors" role="tablist" aria-label="Work views">${selectors}</div><span id="${workViewDomId(presentation.workspace.id, "launchers")}">${addMenu}</span>${topBarButton("Collapse Work pane", "click->workspace-presentation#toggleWorkPane", Icons.Panel, "data-collapse-work-pane")}`,
@@ -529,19 +533,24 @@ function renderWorkspaceBar(presentation: WorkspacePresentation): string {
   const launchers = (presentation.commands ?? []).filter((command) => mobileLauncherCommandIds.has(command.id)).map((command) => renderWorkLauncherCommand(command, presentation.workspace.id, "submit->workspace-presentation#closeMore")).join("");
   const closers = presentation.workViews.map(renderMobileWorkViewCloser).join("");
   const moreMenuId = workViewDomId(presentation.workspace.id, "mobile_more_menu");
-  const more = actionItemHtml({
+  const moreTrigger = actionItemHtml({
     kind: "single",
     contentHtml: `${Icons.More}<span id="${workViewDomId(presentation.workspace.id, "mobile_more_attention")}">${mobileMoreAttentionHtml}</span>`,
-    element: { tag: "button", className: "fixed-shell-mobile-fixed", attributesHtml: `type="button" aria-label="More" title="More" aria-haspopup="menu" aria-controls="${moreMenuId}" data-mobile-more data-action="click->workspace-presentation#toggleMore"` },
+    element: { tag: "button", className: "fixed-shell-mobile-fixed", attributesHtml: `type="button" title="More" aria-label="More" aria-haspopup="menu" aria-expanded="false" aria-controls="${moreMenuId}" popovertarget="${moreMenuId}" data-mobile-more` },
+  });
+  const moreMenu = popupMenuHtml({
+    id: moreMenuId,
+    label: "More",
+    className: "fixed-shell-more-menu",
+    attributesHtml: 'data-workspace-presentation-target="moreMenu" data-action="toggle->workspace-presentation#syncMore"',
+    contentHtml: `<span id="${workViewDomId(presentation.workspace.id, "mobile_overflow")}" class="fixed-shell-mobile-work-items action-list">${workViews.overflowItems}</span>
+      ${launchers ? `<hr class="popup-menu__separator" data-mobile-overflow-separator hidden>${launchers}` : ""}
+      <div id="${workViewDomId(presentation.workspace.id, "mobile_closers")}" class="fixed-shell-more-close-section">${closers}</div>`,
   });
   return `<nav class="fixed-shell-mobile-nav fixed-shell-workspace-bar button-group" aria-label="Current Workspace destinations">
     <div class="fixed-shell-mobile-scroll button-group" data-mobile-overflow-container>${agentsDestination}<span id="${workViewDomId(presentation.workspace.id, "mobile_destinations")}" class="fixed-shell-mobile-work-items button-group">${workViews.destinations}</span></div>
-    ${more}
-    <div id="${moreMenuId}" class="fixed-shell-more-menu popup-menu action-list" data-workspace-presentation-target="moreMenu" role="menu" aria-label="More" hidden>
-      <span id="${workViewDomId(presentation.workspace.id, "mobile_overflow")}" class="fixed-shell-mobile-work-items action-list">${workViews.overflowItems}</span>
-      ${launchers ? `<hr class="popup-menu__separator" data-mobile-overflow-separator hidden>${launchers}` : ""}
-      <div id="${workViewDomId(presentation.workspace.id, "mobile_closers")}" class="fixed-shell-more-close-section">${closers}</div>
-    </div>
+    ${moreTrigger}
+    ${moreMenu}
   </nav>`;
 }
 

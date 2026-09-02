@@ -1,5 +1,6 @@
 /// <reference lib="dom" />
 
+import { autocompleteHtml } from "@atelier/design-system/autocomplete";
 import { setActivityButtonState } from "@atelier/design-system/activity-button/client";
 import { atelierObservableTerminalTheme, createObservableTerminalViewer, observableWebSocketUrl, type ObservableTerminalTheme, type ObservableTerminalViewer } from "@atelier/observable-terminal/client";
 import { CableTopics, composerSubmitKey, copyTextToClipboard, focusLikelyOpensSoftwareKeyboard, notifyInputListeners, recentWorkspaceProjectStorageKey, setTextInputValue, workspaceProxyUrl, type AtelierCableClient, type CableIdentifier, type CableSubscriptionOptions, type WorkspaceClientCommand, type WorkspaceClientController, type WorkspaceClientHooks, type WorkspaceClientModule } from "@atelier/shared";
@@ -1193,7 +1194,7 @@ function markPromptTemplateShortcutConflicts(html: string, hooks: WorkspaceClien
 function filterSlashCompletionCatalog(html: string, query: string, compactAvailable: boolean): string {
   const container = document.createElement("template");
   container.innerHTML = html.trim();
-  const menu = container.content.querySelector<HTMLElement>(".autocomplete-menu")!;
+  const menu = container.content.querySelector<HTMLElement>(".autocomplete")!;
   const compact = menu.querySelector<HTMLButtonElement>('[data-command-trigger="/compact"]');
   if (compact && !compactAvailable) {
     compact.disabled = true;
@@ -1210,7 +1211,7 @@ function filterSlashCompletionCatalog(html: string, query: string, compactAvaila
     })
     .slice(0, 12);
 
-  if (options.length === 0) return `<div class="popup-menu autocomplete-menu autocomplete-empty">No matching commands</div>`;
+  if (options.length === 0) return autocompleteHtml({ kind: "message", content: { kind: "text", text: "No matching commands" } });
   menu.replaceChildren(...options);
   const active = options.find((option) => !option.disabled);
   for (const option of options) {
@@ -1259,7 +1260,7 @@ function composerIsTranscribing(element: Element): boolean {
 function createAgentCompletionsController(Controller: StimulusControllerConstructor, hooks: WorkspaceClientHooks) {
   const HtmlAutocompleteController = createHtmlAutocompleteController(Controller, {
     optionSelector: ".agent-completion-option:not([hidden]):not(:disabled)",
-    loadingHtml: `<div class="popup-menu autocomplete-menu autocomplete-empty" role="status"><span class="agent-completion-spinner" aria-hidden="true"></span>Loading completions…</div>`,
+    loadingHtml: autocompleteHtml({ kind: "message", role: "status", content: { kind: "html", html: '<span class="agent-completion-spinner" aria-hidden="true"></span>Loading completions…' } }),
     triggerKeysWhenClosed: ["/", "@"],
     fullscreenShortcut: (option) => option.dataset.completionKind === "prompt-template",
     keepOpenOnBlur: (input, menu) => !composerIsTranscribing(input) && input.value === "" && Boolean(menu.querySelector(".agent-quick-launch")),

@@ -1,4 +1,5 @@
 import { actionItemHtml } from "@atelier/design-system/action-item";
+import { autocompleteHtml } from "@atelier/design-system/autocomplete";
 import type { Skill } from "@earendil-works/pi-coding-agent";
 import { escapeHtml } from "./html.ts";
 import type { PromptTemplate } from "./prompt-templates.ts";
@@ -36,7 +37,7 @@ export function renderSlashCommandCatalog(templates: readonly PromptTemplate[], 
     return `<button class="button secondary agent-completion-option agent-quick-launch" type="button" aria-label="${escapeHtml(template.trigger)}" data-completion-kind="quick-launch" data-command-trigger="${escapeHtml(template.trigger)}"${hotkeyData}><span>${escapeHtml(template.trigger)}</span>${shortcut}</button>`;
   }).join("");
   const quickLaunchCatalog = quickLaunches ? `<div class="agent-quick-launches" role="group" aria-label="Quick launch">${quickLaunches}</div>` : "";
-  const slashCommandCatalog = `<div class="popup-menu autocomplete-menu action-list" role="listbox" aria-label="Slash commands">${commands.map((command, index) => {
+  const slashCommandCatalog = autocompleteHtml({ kind: "results", label: "Slash commands", contentHtml: commands.map((command, index) => {
     const template = command.prompt !== undefined;
     return actionItemHtml({
       kind: "single",
@@ -48,6 +49,6 @@ export function renderSlashCommandCatalog(templates: readonly PromptTemplate[], 
         attributesHtml: `type="button" role="option" aria-selected="${index === 0 ? "true" : "false"}" data-completion-kind="${command.kind}" data-command-trigger="${escapeHtml(command.trigger)}"${command.hotkey ? ` data-prompt-template-hotkey="${escapeHtml(command.hotkey)}"` : ""}${command.trigger === "/tree" ? ` data-command-action="notice" data-command-message="/tree feature is coming soon!"` : ""}${template ? ` data-controller="atelier-fullscreen" data-atelier-fullscreen-mode-value="template" data-atelier-fullscreen-title-value="${escapeHtml(command.trigger)}"` : ""}`,
       },
     });
-  }).join("")}</div>`;
+  }).join("") });
   return `${quickLaunchCatalog}${slashCommandCatalog}`;
 }

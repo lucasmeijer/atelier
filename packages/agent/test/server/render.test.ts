@@ -60,6 +60,29 @@ describe("transcript rendering", () => {
     expect(html).not.toContain("/service-tier");
   });
 
+  test("composer model choices are server-rendered native popup actions", () => {
+    const html = renderAgentPaneComposerFooter(ctx, {
+      contextPercent: null,
+      compactAvailable: false,
+      inputTokens: 0,
+      outputTokens: 0,
+      cost: 0,
+      modelName: "Claude Sonnet",
+      thinkingLevel: "high",
+      thinkingLevels: ["high", "low"],
+      models: [
+        { provider: "anthropic", id: "sonnet", name: "Claude Sonnet", selected: true },
+        { provider: "openai", id: "codex", name: "GPT Codex", selected: false, available: false, unavailableReason: "Provider unavailable" },
+      ],
+    });
+
+    expect(html).toContain('role="menu" aria-label="Model" popover="auto"');
+    expect(html).toContain('type="submit" name="model" value="anthropic::sonnet"');
+    expect(html).toContain('role="menuitemradio" aria-checked="true"');
+    expect(html).toContain("Provider unavailable");
+    expect(html).toContain('data-popup-placement="above" name="level"');
+  });
+
   test("working sections reflect active, completed, and interrupted states", () => {
     const cases = [
       { name: "active turn", item: { type: "working" as const, key: "active", startedAt: 1000, items: [{ type: "thinking" as const, key: "thought", text: "Checking files" }] }, label: "Working", open: true, active: true },

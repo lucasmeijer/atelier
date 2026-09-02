@@ -254,10 +254,10 @@
 .agent-ctx-meter { width: 46px; height: 4px; overflow: hidden; border-radius: var(--radius-indicator); background: var(--line); }
 .agent-ctx-meter i { display: block; height: 100%; border-radius: var(--radius-indicator); background: var(--text-muted); }
 .composer-selections { min-width: 0; height: 24px; flex: 1 1 0; display: inline-flex; align-items: center; justify-content: flex-end; gap: 4px; margin-left: auto; }
-.composer-selection-field { position: relative; min-width: 0; height: 24px; display: inline-flex; align-items: center; }
-.composer-footer .popup-menu,
-.composer-footer .popup-menu .action-item,
-.composer-footer .popup-menu .button,
+.composer-selection-field { min-width: 0; height: 24px; display: inline-flex; align-items: center; }
+.composer-footer :is(.popup-menu, .autocomplete),
+.composer-footer :is(.popup-menu, .autocomplete) .action-item,
+.composer-footer :is(.popup-menu, .autocomplete) .button,
 .composer-footer .popup-menu__description,
 .composer-footer .popup-select-trigger::after { color: inherit; font: inherit; }
 .composer-selection-field:has(.agent-model-button), .composer-selections .agent-model-button { min-width: 0; max-width: 100%; }
@@ -270,11 +270,14 @@
   .agent-stat[title="Context window used"] { display: none; }
 }
 
-.composer-selection-button { height: 28px; display: inline-flex; align-items: center; gap: 6px; border: 0; background: transparent; border-radius: var(--radius-control); padding: 2px 16px 2px 6px; cursor: pointer; }
-.composer-selection-button > span { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.composer-selection-button,
+.composer-selection-field .popup-select-trigger { height: 28px; display: inline-flex; align-items: center; gap: 6px; border: 0; background: transparent; border-radius: var(--radius-control); padding: 2px 16px 2px 6px; cursor: pointer; }
+.composer-selection-button > span,
+.composer-selection-field .popup-select-trigger > span { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .agent-model-provider-icon { width: 13px; height: 13px; flex: 0 0 auto; }
 .agent-model-provider-icon.brand-icon-fallback { display: inline-grid; place-items: center; border-radius: var(--radius-indicator); }
-.composer-selection-button:hover { background: var(--bg); color: var(--text-bright); }
+.composer-selection-button:hover,
+.composer-selection-field .popup-select-trigger:hover { background: var(--bg); color: var(--text-bright); }
 .agent-model-option-label { display: grid; grid-template-columns: 16px minmax(0, 1fr); column-gap: 8px; }
 .agent-model-option-label > .action-item__label-text { display: contents; }
 .agent-model-option-label > .action-item__label-text > .agent-model-provider-icon { grid-row: 1; align-self: center; }

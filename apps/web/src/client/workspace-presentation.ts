@@ -347,8 +347,8 @@ export function createWorkspacePresentationController(
       this.activateWorkView(key, item.dataset.moreWorkKind === "contextual");
     }
 
-    toggleMore(): void {
-      this.moreOpen = !this.moreOpen;
+    syncMore(event: ToggleEvent): void {
+      this.moreOpen = event.newState === "open";
       if (this.moreOpen) this.selectResidentMobileDestination();
       this.applyState({ emit: false, focus: this.moreOpen });
     }
@@ -536,7 +536,8 @@ export function createWorkspacePresentationController(
       const moreButton = this.element.querySelector<HTMLElement>("[data-mobile-more]");
       moreButton?.setAttribute("aria-expanded", String(this.moreOpen));
       const moreMenu = this.element.querySelector<HTMLElement>("[data-workspace-presentation-target='moreMenu']");
-      if (moreMenu) moreMenu.hidden = !this.moreOpen;
+      if (moreMenu?.matches(":popover-open") && !this.moreOpen) moreMenu.hidePopover();
+      else if (moreMenu && !moreMenu.matches(":popover-open") && this.moreOpen) moreMenu.showPopover();
       this.scheduleMobileNavigationLayout();
       this.element.querySelectorAll<HTMLElement>("[data-more-close-destination]").forEach((closer) => {
         closer.hidden = closer.dataset.moreCloseDestination !== this.state.phoneDestination;
