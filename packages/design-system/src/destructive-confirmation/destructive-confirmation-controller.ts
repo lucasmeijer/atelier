@@ -60,8 +60,8 @@ export class DestructiveConfirmationController extends Controller<HTMLElement> {
     }
     this.element.dataset.destructiveConfirmationState = "confirming";
     this.decision.inert = false;
+    if (this.trigger.contains(document.activeElement) || event.detail === 0) this.cancelButton.focus();
     this.trigger.inert = true;
-    if (event.detail === 0) this.cancelButton.focus();
   };
 
   private readonly cancel = (): void => {

@@ -478,8 +478,8 @@ ${moduleStylesHtml()}
   function projectSecretRow(project: ProjectSummary, secret: ProjectSecretSummary): string {
     const secretPath = `/projects/${encodeURIComponent(project.id)}/secrets/${encodeURIComponent(secret.id)}`;
     const deleteButton = destructiveConfirmationHtml({
-      buttonHtml: `<button class="button danger icon-only" type="button" title="Remove secret" aria-label="Remove secret">${Icons.Close}</button>`,
-      confirmCaption: "Remove secret",
+      buttonHtml: '<button class="button danger" type="button">Delete secret</button>',
+      confirmCaption: "Delete secret",
       cancelCaption: "Cancel",
       confirmFormAction: `${secretPath}/delete`,
     });
@@ -495,12 +495,12 @@ ${moduleStylesHtml()}
   function projectSecretFields(project: ProjectSummary, secrets: ProjectSecretSummary[]): string {
     return `<div class="project-secrets-list" id="${domId("project_secret_fields", project.id)}" aria-label="Secrets">
       ${secrets.map((secret) => projectSecretRow(project, secret)).join("")}
-      ${secrets.length === 0 ? `<form class="project-secret new" aria-label="Add secret" method="post" action="/projects/${encodeURIComponent(project.id)}/secrets" data-turbo="true" data-controller="settings-autosave" data-action="focusout->settings-autosave#saveWhenLeaving submit->settings-autosave#submit">
+      <form class="project-secret new" aria-label="Add secret" method="post" action="/projects/${encodeURIComponent(project.id)}/secrets" data-turbo="true" data-controller="settings-autosave" data-action="focusout->settings-autosave#saveWhenLeaving submit->settings-autosave#submit">
         <label><span>Environment variable</span><input class="text-field" name="envName" placeholder="GOOGLE_MAPS_API_KEY" autocomplete="off" required></label>
         <label><span>Host</span><input class="text-field" name="hostPattern" placeholder="maps.googleapis.com" autocomplete="off" required></label>
         <label><span>Secret</span><input class="text-field" name="secretValue" type="password" placeholder="AIzaSyExampleKey1234567890" autocomplete="new-password" required></label>
         <label><span>Placeholder</span><input class="text-field" name="placeholder" placeholder="You rarely need to fill this in" autocomplete="off"></label>
-      </form>` : ""}
+      </form>
     </div>`;
   }
 

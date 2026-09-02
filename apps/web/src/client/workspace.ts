@@ -2086,6 +2086,7 @@ class SettingsAutosaveController extends Controller {
   }
 
   saveWhenLeaving(event: FocusEvent): void {
+    if (event.target instanceof HTMLButtonElement && event.target.type === "submit") return;
     if (event.relatedTarget instanceof Node && this.element.contains(event.relatedTarget)) return;
     if (!this.element.checkValidity()) return;
     void this.save();

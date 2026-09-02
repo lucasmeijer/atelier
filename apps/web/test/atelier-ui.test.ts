@@ -2788,6 +2788,35 @@ Comment: I don't think we need these tests`;
     await page.close();
   });
 
+  test("using a destructive confirmation does not trigger a form's focusout autosave", async () => {
+    const page = await newTestPage();
+    const requests: string[] = [];
+    await page.route(/\/(?:save|delete)-secret$/, (route) => {
+      requests.push(new URL(route.request().url()).pathname);
+      return route.fulfill({ contentType: "text/vnd.turbo-stream.html", body: "" });
+    });
+    const confirmation = destructiveConfirmationHtml({
+      buttonHtml: '<button type="button">Delete secret</button>',
+      confirmCaption: "Delete secret",
+      cancelCaption: "Cancel",
+      confirmFormAction: "/delete-secret",
+    });
+    await page.setContent(`<base href="http://atelier.test/"><form method="post" action="/save-secret" data-controller="settings-autosave" data-action="focusout->settings-autosave#saveWhenLeaving"><input name="envName" value="API_TOKEN">${confirmation}</form>`);
+    await page.addScriptTag({ url: `http://atelier.test${workspaceClientPath}`, type: "module" });
+    await page.waitForFunction(() => document.querySelector(".destructive-confirmation")?.getAttribute("data-controller") === "destructive-confirmation");
+
+    const deleteButtons = page.getByRole("button", { name: "Delete secret" });
+    await deleteButtons.first().click();
+    await page.evaluate(() => new Promise<void>((resolve) => requestAnimationFrame(() => requestAnimationFrame(() => resolve()))));
+    expect(requests).toEqual([]);
+
+    const deleteRequest = page.waitForRequest("http://atelier.test/delete-secret");
+    await deleteButtons.last().click();
+    await deleteRequest;
+    expect(requests).toEqual(["/delete-secret"]);
+    await page.close();
+  });
+
   test("grows an armed Work view tab toward inline-start and keeps it visible", async () => {
     const page = await newTestPage({ viewport: { width: 1280, height: 800 }, reducedMotion: "reduce" });
     let closeRequests = 0;

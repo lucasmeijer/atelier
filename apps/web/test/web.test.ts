@@ -831,7 +831,8 @@ describe("web app contracts", () => {
       expect(editor).toContain("Configure secrets");
       expect(editor).toContain(`aria-label="Add secret" method="post" action="/projects/${project.id}/secrets"`);
       expect(configuredEditor).toContain("API_TOKEN");
-      expect(configuredEditor).not.toContain('aria-label="Add secret"');
+      expect(configuredEditor).toContain(">Delete secret</button>");
+      expect(configuredEditor).toContain(`aria-label="Add secret" method="post" action="/projects/${project.id}/secrets"`);
       expect(editor).toContain(`action="/projects/${project.id}/ssh-keys"`);
       expect(editor).toContain('name="privateKey"');
       expect(sshConfiguredEditor).toContain("Configure SSH keys");

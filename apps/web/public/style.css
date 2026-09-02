@@ -149,6 +149,7 @@ a { color: inherit; text-decoration: none; }
 .project-configuration-row .button { width: 24px; height: 24px; font-weight: var(--weight-bold); }
 .project-secrets-list { display: grid; gap: 8px; }
 .project-secret { display: grid; gap: 8px; padding: 8px 0; }
+.project-secret + .project-secret { margin-top: 8px; padding-top: 16px; border-top: 1px solid var(--line); }
 .project-secret > label { display: grid; grid-template-columns: 140px minmax(0, 1fr); align-items: center; gap: 12px; }
 .project-secret .text-field { height: 30px; background: var(--bg); font-family: var(--font-mono); line-height: var(--leading-tight); }
 .project-secret-actions { display: flex; justify-content: flex-end; min-height: 26px; }
