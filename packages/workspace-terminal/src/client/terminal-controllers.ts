@@ -88,10 +88,13 @@ async function startTerminal(workspaceId: string, terminalId: string, options: {
     return;
   }
   const viewId = terminalViewKey(terminalId);
+  const style = getComputedStyle(host);
   const viewer = await terminals.start(key, () => createObservableTerminalViewer({
     host,
     mode: "interactive",
     websocketUrl: observableWebSocketUrl(`/workspaces/${encodeURIComponent(workspaceId)}/views/${encodeURIComponent(viewId)}/ws?cols=80&rows=24`),
+    fontFamily: style.getPropertyValue("--font-mono"),
+    fontSize: Number.parseFloat(style.getPropertyValue("--text-code")),
     theme: currentTerminalTheme,
     disconnectedMessage: "\r\n\x1b[31m[terminal disconnected]\x1b[0m\r\n",
     errorMessage: "\r\n\x1b[31m[terminal websocket error]\x1b[0m\r\n",

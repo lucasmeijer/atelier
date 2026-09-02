@@ -33,6 +33,7 @@
 
   --text-body: 14px;
   --text-title: 16px;
+  --text-code: 12px;
 
   --leading-none: 1;
   --leading-tight: 1.2;
@@ -91,14 +92,6 @@
   --danger-soft: color-mix(in srgb, var(--danger) 15%, var(--panel));
   --button-border: color-mix(in srgb, var(--accent) 20%, var(--line));
   --button-hover-border: color-mix(in srgb, var(--accent) 65%, var(--text-bright));
-}
-
-/* Phone layouts favor legibility and comfortable touch targets over density. */
-@media (max-width: 700px) {
-  :root {
-    --text-body: 16px;
-    --text-title: 18px;
-  }
 }
 
 /* A reusable visual title. Semantic heading level remains the owner's choice. */
@@ -255,8 +248,8 @@
 .atelier-pierre-host diffs-container { display: block; min-width: 0; }
 .atelier-pierre-host diffs-container {
   --diffs-font-family: var(--font-mono);
-  --diffs-font-size: var(--text-body);
-  --diffs-line-height: calc(var(--text-body) * var(--leading-standard));
+  --diffs-font-size: var(--text-code);
+  --diffs-line-height: calc(var(--text-code) * var(--leading-standard));
   --diffs-light-bg: var(--panel);
   --diffs-dark-bg: var(--panel);
   --diffs-light: var(--text-bright);

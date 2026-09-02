@@ -101,11 +101,18 @@ export function renderReviewStatsFrame(workspaceId: string, files: ReviewFileSta
   return `<turbo-frame id="${reviewStatsFrameId(workspaceId)}">${titleStream}${fileStreams}</turbo-frame>`;
 }
 
+function renderFilePath(path: string): string {
+  const basenameStart = path.lastIndexOf("/") + 1;
+  const directory = path.slice(0, basenameStart);
+  const basename = path.slice(basenameStart);
+  return `<span class="review-file-location">${directory ? `<span class="review-file-directory">${escapeHtml(directory)}</span>` : ""}<span class="review-file-basename">${escapeHtml(basename)}</span></span>`;
+}
+
 function renderFile(workspaceId: string, file: ReviewFileSummary, comments: ReviewComment[]): string {
   const fileComments = anchoredCommentsFor(comments, file.path);
   const frameId = reviewFileFrameId(workspaceId, file.path);
   const detailUrl = `/workspaces/${encodeURIComponent(workspaceId)}/review/files/${encodeURIComponent(file.path)}`;
-  const label = `${file.previousPath ? `<span>${escapeHtml(file.previousPath)}</span><b aria-label="renamed to">→</b>` : ""}<span>${escapeHtml(file.path)}</span>`;
+  const label = `${file.previousPath ? `${renderFilePath(file.previousPath)}<b aria-label="renamed to">→</b>` : ""}${renderFilePath(file.path)}`;
   const summary = renderFileSummary({ kind: "html", html: label }, `${renderCommentCount(fileComments.length)}${renderGitStats(workspaceId, file)}`, file.path);
   return `<details class="review-file" data-review-target="file" data-review-path="${escapeHtml(file.path)}" data-review-change="${file.change}" data-review-comments="${fileComments.length}" data-action="pointerenter->review#requestFile pointerdown->review#requestFile focusin->review#requestFile focusin->review#selectFile focusout->review#deselectFile toggle->review#requestFile">
     ${summary}
@@ -142,8 +149,8 @@ function renderUnanchoredSlot(workspaceId: string, comments: ReviewComment[]): s
   return `<div id="${reviewUnanchoredId(workspaceId)}">${file}</div>`;
 }
 
-function iconButton(label: string, action: string, iconHtml: string): string {
-  return `<button class="button secondary icon-only" type="button" aria-label="${escapeHtml(label)}" title="${escapeHtml(label)}" data-action="${escapeHtml(action)}">${iconHtml}</button>`;
+function iconButton(label: string, action: string, iconHtml: string, disabled = false): string {
+  return `<button class="button secondary icon-only" type="button" aria-label="${escapeHtml(label)}" title="${escapeHtml(label)}" data-action="${escapeHtml(action)}"${disabled ? " disabled" : ""}>${iconHtml}</button>`;
 }
 
 function refreshForm(workspaceId: string, caption = ""): string {
@@ -194,7 +201,7 @@ function toolbar(workspaceId: string, comments: ReviewComment[], diffLayouts: Re
   });
   return `<header class="review-toolbar">
     <div class="review-toolbar-actions button-group copy-region">
-      <button class="button secondary" type="button" title="Copy review comments into composer" data-action="click->review#copyCommentsToComposer"${commentsDisabled}>Copy into composer</button>
+      ${iconButton("Copy review comments into composer", "click->review#copyCommentsToComposer", Icons.ArrowDown, comments.length === 0)}
       ${copyButton}
       <form method="post" action="/workspaces/${encodeURIComponent(workspaceId)}/review/comments/delete" data-turbo="true"><button class="button danger icon-only" type="submit" aria-label="Delete all review comments" title="Delete all review comments"${commentsDisabled}>${Icons.Trash}</button></form>
       ${refreshForm(workspaceId)}

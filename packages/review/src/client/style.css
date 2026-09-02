@@ -46,20 +46,22 @@
 .review-files { padding: 16px; transition: opacity 120ms ease; }
 .review-body[data-review-layout-busy="true"] .review-files { opacity: .55; }
 
-.review-file { scroll-margin-top: 54px; }
+.review-file { min-width: 0; scroll-margin-top: 54px; }
 .review-file > summary { box-sizing: border-box; list-style: none; }
 .review-file[data-review-change="added"] > summary { background: var(--success-soft); }
 .review-file[data-review-change="removed"] > summary { background: var(--danger-soft); }
 .review-file > summary::-webkit-details-marker { display: none; }
-.review-file-path { font-family: var(--font-mono); }
-.review-file-path .action-item__label-text { display: flex; align-items: center; gap: 8px; }
-.review-file-path span { overflow: hidden; color: var(--text-muted); font-weight: 400; text-overflow: ellipsis; white-space: nowrap; }
+.review-file-path { font-family: var(--font-mono); font-size: var(--text-code); }
+.review-file-path .action-item__label-text { min-width: 0; display: flex; align-items: center; gap: 8px; }
+.review-file-location { min-width: 0; display: flex; overflow: hidden; color: var(--text-muted); font-weight: 400; white-space: nowrap; }
+.review-file-directory { min-width: 0; overflow: hidden; text-overflow: ellipsis; }
+.review-file-basename { max-width: 100%; flex: 0 0 auto; overflow: hidden; text-overflow: ellipsis; }
 .review-file-meta { justify-content: flex-end; white-space: nowrap; }
 .review-comment-count { color: var(--text-bright); font-family: var(--font-sans); font-weight: var(--weight-medium); }
 .review-git-stats { display: inline-flex; align-items: center; gap: 12px; }
 .review-stats-spinner { width: 14px; height: 14px; }
-.review-additions { color: var(--success); font-family: var(--font-mono); font-weight: var(--weight-semibold); }
-.review-deletions { color: var(--danger); font-family: var(--font-mono); font-weight: var(--weight-semibold); }
+.review-additions { color: var(--success); font-family: var(--font-mono); font-size: var(--text-code); font-weight: var(--weight-semibold); }
+.review-deletions { color: var(--danger); font-family: var(--font-mono); font-size: var(--text-code); font-weight: var(--weight-semibold); }
 
 .review-file-diff {
   margin-top: 8px;
@@ -125,8 +127,8 @@
 .review-unanchored-comments { background: var(--bg); }
 .review-unanchored-entry + .review-unanchored-entry { border-top: 1px solid var(--line); }
 .review-unanchored-context { display: grid; gap: 6px; padding: 10px 16px; }
-.review-unanchored-context strong { overflow: hidden; color: var(--text-muted); font: var(--text-body)/var(--leading-standard) var(--font-mono); font-weight: var(--weight-medium); text-overflow: ellipsis; white-space: nowrap; }
-.review-unanchored-context pre { max-height: 150px; margin: 0; overflow: auto; color: var(--text); white-space: pre-wrap; font: var(--text-body)/var(--leading-copy) var(--font-mono); }
+.review-unanchored-context strong { overflow: hidden; color: var(--text-muted); font: var(--text-code)/var(--leading-standard) var(--font-mono); font-weight: var(--weight-medium); text-overflow: ellipsis; white-space: nowrap; }
+.review-unanchored-context pre { max-height: 150px; margin: 0; overflow: auto; color: var(--text); white-space: pre-wrap; font: var(--text-code)/var(--leading-copy) var(--font-mono); }
 .review-inline-comment,
 .review-comment-editor {
   --review-comment-tint: rgb(56 200 240);
@@ -164,9 +166,9 @@ button.review-comment-content:focus-visible { background: color-mix(in srgb, var
 
 @media (max-width: 700px) {
   .review-files { padding: 8px; }
-  .review-file > summary { align-items: flex-start; flex-wrap: wrap; }
-  .review-file-path { flex-basis: calc(100% - 28px); }
-  .review-file-meta { width: 100%; justify-content: flex-start; padding-left: 28px; overflow-x: auto; }
+  .review-file > summary { flex-wrap: nowrap; }
+  .review-file-path { min-width: 0; }
+  .review-file-meta { flex: 0 0 auto; }
   .review-special-file { align-items: flex-start; justify-content: flex-start; }
 }
 

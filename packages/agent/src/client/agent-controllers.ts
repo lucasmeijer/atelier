@@ -1686,7 +1686,7 @@ function createAgentTermController(Controller: StimulusControllerConstructor) {
         rows: 30,
         websocketUrl: observableWebSocketUrl(`/workspaces/${encodeURIComponent(this.workspaceIdValue)}/agent-term/${encodeURIComponent(this.sessionValue)}/ws?cols=120&rows=30`),
         fontFamily: style.getPropertyValue("--font-mono"),
-        fontSize: Number.parseFloat(style.getPropertyValue("--text-body")),
+        fontSize: Number.parseFloat(style.getPropertyValue("--text-code")),
         theme: this.theme(),
         onOutput: (text) => {
           if (region.classList.contains("agent-terminal-awaiting-output") && terminalOutputHasPrintableText(text)) {

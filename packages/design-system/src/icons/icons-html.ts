@@ -5,6 +5,7 @@ function iconHtml(paths: string): string {
 /** Canonical decorative icons. Accessible names belong on the control or content that contains them. */
 export const Icons = {
   Agent: iconHtml('<path d="M9 4h6M12 4V2M6 8h12a2 2 0 0 1 2 2v7a2 2 0 0 1-2 2H6a2 2 0 0 1-2-2v-7a2 2 0 0 1 2-2z"/><circle cx="9" cy="13" r="1"/><circle cx="15" cy="13" r="1"/>'),
+  ArrowDown: iconHtml('<path d="M12 4v16M6 14l6 6 6-6"/>'),
   Atelier: iconHtml('<path d="M12 3v4M7.5 21 12 7l4.5 14M6 18h12M4 13c4 1.5 7.5 1.8 11 .8 2-.6 3.7-.6 5-.2"/>'),
   Browser: iconHtml('<circle cx="12" cy="12" r="9"/><path d="M3 12h18M12 3a15 15 0 0 1 0 18M12 3a15 15 0 0 0 0 18"/>'),
   Close: iconHtml('<path d="M6 6l12 12M18 6L6 18"/>'),

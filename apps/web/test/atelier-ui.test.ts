@@ -185,7 +185,7 @@ describe("Atelier browser behavior", () => {
     const composer = page.locator('.fixed-shell-surface[data-workspace-pane-role="agent"].is-active textarea[name="text"]');
     expect(await composer.inputValue()).toBe("Existing prompt");
     expect(await page.locator(".review-comment-attachment").count()).toBe(0);
-    await page.getByRole("button", { name: "Copy into composer", exact: true }).click();
+    await page.getByRole("button", { name: "Copy review comments into composer", exact: true }).click();
     const generated = `Context: apps/web/web.ts, line 14, snippet "the selection the user made gets written here"
 Comment: Why are we doing it like this over here
 
@@ -401,6 +401,39 @@ Comment: I don't think we need these tests`;
     const request = page.waitForRequest("http://atelier.test/review/settings/diff-layout?viewport=mobile");
     await unified.click();
     expect((await request).postData()).toBe("review-diff-layout=unified");
+    await page.close();
+  });
+
+  test("keeps mobile review file paths and stats on one line while preserving the basename", async () => {
+    const path = `${"nested-directory/".repeat(10)}important-file.ts`;
+    const reviewBody = renderReviewBody("compact-review", { phase: "ready", files: [{ path, change: "modified" }] }, []);
+    const statsFrame = renderReviewStatsFrame("compact-review", [{ path, change: "modified", additions: 12, deletions: 3 }]);
+    const fixture = `<link rel="stylesheet" href="${testAssets.path("/design-system.css")}"><link rel="stylesheet" href="${testAssets.path("/review.css")}"><main style="width: 390px">${reviewBody}</main>`;
+    const page = await newTestPage({ viewport: { width: 390, height: 700 } });
+    await page.route("http://atelier.test/", (route) => route.fulfill({ contentType: "text/html", body: `${fixture}<script type="module" src="${workspaceClientPath}"></script>` }));
+    await page.route("http://atelier.test/workspaces/compact-review/review/stats", (route) => route.fulfill({ contentType: "text/html", body: statsFrame }));
+    await page.goto("http://atelier.test/");
+    await page.locator(".review-additions").waitFor();
+
+    const geometry = await page.locator(".review-file > summary").evaluate((summary) => {
+      const pathLabel = summary.querySelector<HTMLElement>(".review-file-path")!;
+      const directory = summary.querySelector<HTMLElement>(".review-file-directory")!;
+      const basename = summary.querySelector<HTMLElement>(".review-file-basename")!;
+      const stats = summary.querySelector<HTMLElement>(".review-file-meta")!;
+      const center = (element: HTMLElement) => {
+        const rect = element.getBoundingClientRect();
+        return rect.top + rect.height / 2;
+      };
+      return {
+        verticalCenterDifference: Math.abs(center(pathLabel) - center(stats)),
+        directoryIsShortened: directory.scrollWidth > directory.clientWidth,
+        basenameIsFullyVisible: basename.scrollWidth <= basename.clientWidth,
+      };
+    });
+
+    expect(geometry.verticalCenterDifference).toBeLessThan(1);
+    expect(geometry.directoryIsShortened).toBe(true);
+    expect(geometry.basenameIsFullyVisible).toBe(true);
     await page.close();
   });
 

@@ -22,7 +22,7 @@
     .catalogue-platform-selector .button[aria-pressed="true"] { border-color: var(--button-border); background: var(--elev); color: var(--text-bright); box-shadow: 0 1px 3px color-mix(in srgb, var(--text-bright) 12%, transparent); }
     .catalogue-platform-stage { height: calc(100dvh - 52px); overflow: auto; background: color-mix(in srgb, var(--bg) 86%, var(--text-bright)); }
     .catalogue-preview { min-height: 100%; margin: 0 auto; background: var(--bg); box-shadow: 0 0 0 1px var(--line-strong); font-size: var(--text-body); }
-    .catalogue-preview[data-platform="mobile"] { width: min(390px, 100%); --text-body: 16px; --text-title: 18px; }
+    .catalogue-preview[data-platform="mobile"] { width: min(390px, 100%); }
     .catalogue-preview[data-platform="desktop"] { width: min(1024px, 100%); }
 
     .catalogue-preview[data-platform="mobile"] .button { height: 44px; padding-inline: 16px; }
@@ -213,12 +213,12 @@
 
       <div class="catalogue-content">
         <section class="catalogue-section" id="typography">
-          <div class="catalogue-section-head"><h2>Typography</h2><p>A deliberate type scale keeps operational interfaces consistent. Sans is for interface copy; mono is reserved for code, paths, and measured data. The reusable title style carries no surrounding space, so its composition controls the gap to adjacent content.</p></div>
+          <div class="catalogue-section-head"><h2>Typography</h2><p>A deliberate type scale keeps operational interfaces consistent. Sans is for interface copy; dense source surfaces use a smaller code size with the mono family. The reusable title style carries no surrounding space, so its composition controls the gap to adjacent content.</p></div>
           <article class="catalogue-card">
             <div class="type-list">
               <div class="type-row"><span class="type-meta">body · 14</span><span class="type-sample" style="--sample-size:var(--text-body)">The agent has finished implementing the workspace.</span></div>
               <div class="type-row"><span class="type-meta">.title · 16/700</span><span class="title">Workspace settings</span></div>
-              <div class="type-row"><span class="type-meta">mono · 14</span><span class="type-sample mono" style="--sample-size:var(--text-body)">apps/web/src/server/app.ts:324</span></div>
+              <div class="type-row"><span class="type-meta">code · 12</span><span class="type-sample mono" style="--sample-size:var(--text-code)">export const workspace = await createWorkspace();</span></div>
             </div>
           </article>
         </section>

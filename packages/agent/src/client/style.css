@@ -73,12 +73,12 @@
 .agent-code-block-header {
   min-height: 34px; display: flex; align-items: center; min-width: 0; overflow: hidden; padding: 6px 38px 6px 10px;
   border: 1px solid var(--line); border-bottom: 0; border-radius: var(--radius-control) var(--radius-control) 0 0;
-  background: var(--panel); color: var(--text-muted); font-family: var(--font-mono); font-size: var(--text-body); text-overflow: ellipsis; white-space: nowrap;
+  background: var(--panel); color: var(--text-muted); font-family: var(--font-mono); font-size: var(--text-code); text-overflow: ellipsis; white-space: nowrap;
 }
 .agent-md pre, .agent-code-block pre { background: color-mix(in srgb, var(--bg) 72%, #000 8%); color: var(--text-bright); border-radius: var(--radius-control); padding: 8px 8px; overflow-x: auto; margin: 6px 0 8px; }
 .agent-code-block pre { margin: 0; }
 .agent-code-block .agent-code-block-header + pre { border-radius: 0 0 var(--radius-control) var(--radius-control); }
-.agent-md pre code, .agent-code-block pre code { background: none; padding: 0; color: inherit; font-size: var(--text-body); line-height: var(--leading-standard); }
+.agent-md pre code, .agent-code-block pre code { background: none; padding: 0; color: inherit; font-size: var(--text-code); line-height: var(--leading-standard); }
 .agent-code-copy {
   position: absolute; top: 6px; right: 6px; z-index: 1; display: inline-grid; place-items: center; width: 24px; height: 24px;
   border: 1px solid rgba(255,255,255,.08); border-radius: var(--radius-control); background: rgba(19,26,38,.78); color: #d3dae5; cursor: pointer;
@@ -88,7 +88,7 @@
 .agent-code-copy:hover { background: rgba(19,26,38,.95); color: #fff; }
 .agent-code-copy.copied { color: var(--success); background: var(--success-soft); border-color: #bfe3c8; }
 .agent-code-copy-icon { transform: translateY(-.5px); }
-.agent-tool-code { font-family: var(--font-mono); }
+.agent-tool-code { font-family: var(--font-mono); font-size: var(--text-code); }
 .agent-tool-code .language-regex { color: var(--syntax-string); }
 .agent-tool-code .language-regex .syntax-keyword,
 .agent-tool-code .agent-bash-and { color: var(--warning); }
@@ -208,6 +208,7 @@
 }
 .composer-actions { position: absolute; left: 10px; right: 10px; bottom: 38px; display: flex; align-items: center; gap: 6px; padding: 0; pointer-events: none; }
 @media (max-width: 700px) {
+  .composer-input { font-size: 16px; }
   .agent-pane .composer-input { min-height: calc(1.5em * 4 + 30px); }
   .composer-actions { bottom: 44px; }
   .agent-quick-launch-shortcut { display: none; }
@@ -323,11 +324,11 @@ summary > .agent-tool-head { width: 100%; }
 .agent-tool-region + .agent-tool-region { border-top: 1px solid color-mix(in srgb, var(--text-bright) 15%, transparent); }
 .agent-bash-detail > :is(.agent-tool-region, .agent-detail-fullscreen) + :is(.agent-tool-region, .agent-detail-fullscreen) { border-top: 1px solid color-mix(in srgb, var(--text-bright) 15%, transparent); }
 .agent-tool-detail .agent-tool-code { margin: 0; padding: 8px; max-height: 330px; overflow: auto; border: 0; border-radius: 0; white-space: pre; color: var(--text-bright); background: color-mix(in srgb, var(--bg) 72%, #000 8%); }
-.agent-tool-detail .agent-tool-region-body { padding: 8px; color: var(--text-bright); background: color-mix(in srgb, var(--bg) 58%, #000 12%); font-family: var(--font-mono); }
+.agent-tool-detail .agent-tool-region-body { padding: 8px; color: var(--text-bright); background: color-mix(in srgb, var(--bg) 58%, #000 12%); font-family: var(--font-mono); font-size: var(--text-code); }
 .agent-bash-command .agent-tool-code { max-height: none; overflow: visible; white-space: pre-wrap; overflow-wrap: anywhere; }
 .agent-terminal-viewport { overflow: auto; background: color-mix(in srgb, var(--bg) 70%, #000 7%); }
 .agent-tool-term.observable-terminal-host { width: max-content; min-width: calc(120ch + 20px); height: calc(30 * 1.45em + 18px); }
-.agent-tool-result { margin: 0; padding: 8px 8px; max-height: 330px; overflow: auto; white-space: pre; color: var(--text-bright); background: color-mix(in srgb, var(--bg) 58%, #000 12%); font-family: var(--font-mono); }
+.agent-tool-result { margin: 0; padding: 8px 8px; max-height: 330px; overflow: auto; white-space: pre; color: var(--text-bright); background: color-mix(in srgb, var(--bg) 58%, #000 12%); font-family: var(--font-mono); font-size: var(--text-code); }
 .agent-tail-output { max-height: 330px; overflow: auto; background: color-mix(in srgb, var(--bg) 58%, #000 12%); }
 .agent-tail-output > .agent-tool-result, .agent-tail-output > .agent-tool-code { max-height: none; overflow: visible; }
 .agent-region-pane { display: none; }
@@ -353,8 +354,8 @@ summary > .agent-tool-head { width: 100%; }
 .agent-thinking-text:focus-visible { outline: 1px solid var(--accent); outline-offset: 3px; border-radius: var(--radius-indicator); }
 .agent-tool-images { padding: 8px; display: flex; flex-direction: column; gap: 8px; }
 .agent-tool-images .agent-tool-image { width: auto; max-width: 100%; max-height: none; margin: 0; }
-.agent-tool-note { margin: 0; padding: 8px 8px; color: var(--text); white-space: pre-wrap; font-family: var(--font-mono); }
-.agent-tool-error-output { margin: 0; padding: 8px 8px; color: var(--danger); background: color-mix(in srgb, var(--danger) 8%, var(--bg)); font-family: var(--font-mono); }
+.agent-tool-note { margin: 0; padding: 8px 8px; color: var(--text); white-space: pre-wrap; font-family: var(--font-mono); font-size: var(--text-code); }
+.agent-tool-error-output { margin: 0; padding: 8px 8px; color: var(--danger); background: color-mix(in srgb, var(--danger) 8%, var(--bg)); font-family: var(--font-mono); font-size: var(--text-code); }
 
 .agent-edit-details { background: var(--panel); }
 .agent-edit-pierre + .agent-edit-pierre { border-top: 7px solid var(--panel); }
