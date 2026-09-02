@@ -101,9 +101,9 @@ const modelRemovalConfirmation = destructiveConfirmationHtml({
   cancelCaption: "Cancel",
 });
 
-type GitHubSurface = "settings" | "onboarding";
+type SettingsSurface = "settings" | "onboarding";
 
-function githubConnectionForm(surface: GitHubSurface, error: string): string {
+function githubConnectionForm(surface: SettingsSurface, error: string): string {
   const action = surface === "onboarding" ? "/settings/github/connect?surface=onboarding" : "/settings/github/connect";
   const rowClass = surface === "settings" ? " github-connect-form--row" : "";
   return `<form class="github-connect-form${rowClass} form-stack" method="post" action="${action}" data-turbo="true">
@@ -116,7 +116,7 @@ gh auth token</pre>
   </form>`;
 }
 
-export function renderGitHubSetup(surface: GitHubSurface = "settings", error = ""): string {
+export function renderGitHubSetup(surface: SettingsSurface = "settings", error = ""): string {
   const connected = hasWorkspaceGitHubToken();
   const id = domId(surface, "provider", "github");
   const disconnectAction = surface === "onboarding" ? "/settings/github/disconnect?surface=onboarding" : "/settings/github/disconnect";
@@ -185,7 +185,7 @@ function modelManagedListContent(model: ConfiguredAgentModel, description: strin
     <div class="managed-list__content"><div class="managed-list__label"><span class="managed-list__label-text">${escapeHtml(model.label)}</span></div><div class="managed-list__description">${escapeHtml(description)}</div></div>`;
 }
 
-type ModelSetupSurface = "settings" | "onboarding" | "dialog";
+type ModelSetupSurface = SettingsSurface | "dialog";
 const modelSetupSurfaces: readonly ModelSetupSurface[] = ["settings", "onboarding", "dialog"];
 
 type ModelCatalogueEntry = ConfiguredAgentModel & { configured: boolean };
@@ -403,18 +403,25 @@ function forceDeleteAllWorkspacesResultModal(deleted: number, errors: string[]):
   </dialog>`;
 }
 
-function apiKeyModal(id: string, label: string, action: string, error = ""): string {
+function apiKeyModal(id: string, label: string, surface: SettingsSurface, error = ""): string {
   const inputId = domId("provider_api_key", id);
   const formId = domId("provider_api_key_form", id);
-  return `<dialog id="settings_flow_dialog" class="dialog" data-dialog-auto-show>
-    ${dialogHeader(`Connect ${label}`, providerIcon(id, label))}
-    <form id="${formId}" method="post" action="${escapeHtml(action)}" data-turbo="true"><div class="dialog__body"><div class="settings-oauth-card">
+  const action = `/settings/providers/${encodeURIComponent(id)}/connect${surface === "onboarding" ? "?surface=onboarding" : ""}`;
+  return dialogHtml({
+    element: {
+      id: "settings_flow_dialog",
+      className: "dialog--compact",
+      attributesHtml: "data-dialog-auto-show",
+    },
+    iconHtml: providerIcon(id, label),
+    titleCaption: `Connect ${label}`,
+    bodyHtml: `<form id="${formId}" class="form-stack" method="post" action="${action}" data-turbo="true">
       ${error ? `<p class="settings-error">${escapeHtml(error)}</p>` : ""}
       <label for="${inputId}">API key</label>
       <input id="${inputId}" class="settings-input text-field" type="password" name="secret" placeholder="${escapeHtml(getProviderApiKeyExample(id) ?? "API key")}" autocomplete="off" required autofocus>
-    </div></div></form>
-    <div class="dialog__actions"><form method="dialog"><button class="button secondary">Cancel</button></form><button class="button primary" type="submit" form="${formId}">Connect</button></div>
-  </dialog>`;
+    </form>`,
+    footerHtml: `<form method="dialog"><button class="button secondary">Cancel</button></form><button class="button primary" type="submit" form="${formId}">Connect</button>`,
+  });
 }
 
 type PendingPrompt = { message: string; placeholder?: string; resolve: (value: string) => void; reject: (error: Error) => void };
@@ -686,10 +693,10 @@ export async function handleSettingsRequest(request: Request, url: URL, options:
         const flow = await startOAuthFlow(provider, label);
         return stream(append(surface === "onboarding" ? "onboarding_modal_host" : "settings_modal_host", oauthFlowModal(flow)));
       } catch (error) {
-        return stream(append(surface === "onboarding" ? "onboarding_modal_host" : "settings_modal_host", apiKeyModal(provider, label, `/settings/providers/${encodeURIComponent(provider)}/connect${surface === "onboarding" ? "?surface=onboarding" : ""}`, error instanceof Error ? error.message : String(error))));
+        return stream(append(surface === "onboarding" ? "onboarding_modal_host" : "settings_modal_host", apiKeyModal(provider, label, surface, error instanceof Error ? error.message : String(error))));
       }
     }
-    return stream(append(surface === "onboarding" ? "onboarding_modal_host" : "settings_modal_host", apiKeyModal(provider, label, `/settings/providers/${encodeURIComponent(provider)}/connect${surface === "onboarding" ? "?surface=onboarding" : ""}`)));
+    return stream(append(surface === "onboarding" ? "onboarding_modal_host" : "settings_modal_host", apiKeyModal(provider, label, surface)));
   }
   match = url.pathname.match(/^\/settings\/providers\/([^/]+)\/connect$/);
   if (match && request.method === "POST") {
@@ -702,7 +709,7 @@ export async function handleSettingsRequest(request: Request, url: URL, options:
     try {
       await connectModelProviderApiKey(provider, secret);
     } catch (error) {
-      return stream(replace("settings_flow_dialog", apiKeyModal(provider, label, `/settings/providers/${encodeURIComponent(provider)}/connect${surface === "onboarding" ? "?surface=onboarding" : ""}`, error instanceof Error ? error.message : String(error))));
+      return stream(replace("settings_flow_dialog", apiKeyModal(provider, label, surface, error instanceof Error ? error.message : String(error))));
     }
     return stream(`${await refreshProviderState(provider)}${remove("settings_flow_dialog")}`);
   }

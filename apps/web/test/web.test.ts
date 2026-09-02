@@ -277,7 +277,9 @@ describe("web app contracts", () => {
       const apiKeyDialogResponse = await app.fetch(post(`/settings/providers/${catalogueModel.provider}/flow?method=api_key`));
       const apiKeyDialogBody = await apiKeyDialogResponse.text();
       expect(apiKeyDialogBody).toContain('id="settings_flow_dialog"');
-      expect(apiKeyDialogBody).toContain('<form method="dialog"><button class="button secondary">Cancel</button></form><button class="button primary" type="submit" form="provider_api_key_form_');
+      expect(apiKeyDialogBody).toContain('<h2 class="panel__title dialog__title">');
+      expect(apiKeyDialogBody).toContain('aria-label="Close dialog"');
+      expect(apiKeyDialogBody).toContain('<footer class="panel__footer"><form method="dialog"><button class="button secondary">Cancel</button></form><button class="button primary" type="submit" form="provider_api_key_form_');
       expect(apiKeyDialogBody).toContain('>API key</label>');
 
       const removedDialogResponse = await app.fetch(post("/settings/models/add-flow"));
