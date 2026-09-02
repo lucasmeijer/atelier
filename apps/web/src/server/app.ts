@@ -1,6 +1,3 @@
-import { execFileSync } from "node:child_process";
-import { randomUUID } from "node:crypto";
-import { existsSync, readFileSync } from "node:fs";
 import {
   prepareNewWorkspaceAgentParameters,
   renderLaunchComposer,
@@ -9,7 +6,6 @@ import {
 } from "@atelier/agent/server";
 import {
   AtelierCoreError,
-  gitHubCredentialHelperCommand,
   invalidArguments,
   isJsonObject,
   readJsonObject,
@@ -18,49 +14,16 @@ import {
   type JsonObject,
   type JsonValue,
 } from "@atelier/core";
-import { actionItemHtml } from "@atelier/design-system/action-item";
-import { dialogHtml } from "@atelier/design-system/dialog";
-import { destructiveConfirmationHtml } from "@atelier/design-system/destructive-confirmation";
 import { Icons } from "@atelier/design-system/icons";
-import { transientFeedbackHtml } from "@atelier/design-system/transient-feedback";
-import { discoverHostGitHubToken, hasWorkspaceGitHubToken } from "@atelier/proxy-egress";
-import {
-  addProject,
-  createProjectEnvironmentVariable,
-  createProjectSshKey,
-  createProjectSecret,
-  deleteProject,
-  deleteProjectEnvironmentVariable,
-  deleteProjectSecret,
-  deleteProjectSshKey,
-  formatProjectSpec,
-  isGitProjectInit,
-  listProjectEnvironmentVariables,
-  listProjectSecrets,
-  listProjectSshKeys,
-  listProjects,
-  parseProjectSpec,
-  projectWorkspaceInit,
-  updateProject,
-  updateProjectEnvironmentVariable,
-  updateProjectSecret,
-  type ProjectEnvironmentVariable,
-  type ProjectSecretSummary,
-  type ProjectSshKeySummary,
-  type ProjectSummary,
-} from "@atelier/projects";
+import { isGitProjectInit, listProjects, projectWorkspaceInit, type ProjectSummary } from "@atelier/projects";
 import { createWorkspacePresentationStore, generateWorkspaceId, listWorkspaces, setWorkspaceParked, setWorkspaceTitle, type WorkspaceCreationContext, type WorkspaceInitInstruction, type WorkspaceWorkViewReference, type WorkspaceWorkViewState } from "@atelier/workspace";
 import { createWorkspaceProvisioningStore } from "@atelier/workspace/server/provisioning";
 import {
   atelierCableConnectionHeader,
-  atelierName,
   CableTopics,
   emptyWorkspaceCommandInputSchema,
   domId,
   escapeHtml,
-  providerBrandColor,
-  providerBrandIconHtml,
-  turboStream,
   turboStreamResponse,
   type AgentWorkspaceCreateRequest,
   type AgentWorkspaceCreateResult,
@@ -81,15 +44,17 @@ import {
 } from "@atelier/shared";
 import type { WorkspaceDeletionState, WorkspaceEntry, WorkspaceRegistry } from "./workspace-registry.ts";
 import { workspaceModules } from "./workspace-modules.ts";
-import { handleSettingsRequest, renderSettingsDialog } from "./settings/routes.ts";
+import { handleSettingsRequest } from "./settings/routes.ts";
 import { handleOnboardingRequest, renderOnboardingDialog } from "./onboarding/routes.ts";
-import { GitHubRepositorySearchRateLimitError, renderGitHubRepositorySearchMenu, renderGitHubRepositorySearchRateLimitMenu, searchGitHubRepositories, shouldSearchGitHubRepositories } from "./github-repo-search.ts";
 import { atelierOpenApi } from "./openapi.ts";
 import { parseCloseWorkViewRequest, parseReorderWorkViewRequest } from "./work-view-api.ts";
 import { Type } from "typebox";
 import { Value } from "typebox/value";
 import { agentTabsTurboStream, openWorkViewTurboStream, presentWorkViewTurboStream, removeWorkspaceResidentTurboStream, renderAgentBodyFrame, renderAtelierBar, renderWorkViewBodyFrame, renderWorkspaceDeletionPresentation, renderWorkspacePane, renderWorkspacePresentation, selectAgentTurboStream, workspacePaneCollectionsTurboStream, workspacePaneOnboardingState, workspacePreparationInvalidatedTurboStream, workspacePresentationDomId, workViewsTurboStream, type AgentPaneContribution, type WorkPaneContribution, type WorkspacePaneEntry, type WorkspacePanePresentation, type WorkspacePresentation as FixedWorkspacePresentation } from "./workspace-presentation.ts";
 import type { CableBroadcastOptions } from "./cable.ts";
+import { jsonResponse, problemJsonResponse, response, turboReplaceStream, turboUpdateStream, wantsTurboStream } from "./http-responses.ts";
+import { createPageLayout } from "./page-layout.ts";
+import { createProjectRoutes } from "./project-routes.ts";
 
 const jsonStringSchema = Type.String();
 const attentionTokensSchema = Type.Record(Type.String(), Type.Integer({ minimum: 1 }));
@@ -137,107 +102,15 @@ export interface WebApp {
   globalSidebarContributions: GlobalSidebarContributionRegistry;
 }
 
-type HtmlResponseInit = Omit<ResponseInit, "headers"> & { headers?: Record<string, string> };
-interface WorkspaceCommandResponse { id: string; workView?: WorkspaceWorkViewReference; agentConversationId?: string }
-
-function response(body: string, init: HtmlResponseInit = {}): Response {
-  const headers = new Headers(init.headers);
-  if (!headers.has("content-type")) headers.set("content-type", "text/html; charset=utf-8");
-  if (!headers.has("cache-control")) headers.set("cache-control", "no-store");
-  return new Response(body, { ...init, headers });
-}
-
-function wantsTurboStream(request: Request): boolean {
-  return request.headers.get("accept")?.includes("text/vnd.turbo-stream.html") ?? false;
-}
-
-function jsonResponse<Body extends object>(body: Body, init: HtmlResponseInit = {}): Response {
-  const headers = new Headers(init.headers);
-  headers.set("content-type", "application/json; charset=utf-8");
-  if (!headers.has("cache-control")) headers.set("cache-control", "no-store");
-  return new Response(JSON.stringify(body), { ...init, headers });
-}
-
-function problemJsonResponse(error: Error): Response {
-  const status = error instanceof AtelierCoreError && ["invalid_arguments", "invalid_git_url"].includes(error.code) ? 400
-    : error instanceof AtelierCoreError && ["project_not_found", "project_environment_variable_not_found", "project_secret_not_found", "workspace_not_found", "command_not_found", "agent_conversation_not_found", "view_not_found", "terminal_not_found"].includes(error.code) ? 404
-      : error instanceof AtelierCoreError && error.code === "last_agent_conversation" ? 409
-        : 500;
-  const message = error.message;
-  const code = error instanceof AtelierCoreError ? error.code : "internal_error";
-  const details = error instanceof AtelierCoreError ? error.details : undefined;
-  return jsonResponse({ error: { code, message, ...(details ?? {}) } }, { status });
-}
-
-function turboReplaceStream(target: string, html: string): string {
-  return turboStream("replace", target, html);
-}
+type WorkspaceCommandResponse = { id: string; workView?: WorkspaceWorkViewReference; agentConversationId?: string };
 
 function selectWorkspaceTurboStream(workspaceId: string): string {
   return `<turbo-stream action="select-workspace" target="workspace_detail" data-workspace-id="${escapeHtml(workspaceId)}"></turbo-stream>`;
 }
 
-/** Replaces the children of the target, keeping the container element itself alive. */
-function turboUpdateStream(target: string, html: string, options: { method?: "morph" } = {}): string {
-  return turboStream("update", target, html, options);
-}
-
-
-
-function envString(...names: string[]): string | undefined {
-  for (const name of names) {
-    const value = process.env[name]?.trim();
-    if (value) return value;
-  }
-  return undefined;
-}
-
-function gitOutput(args: string[]): string | undefined {
-  try {
-    return execFileSync("git", args, { cwd: process.cwd(), encoding: "utf8", stdio: ["ignore", "pipe", "ignore"] }).trim() || undefined;
-  } catch {
-    return undefined;
-  }
-}
-
-function atelierVersionTooltip(): string {
-  const commitId = envString("ATELIER_COMMIT_ID", "ATELIER_COMMIT_SHA", "GIT_COMMIT", "SOURCE_VERSION") ?? gitOutput(["rev-parse", "HEAD"]);
-  const description = envString("ATELIER_COMMIT_DESCRIPTION", "ATELIER_COMMIT_SUBJECT", "GIT_COMMIT_MESSAGE") ?? gitOutput(["log", "-1", "--pretty=%s"]);
-  if (commitId && description) return `${commitId} ${description}`;
-  if (commitId) return commitId;
-  return "Version information unavailable";
-}
-
-let cachedAssetManifest: Record<string, string> | undefined;
-
-function loadAssetManifest(): Record<string, string> {
-  const manifestUrl = new URL("../../public/assets-manifest.json", import.meta.url);
-  // SAFETY: This value is validated or constructed by the server boundary immediately surrounding this use.
-  return existsSync(manifestUrl) ? JSON.parse(readFileSync(manifestUrl, "utf8")) as Record<string, string> : {};
-}
-
-function publicAssetExists(path: string): boolean {
-  return existsSync(new URL(`../../public/${path.replace(/^\//, "")}`, import.meta.url));
-}
-
-function assetPath(logicalPath: string): string {
-  cachedAssetManifest ??= loadAssetManifest();
-  let resolved = cachedAssetManifest[logicalPath] ?? logicalPath;
-  // In development, build:client can rewrite hashed assets while the server is
-  // still running. If the cached manifest now points at a deleted file, reload
-  // it so pages do not render stale /assets/*.js URLs that leave the app without
-  // its workspace controllers.
-  if (resolved.startsWith("/assets/") && !publicAssetExists(resolved)) {
-    cachedAssetManifest = loadAssetManifest();
-    resolved = cachedAssetManifest[logicalPath] ?? logicalPath;
-  }
-  return resolved;
-}
-
 export function createWebApp(deps: WebAppDeps): WebApp {
   const { registry } = deps;
   const logError = deps.logError ?? ((message: string) => console.error(message));
-  const versionTooltip = atelierVersionTooltip();
   // SAFETY: This value is validated or constructed by the server boundary immediately surrounding this use.
   const workViewAdapters = workspaceModules.flatMap((module) => module.workViews ?? []) as WorkspaceModuleWorkViewAdapter[];
   const moduleDeletionReviews = workspaceModules.flatMap((module) => module.deletionReview ? [module.deletionReview] : []);
@@ -295,6 +168,15 @@ export function createWebApp(deps: WebAppDeps): WebApp {
   const launchComposerSubmissions = new Map<string, Promise<CreatedWorkspace>>();
   const launchComposerSettingsFrameId = "launch_composer_settings";
   const launchComposerFormId = "launch_composer_form";
+  const projectRoutes = createProjectRoutes({
+    referencingWorkspaces: (projectId) => registry.list()
+      .filter((entry) => isGitProjectInit(entry.init) && entry.init.projectId === projectId)
+      .map((entry) => ({ workspaceId: entry.id, title: workspaceTitle(entry) })),
+    refreshWorkspacePaneCollections,
+    renderLaunchComposer: renderProjectLaunchComposerFrame,
+    createAgentWorkspace: async (project, request) => await createAgentWorkspaceFromForm(request, { project }),
+    workspaceCommandModalHostId,
+  });
 
   function workspaceBootId(id: string): string {
     return domId("workspace_boot", id);
@@ -357,54 +239,7 @@ export function createWebApp(deps: WebAppDeps): WebApp {
   // Page shell
   // ---------------------------------------------------------------------------
 
-  function moduleStylesHtml(): string {
-    const styles = new Set<string>();
-    for (const module of workspaceModules) {
-      for (const [path, entry] of Object.entries(module.staticFiles ?? {})) {
-        if (path.endsWith(".css") && entry.contentType.toLowerCase().startsWith("text/css")) styles.add(path);
-      }
-    }
-    return [...styles].map((path) => `<link rel="stylesheet" href="${assetPath(path)}">`).join("\n");
-  }
-
-  function layout(title: string, body: string, workspaceId?: string): string {
-    if (deps.devReload) cachedAssetManifest = loadAssetManifest();
-    const pageId = randomUUID();
-    return `<!DOCTYPE html>
-<html lang="en" data-theme="nord" data-atelier-page-id="${escapeHtml(pageId)}">
-<head>
-<meta charset="utf-8">
-<style>
-html { background: #f3f5f9; color-scheme: light; }
-html[data-theme="cappuccino"] { background: #2b2018; color-scheme: dark; }
-html[data-theme="tokyo-night"] { background: #1a1b26; color-scheme: dark; }
-html[data-theme="midnight"] { background: #0d1117; color-scheme: dark; }
-html[data-theme="nord"] { background: #2e3440; color-scheme: dark; }
-${deps.devReload ? `
-/* Keep the previous page painted while a rebuilt development page loads. */
-@view-transition { navigation: auto; }
-::view-transition-old(root), ::view-transition-new(root) { animation-duration: 120ms; }
-` : ""}</style>
-<script>try { const theme = localStorage.getItem("atelier.theme"); if (theme) document.documentElement.dataset.theme = theme; } catch {}</script>
-<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
-<meta name="turbo-cache-control" content="no-cache">
-<title>${escapeHtml(atelierName)}</title>
-<link rel="icon" href="/favicon.ico" sizes="any">
-<link rel="icon" type="image/png" sizes="32x32" href="/favicon-32x32.png">
-<link rel="icon" type="image/png" sizes="16x16" href="/favicon-16x16.png">
-<link rel="apple-touch-icon" sizes="180x180" href="/apple-touch-icon.png">
-<link rel="manifest" href="/manifest.webmanifest">
-<meta name="theme-color" content="#172033">
-<link rel="stylesheet" href="${assetPath("/design-system.css")}">
-<link rel="stylesheet" href="${assetPath("/style.css")}">
-<link rel="stylesheet" href="${assetPath("/provisioning.css")}">
-${moduleStylesHtml()}
-<script type="module" src="${assetPath("/workspace.js")}"></script>
-</head>
-<body id="body" data-controller="cable-shell${deps.devReload ? " dev-reload" : ""}"${deps.devReload ? ` data-dev-reload-url-value="/__atelier_dev_reload"` : ""}>${body}
-</body>
-</html>`;
-  }
+  const layout = createPageLayout({ devReload: deps.devReload, workspaceModules });
 
   async function launchComposerSettingsFrame(selectedModel?: string): Promise<string> {
     return await renderLaunchComposerSettings({
@@ -447,184 +282,6 @@ ${moduleStylesHtml()}
     return await renderLaunchComposerFrame({
       titleHtml: `Create workspace from <b>${escapeHtml(project.name)}</b>, and then…`,
       action: `/project-agent-workspaces/${encodeURIComponent(project.id)}`,
-    });
-  }
-
-  function projectEnvironmentRow(project: ProjectSummary, variable: ProjectEnvironmentVariable): string {
-    return `<form class="project-configuration-row project-environment-row" method="post" action="/projects/${encodeURIComponent(project.id)}/environment/${encodeURIComponent(variable.id)}" data-turbo="true" data-controller="settings-autosave" data-action="focusout->settings-autosave#saveWhenLeaving">
-    <input class="text-field" name="name" value="${escapeHtml(variable.name)}" aria-label="Name" autocomplete="off">
-    <input class="text-field" name="value" value="${escapeHtml(variable.value)}" aria-label="Value" autocomplete="off">
-    <span class="project-configuration-actions"><button class="button danger icon-only" type="submit" formaction="/projects/${encodeURIComponent(project.id)}/environment/${encodeURIComponent(variable.id)}/delete" title="Remove environment variable" aria-label="Remove environment variable">${Icons.Close}</button></span>
-  </form>`;
-  }
-
-  function projectEnvironmentFields(project: ProjectSummary, environment: ProjectEnvironmentVariable[]): string {
-    return `<div class="project-configuration-grid" id="${domId("project_environment_fields", project.id)}" aria-label="Environment variables">
-      ${environment.map((variable) => projectEnvironmentRow(project, variable)).join("")}
-      <form class="project-configuration-row project-environment-row new" method="post" action="/projects/${encodeURIComponent(project.id)}/environment" data-turbo="true" data-controller="settings-autosave" data-action="focusout->settings-autosave#saveWhenLeaving submit->settings-autosave#submit">
-        <input class="text-field" name="name" placeholder="TELEGRAM_CHANNEL_ID" aria-label="Name" autocomplete="off" required>
-        <input class="text-field" name="value" placeholder="-1001234567890" aria-label="Value" autocomplete="off">
-        <span></span>
-      </form>
-    </div>`;
-  }
-
-  function projectConfigurationDisclosure(label: string, fieldsHtml: string): string {
-    const summary = actionItemHtml({ kind: "single", label: { kind: "text", text: label }, leadingHtml: Icons.Disclosure, element: { tag: "summary" } });
-    return `<details class="project-configuration-disclosure">${summary}${fieldsHtml}</details>`;
-  }
-
-  function projectEnvironmentEditor(project: ProjectSummary, environment: ProjectEnvironmentVariable[]): string {
-    return `<section class="project-configuration-list project-environment" id="${domId("project_environment", project.id)}">
-      <div class="project-configuration-head"><h3>Environment variables</h3><p>These variables are added to every new workspace container created for this project.</p></div>
-      ${projectConfigurationDisclosure("Configure environment variables", projectEnvironmentFields(project, environment))}
-    </section>`;
-  }
-
-  function projectSecretRow(project: ProjectSummary, secret: ProjectSecretSummary): string {
-    const secretPath = `/projects/${encodeURIComponent(project.id)}/secrets/${encodeURIComponent(secret.id)}`;
-    const deleteButton = destructiveConfirmationHtml({
-      buttonHtml: '<button class="button danger" type="button">Delete secret</button>',
-      confirmCaption: "Delete secret",
-      cancelCaption: "Cancel",
-      confirmFormAction: `${secretPath}/delete`,
-    });
-    return `<form class="project-secret" aria-label="Secret" method="post" action="${secretPath}" data-turbo="true" data-controller="settings-autosave" data-action="focusout->settings-autosave#saveWhenLeaving">
-      <label><span>Environment variable</span><input class="text-field" name="envName" value="${escapeHtml(secret.envName)}" autocomplete="off"></label>
-      <label><span>Host</span><input class="text-field" name="hostPattern" value="${escapeHtml(secret.hostPattern)}" autocomplete="off"></label>
-      <label><span>Secret</span><input class="text-field" name="secretValue" type="password" placeholder="Unchanged" autocomplete="new-password"></label>
-      <label><span>Placeholder</span><input class="text-field" name="placeholder" value="${escapeHtml(secret.placeholder ?? "")}" placeholder="You rarely need to fill this in" autocomplete="off"></label>
-      <div class="project-secret-actions">${deleteButton}</div>
-    </form>`;
-  }
-
-  function projectSecretFields(project: ProjectSummary, secrets: ProjectSecretSummary[]): string {
-    return `<div class="project-secrets-list" id="${domId("project_secret_fields", project.id)}" aria-label="Secrets">
-      ${secrets.map((secret) => projectSecretRow(project, secret)).join("")}
-      <form class="project-secret new" aria-label="Add secret" method="post" action="/projects/${encodeURIComponent(project.id)}/secrets" data-turbo="true" data-controller="settings-autosave" data-action="focusout->settings-autosave#saveWhenLeaving submit->settings-autosave#submit">
-        <label><span>Environment variable</span><input class="text-field" name="envName" placeholder="GOOGLE_MAPS_API_KEY" autocomplete="off" required></label>
-        <label><span>Host</span><input class="text-field" name="hostPattern" placeholder="maps.googleapis.com" autocomplete="off" required></label>
-        <label><span>Secret</span><input class="text-field" name="secretValue" type="password" placeholder="AIzaSyExampleKey1234567890" autocomplete="new-password" required></label>
-        <label><span>Placeholder</span><input class="text-field" name="placeholder" placeholder="You rarely need to fill this in" autocomplete="off"></label>
-      </form>
-    </div>`;
-  }
-
-  function projectSecretEditor(project: ProjectSummary, secrets: ProjectSecretSummary[]): string {
-    return `<section class="project-configuration-list project-secrets" id="${domId("project_secrets", project.id)}">
-      <div class="project-configuration-head"><h3>Secrets</h3><p>Atelier lets you use secrets without exposing them to agents. Your encrypted secret stays outside agent sandboxes. Agents receive a placeholder that Atelier replaces with the real secret in matching network requests.</p></div>
-      ${projectConfigurationDisclosure("Configure secrets", projectSecretFields(project, secrets))}
-    </section>`;
-  }
-
-  function projectSshKeyFields(project: ProjectSummary, keys: ProjectSshKeySummary[]): string {
-    const projectPath = `/projects/${encodeURIComponent(project.id)}`;
-    const configuredKeys = keys.map((key) => {
-      const removeButton = destructiveConfirmationHtml({
-        buttonHtml: '<button class="button danger" type="button">Remove SSH key</button>',
-        confirmCaption: "Remove SSH key",
-        cancelCaption: "Cancel",
-      });
-      return `<form class="project-ssh-key-configured" method="post" action="${projectPath}/ssh-keys/${encodeURIComponent(key.id)}/delete" data-turbo="true"><span title="${escapeHtml(`${key.keyType} ${key.fingerprint}`)}"><code>${escapeHtml(key.keyType)}</code> <code>${escapeHtml(key.fingerprint)}</code></span>${removeButton}</form>`;
-    }).join("");
-    return `<div class="project-ssh-key-fields" id="${domId("project_ssh_key_fields", project.id)}">${configuredKeys}<form class="project-ssh-key-form" method="post" action="${projectPath}/ssh-keys" data-turbo="true" data-controller="settings-autosave" data-action="focusout->settings-autosave#saveWhenLeaving submit->settings-autosave#submit">
-      <label><span>Private key</span><textarea class="textarea" name="privateKey" placeholder="-----BEGIN OPENSSH PRIVATE KEY-----\nb3BlbnNzaC1rZXktdjEAAAAA…\n-----END OPENSSH PRIVATE KEY-----" autocomplete="off" required></textarea></label>
-    </form></div>`;
-  }
-
-  function projectSshKeyEditor(project: ProjectSummary, keys: ProjectSshKeySummary[]): string {
-    return `<section class="project-configuration-list project-ssh-key" id="${domId("project_ssh_key", project.id)}">
-      <div class="project-configuration-head"><h3>SSH key</h3><p>If you want to have your agent ssh into a remote machine, but you do not want to expose the required ssh key to the agent, you can paste your private ssh key below. It will be stored and encrypted outside of the agent sandbox. The agent will be given an ssh socket that they can use to do their work, without getting access to the private key.</p></div>
-      ${projectConfigurationDisclosure(keys.length === 0 ? "Add SSH key" : "Configure SSH keys", projectSshKeyFields(project, keys))}
-    </section>`;
-  }
-
-  function projectDeleteControl(projectId: string, references: WorkspaceEntry[] = []): string {
-    const confirmation = destructiveConfirmationHtml({
-      buttonHtml: '<button class="button danger" type="button">Delete project</button>',
-      confirmCaption: "Delete project",
-      cancelCaption: "Cancel",
-    });
-    const form = `<form method="post" action="/projects/${encodeURIComponent(projectId)}/delete" data-turbo="true" data-action="turbo:submit-end->dialog#submitted">${confirmation}</form>`;
-    const feedback = references.length === 1
-      ? `Delete workspace “${workspaceTitle(references[0]!)}” first`
-      : `Delete ${references.length} workspaces first`;
-    return transientFeedbackHtml({
-      element: { tag: "div", attributesHtml: `id="${domId("project_delete_control", projectId)}"` },
-      initialContent: { kind: "html", html: form },
-      feedbackContent: { kind: "html", html: `<span class="button secondary">${escapeHtml(feedback)}</span>` },
-      state: references.length > 0 ? "feedback" : "initial",
-    });
-  }
-
-  async function projectEditorFrame(project: ProjectSummary): Promise<string> {
-    const [environment, secrets, sshKeys] = await Promise.all([listProjectEnvironmentVariables(project.id), listProjectSecrets(project.id), listProjectSshKeys(project.id)]);
-    return `<turbo-frame id="project_editor_frame" class="project-editor-frame">
-      <div class="project-editor-page project-editor-detail-page">
-        <div class="project-editor-detail-body">
-          <section class="project-edit-section"><form class="project-edit-form" aria-label="Repository" method="post" action="/projects/${encodeURIComponent(project.id)}" data-controller="settings-autosave" data-action="change->settings-autosave#save"><label class="project-edit-field"><span>Display name</span><input class="text-field" name="name" value="${escapeHtml(project.name)}" required></label><label class="project-edit-field"><span>Repository</span><input class="text-field" name="gitUrl" value="${escapeHtml(formatProjectSpec(project))}" required></label></form></section>
-          <div class="project-edit-config">${projectSecretEditor(project, secrets)}${projectSshKeyEditor(project, sshKeys)}${projectEnvironmentEditor(project, environment)}</div>
-          <section class="project-edit-danger-zone"><h3>Danger zone</h3><div class="project-edit-danger">${projectDeleteControl(project.id)}</div></section>
-        </div>
-      </div>
-    </turbo-frame>`;
-  }
-
-  function newProjectEditorFrame(): string {
-    return `<turbo-frame id="project_editor_frame" class="project-editor-frame"><div class="project-editor-page project-editor-detail-page"><form class="project-editor-new-form" aria-label="Add project" method="post" action="/projects" data-turbo="true" data-action="turbo:submit-end->dialog#submitted"><div><h3>Repository source</h3><p>Save a remote URL, local path, or search for a GitHub repository.</p><div class="project-github-search" data-controller="project-github-search" data-project-github-search-url-value="/projects/github-search"><input class="text-field" name="gitUrl" placeholder="github.com/org/repo, or /path/to/repo#branch" required autofocus data-project-github-search-target="input" data-action="keydown->project-github-search#keydown input->project-github-search#input"><div class="agent-completion-menu-host project-github-search-menu" data-project-github-search-target="menu" hidden></div></div></div><footer><button class="button secondary" type="button" data-action="dialog#close">Cancel</button><button class="button primary" type="submit" data-turbo-submits-with="Adding…">Add project</button></footer></form></div></turbo-frame>`;
-  }
-
-  function projectEditorModal(): string {
-    return dialogHtml({
-      element: { id: "project-editor-modal", className: "dialog--sheet project-editor-modal", attributesHtml: 'aria-label="Project settings"' },
-      iconHtml: Icons.Settings,
-      titleCaption: "Project settings",
-      bodyHtml: '<turbo-frame id="project_editor_frame" class="project-editor-frame"></turbo-frame>',
-      bodyLayout: "full-bleed",
-      closeLabel: "Close project settings",
-    });
-  }
-
-  function isGitHubRemoteUrl(gitUrl: string): boolean {
-    return /(^|@|\/)github\.com[:/]/i.test(gitUrl.trim());
-  }
-
-  async function canReadRemoteWithConfiguredToken(gitUrl: string): Promise<boolean> {
-    const token = discoverHostGitHubToken();
-    interface GitProcessEnvironment {
-      [name: string]: string | undefined;
-    }
-    const env: GitProcessEnvironment = { ...process.env, GIT_TERMINAL_PROMPT: "0" };
-    if (token) env.GH_TOKEN = token;
-    const proc = Bun.spawn(["git", "-c", `credential.helper=${gitHubCredentialHelperCommand}`, "ls-remote", "--exit-code", gitUrl, "HEAD"], {
-      stdout: "ignore",
-      stderr: "pipe",
-      env,
-    });
-    await new Response(proc.stderr).text().catch(() => "");
-    return await proc.exited === 0;
-  }
-
-  async function githubRepoAccessProblem(project: ProjectSummary): Promise<"missing-token" | "token-denied" | undefined> {
-    if (process.env.NODE_ENV === "test" || !isGitHubRemoteUrl(project.gitUrl)) return undefined;
-    if (await canReadRemoteWithConfiguredToken(project.gitUrl).catch(() => false)) return undefined;
-    return hasWorkspaceGitHubToken() ? "token-denied" : "missing-token";
-  }
-
-  function githubRepoAccessProblemModal(project: ProjectSummary, problem: "missing-token" | "token-denied"): string {
-    const title = problem === "missing-token" ? "Connect GitHub to clone this project" : "GitHub token cannot access this project";
-    const body = problem === "missing-token"
-      ? `<p><b>${escapeHtml(project.name)}</b> looks private, and Atelier does not have a GitHub token yet.</p><p>Connect GitHub in workspace settings, then try creating this workspace again.</p>`
-      : `<p>Atelier has a GitHub token, but GitHub would not allow it to read <b>${escapeHtml(project.name)}</b>.</p><p>Reconnect GitHub with a token that has access to this project, then try again.</p>`;
-    return dialogHtml({
-      element: {
-        className: "dialog--compact",
-        attributesHtml: "data-dialog-auto-show",
-      },
-      iconHtml: `<span class="settings-provider-icon" style="--provider-color:${providerBrandColor("github")}">${providerBrandIconHtml("github", "GitHub")}</span>`,
-      titleCaption: title,
-      bodyHtml: body,
-      footerHtml: `<form method="dialog"><button class="button secondary">Cancel</button></form><a class="button primary" href="/settings?section=github" data-turbo-frame="_top" data-turbo-stream="true">Open GitHub settings</a>`,
     });
   }
 
@@ -815,21 +472,14 @@ ${moduleStylesHtml()}
     </div>`;
   }
 
-  async function projectById(id: string): Promise<ProjectSummary> {
-    const { projects } = await listProjects();
-    const project = projects.find((candidate) => candidate.id === id);
-    if (!project) throw new AtelierCoreError("project_not_found", `project not found: ${id}`);
-    return project;
-  }
-
-  async function renderWorkspaceShell(selectedId?: string, options: { mainHtml?: string; showWhatsNew?: boolean } = {}): Promise<string> {
+  async function renderWorkspaceShell(selectedId?: string): Promise<string> {
     const pane = await workspacePaneCollections(selectedId ?? "");
     return `<div class="app fixed-shell-app" data-controller="atelier-shortcuts workspace-navigation">
     ${renderWorkspacePane(pane, renderGlobalSidebarContributions())}
-    <main class="fixed-shell-app-main">${options.mainHtml ?? await workspaceDetailHostHtml(pane, selectedId)}</main>
+    <main class="fixed-shell-app-main">${await workspaceDetailHostHtml(pane, selectedId)}</main>
     ${renderAtelierBar(pane)}
   </div>
-  ${projectEditorModal()}
+  ${projectRoutes.editorModal()}
   <div id="update_modal_host"></div>
   <div id="settings_modal_host"></div>
   <div id="onboarding_modal_host">${await renderOnboardingDialog()}</div>
@@ -839,7 +489,7 @@ ${moduleStylesHtml()}
 
   async function homePage(): Promise<Response> {
     const selected = registry.list().find((entry) => !entry.parked);
-    return response(layout("Workspaces", await renderWorkspaceShell(selected?.id), selected?.id));
+    return response(layout(await renderWorkspaceShell(selected?.id)));
   }
 
   function requireWorkspace(id: string): WorkspaceEntry {
@@ -897,7 +547,7 @@ ${moduleStylesHtml()}
     if (entry.parked) return Response.redirect(new URL("/", request.url).toString(), 302);
     const url = new URL(request.url);
     if (url.searchParams.get("resident") === "1") return response(await workspaceResidentFor(entry, { visible: true }));
-    return response(layout(workspaceTitle(entry), await renderWorkspaceShell(id), id));
+    return response(layout(await renderWorkspaceShell(id)));
   }
 
   // ---------------------------------------------------------------------------
@@ -994,7 +644,7 @@ ${moduleStylesHtml()}
       let source: WorkspaceCreateSource = { type: "empty" };
       if (sourceType === "project") {
         if (!projectReference) throw invalidArguments("source.project is required for project workspaces");
-        source = { type: "project", project: await projectByReference(projectReference) };
+        source = { type: "project", project: await projectRoutes.byReference(projectReference) };
       }
       const agent = body.agent;
       const serviceTier = stringField(agent?.serviceTier, "agent.serviceTier");
@@ -1069,16 +719,6 @@ ${moduleStylesHtml()}
     return value.trim();
   }
 
-  async function projectByReference(reference: string): Promise<ProjectSummary> {
-    const { projects } = await listProjects();
-    const byId = projects.find((project) => project.id === reference);
-    if (byId) return byId;
-    const byName = projects.filter((project) => project.name === reference);
-    if (byName.length === 1) return byName[0]!;
-    if (byName.length > 1) throw invalidArguments(`project name is ambiguous: ${reference}`);
-    throw new AtelierCoreError("project_not_found", `project not found: ${reference}`);
-  }
-
   async function createWorkspaceFromAgent(workspaceId: string, request: AgentWorkspaceCreateRequest): Promise<AgentWorkspaceCreateResult> {
     const source: WorkspaceCreateSource = request.seedWithCurrentProjectClone
       ? (() => {
@@ -1098,13 +738,6 @@ ${moduleStylesHtml()}
     if (!entry || entry.phase !== "ready") throw new AtelierCoreError("workspace_not_found", `workspace not found: ${workspaceId}`);
     const { id } = await createWorkspaceFromCommand({ source: { type: "fork", sourceWorkspaceId: workspaceId, init: entry.init }, title, agent: request });
     return { id, url: `/workspaces/${encodeURIComponent(id)}`, phase: "starting" };
-  }
-
-  async function createProjectAgentWorkspaceEndpoint(projectId: string, request: Request): Promise<Response> {
-    const project = await projectById(projectId);
-    const accessProblem = await githubRepoAccessProblem(project);
-    if (accessProblem) return turboStreamResponse(turboUpdateStream(workspaceCommandModalHostId, githubRepoAccessProblemModal(project, accessProblem)));
-    return await createAgentWorkspaceFromForm(request, { project });
   }
 
   async function broadcastWorkspaceReady(id: string): Promise<void> {
@@ -1338,206 +971,6 @@ ${moduleStylesHtml()}
     return requestAcceptsJson(request) ? await workspaceJson(id) : turboStreamResponse(workspacePaneCollectionsTurboStream(await workspacePaneCollections(id)));
   }
 
-  // ---------------------------------------------------------------------------
-  // Projects
-  // ---------------------------------------------------------------------------
-
-  function jsonString(body: JsonObject, field: string): string {
-    const value = body[field];
-    if (!Value.Check(jsonStringSchema, value)) throw invalidArguments(`${field} is required`);
-    return value;
-  }
-
-  function requiredJsonString(body: JsonObject, field: string): string {
-    const value = jsonString(body, field);
-    if (!value.trim()) throw invalidArguments(`${field} is required`);
-    return value;
-  }
-
-  function optionalJsonString(body: JsonObject, field: string): string | undefined {
-    const value = body[field];
-    if (value === undefined) return undefined;
-    if (!Value.Check(jsonStringSchema, value)) throw invalidArguments(`${field} must be a string`);
-    return value;
-  }
-
-  async function projectDetailEndpoint(projectId: string): Promise<Response> {
-    const project = await projectById(projectId);
-    const [environment, secrets] = await Promise.all([
-      listProjectEnvironmentVariables(projectId),
-      listProjectSecrets(projectId),
-    ]);
-    return jsonResponse({ project: { ...project, environment, secrets } });
-  }
-
-  async function createProjectEndpoint(request: Request, url: URL): Promise<Response> {
-    const json = requestAcceptsJson(request);
-    const gitUrl = json
-      ? requiredJsonString(await readJsonObject(request), "gitUrl")
-      : String((await request.formData()).get("gitUrl") ?? "");
-    let project: ProjectSummary;
-    try {
-      project = (await addProject(gitUrl)).project;
-    } catch (error) {
-      if (!(error instanceof AtelierCoreError && error.code === "project_exists")) throw error;
-      const specification = parseProjectSpec(gitUrl);
-      const projects = (await listProjects()).projects;
-      project = projects.find((candidate) => candidate.gitUrl === specification.gitUrl && candidate.branch === specification.branch)!;
-    }
-    const paneStream = await refreshWorkspacePaneCollections();
-    if (json) return jsonResponse({ project });
-    if (wantsTurboStream(request)) return turboStreamResponse(`${turboUpdateStream("project_editor_frame", "")}${paneStream}`);
-    return Response.redirect(new URL("/", url).toString(), 303);
-  }
-
-  async function updateProjectEndpoint(projectId: string, request: Request): Promise<Response> {
-    const json = requestAcceptsJson(request);
-    let name: string;
-    let spec: string;
-    if (json) {
-      const body = await readJsonObject(request);
-      name = requiredJsonString(body, "name");
-      spec = requiredJsonString(body, "gitUrl");
-    } else {
-      const formData = await request.formData();
-      name = String(formData.get("name") ?? "");
-      spec = String(formData.get("gitUrl") ?? "");
-    }
-    const { project } = await updateProject(projectId, { name, spec });
-    const paneStream = await refreshWorkspacePaneCollections();
-    return json ? jsonResponse({ project }) : turboStreamResponse(paneStream);
-  }
-
-  async function renderProjectEnvironmentStreams(projectId: string): Promise<string> {
-    const project = await projectById(projectId);
-    return turboReplaceStream(domId("project_environment_fields", projectId), projectEnvironmentFields(project, await listProjectEnvironmentVariables(projectId)));
-  }
-
-  async function projectEnvironmentVariableValues(request: Request): Promise<{ name: string; value: string }> {
-    if (!requestAcceptsJson(request)) {
-      const formData = await request.formData();
-      return { name: String(formData.get("name") ?? ""), value: String(formData.get("value") ?? "") };
-    }
-    const body = await readJsonObject(request);
-    return { name: requiredJsonString(body, "name"), value: jsonString(body, "value") };
-  }
-
-  async function createProjectEnvironmentVariableEndpoint(projectId: string, request: Request): Promise<Response> {
-    const json = requestAcceptsJson(request);
-    const environmentVariable = await createProjectEnvironmentVariable(projectId, await projectEnvironmentVariableValues(request));
-    return json ? jsonResponse({ environmentVariable }) : turboStreamResponse(await renderProjectEnvironmentStreams(projectId));
-  }
-
-  async function updateProjectEnvironmentVariableEndpoint(projectId: string, variableId: string, request: Request): Promise<Response> {
-    const json = requestAcceptsJson(request);
-    const environmentVariable = await updateProjectEnvironmentVariable(projectId, variableId, await projectEnvironmentVariableValues(request));
-    return json ? jsonResponse({ environmentVariable }) : turboStreamResponse(await renderProjectEnvironmentStreams(projectId));
-  }
-
-  async function deleteProjectEnvironmentVariableEndpoint(projectId: string, variableId: string, request: Request): Promise<Response> {
-    const json = requestAcceptsJson(request);
-    if (json) await readJsonObject(request);
-    const environmentVariable = await deleteProjectEnvironmentVariable(projectId, variableId);
-    return json ? jsonResponse({ deleted: true, environmentVariable }) : turboStreamResponse(await renderProjectEnvironmentStreams(projectId));
-  }
-
-  async function renderProjectSecretStreams(projectId: string): Promise<string> {
-    const project = await projectById(projectId);
-    return turboReplaceStream(domId("project_secret_fields", projectId), projectSecretFields(project, await listProjectSecrets(projectId)));
-  }
-
-  type ProjectSecretValues = { envName: string; hostPattern: string; placeholder?: string; secretValue?: string };
-
-  async function projectSecretValues(request: Request, secretValueRequired: boolean): Promise<ProjectSecretValues> {
-    if (!requestAcceptsJson(request)) {
-      const formData = await request.formData();
-      return {
-        envName: String(formData.get("envName") ?? ""),
-        hostPattern: String(formData.get("hostPattern") ?? ""),
-        placeholder: String(formData.get("placeholder") ?? ""),
-        secretValue: String(formData.get("secretValue") ?? "") || undefined,
-      };
-    }
-    const body = await readJsonObject(request);
-    return {
-      envName: requiredJsonString(body, "envName"),
-      hostPattern: requiredJsonString(body, "hostPattern"),
-      placeholder: optionalJsonString(body, "placeholder"),
-      secretValue: secretValueRequired ? requiredJsonString(body, "secretValue") : optionalJsonString(body, "secretValue"),
-    };
-  }
-
-  async function createProjectSecretEndpoint(projectId: string, request: Request): Promise<Response> {
-    const json = requestAcceptsJson(request);
-    const values = await projectSecretValues(request, true);
-    const secret = await createProjectSecret(projectId, { ...values, secretValue: values.secretValue! });
-    return json ? jsonResponse({ secret }) : turboStreamResponse(await renderProjectSecretStreams(projectId));
-  }
-
-  async function updateProjectSecretEndpoint(projectId: string, secretId: string, request: Request): Promise<Response> {
-    const json = requestAcceptsJson(request);
-    const secret = await updateProjectSecret(projectId, secretId, await projectSecretValues(request, false));
-    return json ? jsonResponse({ secret }) : turboStreamResponse(await renderProjectSecretStreams(projectId));
-  }
-
-  async function deleteProjectSecretEndpoint(projectId: string, secretId: string, request: Request): Promise<Response> {
-    const json = requestAcceptsJson(request);
-    if (json) await readJsonObject(request);
-    const secret = await deleteProjectSecret(projectId, secretId);
-    return json ? jsonResponse({ deleted: true, secret }) : turboStreamResponse(await renderProjectSecretStreams(projectId));
-  }
-
-  async function renderProjectSshKeyStreams(projectId: string): Promise<string> {
-    const project = await projectById(projectId);
-    return turboReplaceStream(domId("project_ssh_key_fields", projectId), projectSshKeyFields(project, await listProjectSshKeys(projectId)));
-  }
-
-  async function createProjectSshKeyFromForm(projectId: string, request: Request): Promise<Response> {
-    const formData = await request.formData();
-    await createProjectSshKey(projectId, String(formData.get("privateKey") ?? ""));
-    return turboStreamResponse(await renderProjectSshKeyStreams(projectId));
-  }
-
-  async function deleteProjectSshKeyFromForm(projectId: string, keyId: string): Promise<Response> {
-    await deleteProjectSshKey(projectId, keyId);
-    return turboStreamResponse(await renderProjectSshKeyStreams(projectId));
-  }
-
-  function projectReferencingWorkspaces(projectId: string): WorkspaceEntry[] {
-    return registry.list().filter((entry) => isGitProjectInit(entry.init) && entry.init.projectId === projectId);
-  }
-
-  async function deleteProjectEndpoint(projectId: string, request: Request): Promise<Response> {
-    const json = requestAcceptsJson(request);
-    const project = await projectById(projectId);
-    if (json) await readJsonObject(request);
-    const references = projectReferencingWorkspaces(projectId);
-    if (references.length > 0) {
-      if (json) return jsonResponse({
-        deleted: false,
-        blocked: true,
-        references: references.map((entry) => ({ workspaceId: entry.id, title: workspaceTitle(entry) })),
-      });
-      return turboStreamResponse(turboReplaceStream(domId("project_delete_control", project.id), projectDeleteControl(project.id, references)), { status: 422 });
-    }
-    await deleteProject(projectId);
-    const paneStream = await refreshWorkspacePaneCollections();
-    if (json) return jsonResponse({ deleted: true, blocked: false, project });
-    return turboStreamResponse(`${turboUpdateStream("project_editor_frame", "")}${paneStream}`);
-  }
-
-  async function githubRepositorySearchEndpoint(url: URL): Promise<Response> {
-    const query = url.searchParams.get("q") ?? "";
-    try {
-      const repositories = shouldSearchGitHubRepositories(query) ? await searchGitHubRepositories(query) : [];
-      return new Response(renderGitHubRepositorySearchMenu(repositories, query), { headers: { "content-type": "text/html; charset=utf-8" } });
-    } catch (error) {
-      if (error instanceof GitHubRepositorySearchRateLimitError) return new Response(renderGitHubRepositorySearchRateLimitMenu(error), { status: 429, headers: { "content-type": "text/html; charset=utf-8" } });
-      throw error;
-    }
-  }
-
-
   function workspaceModuleCommands(): WorkspaceModuleCommandHandler[] {
     return workspaceModules.flatMap((module) => module.commands ?? []);
   }
@@ -1753,7 +1186,7 @@ ${moduleStylesHtml()}
         : error instanceof AtelierCoreError && error.code === "last_agent_conversation" ? 409
           : 500;
     const message = error.message;
-    return response(layout("Error", `<div class="app no-sidebar"><div class="main"><header class="header"><h1>Error</h1></header><div class="body"><p>${escapeHtml(message)}</p><p><a class="button secondary" href="/">Back home</a></p></div></div></div>`), { status });
+    return response(layout(`<div class="app no-sidebar"><div class="main"><header class="header"><h1>Error</h1></header><div class="body"><p>${escapeHtml(message)}</p><p><a class="button secondary" href="/">Back home</a></p></div></div></div>`), { status });
   }
 
   async function route(request: Request): Promise<Response> {
@@ -1772,10 +1205,9 @@ ${moduleStylesHtml()}
     if (url.pathname === "/workspaces" && request.method === "GET") return workspaceListEndpoint(request, url);
     if (url.pathname === "/workspaces" && request.method === "POST") return await createWorkspaceEndpoint(url, request);
     if (url.pathname === "/workspaces/open-oldest-unread" && request.method === "POST") return openOldestAttentionWorkspaceEndpoint();
-    if (url.pathname === "/projects" && request.method === "GET" && requestAcceptsJson(request)) return jsonResponse(await listProjects());
-    if (url.pathname === "/projects" && request.method === "POST") return await createProjectEndpoint(request, url);
-    if (url.pathname === "/projects/new/editor" && request.method === "GET") return response(newProjectEditorFrame());
-    if (url.pathname === "/projects/github-search" && request.method === "GET") return await githubRepositorySearchEndpoint(url);
+
+    const projectResponse = await projectRoutes.handle(request, url);
+    if (projectResponse) return projectResponse;
 
     const match = (pattern: RegExp): string[] | undefined => {
       const result = url.pathname.match(pattern);
@@ -1803,22 +1235,8 @@ ${moduleStylesHtml()}
 
     let params: string[] | undefined;
 
-    if ((params = match(/^\/projects\/([^/]+)\/editor$/)) && request.method === "GET") return response(await projectEditorFrame(await projectById(params[0])));
-    if ((params = match(/^\/projects\/([^/]+)\/launch-composer$/)) && request.method === "GET") return response(await renderProjectLaunchComposerFrame(await projectById(params[0])));
-    if ((params = match(/^\/projects\/([^/]+)$/)) && request.method === "GET" && requestAcceptsJson(request)) return await projectDetailEndpoint(params[0]);
-    if ((params = match(/^\/projects\/([^/]+)$/)) && request.method === "POST") return await updateProjectEndpoint(params[0], request);
-    if ((params = match(/^\/projects\/([^/]+)\/environment$/)) && request.method === "POST") return await createProjectEnvironmentVariableEndpoint(params[0], request);
-    if ((params = match(/^\/projects\/([^/]+)\/environment\/([^/]+)$/)) && request.method === "POST") return await updateProjectEnvironmentVariableEndpoint(params[0], params[1], request);
-    if ((params = match(/^\/projects\/([^/]+)\/environment\/([^/]+)\/delete$/)) && request.method === "POST") return await deleteProjectEnvironmentVariableEndpoint(params[0], params[1], request);
-    if ((params = match(/^\/projects\/([^/]+)\/secrets$/)) && request.method === "POST") return await createProjectSecretEndpoint(params[0], request);
-    if ((params = match(/^\/projects\/([^/]+)\/secrets\/([^/]+)$/)) && request.method === "POST") return await updateProjectSecretEndpoint(params[0], params[1], request);
-    if ((params = match(/^\/projects\/([^/]+)\/secrets\/([^/]+)\/delete$/)) && request.method === "POST") return await deleteProjectSecretEndpoint(params[0], params[1], request);
-    if ((params = match(/^\/projects\/([^/]+)\/ssh-keys$/)) && request.method === "POST") return await createProjectSshKeyFromForm(params[0], request);
-    if ((params = match(/^\/projects\/([^/]+)\/ssh-keys\/([^/]+)\/delete$/)) && request.method === "POST") return await deleteProjectSshKeyFromForm(params[0], params[1]);
-    if ((params = match(/^\/projects\/([^/]+)\/delete$/)) && request.method === "POST") return await deleteProjectEndpoint(params[0], request);
 
     if (url.pathname === "/agent-workspaces" && request.method === "POST") return await createEmptyAgentWorkspaceEndpoint(request);
-    if ((params = match(/^\/project-agent-workspaces\/([^/]+)$/)) && request.method === "POST") return await createProjectAgentWorkspaceEndpoint(params[0], request);
 
     if ((params = match(/^\/workspaces\/([^/]+)\/sidebar-title$/)) && request.method === "POST") return await updateWorkspaceSidebarTitle(params[0], request);
     if ((params = match(/^\/workspaces\/([^/]+)\/commands\/([^/]+)$/)) && request.method === "POST") {

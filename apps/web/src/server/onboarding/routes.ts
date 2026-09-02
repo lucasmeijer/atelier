@@ -1,25 +1,15 @@
 import { listOnboardingContributions, registerOnboardingContribution } from "./registry.ts";
 import { dialogHtml } from "@atelier/design-system/dialog";
 import { Icons } from "@atelier/design-system/icons";
-import { escapeHtml, turboStream, turboStreamResponse } from "@atelier/shared";
+import { escapeHtml, turboStreamResponse } from "@atelier/shared";
 import { hasWorkspaceGitHubToken } from "@atelier/proxy-egress";
 import { hasAvailableConfiguredAgentModel } from "@atelier/agent/server";
 import { renderGitHubSetup } from "../settings/github.ts";
 import { renderModelSetup } from "../settings/models.ts";
-
-function response(body: string, init: ResponseInit = {}): Response {
-  const headers = new Headers(init.headers);
-  headers.set("content-type", headers.get("content-type") ?? "text/html; charset=utf-8");
-  headers.set("cache-control", headers.get("cache-control") ?? "no-store");
-  return new Response(body, { ...init, headers });
-}
+import { turboUpdateStream as update } from "../http-responses.ts";
 
 function stream(body: string): Response {
   return turboStreamResponse(body);
-}
-
-function update(target: string, html: string): string {
-  return turboStream("update", target, html);
 }
 
 async function renderGithubStep(): Promise<string> {
