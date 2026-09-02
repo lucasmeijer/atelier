@@ -12,7 +12,6 @@ Do not write UI tests. Follow the [UI testing policy](docs/ui-testing-policy.md)
 - Do not use defensive programming.  We don't want to swallow errors, we want to notice them. Only be defensive when parsing external inputs.
 - Never add a new environment variable to the codebase without explicit instructions to do so. We're striving for minimal configuration, and minimal environment variables.
 - Run `bun run generate:workspace-modules` before raw TypeScript checks; otherwise missing ignored generated modules cause cascading unrelated server errors.
-- Whenever summarizing work, include the Git line diff totals for the current changes (additions and deletions).
 - When presenting the user with the results after an implementation request, run atelier, show it in the preview browser, and use api's you can find in our openapi description to bring the inner atelier to a state/situation where
 - your work can immediately be evaluated, without the user having to do more manual preparation steps. 
 - Whenever modifying the user interface, use elements from the [Atelier design system catalogue](apps/web/public/design-system-catalogue.html) whenever possible.
