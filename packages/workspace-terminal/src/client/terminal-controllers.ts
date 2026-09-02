@@ -5,16 +5,14 @@ import {
   createObservableTerminalViewer,
   observableWebSocketUrl,
   type ObservableTerminalTheme,
-  type ObservableTerminalViewer,
 } from "@atelier/observable-terminal/client";
 import { isWorkspacePaneVisible, type WorkspaceClientModule } from "@atelier/shared";
 import { terminalViewKey, terminalIdFromViewKey } from "../shared.ts";
+import { TerminalViewerRegistry } from "./terminal-viewer-registry.ts";
 
 type StimulusControllerConstructor = new (...args: never[]) => { element: Element };
 
-const terminals = new Map<string, ObservableTerminalViewer>();
-const startingTerminals = new Set<string>();
-const pendingTerminalFocus = new Set<string>();
+const terminals = new TerminalViewerRegistry();
 const pendingTerminalControl = new Set<string>();
 let currentTerminalTheme: ObservableTerminalTheme;
 
@@ -47,7 +45,7 @@ function terminalKey(workspaceId: string, terminalId: string): string {
 
 function applyTerminalTheme(): void {
   currentTerminalTheme = atelierObservableTerminalTheme();
-  for (const terminal of terminals.values()) terminal.setTheme(currentTerminalTheme);
+  terminals.setTheme(currentTerminalTheme);
 }
 
 function initializeTerminalTheme(): void {
@@ -83,57 +81,34 @@ async function startTerminal(workspaceId: string, terminalId: string, options: {
   const host = pane?.querySelector<HTMLElement>(".observable-terminal-host");
   if (!host) return;
 
-  const existing = terminals.get(key);
+  const existing = terminals.active(key);
   if (existing) {
     if (focus) existing.focus();
     existing.fitToHost();
     return;
   }
-  if (startingTerminals.has(key)) {
-    if (focus) pendingTerminalFocus.add(key);
+  const viewId = terminalViewKey(terminalId);
+  const viewer = await terminals.start(key, () => createObservableTerminalViewer({
+    host,
+    mode: "interactive",
+    websocketUrl: observableWebSocketUrl(`/workspaces/${encodeURIComponent(workspaceId)}/views/${encodeURIComponent(viewId)}/ws?cols=80&rows=24`),
+    theme: currentTerminalTheme,
+    disconnectedMessage: "\r\n\x1b[31m[terminal disconnected]\x1b[0m\r\n",
+    errorMessage: "\r\n\x1b[31m[terminal websocket error]\x1b[0m\r\n",
+    transformInput: (data) => transformTerminalInput(workspaceId, terminalId, data),
+  }));
+  if (!viewer) return;
+  if (!host.isConnected) {
+    terminals.cancel(key);
     return;
   }
-  if (focus) pendingTerminalFocus.add(key);
-  startingTerminals.add(key);
-
-  try {
-    const viewId = terminalViewKey(terminalId);
-    const viewer = await createObservableTerminalViewer({
-      host,
-      mode: "interactive",
-      websocketUrl: observableWebSocketUrl(`/workspaces/${encodeURIComponent(workspaceId)}/views/${encodeURIComponent(viewId)}/ws?cols=80&rows=24`),
-      theme: currentTerminalTheme,
-      disconnectedMessage: "\r\n\x1b[31m[terminal disconnected]\x1b[0m\r\n",
-      errorMessage: "\r\n\x1b[31m[terminal websocket error]\x1b[0m\r\n",
-      transformInput: (data) => transformTerminalInput(workspaceId, terminalId, data),
-    });
-    if (!startingTerminals.has(key) || !host.isConnected) {
-      viewer.dispose();
-      startingTerminals.delete(key);
-      pendingTerminalFocus.delete(key);
-      return;
-    }
-    terminals.set(key, viewer);
-
-    startingTerminals.delete(key);
-    const shouldFocus = pendingTerminalFocus.delete(key) || focus;
-    if (shouldFocus && document.hasFocus()) viewer.focus();
-  } catch (error) {
-    startingTerminals.delete(key);
-    pendingTerminalFocus.delete(key);
-    throw error;
-  }
+  if (focus && document.hasFocus()) viewer.focus();
 }
 
 function stopTerminal(workspaceId: string, terminalId: string): void {
   const key = terminalKey(workspaceId, terminalId);
   setTerminalControlPending(workspaceId, terminalId, false);
-  const state = terminals.get(key);
-  if (!state) return;
-  state.dispose();
-  terminals.delete(key);
-  startingTerminals.delete(key);
-  pendingTerminalFocus.delete(key);
+  terminals.cancel(key);
 }
 
 function createTerminalSessionPickerController(Controller: StimulusControllerConstructor) {
@@ -177,7 +152,7 @@ function createTerminalPaneController(Controller: StimulusControllerConstructor)
       const key = event.currentTarget.dataset.terminalKey;
       if (!key) throw new Error("terminal accessory button is missing its key");
       const terminal = terminalKey(this.workspaceIdValue, this.idValue);
-      const viewer = terminals.get(terminal);
+      const viewer = terminals.active(terminal);
       if (key === "control") setTerminalControlPending(this.workspaceIdValue, this.idValue, !pendingTerminalControl.has(terminal));
       else viewer?.sendInput(terminalInputForAccessoryKey(key));
       viewer?.focus();
