@@ -1,0 +1,58 @@
+import { workspaceContainerName } from "@atelier/workspace";
+import { extensionOf, imageMimeByExtension } from "./attachment-drafts.ts";
+
+interface WorkspaceFileMimeRegistry {
+  [extension: string]: string;
+}
+
+const mimeByExtension: WorkspaceFileMimeRegistry = {
+  ...imageMimeByExtension,
+  mp4: "video/mp4",
+  webm: "video/webm",
+  mov: "video/quicktime",
+  m4v: "video/x-m4v",
+  ogv: "video/ogg",
+  html: "text/html; charset=utf-8",
+  css: "text/css; charset=utf-8",
+  js: "text/javascript; charset=utf-8",
+  json: "application/json; charset=utf-8",
+  txt: "text/plain; charset=utf-8",
+  md: "text/plain; charset=utf-8",
+  pdf: "application/pdf",
+};
+
+function parseRange(header: string | null, size: number): { start: number; end: number } | undefined {
+  const match = header?.match(/^bytes=(\d*)-(\d*)$/);
+  if (!match || (match[1] === "" && match[2] === "")) return undefined;
+  if (match[1] === "") {
+    const suffix = Number(match[2]);
+    if (!Number.isFinite(suffix) || suffix <= 0) return undefined;
+    return { start: Math.max(0, size - suffix), end: size - 1 };
+  }
+  const start = Number(match[1]);
+  const end = match[2] === "" ? size - 1 : Math.min(Number(match[2]), size - 1);
+  if (!Number.isFinite(start) || start > end) return undefined;
+  return { start, end };
+}
+
+export async function workspaceFileEndpoint(workspaceId: string, path: string, request: Request): Promise<Response> {
+  if (!path.startsWith("/") || path.includes("..") || path.includes("\0")) return new Response("bad path", { status: 400 });
+
+  const container = workspaceContainerName(workspaceId);
+  const quoted = `'${path.replaceAll("'", `'\\''`)}'`;
+  const stat = Bun.spawnSync(["docker", "exec", container, "sh", "-c", `stat -c %s ${quoted} 2>/dev/null || stat -f %z ${quoted}`]);
+  const size = Number(new TextDecoder().decode(stat.stdout).trim());
+  if (stat.exitCode !== 0 || !Number.isFinite(size)) return new Response("not found", { status: 404 });
+
+  const range = parseRange(request.headers.get("range"), size);
+  const command = range ? `tail -c +${range.start + 1} ${quoted} | head -c ${range.end - range.start + 1}` : `cat ${quoted}`;
+  const proc = Bun.spawn(["docker", "exec", container, "sh", "-c", command], { stdout: "pipe", stderr: "ignore" });
+  const headers = new Headers({ "content-type": mimeByExtension[extensionOf(path)] ?? "application/octet-stream", "accept-ranges": "bytes" });
+  if (range) {
+    headers.set("content-range", `bytes ${range.start}-${range.end}/${size}`);
+    headers.set("content-length", String(range.end - range.start + 1));
+    return new Response(proc.stdout, { status: 206, headers });
+  }
+  headers.set("content-length", String(size));
+  return new Response(proc.stdout, { headers });
+}

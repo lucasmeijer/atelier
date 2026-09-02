@@ -7,7 +7,10 @@ import {
 } from "./tools.ts";
 import { createAgentTermSocketSession } from "./bash-tmux.ts";
 import { getWorkspaceAgentRuntime, removeWorkspaceAgentRuntime, removeWorkspaceAgentRuntimes, restoreWorkspaceAgentRuntime, subscribeWorkspaceViewBusy } from "./runtime.ts";
-import { handleAgentRequest, registerAgentEvents, resolveWorkspacePortProxyTarget, workspaceFileEndpoint } from "./routes.ts";
+import { registerAgentEvents } from "./agent-events.ts";
+import { handleAgentRequest } from "./routes.ts";
+import { workspaceFileEndpoint } from "./workspace-files.ts";
+import { resolveWorkspacePortProxyTarget } from "./workspace-proxy.ts";
 import { archiveWorkspaceAgentConversation, createNextWorkspaceAgentConversation, ensureDefaultWorkspaceAgentConversation, listWorkspaceAgentConversations, sessionShareDir, sessionShareKeyForInit, sessionShareMountPath, type WorkspaceAgentConversationInfo } from "./session-store.ts";
 import { agentConversationKey, renderAgentPane } from "./render.ts";
 import { resolveNewWorkspaceAgentModel } from "./model-state.ts";

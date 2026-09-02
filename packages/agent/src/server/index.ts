@@ -19,12 +19,10 @@ export {
   type AgentLivePresentationSubscription,
   type WorkspaceAgentRuntime,
 } from "./runtime.ts";
-export {
-  handleAgentRequest,
-  registerAgentEvents,
-  resolveWorkspacePortProxyTarget,
-  workspaceFileEndpoint,
-} from "./routes.ts";
+export { registerAgentEvents } from "./agent-events.ts";
+export { handleAgentRequest } from "./routes.ts";
+export { workspaceFileEndpoint } from "./workspace-files.ts";
+export { resolveWorkspacePortProxyTarget } from "./workspace-proxy.ts";
 export { agentConversationKey, renderAgentPane, renderAgentPaneComposer, renderLaunchComposer, renderLaunchComposerSettings } from "./render.ts";
 export { agentWorkspaceModule, agentWorkspaceModule as atelierServerModule, workspaceAgentTabProvider } from "./web.ts";
 export { prepareNewWorkspaceAgentParameters, rememberNewWorkspaceAgentSettings } from "./model-state.ts";
