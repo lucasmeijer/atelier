@@ -199,6 +199,8 @@ turbo-frame { display: contents; }
 .fixed-shell-app { --fixed-workspace-width: 275px; --fixed-agent-width: 520px; --fixed-shell-gap: 8px; --fixed-shell-bg: var(--bg); --fixed-shell-raised: var(--panel); --fixed-shell-hover: var(--accent-soft); --fixed-shell-border: var(--line); position: relative; width: 100%; height: 100dvh; min-width: 0; min-height: 0; display: flex; gap: var(--fixed-shell-gap); overflow: hidden; padding: var(--fixed-shell-gap); box-sizing: border-box; }
 .fixed-shell-app-main, .workspace-detail-host, .workspace-detail-resident { width: 100%; height: 100%; min-width: 0; min-height: 0; overflow: hidden; }
 .fixed-shell-app-main { min-width: 0; flex: 1; display: block; }
+.workspace-detail-loading:not([hidden]) { width: 100%; height: 100%; display: grid; place-items: center; }
+.workspace-detail-loading-status { display: flex; align-items: center; gap: 8px; color: var(--text); }
 .workspace-detail-empty:not([hidden]) { width: 100%; height: 100%; display: grid; place-items: center; }
 .workspace-empty-welcome { position: relative; z-index: 21; max-width: 640px; padding: 40px; text-align: center; }
 .workspace-empty-welcome h1 { margin: 0 0 12px; color: var(--text-bright); font-size: var(--text-title); line-height: 1.15; letter-spacing: -.025em; }

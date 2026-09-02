@@ -797,7 +797,7 @@ ${moduleStylesHtml()}
     const resident = entry ? await workspaceResidentFor(entry, { visible: true }) : "";
     return `<div id="workspace_detail" class="workspace-detail-host" data-controller="workspace-residency" data-workspace-residency-max-resident-value="5">
       <div class="workspace-detail-empty" data-workspace-residency-target="empty"${resident ? " hidden" : ""}>${emptyWorkspaceOnboardingHtml(pane)}</div>
-      <div class="workspace-detail-loading" data-workspace-residency-target="loading" hidden><div class="main"><div class="body"><div class="workspace-boot-panel"><div class="pad workspace-boot-pad"><span class="status-spinner"></span> Loading workspace…</div></div></div></div></div>
+      <div class="workspace-detail-loading" data-workspace-residency-target="loading" hidden><div class="workspace-detail-loading-status" role="status"><span class="status-spinner" aria-hidden="true"></span><span>Loading workspace…</span></div></div>
       ${resident}
     </div>`;
   }
