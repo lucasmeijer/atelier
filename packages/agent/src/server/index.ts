@@ -27,7 +27,7 @@ export {
 } from "./routes.ts";
 export { agentConversationKey, renderAgentPane, renderAgentPaneComposer, renderLaunchComposer, renderLaunchComposerSettings } from "./render.ts";
 export { agentWorkspaceModule, agentWorkspaceModule as atelierServerModule, workspaceAgentTabProvider } from "./web.ts";
-export { rememberNewWorkspaceAgentSettings } from "./model-state.ts";
+export { prepareNewWorkspaceAgentParameters, rememberNewWorkspaceAgentSettings } from "./model-state.ts";
 export {
   applyExactEdits,
   createDeleteCurrentWorkspaceTool,

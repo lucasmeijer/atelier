@@ -548,7 +548,7 @@ describe("web app contracts", () => {
       expect(isGitProjectInit(entry.init) && entry.init.name).toBe("sample-project");
       expect(isGitProjectInit(entry.init) && entry.init.gitUrl).toBe("https://github.com/org/sample-project.git");
       expect(isGitProjectInit(entry.init) && entry.init.branch).toBe("main");
-      expect(seen[0]?.options?.context).toEqual({ agent: { initialPrompt: "Add tests", model: "openai::gpt", thinkingLevel: "medium", attachmentDraft: "" } });
+      expect(seen[0]?.options?.context).toEqual({ agent: { initialPrompt: "Add tests", initialPromptMode: "composer", model: "", thinkingLevel: "", attachmentDraft: "" } });
     });
   });
 
@@ -955,7 +955,7 @@ describe("web app contracts", () => {
     expect(captured?.id).toBe(result.id);
     expect(captured?.options?.init).toEqual(init);
     expect(captured?.options?.fork).toEqual({ sourceWorkspaceId: "source" });
-    expect(captured?.options?.context).toEqual({ fork: { sourceWorkspaceId: "source" }, agent: { initialPrompt: "continue", model: "provider/model", thinkingLevel: "high", attachmentDraft: "draft-1" } });
+    expect(captured?.options?.context).toEqual({ fork: { sourceWorkspaceId: "source" }, agent: { initialPrompt: "continue", initialPromptMode: "composer", model: "", thinkingLevel: "", attachmentDraft: "draft-1" } });
   });
 
   test("project-created workspaces use the project name as their temporary title", async () => {
@@ -982,7 +982,7 @@ describe("web app contracts", () => {
     });
   });
 
-  test("workspace creation keeps selected agent settings without selecting the created Workspace when one already exists", async () => {
+  test("workspace creation keeps the prompt in the Agent composer when no model is available", async () => {
     await withTempDataDir(async () => {
       let captured: ProvisionWorkspaceOptions | undefined;
       const { app, registry } = createTestApp({ provision: async (_id, options) => { captured = options; } });
@@ -990,14 +990,14 @@ describe("web app contracts", () => {
       const attachmentDraft = crypto.randomUUID();
 
       const response = await app.fetch(postForm("/agent-workspaces", new URLSearchParams({
-        text: "",
+        text: "Do this when a model is connected",
         model: "openai-codex::gpt-5.6-sol",
         level: "medium",
         attachmentDraft,
       })));
 
       expect(response.status).toBe(200);
-      expect(captured?.context).toEqual({ agent: { initialPrompt: "", model: "openai-codex::gpt-5.6-sol", thinkingLevel: "medium", attachmentDraft } });
+      expect(captured?.context).toEqual({ agent: { initialPrompt: "Do this when a model is connected", initialPromptMode: "composer", model: "", thinkingLevel: "", attachmentDraft } });
       const body = await response.text();
       expect(body).toContain('action="update" target="launch_composer"');
       expect(body).not.toContain('action="select-workspace" target="workspace_detail"');

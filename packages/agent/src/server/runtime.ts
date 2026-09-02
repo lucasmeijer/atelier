@@ -4,7 +4,7 @@ import { AtelierCoreError, isJsonObject, shellQuote, type AtelierEventBus, type 
 import { StreamingMarkdownRenderer } from "@atelier/markdown";
 import { execWorkspaceCommand, workspaceRoot } from "@atelier/workspace";
 import { createPiModelRuntime, getConfiguredAgentModels, getModelThinkingLevel } from "./pi-config-models.ts";
-import { preferredNewWorkspaceAgentModel } from "./model-state.ts";
+import { resolveNewWorkspaceAgentModel } from "./model-state.ts";
 import { Type } from "typebox";
 import { Value } from "typebox/value";
 import {
@@ -1712,7 +1712,7 @@ async function createPiSession(agent: WorkspaceAgentConversationInfo, options: W
   await discardBootstrapOnlySession(agent.path);
   const [modelRuntime, defaultModel] = await Promise.all([
     createPiModelRuntime(),
-    preferredNewWorkspaceAgentModel(),
+    resolveNewWorkspaceAgentModel(),
   ]);
   const [agentsFiles, skillResources] = await Promise.all([
     loadWorkspaceAgentsFiles(agent.workspaceId),

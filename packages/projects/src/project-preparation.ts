@@ -33,7 +33,7 @@ export async function stageProjectPreparationPrompt(projectId: string, workHostP
   context.agent = {
     ...agent,
     initialPrompt: projectPreparationPrompt(agent.initialPrompt),
-    initialPromptMode: "draft",
+    initialPromptMode: "suggestion",
   };
   return true;
 }

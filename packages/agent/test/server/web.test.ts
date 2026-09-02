@@ -9,7 +9,7 @@ import { createNextWorkspaceAgentConversation, ensureDefaultWorkspaceAgentConver
 import { createWorkspaceAgentTabProvider, workspaceAgentTabProvider } from "../../src/server/web.ts";
 import { handleAgentRequest } from "../../src/server/routes.ts";
 import { agentAttachmentDraftId, findStagedAttachment, stageAttachment } from "../../src/server/attachment-drafts.ts";
-import { readInitialPromptDraft, writeInitialPromptDraft } from "../../src/server/initial-prompt-draft.ts";
+import { readInitialPromptDraft, stageInitialPrompt } from "../../src/server/initial-prompt-draft.ts";
 import { ids } from "../../src/server/render.ts";
 import { getWorkspaceAgentRuntime } from "../../src/server/runtime.ts";
 
@@ -250,7 +250,7 @@ describe("Workspace Agent-tab provider", () => {
     const conversation = await ensureDefaultWorkspaceAgentConversation("workspace-1");
     const draftId = agentAttachmentDraftId("workspace-1", conversation.conversationId);
     const attachment = await stageAttachment(draftId, new File(["image"], "reference.png", { type: "image/png" }));
-    await writeInitialPromptDraft("workspace-1", conversation.conversationId, "Suggested task");
+    await stageInitialPrompt("workspace-1", conversation.conversationId, "Suggested task", "suggestion");
     const events = createAtelierEventBus();
     const invalidations: WorkspaceAgentViewInvalidatedEvent[] = [];
     const submissions: Array<{ text: string; imageCount: number }> = [];
@@ -299,7 +299,7 @@ describe("Workspace Agent-tab provider", () => {
     const conversation = await ensureDefaultWorkspaceAgentConversation("workspace-1");
     const draftId = agentAttachmentDraftId("workspace-1", conversation.conversationId);
     const attachment = await stageAttachment(draftId, new File(["image"], "reference.png", { type: "image/png" }));
-    await writeInitialPromptDraft("workspace-1", conversation.conversationId, "Suggested task");
+    await stageInitialPrompt("workspace-1", conversation.conversationId, "Suggested task", "suggestion");
     let suggestedTitle = false;
     const runtime = {
       async submit(): Promise<void> {

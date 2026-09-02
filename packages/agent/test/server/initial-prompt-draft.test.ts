@@ -7,7 +7,7 @@ import {
   readInitialPromptDraft,
   removeInitialPromptDraft,
   removeWorkspaceInitialPromptDrafts,
-  writeInitialPromptDraft,
+  stageInitialPrompt,
 } from "../../src/server/initial-prompt-draft.ts";
 import { renderAgentPane } from "../../src/server/render.ts";
 
@@ -36,7 +36,7 @@ describe("initial Agent prompt drafts", () => {
     const workspaceId = "workspace-1";
     const firstId = "53fc77b7-dc19-42d5-b200-2e134ec67529";
     const secondId = "268604ac-d16a-4a4a-ab1e-1ed3ca54687d";
-    await writeInitialPromptDraft(workspaceId, firstId, "Configure this project");
+    await stageInitialPrompt(workspaceId, firstId, "Configure this project", "suggestion");
 
     expect(await readInitialPromptDraft(workspaceId, firstId)).toEqual({ prompt: "Configure this project", accepted: false });
     expect(await readInitialPromptDraft(workspaceId, secondId)).toBeUndefined();
@@ -52,10 +52,24 @@ describe("initial Agent prompt drafts", () => {
     expect(secondRender).not.toContain("Configure this project");
   });
 
+  test("puts an accepted draft directly into the Agent composer", async () => {
+    await useTemporaryDataDir();
+    const workspaceId = "workspace-1";
+    const conversationId = "53fc77b7-dc19-42d5-b200-2e134ec67529";
+    await stageInitialPrompt(workspaceId, conversationId, "Wait for a model", "composer");
+
+    const agent = { workspaceId, conversationId, label: "Agent 1", title: "First", path: "/tmp/first.jsonl" };
+    const html = await renderAgentPane({ workspaceId, conversationId }, agent, emptyPaneState);
+
+    expect(await readInitialPromptDraft(workspaceId, conversationId)).toEqual({ prompt: "Wait for a model", accepted: true });
+    expect(html).toContain(">Wait for a model</textarea>");
+    expect(html).not.toContain("initial-prompt-draft/accept");
+  });
+
   test("removes one conversation draft without consuming its sibling", async () => {
     await useTemporaryDataDir();
-    await writeInitialPromptDraft("workspace-1", "agent-a", "A");
-    await writeInitialPromptDraft("workspace-1", "agent-b", "B");
+    await stageInitialPrompt("workspace-1", "agent-a", "A", "suggestion");
+    await stageInitialPrompt("workspace-1", "agent-b", "B", "suggestion");
 
     await removeInitialPromptDraft("workspace-1", "agent-a");
     expect(await readInitialPromptDraft("workspace-1", "agent-a")).toBeUndefined();

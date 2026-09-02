@@ -13,6 +13,7 @@ import {
   extensionOf,
   findStagedAttachment,
   imageMimeByExtension,
+  moveAttachmentDraft,
   removeAttachmentDraft,
   removeStagedAttachment,
   removeStagedAttachments,
@@ -30,7 +31,7 @@ import { handleAgentTreeRequest } from "./session-tree.ts";
 import { ensureDefaultWorkspaceAgentConversation, listWorkspaceAgentConversations, type WorkspaceAgentConversationInfo } from "./session-store.ts";
 import { maybeNameAgentFromPrompt, renameAgentFromContext, setAgentSessionTitle } from "./agent-title-suggestion.ts";
 import { parseAgentServiceTier } from "./service-tier.ts";
-import { acceptInitialPromptDraft, removeInitialPromptDraft, writeInitialPromptDraft } from "./initial-prompt-draft.ts";
+import { acceptInitialPromptDraft, removeInitialPromptDraft, stageInitialPrompt } from "./initial-prompt-draft.ts";
 
 interface AgentRouteOptions {
   events?: AtelierEventBus;
@@ -60,7 +61,7 @@ export function registerAgentEvents(events: AtelierEventBus): void {
   events.on("workspace_created", async ({ workspaceId, context }) => {
     const agentContext = context?.agent;
     if (!agentContext) return;
-    const hasPrompt = agentContext.initialPromptMode !== "draft" && Boolean(agentContext.initialPrompt?.trim());
+    const hasPrompt = !agentContext.initialPromptMode && Boolean(agentContext.initialPrompt?.trim());
     if (hasPrompt) await events.emit("workspace_provision_step", { workspaceId, id: "agent.initial_prompt", label: "Start initial agent task", parentId: "workspace.integrations", status: "running" });
     await initializeWorkspaceAgent(workspaceId, agentContext, { events });
     if (hasPrompt) await events.emit("workspace_provision_step", { workspaceId, id: "agent.initial_prompt", label: "Start initial agent task", parentId: "workspace.integrations", status: "done" });
@@ -333,8 +334,14 @@ async function initializeWorkspaceAgent(workspaceId: string, context: AgentWorks
   if (thinkingLevel) await runtime.setThinkingLevel(thinkingLevel);
   if (context.serviceTier) await runtime.setServiceTier(context.serviceTier);
 
-  if (context.initialPromptMode === "draft") {
-    await writeInitialPromptDraft(workspaceId, agent.conversationId, context.initialPrompt ?? "");
+  const initialPromptMode = context.initialPromptMode;
+  if (initialPromptMode) {
+    const prompt = context.initialPrompt ?? "";
+    if (prompt) await stageInitialPrompt(workspaceId, agent.conversationId, prompt, initialPromptMode);
+    const attachmentDraft = context.attachmentDraft ?? "";
+    if (initialPromptMode === "composer" && validDraftId(attachmentDraft)) {
+      await moveAttachmentDraft(attachmentDraft, agentAttachmentDraftId(workspaceId, agent.conversationId));
+    }
     return;
   }
 

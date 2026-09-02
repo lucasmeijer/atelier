@@ -2,6 +2,7 @@ import { execFileSync } from "node:child_process";
 import { randomUUID } from "node:crypto";
 import { existsSync, readFileSync } from "node:fs";
 import {
+  prepareNewWorkspaceAgentParameters,
   renderLaunchComposer,
   renderLaunchComposerSettings,
   rememberNewWorkspaceAgentSettings,
@@ -954,12 +955,12 @@ ${moduleStylesHtml()}
     isFirstWorkspace: boolean;
   }
 
-  function createWorkspaceFromCommand(command: { source: WorkspaceCreateSource; agent?: AgentWorkspaceParameters; title?: string }): CreatedWorkspace {
+  async function createWorkspaceFromCommand(command: { source: WorkspaceCreateSource; agent?: AgentWorkspaceParameters; title?: string }): Promise<CreatedWorkspace> {
     const isFirstWorkspace = registry.list().length === 0;
     const id = generateWorkspaceId();
     const init = initForSource(command.source);
     const title = command.title?.trim() ?? "";
-    const context = creationContext(command.source, command.agent);
+    const context = creationContext(command.source, await prepareNewWorkspaceAgentParameters(command.agent));
     const fork = forkForSource(command.source);
     registry.add(id, title || null, init);
     const options: Parameters<typeof startWorkspaceProvisioning>[1] = {};
@@ -984,7 +985,7 @@ ${moduleStylesHtml()}
       }
       const agent = body.agent;
       const serviceTier = stringField(agent?.serviceTier, "agent.serviceTier");
-      const { id } = createWorkspaceFromCommand({
+      const { id } = await createWorkspaceFromCommand({
         source,
         title: stringField(body.title, "title"),
         agent: {
@@ -999,7 +1000,7 @@ ${moduleStylesHtml()}
       return jsonResponse({ workspace: { id, phase: "starting", url: location } }, { status: 202, headers: { location } });
     }
 
-    const { id } = createWorkspaceFromCommand({ source: { type: "empty" } });
+    const { id } = await createWorkspaceFromCommand({ source: { type: "empty" } });
     const location = new URL(`/workspaces/${encodeURIComponent(id)}`, url).toString();
     if (wantsTurboStream(request)) return turboStreamResponse(workspacePaneCollectionsTurboStream(await workspacePaneCollections("")), { headers: { location } });
     return Response.redirect(location, 303);
@@ -1015,7 +1016,7 @@ ${moduleStylesHtml()}
         const model = String(form.get("model") ?? "");
         const thinkingLevel = String(form.get("level") ?? "");
         await rememberNewWorkspaceAgentSettings(model, thinkingLevel);
-        return createWorkspaceFromCommand({
+        return await createWorkspaceFromCommand({
           source: options.project ? { type: "project", project: options.project } : { type: "empty" },
           agent: {
             initialPrompt: String(form.get("text") ?? ""),
@@ -1073,7 +1074,7 @@ ${moduleStylesHtml()}
           return { type: "init", init: entry.init };
         })()
       : { type: "empty" };
-    const { id } = createWorkspaceFromCommand({ source, title: request.title, agent: request });
+    const { id } = await createWorkspaceFromCommand({ source, title: request.title, agent: request });
     return { id, url: `/workspaces/${encodeURIComponent(id)}`, phase: "starting" };
   }
 
@@ -1082,7 +1083,7 @@ ${moduleStylesHtml()}
     if (!title) throw invalidArguments("title is required");
     const entry = registry.get(workspaceId);
     if (!entry || entry.phase !== "ready") throw new AtelierCoreError("workspace_not_found", `workspace not found: ${workspaceId}`);
-    const { id } = createWorkspaceFromCommand({ source: { type: "fork", sourceWorkspaceId: workspaceId, init: entry.init }, title, agent: request });
+    const { id } = await createWorkspaceFromCommand({ source: { type: "fork", sourceWorkspaceId: workspaceId, init: entry.init }, title, agent: request });
     return { id, url: `/workspaces/${encodeURIComponent(id)}`, phase: "starting" };
   }
 

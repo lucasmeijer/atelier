@@ -6,6 +6,7 @@ import {
   agentAttachmentDraftId,
   deliverAttachmentDraft,
   listStagedAttachments,
+  moveAttachmentDraft,
   removeStagedAttachments,
   stageAttachment,
   validDraftId,
@@ -53,6 +54,18 @@ describe("Agent attachment drafts", () => {
     expect(html).toContain(`name="attachmentDraft" value="${draftId}"`);
     expect(html).toContain(`name="attachment" value="${staged.id}"`);
     expect(html).toContain("screen.png");
+  });
+
+  test("moves launch attachments into the new Agent composer", async () => {
+    await dataDir();
+    const launchDraftId = crypto.randomUUID();
+    const agentDraftId = agentAttachmentDraftId("workspace-1", "53fc77b7-dc19-42d5-b200-2e134ec67529");
+    const staged = await stageAttachment(launchDraftId, new File(["draft"], "draft.txt"));
+
+    await moveAttachmentDraft(launchDraftId, agentDraftId);
+
+    expect(await listStagedAttachments(launchDraftId)).toEqual([]);
+    expect((await listStagedAttachments(agentDraftId)).map(({ id, name }) => ({ id, name }))).toEqual([{ id: staged.id, name: "draft.txt" }]);
   });
 
   test("consumes only the submitted attachments and preserves concurrent uploads", async () => {

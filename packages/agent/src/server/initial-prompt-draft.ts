@@ -28,8 +28,8 @@ async function persistInitialPromptDraft(workspaceId: string, conversationId: st
   await writeFile(path, `${JSON.stringify(draft)}\n`, "utf8");
 }
 
-export async function writeInitialPromptDraft(workspaceId: string, conversationId: string, prompt: string): Promise<void> {
-  await persistInitialPromptDraft(workspaceId, conversationId, { prompt, accepted: false });
+export async function stageInitialPrompt(workspaceId: string, conversationId: string, prompt: string, destination: "suggestion" | "composer"): Promise<void> {
+  await persistInitialPromptDraft(workspaceId, conversationId, { prompt, accepted: destination === "composer" });
 }
 
 export async function readInitialPromptDraft(workspaceId: string, conversationId: string): Promise<InitialPromptDraft | undefined> {

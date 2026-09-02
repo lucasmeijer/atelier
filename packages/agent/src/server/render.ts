@@ -7,7 +7,7 @@ import { renderTranscriptionComposerControl, transcriptionComposerController } f
 import { isJsonObject, type JsonObject, type JsonValue } from "@atelier/core";
 import { Type, type Static, type TSchema } from "typebox";
 import { Value } from "typebox/value";
-import { launchComposerThinkingLevel, launchComposerThinkingLevels, configuredModelOptionViews, modelRefValue, selectedLaunchComposerModel, type ModelRef } from "./model-state.ts";
+import { launchComposerThinkingLevel, launchComposerThinkingLevels, configuredModelOptionViews, modelRefValue, resolveNewWorkspaceAgentModel, type ModelRef } from "./model-state.ts";
 import { diffStats, type DiffOperation } from "./diff.ts";
 import { parseDiffFromFile, processPatch, type FileDiffMetadata } from "@pierre/diffs";
 import { embeddedBashCommand, formatBashCommandForDisplay, highlightedBashCommandHtml } from "./embedded-code.ts";
@@ -296,7 +296,7 @@ async function renderSharedComposer(options: SharedComposerRenderOptions): Promi
 }
 
 async function renderLaunchComposerModelOptions(selectedModel?: string): Promise<string> {
-  const selected = await selectedLaunchComposerModel(selectedModel);
+  const selected = await resolveNewWorkspaceAgentModel(selectedModel);
   const models = await configuredModelOptionViews(selected);
   return models.map((model, index) => {
     const value = modelRefValue(model);
@@ -305,7 +305,7 @@ async function renderLaunchComposerModelOptions(selectedModel?: string): Promise
 }
 
 async function launchComposerSettingsState(selectedModel?: string): Promise<{ selected: ModelRef | undefined; selectedThinkingLevel: string | undefined; thinkingLevels: string[] }> {
-  const selected = await selectedLaunchComposerModel(selectedModel);
+  const selected = await resolveNewWorkspaceAgentModel(selectedModel);
   return {
     selected,
     selectedThinkingLevel: await launchComposerThinkingLevel(selected),

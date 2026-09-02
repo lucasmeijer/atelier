@@ -21,7 +21,7 @@ describe("project preparation", () => {
     await withProject(async ({ id, work, store }) => {
       const context: WorkspaceCreationContext = { agent: { initialPrompt: "Fix the dashboard", model: "provider::model" } };
       expect(await stageProjectPreparationPrompt(id, work, context, store)).toBe(true);
-      expect(context.agent).toMatchObject({ initialPromptMode: "draft", model: "provider::model" });
+      expect(context.agent).toMatchObject({ initialPromptMode: "suggestion", model: "provider::model" });
       expect(context.agent?.initialPrompt).toContain("Prepare this project for efficient use in Atelier");
       expect(context.agent?.initialPrompt).toContain("Fix the dashboard");
     });

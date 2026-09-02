@@ -10,7 +10,7 @@ import { getWorkspaceAgentRuntime, removeWorkspaceAgentRuntime, removeWorkspaceA
 import { handleAgentRequest, registerAgentEvents, resolveWorkspacePortProxyTarget, workspaceFileEndpoint } from "./routes.ts";
 import { archiveWorkspaceAgentConversation, createNextWorkspaceAgentConversation, ensureDefaultWorkspaceAgentConversation, listWorkspaceAgentConversations, sessionShareDir, sessionShareKeyForInit, sessionShareMountPath, type WorkspaceAgentConversationInfo } from "./session-store.ts";
 import { agentConversationKey, renderAgentPane } from "./render.ts";
-import { preferredNewWorkspaceAgentModel } from "./model-state.ts";
+import { resolveNewWorkspaceAgentModel } from "./model-state.ts";
 import { dockerHostAtelierDataPath, getAtelierRuntimeContext, AtelierCoreError, type AtelierEventBus } from "@atelier/core";
 import { agentStaticFiles } from "./static.ts";
 import { mkdir } from "node:fs/promises";
@@ -130,7 +130,7 @@ function registerSessionShareMountEvents(events: AtelierEventBus): void {
 async function applyNewAgentSettings(agent: WorkspaceAgentConversationInfo, source: WorkspaceAgentConversationInfo | undefined, events?: AtelierEventBus): Promise<void> {
   const runtimeOptions = { events };
   const sourceRuntime = source ? await getWorkspaceAgentRuntime(source, runtimeOptions) : undefined;
-  const model = sourceRuntime?.currentModel() ?? await preferredNewWorkspaceAgentModel();
+  const model = sourceRuntime?.currentModel() ?? await resolveNewWorkspaceAgentModel();
   const targetRuntime = await getWorkspaceAgentRuntime(agent, runtimeOptions);
   if (model) await targetRuntime.setModel(model.provider, model.id);
   if (sourceRuntime) await targetRuntime.setThinkingLevel(sourceRuntime.currentThinkingLevel());

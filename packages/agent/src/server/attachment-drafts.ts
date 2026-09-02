@@ -1,5 +1,5 @@
 import { createHash } from "node:crypto";
-import { mkdir, readdir, readFile, rm, writeFile } from "node:fs/promises";
+import { mkdir, readdir, readFile, rename, rm, writeFile } from "node:fs/promises";
 import { join } from "node:path";
 import { getAtelierRuntimeContext, shellQuote } from "@atelier/core";
 import { execWorkspaceShell, workspaceRoot } from "@atelier/workspace";
@@ -120,6 +120,12 @@ export async function removeStagedAttachments(draftId: string, attachmentIds: re
 export async function removeAttachmentDraft(draftId: string): Promise<void> {
   if (!validDraftId(draftId)) throw new Error(`invalid attachment draft id: ${draftId}`);
   await rm(attachmentDraftDir(draftId), { recursive: true, force: true });
+}
+
+export async function moveAttachmentDraft(sourceDraftId: string, targetDraftId: string): Promise<void> {
+  if (!validDraftId(sourceDraftId) || !validDraftId(targetDraftId)) throw new Error("invalid attachment draft id");
+  if ((await listStagedAttachments(sourceDraftId)).length === 0) return;
+  await rename(attachmentDraftDir(sourceDraftId), attachmentDraftDir(targetDraftId));
 }
 
 export async function deliverAttachmentDraft(workspaceId: string, draftId: string, attachmentIds?: string[]): Promise<DeliveredAttachments> {
