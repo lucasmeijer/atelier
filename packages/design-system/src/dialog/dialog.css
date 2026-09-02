@@ -18,12 +18,13 @@
 }
 
 .dialog:focus { outline: none; }
+.dialog[open] { display: flex; flex-direction: column; }
 .dialog__form { display: contents; }
-.dialog__header { display: flex; align-items: center; gap: 8px; padding: 16px; }
-.dialog__body { max-height: calc(92vh - 128px); padding: 16px; overflow: auto; color: var(--text); }
+.dialog__header { display: flex; flex: 0 0 auto; align-items: center; gap: 8px; padding: 16px; }
+.dialog__body { min-height: 0; max-height: calc(92vh - 128px); padding: 16px; overflow: auto; color: var(--text); }
 .dialog__body--full-bleed { padding: 0; }
 .dialog__body > * + * { margin-top: 12px; }
-.dialog__actions { display: flex; justify-content: flex-end; gap: 8px; padding: 0 16px 16px; }
+.dialog__actions { display: flex; flex: 0 0 auto; justify-content: flex-end; gap: 8px; padding: 0 16px 16px; }
 .dialog__actions > form { display: flex; margin: 0; }
 .dialog--compact { width: min(560px, calc(100vw - 32px)); }
 .dialog--compact .dialog__body { padding-bottom: 12px; }
