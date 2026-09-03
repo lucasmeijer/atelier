@@ -1,9 +1,9 @@
 import { handleGitHubSettingsRequest } from "./github.ts";
 import { handleModelSettingsRequest } from "./models.ts";
-import { handleSettingsPageRequest, renderSettingsDialog, type WorkspaceCleanupResult } from "./page.ts";
+import { handleSettingsPageRequest, renderDevelopmentSettingsDialog, renderSettingsDialog, type WorkspaceCleanupResult } from "./page.ts";
 import { listSettingsContributions } from "./registry.ts";
 
-export { renderSettingsDialog };
+export { renderDevelopmentSettingsDialog, renderSettingsDialog };
 
 export async function handleSettingsRequest(
   request: Request,

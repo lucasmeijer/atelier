@@ -51,7 +51,15 @@ async function renderKeypressProbeSettings(): Promise<string> {
       { label: "On", value: "true" },
     ],
   });
-  return `<section class="settings-sec settings-sec-keypress-probe" id="${settingsSectionId}"><h2>Shortcut probe</h2><div class="settings-field"><div><b>Keylogging probe</b><p>Shows a local, visible keyboard-event overlay in workspaces so you can debug why shortcuts are not firing. Events are not stored; browser, OS, and iframe-reserved shortcuts may never reach Atelier.</p></div>${toggle}</div></section>`;
+  return `<section class="settings-sec settings-sec-keypress-probe settings-sec-development" id="${settingsSectionId}">
+    <div class="settings-development-action">
+      <div class="settings-development-copy">
+        <div>Shortcut probe</div>
+        <p>Show a local keyboard-event overlay in workspaces. Events are not stored; browser, OS, and iframe-reserved shortcuts may not reach Atelier.</p>
+      </div>
+      <div class="settings-development-control">${toggle}</div>
+    </div>
+  </section>`;
 }
 
 const keypressProbeSettingsContribution: SettingsContribution = {

@@ -59,6 +59,7 @@ Other browser-navigable surfaces are:
 /projects/new                           # Add a project
 /settings                               # Atelier settings
 /settings?section=models                # A specific settings section
+/settings/development                   # Development settings
 ```
 
 The settings section is a registered settings contribution ID, such as `theme`, `git-identity`, `github`, `models`, `transcription`, or `update`.

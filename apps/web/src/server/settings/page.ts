@@ -1,3 +1,4 @@
+import { actionLinkHtml } from "@atelier/design-system/action-link";
 import { dialogHtml } from "@atelier/design-system/dialog";
 import { destructiveConfirmationHtml } from "@atelier/design-system/destructive-confirmation";
 import { Icons } from "@atelier/design-system/icons";
@@ -44,20 +45,41 @@ export type WorkspaceCleanupResult = { deleted: number; errors: string[] };
 
 function renderForceDeleteWorkspaces(result?: WorkspaceCleanupResult): string {
   const confirmation = destructiveConfirmationHtml({
-    trigger: { type: "button", variant: "danger", content: { kind: "caption", caption: "Force delete all workspaces" } },
-    confirmCaption: "Force delete all workspaces",
+    trigger: { type: "button", variant: "danger", content: { kind: "caption", caption: "Delete all workspaces" } },
+    confirmCaption: "Delete all workspaces",
     cancelCaption: "Cancel",
   });
-  const deleted = result === undefined ? "" : `<p role="status">Deleted ${escapeHtml(result.deleted)} workspace${result.deleted === 1 ? "" : "s"}.</p>`;
+  const deleted = result === undefined ? "" : `<p class="settings-development-status" role="status">Deleted ${escapeHtml(result.deleted)} workspace${result.deleted === 1 ? "" : "s"}.</p>`;
   const errors = result?.errors.length ? `<p class="settings-error">${escapeHtml(result.errors.join("\n"))}</p>` : "";
-  return `<div id="settings_force_delete_workspaces" class="settings-force-delete">${deleted}${errors}<form method="post" action="/settings/workspaces/force-delete" data-turbo="true">${confirmation}</form></div>`;
+  return `<div id="settings_force_delete_workspaces" class="settings-development-action">
+    <div class="settings-development-copy">
+      <div>Workspaces</div>
+      <p>Permanently delete every workspace and its files.</p>
+      ${deleted}${errors}
+    </div>
+    <div class="settings-development-control"><form method="post" action="/settings/workspaces/force-delete" data-turbo="true">${confirmation}</form></div>
+  </div>`;
+}
+
+function renderResetSettings(): string {
+  const confirmation = destructiveConfirmationHtml({
+    trigger: { type: "button", variant: "danger", content: { kind: "caption", caption: "Delete all settings" } },
+    confirmCaption: "Delete all settings",
+    cancelCaption: "Cancel",
+  });
+  return `<div class="settings-development-action">
+    <div class="settings-development-copy">
+      <div>Stored settings</div>
+      <p>Delete the Git identity, GitHub token, and model provider credentials stored by Atelier.</p>
+    </div>
+    <div class="settings-development-control"><form method="post" action="/settings/reset" data-turbo="true">${confirmation}</form></div>
+  </div>`;
 }
 
 async function renderDevelopmentSettings(): Promise<string> {
-  const forceDeleteWorkspaces = devSettingsEnabled() ? renderForceDeleteWorkspaces() : "";
   const keypressProbeSettings = await listSettingsContributions().find((contribution) => contribution.id === "keypress-probe")?.render() ?? "";
-  const resetSettings = `<form class="settings-reset-form" method="post" action="/settings/reset" data-turbo="true"><button class="settings-reset-link" type="submit" onclick="return confirm('Delete stored git identity, GitHub token, and all stored model provider credentials?')">delete all settings</button></form>`;
-  return `${keypressProbeSettings}<div class="settings-dev-actions">${resetSettings}${forceDeleteWorkspaces}</div>`;
+  const destructiveActions = `${renderResetSettings()}${devSettingsEnabled() ? renderForceDeleteWorkspaces() : ""}`;
+  return `${keypressProbeSettings}<section class="settings-sec settings-sec-development">${destructiveActions}</section>`;
 }
 
 registerSettingsContribution({ id: "theme", label: "Theme", order: 10, render: renderThemeSettings });
@@ -90,8 +112,13 @@ export async function renderSettingsDialog(sectionId?: string): Promise<string> 
 }
 
 export async function renderDevelopmentSettingsDialog(): Promise<string> {
-  const backLink = '<div class="settings-development-back"><a class="settings-back-link" href="/settings" data-turbo-frame="_top" data-turbo-stream="true">Settings</a></div>';
-  return settingsDialogHtml("Development settings", `<main class="settings-main settings-main-dev">${backLink}${await renderDevelopmentSettings()}</main>`);
+  const backLink = actionLinkHtml({
+    href: "/settings",
+    variant: "secondary",
+    content: { kind: "caption", caption: "Back to settings" },
+    attributesHtml: 'data-turbo-frame="_top" data-turbo-stream="true"',
+  });
+  return settingsDialogHtml("Development settings", `<main class="settings-main settings-main-dev">${await renderDevelopmentSettings()}<nav class="settings-development-back" aria-label="Settings navigation">${backLink}</nav></main>`);
 }
 
 async function deleteAllStoredSettings(): Promise<void> {

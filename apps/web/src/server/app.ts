@@ -43,7 +43,7 @@ import {
 } from "@atelier/shared";
 import type { WorkspaceDeletionState, WorkspaceEntry, WorkspaceRegistry } from "./workspace-registry.ts";
 import { workspaceModules } from "./workspace-modules.ts";
-import { handleSettingsRequest, renderSettingsDialog } from "./settings/routes.ts";
+import { handleSettingsRequest, renderDevelopmentSettingsDialog, renderSettingsDialog } from "./settings/routes.ts";
 import { handleOnboardingRequest, renderOnboardingDialog } from "./onboarding/routes.ts";
 import { atelierOpenApi } from "./openapi.ts";
 import { parseCloseWorkViewRequest, parseReorderWorkViewRequest } from "./work-view-api.ts";
@@ -489,14 +489,16 @@ export function createWebApp(deps: WebAppDeps): WebApp {
     | { kind: "project-settings"; projectId: string; section: string | undefined }
     | { kind: "new-project" }
     | { kind: "new-workspace"; project?: ProjectSummary }
-    | { kind: "settings"; section: string | undefined };
+    | { kind: "settings"; section: string | undefined; development?: true };
 
   async function renderWorkspaceShell(selectedId?: string, surface?: ShellSurface): Promise<string> {
     const pane = await workspacePaneCollections(selectedId ?? "");
     const projectEditor = surface?.kind === "project-settings"
       ? await projectRoutes.editorModal({ kind: "settings", projectId: surface.projectId, section: surface.section })
       : await projectRoutes.editorModal(surface?.kind === "new-project" ? { kind: "new" } : undefined);
-    const settings = surface?.kind === "settings" ? await renderSettingsDialog(surface.section) : "";
+    const settings = surface?.kind === "settings"
+      ? surface.development ? await renderDevelopmentSettingsDialog() : await renderSettingsDialog(surface.section)
+      : "";
     const launchComposer = surface?.kind === "new-workspace"
       ? surface.project ? await renderProjectLaunchComposerFrame(surface.project) : await renderProjectlessLaunchComposerFrame()
       : `<turbo-frame id="${launchComposerFrameId}"></turbo-frame>`;
@@ -1202,6 +1204,7 @@ export function createWebApp(deps: WebAppDeps): WebApp {
     if (url.pathname === "/workspaces/new" && request.method === "GET") return await surfacePage({ kind: "new-workspace" });
     if (url.pathname === "/projects/new" && request.method === "GET") return await surfacePage({ kind: "new-project" });
     if (url.pathname === "/settings" && request.method === "GET" && !wantsTurboStream(request)) return await surfacePage({ kind: "settings", section: url.searchParams.get("section") ?? undefined });
+    if (url.pathname === "/settings/development" && request.method === "GET" && !wantsTurboStream(request)) return await surfacePage({ kind: "settings", section: undefined, development: true });
     if (url.pathname === "/workspaces" && request.method === "GET") return workspaceListEndpoint(request, url);
     if (url.pathname === "/workspaces" && request.method === "POST") return await createWorkspaceEndpoint(url, request);
     if (url.pathname === "/workspaces/open-oldest-unread" && request.method === "POST") return openOldestAttentionWorkspaceEndpoint();
