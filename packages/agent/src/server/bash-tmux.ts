@@ -14,7 +14,7 @@ import {
   observableTerminalRows,
   stripObservablePaneFraming,
   stripTerminalControls,
-  type IPty,
+  type ObservableTerminalConnection,
 } from "@atelier/observable-terminal/server";
 import {
   DEFAULT_MAX_BYTES,
@@ -227,7 +227,7 @@ printf '%s\\n' "$status" > ${shellQuote(exitFile)}`;
 interface AgentTermSocketData {
   workspaceId: string;
   session: string;
-  pty?: IPty;
+  terminal?: ObservableTerminalConnection;
 }
 
 export function createAgentTermSocketSession(url: URL): WorkspaceServerSocketSession | undefined {
@@ -248,11 +248,11 @@ export function createAgentTermSocketSession(url: URL): WorkspaceServerSocketSes
 
 function openAgentTermSocket(socket: WorkspaceSocketConnection, data: AgentTermSocketData): void {
   try {
-    const pty = attachObservableTerminal({
+    data.terminal = attachObservableTerminal({
       containerName: workspaceContainerName(data.workspaceId),
       session: data.session,
       // Agent bash sessions have a fixed, desktop-like size. Do not trust the
-      // browser/PTY-reported attach size here: hidden or freshly-mounted inline
+      // browser-reported attach size here: hidden or freshly-mounted inline
       // terminals can briefly report tiny dimensions (for example 5x5), and a
       // tmux attach client may otherwise propagate that size to the running
       // command.
@@ -261,18 +261,18 @@ function openAgentTermSocket(socket: WorkspaceSocketConnection, data: AgentTermS
       user: "atelier",
       readonly: true,
       fixedSize: true,
+    }, {
+      onData: (chunk) => {
+        setTimeout(() => {
+          try {
+            socket.send(chunk);
+          } catch {
+            // Socket closed.
+          }
+        }, 0);
+      },
+      onExit: () => socket.close(),
     });
-    data.pty = pty;
-    pty.onData((chunk) => {
-      setTimeout(() => {
-        try {
-          socket.send(chunk);
-        } catch {
-          // Socket closed.
-        }
-      }, 0);
-    });
-    pty.onExit(() => socket.close());
   } catch (error) {
     const message = error instanceof Error ? error.message : String(error);
     socket.send(`\r\n[terminal attach failed: ${message}]\r\n`);
@@ -281,5 +281,5 @@ function openAgentTermSocket(socket: WorkspaceSocketConnection, data: AgentTermS
 }
 
 function closeAgentTermSocket(data: AgentTermSocketData): void {
-  data.pty?.kill();
+  data.terminal?.close();
 }

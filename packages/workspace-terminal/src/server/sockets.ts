@@ -1,5 +1,5 @@
 import { AtelierCoreError } from "@atelier/core";
-import { attachObservableTerminal, type IPty } from "@atelier/observable-terminal/server";
+import { attachObservableTerminal, type ObservableTerminalConnection } from "@atelier/observable-terminal/server";
 import { parseObservableTerminalMessage } from "@atelier/observable-terminal/shared";
 import type { WorkspaceServerSocketHandler, WorkspaceSocketConnection } from "@atelier/shared";
 import { workspaceContainerName, workspaceRoot } from "@atelier/workspace";
@@ -12,7 +12,7 @@ interface TerminalSocketData {
   tmuxSession: string;
   cols: number;
   rows: number;
-  pty?: IPty;
+  terminal?: ObservableTerminalConnection;
 }
 
 function parsePositiveInteger(value: string | null, fallback: number): number {
@@ -51,7 +51,7 @@ export function createTerminalSocketHandler(options: { setViewBusy(workspaceId: 
 
   function open(socket: WorkspaceSocketConnection, data: TerminalSocketData): void {
     try {
-      const pty = attachObservableTerminal({
+      data.terminal = attachObservableTerminal({
         containerName: workspaceContainerName(data.workspaceId),
         session: data.tmuxSession,
         cols: data.cols,
@@ -59,18 +59,18 @@ export function createTerminalSocketHandler(options: { setViewBusy(workspaceId: 
         user: "atelier",
         workdir: workspaceRoot,
         readonly: false,
+      }, {
+        onData: (chunk) => {
+          setTimeout(() => {
+            try {
+              socket.send(chunk);
+            } catch {
+              // Socket closed between terminal output and scheduled send.
+            }
+          }, 0);
+        },
+        onExit: () => socket.close(),
       });
-      data.pty = pty;
-      pty.onData((chunk) => {
-        setTimeout(() => {
-          try {
-            socket.send(chunk);
-          } catch {
-            // Socket closed between PTY output and scheduled send.
-          }
-        }, 0);
-      });
-      pty.onExit(() => socket.close());
     } catch (error) {
       const message = error instanceof Error ? error.message : String(error);
       socket.send(`\r\n\x1b[31m[terminal failed to start: ${message}]\x1b[0m\r\n`);
@@ -82,19 +82,19 @@ export function createTerminalSocketHandler(options: { setViewBusy(workspaceId: 
     const text = input instanceof Uint8Array ? messageDecoder.decode(input) : input;
     const control = parseObservableTerminalMessage(text);
     if (control?.type === "resize") {
-      data.pty?.resize(control.cols, control.rows);
+      data.terminal?.resize(control.cols, control.rows);
       return;
     }
     if (control?.type === "progress") {
       setBusy(data.workspaceId, data.terminalId, control.state !== 0);
       return;
     }
-    data.pty?.write(text);
+    data.terminal?.write(text);
   }
 
   function close(data: TerminalSocketData): void {
     setBusy(data.workspaceId, data.terminalId, false);
-    data.pty?.kill();
+    data.terminal?.close();
   }
 
   return async (url) => {

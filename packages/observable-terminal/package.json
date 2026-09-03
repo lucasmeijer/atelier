@@ -10,7 +10,6 @@
   },
   "dependencies": {
     "@atelier/core": "workspace:*",
-    "@gespenst/core": "catalog:",
-    "@zenyr/bun-pty": "^0.4.4"
+    "@gespenst/core": "catalog:"
   }
 }

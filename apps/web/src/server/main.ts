@@ -4,7 +4,7 @@ import type { ServerWebSocket } from "bun";
 import { Type } from "typebox";
 import { Value } from "typebox/value";
 import { createAtelierEventBus, getAtelierRuntimeContext } from "@atelier/core";
-import { attachHostObservableTerminal, observableTerminalCols, observableTerminalRows, type IPty } from "@atelier/observable-terminal/server";
+import { attachHostObservableTerminal, observableTerminalCols, observableTerminalRows, type ObservableTerminalConnection } from "@atelier/observable-terminal/server";
 import { createWorkspace, deleteWorkspace, isWorkspaceRunning, listWorkspaces, resolveWorkspace, setWorkspaceContainerRunning, workspaceSetupProvisioningHook } from "@atelier/workspace";
 import { atelierName, CableTopics, escapeHtml, type WorkspaceAppBackend, type WorkspaceAppRef, type WorkspaceServerAppResolver, type WorkspaceServerProvisioningHook, type WorkspaceServerSocketHandler, type WorkspaceServerSocketSession } from "@atelier/shared";
 import {
@@ -349,7 +349,7 @@ async function compressDynamicResponse(request: Request, response: Response): Pr
 interface ProvisionTermSocketData {
   kind: "provision-term";
   session: string;
-  pty?: IPty;
+  terminal?: ObservableTerminalConnection;
 }
 
 type ProvisionTermSocket = Pick<ServerWebSocket<undefined>, "send" | "close">;
@@ -425,12 +425,12 @@ function openProvisionTermSocket(ws: ProvisionTermSocket, data: ProvisionTermSoc
     let lastError: unknown;
     for (let attempt = 0; attempt < 30; attempt += 1) {
       try {
-        const pty = attachHostObservableTerminal({ session: data.session, cols: observableTerminalCols, rows: observableTerminalRows, readonly: true, fixedSize: true });
-        data.pty = pty;
-        pty.onData((chunk) => {
-          try { ws.send(chunk); } catch { /* closed */ }
+        data.terminal = attachHostObservableTerminal({ session: data.session, cols: observableTerminalCols, rows: observableTerminalRows, readonly: true, fixedSize: true }, {
+          onData: (chunk) => {
+            try { ws.send(chunk); } catch { /* closed */ }
+          },
+          onExit: () => ws.close(),
         });
-        pty.onExit(() => ws.close());
         return;
       } catch (error) {
         lastError = error;
@@ -443,7 +443,7 @@ function openProvisionTermSocket(ws: ProvisionTermSocket, data: ProvisionTermSoc
 }
 
 function closeProvisionTermSocket(data: ProvisionTermSocketData): void {
-  data.pty?.kill();
+  data.terminal?.close();
 }
 
 await workspaceIngress.initialize();

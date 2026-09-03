@@ -1,18 +1,14 @@
-import { spawn, type IPty } from "@zenyr/bun-pty";
 import { observableTerminalEnvironment } from "./constants.ts";
 
-export { type IPty } from "@zenyr/bun-pty";
+export interface ObservableTerminalConnection {
+  write(data: string): void;
+  resize(cols: number, rows: number): void;
+  close(): void;
+}
 
-export interface ObservableTerminalAttachOptions {
-  containerName: string;
-  session: string;
-  cols: number;
-  rows: number;
-  user?: string;
-  workdir?: string;
-  readonly?: boolean;
-  fixedSize?: boolean;
-  env?: Record<string, string>;
+export interface ObservableTerminalEvents {
+  onData(data: Uint8Array): void;
+  onExit(exitCode: number): void;
 }
 
 export interface HostObservableTerminalAttachOptions {
@@ -24,7 +20,13 @@ export interface HostObservableTerminalAttachOptions {
   env?: Record<string, string>;
 }
 
-function tmuxAttachArgs(options: { session: string; cols: number; rows: number; readonly?: boolean; fixedSize?: boolean }): string[] {
+export interface ObservableTerminalAttachOptions extends HostObservableTerminalAttachOptions {
+  containerName: string;
+  user?: string;
+  workdir?: string;
+}
+
+function tmuxAttachArgs(options: HostObservableTerminalAttachOptions): string[] {
   const args: string[] = [];
   if (options.fixedSize) {
     args.push("set-option", "-t", options.session, "window-size", "manual", ";", "resize-window", "-t", options.session, "-x", String(options.cols), "-y", String(options.rows), ";");
@@ -44,25 +46,49 @@ export function buildAttachArgs(options: ObservableTerminalAttachOptions): strin
   return args;
 }
 
-export function attachObservableTerminal(options: ObservableTerminalAttachOptions): IPty {
-  return spawn("docker", buildAttachArgs(options), {
+function spawnTerminal(
+  command: string,
+  args: string[],
+  options: { cols: number; rows: number; env: Record<string, string | undefined> },
+  events: ObservableTerminalEvents,
+): ObservableTerminalConnection {
+  const terminal = new Bun.Terminal({
     name: "xterm-256color",
     cols: options.cols,
     rows: options.rows,
-    env: { ...process.env, ...observableTerminalEnvironment, ...options.env },
+    data: (_terminal, data) => events.onData(data),
   });
+  const subprocess = Bun.spawn({ cmd: [command, ...args], env: options.env, terminal });
+
+  void subprocess.exited.then((exitCode) => {
+    terminal.close();
+    events.onExit(exitCode);
+  });
+
+  return {
+    write: (data) => terminal.write(data),
+    resize: (cols, rows) => terminal.resize(cols, rows),
+    close: () => subprocess.kill(),
+  };
+}
+
+export function attachObservableTerminal(options: ObservableTerminalAttachOptions, events: ObservableTerminalEvents): ObservableTerminalConnection {
+  return spawnTerminal("docker", buildAttachArgs(options), {
+    cols: options.cols,
+    rows: options.rows,
+    env: { ...process.env, ...observableTerminalEnvironment, ...options.env },
+  }, events);
 }
 
 export function buildHostAttachArgs(options: HostObservableTerminalAttachOptions): string[] {
   return tmuxAttachArgs(options);
 }
 
-export function attachHostObservableTerminal(options: HostObservableTerminalAttachOptions): IPty {
-  const env = { ...observableTerminalEnvironment, ...options.env };
-  return spawn("env", [...Object.entries(env).map(([key, value]) => `${key}=${value}`), "tmux", ...buildHostAttachArgs(options)], {
-    name: "xterm-256color",
+export function attachHostObservableTerminal(options: HostObservableTerminalAttachOptions, events: ObservableTerminalEvents): ObservableTerminalConnection {
+  const env = { ...process.env, ...observableTerminalEnvironment, ...options.env, TMUX: undefined, TMUX_PANE: undefined };
+  return spawnTerminal("tmux", buildHostAttachArgs(options), {
     cols: options.cols,
     rows: options.rows,
-    env: { ...process.env, ...env },
-  });
+    env,
+  }, events);
 }

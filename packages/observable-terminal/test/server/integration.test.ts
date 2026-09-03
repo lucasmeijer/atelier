@@ -60,22 +60,23 @@ maybe("observable terminal integration", () => {
         cwd: process.cwd(),
         command: "printf 'docker build progress\\n'; sleep 1",
         onSessionStarted: () => new Promise<void>((resolve, reject) => {
+          const decoder = new TextDecoder();
           let output = "";
-          const pty = attachHostObservableTerminal({ session, cols: observableTerminalCols, rows: observableTerminalRows, readonly: true, fixedSize: true });
           const timer = setTimeout(() => reject(new Error(output || "timed out waiting for attach output")), 3_000);
-          pty.onData((chunk) => {
-            output += chunk;
-            if (output.includes("docker build progress")) {
-              clearTimeout(timer);
-              pty.kill();
-              resolve();
-            }
-          });
-          pty.onExit(({ exitCode }) => {
-            if (!output.includes("docker build progress")) {
-              clearTimeout(timer);
-              reject(new Error(`${output || "attach exited before output"} (exit ${exitCode})`));
-            }
+          attachHostObservableTerminal({ session, cols: observableTerminalCols, rows: observableTerminalRows, readonly: true, fixedSize: true }, {
+            onData: (chunk) => {
+              output += decoder.decode(chunk, { stream: true });
+              if (output.includes("docker build progress")) {
+                clearTimeout(timer);
+                resolve();
+              }
+            },
+            onExit: (exitCode) => {
+              if (!output.includes("docker build progress")) {
+                clearTimeout(timer);
+                reject(new Error(`${output || "attach exited before output"} (exit ${exitCode})`));
+              }
+            },
           });
         }),
       });

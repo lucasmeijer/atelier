@@ -66,7 +66,7 @@
       "dependencies": {
         "@atelier/agent": "workspace:*",
         "@atelier/core": "workspace:*",
-        "@atelier/proxy-ingress": "workspace:*",
+        "@atelier/proxy-ingress": "workspace:*"
         "@atelier/shared": "workspace:*",
         "@atelier/workspace": "workspace:*",
         "@earendil-works/pi-coding-agent": "catalog:",
@@ -139,7 +139,6 @@
       "dependencies": {
         "@atelier/core": "workspace:*",
         "@gespenst/core": "catalog:",
-        "@zenyr/bun-pty": "^0.4.4",
       },
     },
     "packages/projects": {
@@ -250,7 +249,7 @@
       "dependencies": {
         "@atelier/agent": "workspace:*",
         "@atelier/core": "workspace:*",
-        "@atelier/observable-terminal": "workspace:*",
+        "@atelier/observable-terminal": "workspace:*"
         "@atelier/shared": "workspace:*",
         "@atelier/workspace": "workspace:*",
         "@earendil-works/pi-coding-agent": "catalog:",
@@ -597,18 +596,6 @@
     "@wasm-fmt/ruff_fmt": ["@wasm-fmt/ruff_fmt@0.15.20", "", {}, "sha512-PYij4wTiDSTx6MyBGHSY0nWDjSiTbOB3moPJiZTBL8F0JZLEfHAi4lYAn9SC9Hzm8tVeTnL7Qyf1iPW0TKHVEg=="],
 
     "@wasm-fmt/shfmt": ["@wasm-fmt/shfmt@0.2.7", "", {}, "sha512-bxmf5pXBHe3ujjc2iEoXqRXKgrQmR44jHLZ9G5BsKsb5moDWsuqsISs+88Ov9/SAI88caXYIsP02U4c4YDQpIQ=="],
-
-    "@zenyr/bun-pty": ["@zenyr/bun-pty@0.4.4", "", { "optionalDependencies": { "@zenyr/bun-pty-darwin-arm64": "0.4.4", "@zenyr/bun-pty-darwin-x64": "0.4.4", "@zenyr/bun-pty-linux-arm64": "0.4.4", "@zenyr/bun-pty-linux-x64": "0.4.4", "@zenyr/bun-pty-win32-x64": "0.4.4" } }, "sha512-XtuHDNH5+7ggg9I44heYdnn2kW96+b9uxaC2q6hSyzrhQHSGq+82M07u8H3SokMCb/4Si1Rld5taKNQ3xM+Kxw=="],
-
-    "@zenyr/bun-pty-darwin-arm64": ["@zenyr/bun-pty-darwin-arm64@0.4.4", "", { "os": "darwin", "cpu": "arm64" }, "sha512-+tIBa2trf681O0ttftbarFEZuXOKOLrmplD6/AYKc87TCrp7JQrLVu0Slly+4Ci8tWYiE3MGTJGBhmPSTjLKIQ=="],
-
-    "@zenyr/bun-pty-darwin-x64": ["@zenyr/bun-pty-darwin-x64@0.4.4", "", { "os": "darwin", "cpu": "x64" }, "sha512-tbssenRokNls193hCSywpDwH0IpYfx8FkiDtm6u7i2sphNw6ktGftzQHH/021pWjZNVdYA75YhlfZrIGdhjHow=="],
-
-    "@zenyr/bun-pty-linux-arm64": ["@zenyr/bun-pty-linux-arm64@0.4.4", "", { "os": "linux", "cpu": "arm64" }, "sha512-kXTeEWZrjRn2jGGnxTrYnZSJ6ZRKTiR7otK7SlmVP+pa1OtZs5J77VG93/wWq2gpTAL7Bs4vNMjEj5A6UaJG7A=="],
-
-    "@zenyr/bun-pty-linux-x64": ["@zenyr/bun-pty-linux-x64@0.4.4", "", { "os": "linux", "cpu": "x64" }, "sha512-Vlxkvlfcg8BWDvChvJbN4N3lG7z08f+24d2jvcfx/guRz5w1qjvHfMGWvGj2DtbzIBDjXO0CaKKzdN/T2ZxSqA=="],
-
-    "@zenyr/bun-pty-win32-x64": ["@zenyr/bun-pty-win32-x64@0.4.4", "", { "os": "win32", "cpu": "x64" }, "sha512-esZqEjPHPWRfAd/IZNaC4mptJ2HFdPXJQPUZVIdrwxEumL7NRoQZXVrlO7MRSO2Jrjqgna4IuQIvOKvCwJNMrg=="],
 
     "agent-base": ["agent-base@7.1.4", "", {}, "sha512-MnA+YT8fwfJPgBx3m60MNqakm30XOkyIoH1y6huTQvC0PwZG7ki8NacLBcrPbNoo8vEZy7Jpuk7+jMO+CUovTQ=="],
 

@@ -27,8 +27,9 @@ export {
   buildAttachArgs,
   buildHostAttachArgs,
   type HostObservableTerminalAttachOptions,
-  type IPty,
   type ObservableTerminalAttachOptions,
+  type ObservableTerminalConnection,
+  type ObservableTerminalEvents,
 } from "./attach.ts";
 export {
   runHostObservableCommand,
