@@ -8,7 +8,7 @@ import { toggleHtml } from "@atelier/design-system/toggle";
 import { preloadDiffHTML } from "@pierre/diffs/ssr";
 import { domId, escapeHtml, turboStream, workspaceWorkViewLabelDomId, type WorkspaceWorkViewPresentation } from "@atelier/shared";
 import type { ReviewFile, ReviewFileStats, ReviewFileSummary, ReviewIndex } from "./diff.ts";
-import { defaultReviewDiffLayouts, reviewCommentsPrompt, type ReviewCommentModel, type ReviewDiffLayouts } from "../model.ts";
+import { defaultReviewSettings, reviewCommentsPrompt, type ReviewCommentModel, type ReviewSettings } from "../model.ts";
 import { reviewDiffOptions, reviewViewKey } from "../pierre.ts";
 import type { ReviewComment } from "./state.ts";
 
@@ -190,7 +190,7 @@ function refreshForm(workspaceId: string, caption = ""): string {
   return `<form method="post" action="/workspaces/${encodeURIComponent(workspaceId)}/review/refresh" data-turbo="true" data-action="submit->review#updateRefreshState turbo:submit-end->review#updateRefreshState">${button}</form>`;
 }
 
-function toolbar(workspaceId: string, comments: ReviewComment[], diffLayouts: ReviewDiffLayouts): string {
+function toolbar(workspaceId: string, comments: ReviewComment[], settings: ReviewSettings): string {
   const collapse = iconButton("Collapse all files", "review#collapseAll", Icons.CollapseAll);
   const expand = iconButton("Expand all files", "review#expandAll", Icons.ExpandAll);
   const copyButton = copyButtonHtml({
@@ -207,25 +207,25 @@ function toolbar(workspaceId: string, comments: ReviewComment[], diffLayouts: Re
     variant: "text-subtle",
     label: "Diff layout",
     name: "review-diff-layout",
-    value: diffLayouts.desktop,
+    value: settings.desktop,
     form: { action: "/review/settings/diff-layout?viewport=desktop", dataAction: "change->review#setDiffLayout" },
     options: [{ label: "Unified", value: "unified" }, { label: "Side by side", value: "split" }],
   });
   const diffHighlighting = toggleHtml({
     variant: "text-subtle",
     label: "Diff highlighting",
-    name: "review-word-diff",
-    value: "false",
-    element: { dataAction: "change->review#setWordDiff" },
-    options: [{ label: "Lines", value: "false" }, { label: "Words", value: "true" }],
+    name: "review-diff-highlighting",
+    value: settings.highlighting,
+    form: { action: "/review/settings/diff-highlighting", dataAction: "change->review#setDiffHighlighting" },
+    options: [{ label: "Lines", value: "line" }, { label: "Words", value: "word" }],
   });
-  const longLines = toggleHtml({
+  const diffOverflow = toggleHtml({
     variant: "text-subtle",
     label: "Long lines",
-    name: "review-line-wrapping",
-    value: "true",
-    element: { dataAction: "change->review#setLineWrapping" },
-    options: [{ label: "Scroll", value: "false" }, { label: "Wrap", value: "true" }],
+    name: "review-diff-overflow",
+    value: settings.overflow,
+    form: { action: "/review/settings/diff-overflow", dataAction: "change->review#setDiffOverflow" },
+    options: [{ label: "Scroll", value: "scroll" }, { label: "Wrap", value: "wrap" }],
   });
   const controls = buttonGroupHtml({
     orientation: "horizontal",
@@ -236,14 +236,14 @@ function toolbar(workspaceId: string, comments: ReviewComment[], diffLayouts: Re
       <form method="post" action="/workspaces/${encodeURIComponent(workspaceId)}/review/comments/delete" data-turbo="true">${deleteCommentsButton}</form>
       ${refreshForm(workspaceId)}
       ${collapse}${expand}
-      <div class="review-display-toggles"><span class="review-layout-status" data-review-target="layoutStatus" role="status" aria-live="polite" hidden><span class="status-spinner" aria-hidden="true"></span><span data-review-target="layoutStatusText"></span></span>${diffLayoutToggle}${diffHighlighting}${longLines}</div>`,
+      <div class="review-display-toggles"><span class="review-layout-status" data-review-target="layoutStatus" role="status" aria-live="polite" hidden><span class="status-spinner" aria-hidden="true"></span><span data-review-target="layoutStatusText"></span></span>${diffLayoutToggle}${diffHighlighting}${diffOverflow}</div>`,
   });
   return `<header class="review-toolbar">
     <div class="review-toolbar-actions copy-region">${controls}<span data-copy-source hidden>${escapeHtml(reviewCommentsPrompt(comments))}</span></div>
   </header>`;
 }
 
-export function renderReviewBody(workspaceId: string, index: ReviewIndex, comments: ReviewComment[], diffLayouts: ReviewDiffLayouts = defaultReviewDiffLayouts): string {
+export function renderReviewBody(workspaceId: string, index: ReviewIndex, comments: ReviewComment[], settings: ReviewSettings = defaultReviewSettings): string {
   if (index.phase === "not-git") {
     return `<section id="${reviewBodyId(workspaceId)}" class="review-body review-empty" data-controller="review" data-review-workspace-id-value="${escapeHtml(workspaceId)}"><p>No git repo in /work yet</p></section>`;
   }
@@ -255,7 +255,7 @@ export function renderReviewBody(workspaceId: string, index: ReviewIndex, commen
     : `<div class="review-no-changes"><p>No changes to review<br>The working tree matches HEAD.</p></div>`;
   const commentModels = comments.map(commentModel);
   const statsUrl = `/workspaces/${encodeURIComponent(workspaceId)}/review/stats`;
-  return `<section id="${reviewBodyId(workspaceId)}" class="review-body" data-controller="review" data-review-workspace-id-value="${escapeHtml(workspaceId)}" data-mobile-diff-layout="${diffLayouts.mobile}" data-desktop-diff-layout="${diffLayouts.desktop}">${toolbar(workspaceId, comments, diffLayouts)}${content}<turbo-frame id="${reviewStatsFrameId(workspaceId)}" src="${escapeHtml(statsUrl)}"></turbo-frame><script id="${reviewCommentsModelId(workspaceId)}" type="application/json" data-review-comments>${jsonForHtml(commentModels)}</script></section>`;
+  return `<section id="${reviewBodyId(workspaceId)}" class="review-body" data-controller="review" data-review-workspace-id-value="${escapeHtml(workspaceId)}" data-mobile-diff-layout="${settings.mobile}" data-desktop-diff-layout="${settings.desktop}" data-diff-highlighting="${settings.highlighting}" data-diff-overflow="${settings.overflow}">${toolbar(workspaceId, comments, settings)}${content}<turbo-frame id="${reviewStatsFrameId(workspaceId)}" src="${escapeHtml(statsUrl)}"></turbo-frame><script id="${reviewCommentsModelId(workspaceId)}" type="application/json" data-review-comments>${jsonForHtml(commentModels)}</script></section>`;
 }
 
 export const reviewWorkViewPresentation: WorkspaceWorkViewPresentation = {

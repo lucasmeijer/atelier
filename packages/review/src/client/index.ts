@@ -6,7 +6,7 @@ import { buttonElement, type ButtonVariant } from "@atelier/design-system/button
 import { Icons } from "@atelier/design-system/icons";
 import { setToggleValue, type ToggleChangeEvent } from "@atelier/design-system/toggle/client";
 import { isWorkspacePaneVisible, phoneLayoutMediaQuery, type WorkspaceClientModule } from "@atelier/shared";
-import { reviewCommentsPrompt, type ReviewCommentModel, type ReviewDiffLayout, type ReviewViewport } from "../model.ts";
+import { isReviewDiffHighlighting, isReviewDiffOverflow, reviewCommentsPrompt, type ReviewCommentModel, type ReviewDiffHighlighting, type ReviewDiffLayout, type ReviewDiffOverflow, type ReviewViewport } from "../model.ts";
 import { reviewDiffOptions } from "../pierre.ts";
 
 type StimulusControllerConstructor = new (...args: never[]) => { element: Element };
@@ -105,8 +105,8 @@ function createReviewController(Controller: StimulusControllerConstructor) {
     private draft?: DraftModel;
     private hydrated = false;
     private diffStyle!: ReviewDiffLayout;
-    private wordDiffEnabled = false;
-    private lineWrappingEnabled = true;
+    private diffHighlighting!: ReviewDiffHighlighting;
+    private diffOverflow!: ReviewDiffOverflow;
     private pane!: HTMLElement;
     private resident!: HTMLElement;
     private viewportMedia!: MediaQueryList;
@@ -126,6 +126,10 @@ function createReviewController(Controller: StimulusControllerConstructor) {
       this.viewportMedia = window.matchMedia(phoneLayoutMediaQuery);
       this.viewportMedia.addEventListener("change", this.viewportChanged);
       this.diffStyle = this.syncViewportLayout();
+      const { diffHighlighting, diffOverflow } = this.element.dataset;
+      if (!isReviewDiffHighlighting(diffHighlighting) || !isReviewDiffOverflow(diffOverflow)) throw new Error("Review diff settings are invalid");
+      this.diffHighlighting = diffHighlighting;
+      this.diffOverflow = diffOverflow;
       this.restoreDraft();
       this.pane = this.element.closest<HTMLElement>('[data-workspace-pane-role="work"]')!;
       this.resident = this.element.closest<HTMLElement>(".workspace-detail-resident")!;
@@ -223,19 +227,21 @@ function createReviewController(Controller: StimulusControllerConstructor) {
       );
     }
 
-    async setWordDiff(event: ToggleChangeEvent): Promise<void> {
-      this.wordDiffEnabled = event.detail.value === "true";
+    async setDiffHighlighting(event: ToggleChangeEvent): Promise<void> {
+      if (!isReviewDiffHighlighting(event.detail.value)) throw new Error("Review diff highlighting is invalid");
+      this.diffHighlighting = event.detail.value;
       await this.updateDiffPresentation(
-        `Switching to ${this.wordDiffEnabled ? "word" : "line"} highlighting…`,
-        (instance) => instance.setOptions({ ...instance.options, lineDiffType: this.wordDiffEnabled ? "word-alt" : reviewDiffOptions.lineDiffType }),
+        `Switching to ${this.diffHighlighting} highlighting…`,
+        (instance) => instance.setOptions({ ...instance.options, lineDiffType: this.diffHighlighting === "word" ? "word-alt" : reviewDiffOptions.lineDiffType }),
       );
     }
 
-    async setLineWrapping(event: ToggleChangeEvent): Promise<void> {
-      this.lineWrappingEnabled = event.detail.value === "true";
+    async setDiffOverflow(event: ToggleChangeEvent): Promise<void> {
+      if (!isReviewDiffOverflow(event.detail.value)) throw new Error("Review diff overflow is invalid");
+      this.diffOverflow = event.detail.value;
       await this.updateDiffPresentation(
-        `Switching to ${this.lineWrappingEnabled ? "wrapped" : "scrolling"} lines…`,
-        (instance) => instance.setOptions({ ...instance.options, overflow: this.lineWrappingEnabled ? "wrap" : "scroll" }),
+        `Switching to ${this.diffOverflow === "wrap" ? "wrapped" : "scrolling"} lines…`,
+        (instance) => instance.setOptions({ ...instance.options, overflow: this.diffOverflow }),
       );
     }
 
@@ -286,8 +292,8 @@ function createReviewController(Controller: StimulusControllerConstructor) {
       instance = new FileDiffClass<AnnotationMetadata>({
         ...reviewDiffOptions,
         diffStyle: this.diffStyle,
-        lineDiffType: this.wordDiffEnabled ? "word-alt" : reviewDiffOptions.lineDiffType,
-        overflow: this.lineWrappingEnabled ? "wrap" : "scroll",
+        lineDiffType: this.diffHighlighting === "word" ? "word-alt" : reviewDiffOptions.lineDiffType,
+        overflow: this.diffOverflow,
         renderAnnotation: (item) => this.renderAnnotation(item.metadata!, instance),
         onPostRender: () => this.decorateExpansionControls(container),
       });

@@ -1,9 +1,30 @@
 export type ReviewSide = "deletions" | "additions";
 export type ReviewDiffLayout = "unified" | "split";
+export type ReviewDiffHighlighting = "line" | "word";
+export type ReviewDiffOverflow = "scroll" | "wrap";
 export type ReviewViewport = "mobile" | "desktop";
-export type ReviewDiffLayouts = Record<ReviewViewport, ReviewDiffLayout>;
 
-export const defaultReviewDiffLayouts = { mobile: "unified", desktop: "unified" } satisfies ReviewDiffLayouts;
+export interface ReviewSettings {
+  mobile: ReviewDiffLayout;
+  desktop: ReviewDiffLayout;
+  highlighting: ReviewDiffHighlighting;
+  overflow: ReviewDiffOverflow;
+}
+
+export const defaultReviewSettings = {
+  mobile: "unified",
+  desktop: "unified",
+  highlighting: "line",
+  overflow: "wrap",
+} satisfies ReviewSettings;
+
+export function isReviewDiffHighlighting(value: string | undefined): value is ReviewDiffHighlighting {
+  return value === "line" || value === "word";
+}
+
+export function isReviewDiffOverflow(value: string | undefined): value is ReviewDiffOverflow {
+  return value === "scroll" || value === "wrap";
+}
 
 export interface ReviewCommentModel {
   id: string;

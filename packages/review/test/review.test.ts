@@ -5,7 +5,7 @@ import { tmpdir } from "node:os";
 import { reviewCommentsPrompt, type ReviewCommentModel } from "../src/model.ts";
 import { collectReviewFile, collectReviewIndex, collectReviewStats, type ReviewFile, type ReviewFileStats } from "../src/server/diff.ts";
 import { renderReviewBody, renderReviewFileDetails, renderReviewStatsFrame, reviewWorkViewPresentation } from "../src/server/render.ts";
-import { readReviewDiffLayouts, writeReviewDiffLayout } from "../src/server/settings.ts";
+import { readReviewSettings, updateReviewSettings } from "../src/server/settings.ts";
 import { addReviewComment, deleteReviewState, listReviewComments, remapReviewComment, updateReviewComment, type ReviewComment } from "../src/server/state.ts";
 import { command, createReviewRepository } from "./support/repository.ts";
 
@@ -163,20 +163,21 @@ Comment: I don't think we need these tests`);
 });
 
 describe("Review settings", () => {
-  test("persists independent global mobile and desktop diff layouts", async () => {
+  test("persists review diff presentation settings", async () => {
     const root = await mkdtemp(join(tmpdir(), "atelier-review-settings-"));
     roots.push(root);
     const path = join(root, "review-settings.json");
 
-    expect(await readReviewDiffLayouts(path)).toEqual({ mobile: "unified", desktop: "unified" });
-    await writeReviewDiffLayout("mobile", "split", path);
-    expect(await readReviewDiffLayouts(path)).toEqual({ mobile: "split", desktop: "unified" });
-    await writeReviewDiffLayout("desktop", "split", path);
-    expect(await readReviewDiffLayouts(path)).toEqual({ mobile: "split", desktop: "split" });
+    expect(await readReviewSettings(path)).toEqual({ mobile: "unified", desktop: "unified", highlighting: "line", overflow: "wrap" });
+    await updateReviewSettings({ mobile: "split" }, path);
+    await updateReviewSettings({ desktop: "split", highlighting: "word", overflow: "scroll" }, path);
+    expect(await readReviewSettings(path)).toEqual({ mobile: "split", desktop: "split", highlighting: "word", overflow: "scroll" });
 
-    const html = renderReviewBody("workspace 1", { phase: "ready", files: [] }, [], { mobile: "unified", desktop: "split" });
-    expect(html).toContain('data-mobile-diff-layout="unified" data-desktop-diff-layout="split"');
+    const html = renderReviewBody("workspace 1", { phase: "ready", files: [] }, [], { mobile: "unified", desktop: "split", highlighting: "word", overflow: "scroll" });
+    expect(html).toContain('data-mobile-diff-layout="unified" data-desktop-diff-layout="split" data-diff-highlighting="word" data-diff-overflow="scroll"');
     expect(html).toContain('name="review-diff-layout" value="split" aria-pressed="true">Side by side</button>');
+    expect(html).toContain('name="review-diff-highlighting" value="word" aria-pressed="true">Words</button>');
+    expect(html).toContain('name="review-diff-overflow" value="scroll" aria-pressed="true">Scroll</button>');
   });
 });
 
@@ -248,12 +249,12 @@ describe("Review presentation", () => {
     expect(html).toContain('role="group" aria-label="Diff layout" data-controller="toggle" data-action="change-&gt;review#setDiffLayout" method="post" action="/review/settings/diff-layout?viewport=desktop"');
     expect(html).toContain('name="review-diff-layout" value="unified" aria-pressed="true">Unified</button>');
     expect(html).toContain('name="review-diff-layout" value="split" aria-pressed="false">Side by side</button>');
-    expect(html).toContain('role="group" aria-label="Diff highlighting" data-controller="toggle" data-action="change-&gt;review#setWordDiff"');
-    expect(html).toContain('name="review-word-diff" value="false" aria-pressed="true">Lines</button>');
-    expect(html).toContain('name="review-word-diff" value="true" aria-pressed="false">Words</button>');
-    expect(html).toContain('role="group" aria-label="Long lines" data-controller="toggle" data-action="change-&gt;review#setLineWrapping"');
-    expect(html).toContain('name="review-line-wrapping" value="false" aria-pressed="false">Scroll</button>');
-    expect(html).toContain('name="review-line-wrapping" value="true" aria-pressed="true">Wrap</button>');
+    expect(html).toContain('role="group" aria-label="Diff highlighting" data-controller="toggle" data-action="change-&gt;review#setDiffHighlighting" method="post" action="/review/settings/diff-highlighting"');
+    expect(html).toContain('name="review-diff-highlighting" value="line" aria-pressed="true">Lines</button>');
+    expect(html).toContain('name="review-diff-highlighting" value="word" aria-pressed="false">Words</button>');
+    expect(html).toContain('role="group" aria-label="Long lines" data-controller="toggle" data-action="change-&gt;review#setDiffOverflow" method="post" action="/review/settings/diff-overflow"');
+    expect(html).toContain('name="review-diff-overflow" value="scroll" aria-pressed="false">Scroll</button>');
+    expect(html).toContain('name="review-diff-overflow" value="wrap" aria-pressed="true">Wrap</button>');
     expect(html.indexOf(">Unified</button>")).toBeLessThan(html.indexOf(">Side by side</button>"));
     expect(html.indexOf(">Lines</button>")).toBeLessThan(html.indexOf(">Words</button>"));
     expect(html.indexOf(">Scroll</button>")).toBeLessThan(html.indexOf(">Wrap</button>"));

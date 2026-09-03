@@ -3,10 +3,15 @@ import { turboStream, turboStreamResponse, type WorkspaceModule } from "@atelier
 import { workspaceWorkHostPath } from "@atelier/workspace";
 import { Type, type Static } from "typebox";
 import { Value } from "typebox/value";
-import { reviewCommentsPrompt, type ReviewSide } from "../model.ts";
+import { isReviewDiffHighlighting, isReviewDiffOverflow, reviewCommentsPrompt, type ReviewSide } from "../model.ts";
 import { collectReviewFile, collectReviewIndex, collectReviewStats, reviewSnippet, type ReviewIndex } from "./diff.ts";
 import { renderReviewBody, renderReviewFileDetails, renderReviewStatsFrame, renderReviewTitle, renderReviewTitleStream, reviewBodyId, reviewFileFrameId, reviewReference, reviewWorkViewPresentation } from "./render.ts";
-import { isReviewDiffLayout, isReviewViewport, readReviewDiffLayouts, writeReviewDiffLayout } from "./settings.ts";
+import {
+  isReviewDiffLayout,
+  isReviewViewport,
+  readReviewSettings,
+  updateReviewSettings,
+} from "./settings.ts";
 import { clearDeletionReview, deletionReviewFileResponse, reviewDeletionReview } from "./deletion.ts";
 import { addReviewComment, deleteReviewComments, deleteReviewState, listReviewComments, reconcileReviewComments, remapReviewFileComments, reviewCommentsForPrompt, updateReviewComment, type ReviewComment } from "./state.ts";
 
@@ -35,7 +40,7 @@ async function current(workspaceId: string): Promise<{ index: ReviewIndex; comme
 }
 
 async function bodyStream(workspaceId: string, index: ReviewIndex, comments: ReviewComment[]): Promise<string> {
-  return turboStream("replace", reviewBodyId(workspaceId), renderReviewBody(workspaceId, index, comments, await readReviewDiffLayouts()));
+  return turboStream("replace", reviewBodyId(workspaceId), renderReviewBody(workspaceId, index, comments, await readReviewSettings()));
 }
 
 async function refreshStats(workspaceId: string, index: ReviewIndex) {
@@ -93,19 +98,32 @@ export const reviewWorkspaceModule: WorkspaceModule = {
     identity: (_reference: ReviewReference) => "workspace",
     async render({ workspaceId }) {
       const { index, comments } = await current(workspaceId);
-      return renderReviewBody(workspaceId, index, comments, await readReviewDiffLayouts());
+      return renderReviewBody(workspaceId, index, comments, await readReviewSettings());
     },
   }],
   commands: [{ id: "review.open", execute: () => ({ createdWorkView: reviewReference }) }],
   staticFiles: { "/review.css": { url: new URL("../client/style.css", import.meta.url), contentType: "text/css; charset=utf-8" } },
   routes: [{
     async handle(request, url) {
-      if (url.pathname === "/review/settings/diff-layout") {
+      if (url.pathname.startsWith("/review/settings/")) {
         if (request.method !== "POST") return textResponse("Method not allowed", 405);
-        const viewport = url.searchParams.get("viewport") ?? "";
-        const value = String((await request.formData()).get("review-diff-layout") ?? "");
-        if (!isReviewViewport(viewport) || !isReviewDiffLayout(value)) return textResponse("Invalid review diff layout", 422);
-        await writeReviewDiffLayout(viewport, value);
+        const form = await request.formData();
+        if (url.pathname === "/review/settings/diff-layout") {
+          const viewport = url.searchParams.get("viewport") ?? "";
+          const value = String(form.get("review-diff-layout") ?? "");
+          if (!isReviewViewport(viewport) || !isReviewDiffLayout(value)) return textResponse("Invalid review diff layout", 422);
+          await updateReviewSettings({ [viewport]: value });
+        } else if (url.pathname === "/review/settings/diff-highlighting") {
+          const value = String(form.get("review-diff-highlighting") ?? "");
+          if (!isReviewDiffHighlighting(value)) return textResponse("Invalid review diff highlighting", 422);
+          await updateReviewSettings({ highlighting: value });
+        } else if (url.pathname === "/review/settings/diff-overflow") {
+          const value = String(form.get("review-diff-overflow") ?? "");
+          if (!isReviewDiffOverflow(value)) return textResponse("Invalid review diff overflow", 422);
+          await updateReviewSettings({ overflow: value });
+        } else {
+          return textResponse("Not found", 404);
+        }
         return turboStreamResponse("");
       }
       let match = url.pathname.match(/^\/workspaces\/([^/]+)\/review\/deletion\/file$/);
