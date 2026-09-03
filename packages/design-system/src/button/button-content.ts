@@ -5,17 +5,11 @@ export type ButtonVariant = "primary" | "secondary" | "danger";
 
 export type ButtonContent =
   | { kind: "caption"; caption: string }
-  | { kind: "icon-only"; iconHtml: string; label: string }
-  | { kind: "caption-adornment"; adornmentHtml: string; caption: string; adornmentPosition?: "before" | "after" };
+  | { kind: "icon-only"; iconHtml: string; label: string };
 
 export function buttonContentHtml(content: ButtonContent): string {
   if (content.kind === "caption") return `<span class="button__caption">${escapeHtml(content.caption)}</span>`;
-
-  if (content.kind === "icon-only") return `<span class="button__icon" aria-hidden="true">${content.iconHtml}</span>`;
-
-  const adornment = `<span class="button__adornment" aria-hidden="true">${content.adornmentHtml}</span>`;
-  const caption = `<span class="button__caption">${escapeHtml(content.caption)}</span>`;
-  return content.adornmentPosition === "after" ? `${caption}${adornment}` : `${adornment}${caption}`;
+  return `<span class="button__icon" aria-hidden="true">${content.iconHtml}</span>`;
 }
 
 interface ButtonPresentation {

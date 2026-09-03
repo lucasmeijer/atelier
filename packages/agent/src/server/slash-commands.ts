@@ -33,14 +33,11 @@ export function renderSlashCommandCatalog(templates: readonly PromptTemplate[], 
   const commands = slashCommands(templates, skills);
   const quickLaunches = templates.filter((template) => template.quickLaunch).map((template) => {
     const hotkey = template.hotkey;
-    const hotkeyData = hotkey ? ` data-prompt-template-hotkey="${escapeHtml(hotkey)}" aria-keyshortcuts="Meta+Alt+${escapeHtml(hotkey.toUpperCase())}"` : "";
-    const shortcut = hotkey ? `<kbd class="agent-quick-launch-shortcut">⌘⌥${escapeHtml(hotkey.toUpperCase())}</kbd>` : "";
+    const hotkeyData = hotkey ? ` data-prompt-template-hotkey="${escapeHtml(hotkey)}" data-agent-quick-launch-shortcut="⌘⌥${escapeHtml(hotkey.toUpperCase())}" aria-keyshortcuts="Meta+Alt+${escapeHtml(hotkey.toUpperCase())}"` : "";
     return buttonHtml({
       type: "button",
       variant: "secondary",
-      content: shortcut
-        ? { kind: "caption-adornment", caption: template.trigger, adornmentHtml: shortcut, adornmentPosition: "after" }
-        : { kind: "caption", caption: template.trigger },
+      content: { kind: "caption", caption: template.trigger },
       attributesHtml: `data-agent-completion-option data-agent-quick-launch data-completion-kind="quick-launch" data-command-trigger="${escapeHtml(template.trigger)}"${hotkeyData}`,
     });
   }).join("");

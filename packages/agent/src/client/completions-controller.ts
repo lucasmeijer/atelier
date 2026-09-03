@@ -96,11 +96,8 @@ function markPromptTemplateShortcutConflicts(html: string, hooks: WorkspaceClien
     const message = `Shortcut unavailable: ⌘⌥${hotkey.toUpperCase()} is used by ${conflict.label}.`;
     option.title = message;
     option.setAttribute("aria-label", `${option.getAttribute("aria-label") ?? option.dataset.commandTrigger}. ${message}`);
-    const shortcut = option.querySelector<HTMLElement>(".agent-quick-launch-shortcut");
-    if (shortcut) {
-      shortcut.classList.add("conflict");
-      shortcut.textContent = `⌘⌥${hotkey.toUpperCase()} used by ${conflict.label}`;
-    }
+    option.classList.add("shortcut-conflict");
+    option.dataset.agentQuickLaunchShortcut = `⌘⌥${hotkey.toUpperCase()} used by ${conflict.label}`;
   }
   return container.innerHTML;
 }
