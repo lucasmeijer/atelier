@@ -247,9 +247,14 @@
   right: var(--agent-inline-gutter); bottom: calc(100% + 4px); left: var(--agent-inline-gutter);
   pointer-events: auto;
 }
+/* The quick-launch band spans the composer's full width but only its buttons
+ * are visible; keep the transparent remainder click-through so it does not
+ * cover the send/stop button sharing the same row. */
 .composer-surface > .agent-completion-menu-host:has(> .agent-quick-launches) {
   right: var(--composer-control-inset); bottom: calc(var(--composer-footer-height) + 8px); left: var(--composer-control-inset);
+  pointer-events: none;
 }
+.composer-surface > .agent-completion-menu-host:has(> .agent-quick-launches) [data-agent-quick-launch] { pointer-events: auto; }
 .agent-completion-menu-host[hidden] { display: none; }
 .agent-quick-launches { display: flex; flex-wrap: wrap; gap: 6px; }
 [data-agent-quick-launch] { gap: 7px; }
