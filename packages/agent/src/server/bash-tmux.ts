@@ -104,7 +104,7 @@ export function createTmuxBashTool(
   return defineTool({
     name: "bash",
     label: "Bash",
-    description: `the bash toolcall will be executed inside of a tmux session for visibility. output shown to the model is limited to the last ${DEFAULT_MAX_LINES} lines or ${DEFAULT_MAX_BYTES / 1024}KB, and individual lines are shortened to ${maxModelLineChars} characters; truncated full output is saved to a temporary file. avoid redirecting output to nowhere. avoid the programs you're invoking from attempting to read from stdin, as that will hang the toolcall.`,
+    description: `the bash toolcall will be executed inside of a tmux session for visibility. the visualizer supports ANSI colors; use them whenever possible, but colors are stripped before output is returned to the model. output shown to the model is limited to the last ${DEFAULT_MAX_LINES} lines or ${DEFAULT_MAX_BYTES / 1024}KB, and individual lines are shortened to ${maxModelLineChars} characters; truncated full output is saved to a temporary file. avoid redirecting output to nowhere. avoid the programs you're invoking from attempting to read from stdin, as that will hang the toolcall.`,
     parameters: Type.Object({
       command: Type.String({ description: "The bash command to execute" }),
       timeout: Type.Optional(Type.Number({ description: "Timeout in seconds (default 600)" })),
