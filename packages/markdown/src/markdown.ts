@@ -10,6 +10,7 @@ export interface MarkdownRenderOptions {
 
 interface MarkdownEnvironment extends MarkdownRenderOptions {
   workspaceId: string;
+  provisional?: boolean;
 }
 
 const markdown = new MarkdownIt({
@@ -21,7 +22,7 @@ const markdown = new MarkdownIt({
 markdown.renderer.rules.table_open = () => '<div class="agent-table-scroll"><table>';
 markdown.renderer.rules.table_close = () => "</table></div>";
 
-markdown.renderer.rules.fence = (tokens, index) => {
+markdown.renderer.rules.fence = (tokens, index, _options, environment: MarkdownEnvironment) => {
   const token = tokens[index]!;
   const [language, ...filenameParts] = token.info.trim().split(/\s+/);
   const rawLang = language || undefined;
@@ -29,6 +30,7 @@ markdown.renderer.rules.fence = (tokens, index) => {
   const filenameMatch = filenameInfo?.match(/^filename=(?:"([^"]*)"|'([^']*)'|(\S+))$/);
   const filename = filenameMatch ? (filenameMatch[1] ?? filenameMatch[2] ?? filenameMatch[3]) : filenameInfo;
   const codeText = token.content.replace(/\n$/, "");
+  if (rawLang?.toLowerCase() === "mermaid") return environment.provisional ? renderPendingMermaid(filename) : renderMermaid(codeText, filename);
   const highlighted = highlightCodeHtml({ code: codeText, language: rawLang });
   const attrs = [
     rawLang ? `data-lang="${escapeHtml(rawLang)}"` : "",
@@ -44,6 +46,21 @@ markdown.renderer.rules.fence = (tokens, index) => {
   const fullscreenCode = `${preOpen}<code>${highlighted.html}</code></pre>`;
   return `<div class="agent-code-block" data-controller="agent-code-copy atelier-fullscreen" data-atelier-fullscreen-mode-value="template" data-atelier-fullscreen-title-value="${escapeHtml(title)}"><button type="button" class="agent-code-copy" data-agent-code-copy-target="button" data-action="agent-code-copy#copy" aria-label="${label}" title="Copy code"><span class="agent-code-copy-icon" aria-hidden="true">⧉</span></button>${header}${inlineCode}<template data-atelier-fullscreen-target="content"><div class="agent-code-block">${fullscreenCode}</div></template></div>`;
 };
+
+function mermaidDiagram(source: string, fullscreen = false): string {
+  return `<div class="agent-mermaid-diagram${fullscreen ? " agent-mermaid-diagram-fullscreen" : ""}" data-controller="agent-mermaid"><div class="agent-mermaid-canvas" data-agent-mermaid-target="diagram" aria-busy="true"><pre data-agent-mermaid-target="source" hidden>${escapeHtml(source)}</pre></div></div>`;
+}
+
+function renderMermaid(source: string, filename?: string): string {
+  const title = filename ?? "Mermaid diagram";
+  const header = filename ? `<div class="agent-media-frame-bar"><span>${escapeHtml(filename)}</span><button class="agent-media-frame-action" type="button" data-action="atelier-fullscreen#open"><span class="agent-shortcut">f</span>ullscreen</button></div>` : "";
+  return `<div class="agent-media-frame agent-mermaid" data-controller="atelier-fullscreen" data-atelier-fullscreen-mode-value="template" data-atelier-fullscreen-title-value="${escapeHtml(title)}">${header}${mermaidDiagram(source)}<template data-atelier-fullscreen-target="content">${mermaidDiagram(source, true)}</template></div>`;
+}
+
+function renderPendingMermaid(filename?: string): string {
+  const header = filename ? `<div class="agent-media-frame-bar"><span>${escapeHtml(filename)}</span></div>` : "";
+  return `<div class="agent-media-frame agent-mermaid">${header}<div class="agent-mermaid-diagram"><div class="agent-mermaid-canvas" aria-busy="true"></div></div></div>`;
+}
 
 const defaultLinkOpen = markdown.renderer.rules.link_open ?? ((tokens, index, options, _environment, renderer) => renderer.renderToken(tokens, index, options));
 markdown.renderer.rules.link_open = (tokens, index, options, environment: MarkdownEnvironment, renderer) => {
@@ -91,4 +108,8 @@ function withoutFrontmatter(text: string): string {
 export function renderMarkdown(workspaceId: string, text: string, options: MarkdownRenderOptions = {}): string {
   const source = options.frontmatter ? withoutFrontmatter(text) : text;
   return markdown.render(source, { workspaceId, ...options } satisfies MarkdownEnvironment).trim();
+}
+
+export function renderProvisionalMarkdown(workspaceId: string, text: string): string {
+  return markdown.render(text, { workspaceId, provisional: true } satisfies MarkdownEnvironment).trim();
 }

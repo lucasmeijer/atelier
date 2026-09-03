@@ -1,4 +1,4 @@
-import { renderMarkdown } from "./markdown.ts";
+import { renderMarkdown, renderProvisionalMarkdown } from "./markdown.ts";
 
 interface Fence {
   marker: "`" | "~";
@@ -125,7 +125,7 @@ export function renderStreamingMarkdownSnapshot(workspaceId: string, source: str
   const stableBoundary = streamingMarkdownStableBoundary(source);
   return {
     stableHtml: renderMarkdown(workspaceId, source.slice(0, stableBoundary)),
-    tailHtml: renderMarkdown(workspaceId, repairStreamingMarkdownTail(source.slice(stableBoundary))),
+    tailHtml: renderProvisionalMarkdown(workspaceId, repairStreamingMarkdownTail(source.slice(stableBoundary))),
   };
 }
 
@@ -141,7 +141,7 @@ export class StreamingMarkdownRenderer {
     return {
       stableBoundary: this.stableBoundary,
       stableHtmlAddition: renderMarkdown(this.workspaceId, source.slice(previousBoundary, this.stableBoundary)),
-      tailHtml: renderMarkdown(this.workspaceId, repairStreamingMarkdownTail(source.slice(this.stableBoundary))),
+      tailHtml: renderProvisionalMarkdown(this.workspaceId, repairStreamingMarkdownTail(source.slice(this.stableBoundary))),
     };
   }
 

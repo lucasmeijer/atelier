@@ -9,6 +9,7 @@ import { createAgentCodeCopyController } from "./code-copy-controller.ts";
 import { createAgentNoticeController } from "./notice-controller.ts";
 import { createAgentHtmlPreviewController } from "./html-preview-controller.ts";
 import { registerLaunchComposerCommand } from "./launch-composer-command.ts";
+import { createAgentMermaidController } from "./mermaid-controller.ts";
 import { createAgentProxyController } from "./proxy-controller.ts";
 import { createAgentTermController } from "./terminal-controller.ts";
 import { createAgentThinkingController } from "./thinking-controller.ts";
@@ -36,6 +37,7 @@ export const agentClientModule: WorkspaceClientModule = {
     application.register("agent-thinking", createAgentThinkingController(Controller));
     application.register("agent-tail-frame", createAgentTailFrameController(Controller));
     application.register("agent-lazy-detail", createAgentLazyDetailController(Controller));
+    application.register("agent-mermaid", createAgentMermaidController(Controller));
     application.register("agent-notice", createAgentNoticeController(Controller));
     application.register("agent-completions", createAgentCompletionsController(Controller, hooks));
     application.register("agent-proxy", createAgentProxyController(Controller));
