@@ -88,6 +88,12 @@ export function createAgentPaneController(Controller: StimulusControllerConstruc
     private readonly onVisibilityChange = (): void => {
       this.reconcileConnection();
     };
+    private readonly onViewportResize = (): void => {
+      // Closing a mobile software keyboard resizes the visual viewport without
+      // reliably resizing an observed element in the same frame. Re-apply
+      // transcript following once the browser reports the new viewport.
+      this.transcriptLayoutChanged();
+    };
     private readonly positionForSelection = (): void => {
       const busy = this.sendStopTarget.dataset.agentBusy === "true";
       this.stuck = busy;
@@ -121,7 +127,11 @@ export function createAgentPaneController(Controller: StimulusControllerConstruc
           if (this.composerRevision === submittedRevision) this.setInputValue("");
         });
       }
-      this.stuck = true;
+      // Reach the current end before blurring. On mobile, closing the keyboard
+      // can emit a layout-driven scroll event before the next animation frame;
+      // if we are still scrolled up then, it looks like the user opted out of
+      // following and cancels the submit-time jump.
+      this.scrollToTranscriptEnd();
       this.transcriptLayoutChanged();
       this.relinquishSoftwareKeyboardFocus();
     };
@@ -138,6 +148,7 @@ export function createAgentPaneController(Controller: StimulusControllerConstruc
       this.transcriptTarget.addEventListener("scroll", this.onScroll);
       this.transcriptEndTarget.hidden = this.stuck;
       document.addEventListener("visibilitychange", this.onVisibilityChange);
+      window.visualViewport?.addEventListener("resize", this.onViewportResize);
       this.formTarget.addEventListener("submit", this.submitting);
       this.composerMutationObserver = new MutationObserver(() => this.updateSendStopButton());
       this.composerMutationObserver.observe(this.formTarget, { childList: true, subtree: true });
@@ -155,6 +166,7 @@ export function createAgentPaneController(Controller: StimulusControllerConstruc
       cancelAnimationFrame(this.transcriptLayoutFrame);
       this.transcriptTarget.removeEventListener("scroll", this.onScroll);
       document.removeEventListener("visibilitychange", this.onVisibilityChange);
+      window.visualViewport?.removeEventListener("resize", this.onViewportResize);
       this.formTarget.removeEventListener("submit", this.submitting);
       this.logicallyVisible = false;
       this.stopConnection();
