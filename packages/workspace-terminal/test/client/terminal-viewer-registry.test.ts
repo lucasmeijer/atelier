@@ -6,7 +6,7 @@ function viewer(): ObservableTerminalViewer {
   return {
     dispose: mock(() => undefined),
     focus: mock(() => undefined),
-    fitToHost: mock(() => undefined),
+    refresh: mock(() => undefined),
     sendInput: mock(() => undefined),
     setTheme: mock(() => undefined),
   };

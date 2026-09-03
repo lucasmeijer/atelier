@@ -60,7 +60,7 @@ export function atelierObservableTerminalTheme(): ObservableTerminalTheme {
 export interface ObservableTerminalViewer {
   dispose(): void;
   focus(): void;
-  fitToHost(): void;
+  refresh(): void;
   sendInput(data: string): void;
   setTheme(theme: ObservableTerminalTheme): void;
 }
@@ -120,10 +120,19 @@ export async function createObservableTerminalViewer(options: ObservableTerminal
     options.host.style.height = `${term.geometry.heightPx / devicePixelRatio}px`;
   }
 
-  const ws = new WebSocket(options.websocketUrl);
+  const websocketUrl = new URL(options.websocketUrl);
+  if (options.mode === "interactive") {
+    const { cols, rows } = term.geometry;
+    websocketUrl.searchParams.set("cols", String(cols));
+    websocketUrl.searchParams.set("rows", String(rows));
+  }
+  const ws = new WebSocket(websocketUrl);
   ws.binaryType = "arraybuffer";
   const sendInput = (data: string): void => {
     if (ws.readyState === WebSocket.OPEN) ws.send(data);
+  };
+  const sendSize = ({ cols, rows }: { cols: number; rows: number }): void => {
+    if (ws.readyState === WebSocket.OPEN) ws.send(encodeObservableTerminalMessage({ type: "resize", cols, rows }));
   };
   const outputDecoder = new TextDecoder();
   const inputDecoder = new TextDecoder();
@@ -135,9 +144,7 @@ export async function createObservableTerminalViewer(options: ObservableTerminal
         ws.send(encodeObservableTerminalMessage({ type: "progress", state: terminalProgressState[state], value: progress ?? undefined }));
       }
     });
-    term.on("resize", ({ cols, rows }) => {
-      if (ws.readyState === WebSocket.OPEN) ws.send(encodeObservableTerminalMessage({ type: "resize", cols, rows }));
-    });
+    term.on("resize", sendSize);
     term.on("input", ({ data }) => {
       const text = inputDecoder.decode(data, { stream: true });
       sendInput(options.transformInput?.(text) ?? text);
@@ -145,10 +152,7 @@ export async function createObservableTerminalViewer(options: ObservableTerminal
   }
 
   ws.onopen = () => {
-    if (options.mode === "interactive") {
-      const { cols, rows } = term.geometry;
-      ws.send(encodeObservableTerminalMessage({ type: "resize", cols, rows }));
-    }
+    if (options.mode === "interactive") sendSize(term.geometry);
   };
   ws.onmessage = (event: MessageEvent<string | ArrayBuffer>) => {
     if (event.data instanceof ArrayBuffer) {
@@ -171,7 +175,13 @@ export async function createObservableTerminalViewer(options: ObservableTerminal
 
   return {
     focus: () => term.focus(),
-    fitToHost: () => term.fit(),
+    refresh: () => {
+      term.fit();
+      if (options.mode === "interactive") sendSize(term.geometry);
+      // Gespenst has no explicit repaint operation. Reapplying the active theme
+      // invalidates every row and repaints from its authoritative buffer.
+      void term.setTheme(term.theme);
+    },
     sendInput,
     setTheme: (nextTheme) => void term.setTheme(nextTheme),
     dispose: () => {

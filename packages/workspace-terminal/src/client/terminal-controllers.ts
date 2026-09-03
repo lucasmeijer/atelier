@@ -83,8 +83,8 @@ async function startTerminal(workspaceId: string, terminalId: string, options: {
 
   const existing = terminals.active(key);
   if (existing) {
+    existing.refresh();
     if (focus) existing.focus();
-    existing.fitToHost();
     return;
   }
   const viewId = terminalViewKey(terminalId);
@@ -92,7 +92,7 @@ async function startTerminal(workspaceId: string, terminalId: string, options: {
   const viewer = await terminals.start(key, () => createObservableTerminalViewer({
     host,
     mode: "interactive",
-    websocketUrl: observableWebSocketUrl(`/workspaces/${encodeURIComponent(workspaceId)}/views/${encodeURIComponent(viewId)}/ws?cols=80&rows=24`),
+    websocketUrl: observableWebSocketUrl(`/workspaces/${encodeURIComponent(workspaceId)}/views/${encodeURIComponent(viewId)}/ws`),
     fontFamily: style.getPropertyValue("--font-mono"),
     fontSize: Number.parseFloat(style.getPropertyValue("--text-code")),
     theme: currentTerminalTheme,
