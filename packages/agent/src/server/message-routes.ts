@@ -5,7 +5,6 @@ import { turboStreamResponse } from "./html.ts";
 import { removeInitialPromptDraft } from "./initial-prompt-draft.ts";
 import { expandPromptTemplate, parseAgentSessionNameCommand, parseCompactCommand } from "./prompt-templates.ts";
 import { matchRoute, requireAgentConversation, resolveAgentRuntime, type AgentRouteHandler, type AgentRouteOptions } from "./route-support.ts";
-import type { SubmitMode } from "./runtime.ts";
 
 export const handleMessageRequest: AgentRouteHandler = async (request, url, options) => {
   const params = matchRoute(url, /^\/workspaces\/([^/]+)\/agents\/([^/]+)\/messages$/);
@@ -49,7 +48,6 @@ async function submitMessage(workspaceId: string, conversationId: string, reques
     return json ? Response.json({ agent: { conversationId, state: "idle" } }) : turboStreamResponse("");
   }
 
-  const mode: SubmitMode = (json?.mode ?? form?.get("mode")) === "steer" ? "steer" : "send";
   const attachmentDraft = agentAttachmentDraftId(workspaceId, conversationId);
   if (form && String(form.get("attachmentDraft") ?? "") !== attachmentDraft) return turboStreamResponse("", { status: 422 });
   const attachmentIds = form?.getAll("attachment").map(String) ?? [];
@@ -67,7 +65,7 @@ async function submitMessage(workspaceId: string, conversationId: string, reques
   }
   const runtime = await resolveAgentRuntime(agent, options);
   const namingContext = trimmed ? { messages: [...runtime.userMessages(), trimmed], agentModel: runtime.currentModel() } : undefined;
-  await runtime.submit(expandedText, { mode, images, attachmentNotes });
+  await runtime.submit(expandedText, { images, attachmentNotes });
   if (namingContext) {
     await options.events?.emit("workspace_user_activity", { workspaceId });
     (options.suggestTitleFromPrompt ?? maybeNameAgentFromPrompt)(agent, namingContext.messages, { events: options.events, agentModel: namingContext.agentModel });

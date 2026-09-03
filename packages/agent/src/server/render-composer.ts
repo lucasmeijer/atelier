@@ -278,9 +278,7 @@ function renderPromptActionButton(busy: boolean, ctx?: AgentRenderContext): stri
   const paneAttrs = ctx
     ? ` data-agent-pane-target="sendStop" data-agent-busy="${busy}"${busy ? ` data-agent-abort-form-id="${ids.abortForm(ctx)}"` : ""}`
     : "";
-  const actionAttrs = busy && ctx
-    ? `form="${ids.abortForm(ctx)}"`
-    : `name="mode" value="${busy ? "steer" : "send"}"`;
+  const actionAttrs = busy && ctx ? `form="${ids.abortForm(ctx)}"` : "";
   return activityButtonHtml({
     variant: "primary",
     iconOnly: true,

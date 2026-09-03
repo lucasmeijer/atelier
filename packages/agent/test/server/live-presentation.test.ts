@@ -1,5 +1,5 @@
 import { expect, test } from "bun:test";
-import { createSnapshotFirstLivePresentation, isFinalAssistantTextEvent } from "../../src/server/runtime.ts";
+import { createSnapshotFirstLivePresentation, isFinalAssistantTextEvent } from "../../src/server/live-presentation.ts";
 
 interface Deferred {
   promise: Promise<void>;

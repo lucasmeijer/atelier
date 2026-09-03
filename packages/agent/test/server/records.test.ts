@@ -1,5 +1,5 @@
 import { describe, expect, test } from "bun:test";
-import { recordsFromSessionEntries } from "../../src/server/runtime.ts";
+import { recordsFromSessionEntries } from "../../src/server/session-records.ts";
 import { buildTranscript } from "../../src/server/transcript.ts";
 
 describe("recordsFromSessionEntries", () => {

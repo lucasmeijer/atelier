@@ -46,6 +46,6 @@ async function initializeWorkspaceAgent(workspaceId: string, context: AgentWorks
 
   await events.emit("workspace_user_activity", { workspaceId });
   maybeNameAgentFromPrompt(agent, [...runtime.userMessages(), prompt.trim()], { events, agentModel: runtime.currentModel() });
-  await runtime.submit(prompt, { mode: "send", images, attachmentNotes });
+  await runtime.submit(prompt, { images, attachmentNotes });
   if (validDraftId(draftId)) await removeAttachmentDraft(draftId);
 }

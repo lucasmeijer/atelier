@@ -1,8 +1,9 @@
 import { createAtelierEventBus } from "@atelier/core";
 import { expect, test } from "bun:test";
-import { AgentServiceTierState } from "../../src/server/service-tier.ts";
-import { RealAgentRuntime, subscribeWorkspaceViewBusy } from "../../src/server/runtime.ts";
+import { RealAgentRuntime } from "../../src/server/real-agent-runtime.ts";
 import type { AgentStatsView } from "../../src/server/render-composer.ts";
+import { AgentServiceTierState } from "../../src/server/service-tier.ts";
+import { subscribeWorkspaceViewBusy } from "../../src/server/workspace-view-busy.ts";
 import type { TranscriptItem } from "../../src/server/transcript.ts";
 
 interface Deferred<Value> {
@@ -454,7 +455,7 @@ test("submit resolves at Pi preflight acceptance while the turn continues asynch
   };
   const runtime = runtimeFor(session);
 
-  await runtime.submit("Accepted", { mode: "send" });
+  await runtime.submit("Accepted");
 
   expect(runtime.inspectLiveItems()).not.toEqual([]);
   turn.resolve();
@@ -468,7 +469,7 @@ test("an accepted handled command without an Agent run never leaves speculative 
   };
   const runtime = runtimeFor(session);
 
-  await runtime.submit("/handled", { mode: "send" });
+  await runtime.submit("/handled");
   await Bun.sleep(0);
 
   expect(runtime.isStreaming).toBe(false);
@@ -487,7 +488,7 @@ test("submit rejects failed Pi preflight without emitting terminal readiness", a
   let finished = 0;
   events.on("workspace_agent_turn_finished", () => { finished += 1; });
 
-  await expect(runtime.submit("Rejected", { mode: "send" })).rejects.toThrow("model authentication unavailable");
+  await expect(runtime.submit("Rejected")).rejects.toThrow("model authentication unavailable");
 
   expect(runtime.inspectLiveItems()).toEqual([]);
   expect(finished).toBe(0);

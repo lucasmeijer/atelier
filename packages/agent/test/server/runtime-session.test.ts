@@ -2,7 +2,9 @@ import { mkdtemp, readFile, rm, writeFile } from "node:fs/promises";
 import { join } from "node:path";
 import { tmpdir } from "node:os";
 import { afterEach, describe, expect, test } from "bun:test";
-import { contextUsagePercent, discardBootstrapOnlySession, getWorkspaceAgentRuntime, manualCompactionAvailable, removeWorkspaceAgentRuntime, removeWorkspaceAgentRuntimes, terminalCompactionNotice } from "../../src/server/runtime.ts";
+import { discardBootstrapOnlySession } from "../../src/server/pi-session.ts";
+import { getWorkspaceAgentRuntime, removeWorkspaceAgentRuntime, removeWorkspaceAgentRuntimes } from "../../src/server/runtime.ts";
+import { contextUsagePercent, manualCompactionAvailable, terminalCompactionNotice } from "../../src/server/runtime-status.ts";
 
 let dir: string | undefined;
 
