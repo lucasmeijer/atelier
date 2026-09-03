@@ -129,6 +129,7 @@ class WorkspaceNavigationController extends Controller<HTMLElement> {
 
   async selectWorkspaceById(workspaceId: string): Promise<void> {
     this.setWorkspacePaneOpen(false);
+    this.expandWorkspaceGroupsContaining(workspaceId);
     this.setActiveWorkspace(workspaceId);
     await residencyController()?.selectWorkspace(workspaceId, `/workspaces/${encodeURIComponent(workspaceId)}`);
   }
@@ -179,6 +180,21 @@ class WorkspaceNavigationController extends Controller<HTMLElement> {
     markActiveWorkspaceRow(this.element, workspaceId);
     const row = this.element.querySelector<HTMLElement>(`.fixed-shell-workspace-row[data-workspace-entry-id="${CSS.escape(workspaceId)}"]`);
     localStorage.setItem(recentWorkspaceProjectStorageKey, row?.dataset.projectId ?? "");
+  }
+
+  private expandWorkspaceGroupsContaining(workspaceId: string): void {
+    const row = this.element.querySelector<HTMLElement>(`.fixed-shell-workspace-row[data-workspace-entry-id="${CSS.escape(workspaceId)}"]`);
+    if (!row) return;
+
+    const disclosures = this.projectDisclosures();
+    let group = row.closest<HTMLElement>(".fixed-shell-project[data-project-id]");
+    while (group) {
+      group.classList.remove("is-collapsed");
+      group.querySelector<HTMLElement>(":scope > .fixed-shell-project-heading-row .fixed-shell-project-heading")?.setAttribute("aria-expanded", "true");
+      disclosures[group.dataset.projectId!] = true;
+      group = group.parentElement?.closest<HTMLElement>(".fixed-shell-project[data-project-id]") ?? null;
+    }
+    localStorage.setItem("atelier:workspace-project-disclosures", JSON.stringify(disclosures));
   }
 
   private restoreProjectDisclosures(): void {
