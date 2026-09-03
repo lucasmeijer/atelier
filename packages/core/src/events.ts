@@ -3,8 +3,13 @@ export interface AgentSystemPromptPrepareEvent {
   lines: string[];
 }
 
+export interface AtelierHostStartedEvent {
+  workspaces: Array<{ id: string; parked: boolean }>;
+}
+
 export interface AtelierEventMap {
   agent_system_prompt_prepare: AgentSystemPromptPrepareEvent;
+  atelier_host_started: AtelierHostStartedEvent;
 }
 
 export type AtelierEventHandler<K extends keyof AtelierEventMap> = (event: AtelierEventMap[K]) => void | Promise<void>;

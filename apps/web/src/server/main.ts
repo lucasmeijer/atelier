@@ -515,4 +515,8 @@ for (let attempt = 0; attempt < maxPortAttempts; attempt++) {
 
 if (serverPort === 0) throw new Error(`No available port found from ${requestedPort} through ${requestedPort + maxPortAttempts - 1}`);
 
+void atelierEvents.emit("atelier_host_started", {
+  workspaces: persistedWorkspaces.map(({ id, parked }) => ({ id, parked: Boolean(parked) })),
+}).catch((error) => console.error("Atelier startup handlers failed", error));
+
 console.log(`${atelierName} is available at ${process.env.ATELIER_PUBLIC_URL || displayUrl(hostname, serverPort)}`);
