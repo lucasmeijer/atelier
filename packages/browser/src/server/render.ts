@@ -46,7 +46,7 @@ const workspacePreviewPermissions = [
   "gyroscope",
   "magnetometer",
   "xr-spatial-tracking",
-].join("; ");
+].map((feature) => `${feature} *`).join("; ");
 
 export function renderBrowserFrame(workspaceId: string, view: WorkspaceBrowserView): string {
   const target = view.targetUrl ? new URL(view.targetUrl) : undefined;
