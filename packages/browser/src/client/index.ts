@@ -10,6 +10,11 @@ function createBrowserAddressController(Controller: WorkspaceClientControllerCon
       this.updateExternalLink();
     }
 
+    initializeAddress(): void {
+      const input = this.input();
+      if (input && !input.value) input.value = "http://localhost:3000";
+    }
+
     submit(): void {
       const input = this.input();
       if (!input) return;
