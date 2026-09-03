@@ -2,6 +2,7 @@ import { dialogHtml } from "@atelier/design-system/dialog";
 import { destructiveConfirmationHtml } from "@atelier/design-system/destructive-confirmation";
 import { Icons } from "@atelier/design-system/icons";
 import { createPiModelRuntime, setPickerAgentModels } from "@atelier/agent/server";
+import { invalidArguments } from "@atelier/core";
 import { escapeHtml } from "@atelier/shared";
 import { clearWorkspaceGitHubToken } from "@atelier/proxy-egress";
 import { clearGitIdentity, getGitIdentity, setGitIdentity } from "@atelier/projects";
@@ -58,12 +59,13 @@ for (const module of workspaceModules) {
   for (const contribution of module.settingsContributions ?? []) registerSettingsContribution(contribution);
 }
 
-function settingsDialogHtml(titleCaption: string, bodyHtml: string): string {
+function settingsDialogHtml(titleCaption: string, bodyHtml: string, sectionId?: string): string {
+  const sectionAttributes = sectionId ? ` data-controller="settings-section" data-settings-section-target-id-value="${escapeHtml(`settings-sec-${sectionId}`)}"` : "";
   return dialogHtml({
     element: {
       id: "settings_dialog",
       className: "dialog--sheet settings-dialog",
-      attributesHtml: 'aria-label="Settings" data-dialog-auto-show',
+      attributesHtml: `aria-label="Settings" data-dialog-auto-show${sectionAttributes}`,
     },
     iconHtml: Icons.Settings,
     titleCaption,
@@ -73,10 +75,11 @@ function settingsDialogHtml(titleCaption: string, bodyHtml: string): string {
   });
 }
 
-export async function renderSettingsDialog(): Promise<string> {
+export async function renderSettingsDialog(sectionId?: string): Promise<string> {
   const contributions = listSettingsContributions().filter((contribution) => contribution.id !== "keypress-probe");
+  if (sectionId && !contributions.some((contribution) => contribution.id === sectionId)) throw invalidArguments(`settings section not found: ${sectionId}`);
   const sections = await Promise.all(contributions.map((contribution) => contribution.render()));
-  return settingsDialogHtml("Settings", `<main class="settings-main">${sections.join("")}<div class="settings-dev-link"><a href="/settings/development" data-turbo-frame="_top" data-turbo-stream="true">Development settings</a></div></main>`);
+  return settingsDialogHtml("Settings", `<main class="settings-main">${sections.join("")}<div class="settings-dev-link"><a href="/settings/development" data-turbo-frame="_top" data-turbo-stream="true">Development settings</a></div></main>`, sectionId);
 }
 
 export async function renderDevelopmentSettingsDialog(): Promise<string> {

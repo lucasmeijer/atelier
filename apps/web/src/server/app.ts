@@ -46,7 +46,7 @@ import {
 } from "@atelier/shared";
 import type { WorkspaceDeletionState, WorkspaceEntry, WorkspaceRegistry } from "./workspace-registry.ts";
 import { workspaceModules } from "./workspace-modules.ts";
-import { handleSettingsRequest } from "./settings/routes.ts";
+import { handleSettingsRequest, renderSettingsDialog } from "./settings/routes.ts";
 import { handleOnboardingRequest, renderOnboardingDialog } from "./onboarding/routes.ts";
 import { atelierOpenApi } from "./openapi.ts";
 import { parseCloseWorkViewRequest, parseReorderWorkViewRequest } from "./work-view-api.ts";
@@ -56,7 +56,7 @@ import { agentTabsTurboStream, openWorkViewTurboStream, presentWorkViewTurboStre
 import type { CableBroadcastOptions } from "./cable.ts";
 import { jsonResponse, problemJsonResponse, response, turboReplaceStream, turboUpdateStream, wantsTurboStream } from "./http-responses.ts";
 import { createPageLayout } from "./page-layout.ts";
-import { createProjectRoutes } from "./project-routes.ts";
+import { createProjectRoutes, type ProjectRoutes } from "./project-routes.ts";
 
 const jsonStringSchema = Type.String();
 const attentionTokensSchema = Type.Record(Type.String(), Type.Integer({ minimum: 1 }));
@@ -481,19 +481,47 @@ export function createWebApp(deps: WebAppDeps): WebApp {
     </div>`;
   }
 
-  async function renderWorkspaceShell(selectedId?: string, projectSettings?: { projectId: string; section?: string }): Promise<string> {
+  type ShellSurface =
+    | { kind: "project-settings"; projectId: string; section?: string }
+    | { kind: "new-project" }
+    | { kind: "new-workspace"; project?: ProjectSummary }
+    | { kind: "settings"; section?: string };
+
+  function projectSettingsSurface(projectId: string, section: string | null): Extract<ShellSurface, { kind: "project-settings" }> {
+    const surface: Extract<ShellSurface, { kind: "project-settings" }> = { kind: "project-settings", projectId };
+    if (section !== null) surface.section = section;
+    return surface;
+  }
+
+  function settingsSurface(section: string | null): Extract<ShellSurface, { kind: "settings" }> {
+    const surface: Extract<ShellSurface, { kind: "settings" }> = { kind: "settings" };
+    if (section !== null) surface.section = section;
+    return surface;
+  }
+
+  async function renderWorkspaceShell(selectedId?: string, surface?: ShellSurface): Promise<string> {
     const pane = await workspacePaneCollections(selectedId ?? "");
+    let projectEditorOptions: Parameters<ProjectRoutes["editorModal"]>[0];
+    if (surface?.kind === "project-settings") {
+      projectEditorOptions = { kind: "settings", projectId: surface.projectId };
+      if (surface.section) projectEditorOptions.section = surface.section;
+    } else if (surface?.kind === "new-project") projectEditorOptions = { kind: "new" };
+    const projectEditor = await projectRoutes.editorModal(projectEditorOptions);
+    const settings = surface?.kind === "settings" ? await renderSettingsDialog(surface.section) : "";
+    const launchComposer = surface?.kind === "new-workspace"
+      ? surface.project ? await renderProjectLaunchComposerFrame(surface.project) : await renderProjectlessLaunchComposerFrame()
+      : `<turbo-frame id="${launchComposerFrameId}"></turbo-frame>`;
     return `<div class="app fixed-shell-app" data-controller="atelier-shortcuts workspace-navigation">
     ${renderWorkspacePane(pane, renderGlobalSidebarContributions())}
     <main class="fixed-shell-app-main">${await workspaceDetailHostHtml(pane, selectedId)}</main>
     ${renderAtelierBar(pane)}
   </div>
-  ${await projectRoutes.editorModal(projectSettings)}
+  ${projectEditor}
   <div id="update_modal_host"></div>
-  <div id="settings_modal_host"></div>
+  <div id="settings_modal_host">${settings}</div>
   <div id="onboarding_modal_host">${await renderOnboardingDialog()}</div>
   <div id="${workspaceCommandModalHostId}"></div>
-  <turbo-frame id="${launchComposerFrameId}"></turbo-frame>`;
+  ${launchComposer}`;
   }
 
   async function homePage(): Promise<Response> {
@@ -501,9 +529,9 @@ export function createWebApp(deps: WebAppDeps): WebApp {
     return response(layout(await renderWorkspaceShell(selected?.id)));
   }
 
-  async function projectSettingsPage(projectId: string, section?: string): Promise<Response> {
+  async function surfacePage(surface: ShellSurface): Promise<Response> {
     const selected = registry.list().find((entry) => !entry.parked);
-    return response(layout(await renderWorkspaceShell(selected?.id, { projectId, section })));
+    return response(layout(await renderWorkspaceShell(selected?.id, surface)));
   }
 
   function requireWorkspace(id: string): WorkspaceEntry {
@@ -1218,7 +1246,12 @@ export function createWebApp(deps: WebAppDeps): WebApp {
     if (url.pathname === "/launch-composer" && request.method === "GET") return response(await renderProjectlessLaunchComposerFrame());
     if (url.pathname === "/launch-composer/settings" && request.method === "GET") return response(await launchComposerSettingsFrame(url.searchParams.get("model") ?? undefined));
     const projectSettingsMatch = url.pathname.match(/^\/projects\/([^/]+)\/settings$/);
-    if (projectSettingsMatch && request.method === "GET") return await projectSettingsPage(decodeURIComponent(projectSettingsMatch[1]!), url.searchParams.get("section") ?? undefined);
+    if (projectSettingsMatch && request.method === "GET") return await surfacePage(projectSettingsSurface(decodeURIComponent(projectSettingsMatch[1]!), url.searchParams.get("section")));
+    const projectWorkspaceMatch = url.pathname.match(/^\/projects\/([^/]+)\/workspaces\/new$/);
+    if (projectWorkspaceMatch && request.method === "GET") return await surfacePage({ kind: "new-workspace", project: await projectRoutes.byReference(decodeURIComponent(projectWorkspaceMatch[1]!)) });
+    if (url.pathname === "/workspaces/new" && request.method === "GET") return await surfacePage({ kind: "new-workspace" });
+    if (url.pathname === "/projects/new" && request.method === "GET") return await surfacePage({ kind: "new-project" });
+    if (url.pathname === "/settings" && request.method === "GET" && !wantsTurboStream(request)) return await surfacePage(settingsSurface(url.searchParams.get("section")));
     if (url.pathname === "/workspaces" && request.method === "GET") return workspaceListEndpoint(request, url);
     if (url.pathname === "/workspaces" && request.method === "POST") return await createWorkspaceEndpoint(url, request);
     if (url.pathname === "/workspaces/open-oldest-unread" && request.method === "POST") return openOldestAttentionWorkspaceEndpoint();

@@ -193,6 +193,15 @@ class ScrollIntoViewController extends Controller<HTMLElement> {
   }
 }
 
+class SettingsSectionController extends Controller<HTMLElement> {
+  static values = { targetId: String };
+  declare readonly targetIdValue: string;
+
+  connect(): void {
+    requestAnimationFrame(() => document.getElementById(this.targetIdValue)!.scrollIntoView({ block: "start" }));
+  }
+}
+
 const ProjectGithubSearchController = createHtmlAutocompleteController(Controller, {
   optionSelector: ":is(.agent-completion-option, [data-agent-completion-option])",
   loadingHtml: autocompleteHtml({ kind: "message", role: "status", content: { kind: "html", html: '<span class="agent-completion-spinner" aria-hidden="true"></span>Searching GitHub…' } }),
@@ -219,5 +228,6 @@ export function registerWorkspaceDialogControllers(): void {
     "project-github-search": ProjectGithubSearchController,
     "auto-scroll": AutoScrollController,
     "scroll-into-view": ScrollIntoViewController,
+    "settings-section": SettingsSectionController,
   });
 }

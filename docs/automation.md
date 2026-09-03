@@ -39,6 +39,18 @@ Supported sections are `repository`, `secrets`, `ssh-keys`, `environment`, and `
 
 Use `GET /projects` with `Accept: application/json` to discover the project ID before constructing the presentation URL.
 
+Other browser-navigable surfaces are:
+
+```text
+/workspaces/new                         # New projectless workspace
+/projects/:projectId/workspaces/new     # New workspace for a project
+/projects/new                           # Add a project
+/settings                               # Atelier settings
+/settings?section=models                # A specific settings section
+```
+
+The settings section is a registered settings contribution ID, such as `theme`, `git-identity`, `github`, `models`, `transcription`, or `update`.
+
 ## Create and wait for a workspace
 
 Creation is asynchronous and returns `202 Accepted` immediately:

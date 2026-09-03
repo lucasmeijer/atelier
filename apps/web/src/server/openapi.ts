@@ -16,6 +16,8 @@ const projectId = { name: "projectId", in: "path", required: true, schema: { typ
 const variableId = { name: "variableId", in: "path", required: true, schema: { type: "string" } };
 const secretId = { name: "secretId", in: "path", required: true, schema: { type: "string" } };
 const projectSettingsSection = { name: "section", in: "query", required: false, schema: { type: "string", enum: ["repository", "secrets", "ssh-keys", "environment", "danger"] } };
+const settingsSection = { name: "section", in: "query", required: false, schema: { type: "string" } };
+const htmlSurfaceResponses = (description: string) => ({ "200": { description, content: { "text/html": { schema: { type: "string" } } } }, "400": errorResponse, "404": errorResponse });
 const agentConversationId = { name: "conversationId", in: "path", required: true, schema: { type: "string", format: "uuid" } };
 const attentionTokens = { name: "attentionTokens", in: "query", required: true, description: "JSON object mapping every captured Agent, Work-view, and Workspace Attention key to its occurrence token.", schema: { type: "string" } };
 const jsonBody = (schema: TSchema) => ({ required: true, content: { "application/json": { schema } } });
@@ -60,6 +62,9 @@ export function atelierOpenApi(commands: WorkspaceModuleCommandHandler[]) {
         get: { summary: "List projects", responses: jsonResponse("Project summaries", { type: "object", required: ["projects"], properties: { projects: { type: "array", items: { $ref: "#/components/schemas/ProjectSummary" } } } }) },
         post: { summary: "Create or resolve a project", description: "Creates a project, or resolves and returns the existing project when the same repository specification was previously added.", requestBody: jsonBody({ type: "object", required: ["gitUrl"], properties: { gitUrl: { type: "string" } }, additionalProperties: false }), responses: jsonResponse("Project created or resolved", { $ref: "#/components/schemas/ProjectEnvelope" }) },
       },
+      "/projects/new": { get: { summary: "Present the new-project screen", responses: htmlSurfaceResponses("Atelier with the new-project screen open") } },
+      "/workspaces/new": { get: { summary: "Present the new projectless workspace composer", responses: htmlSurfaceResponses("Atelier with the workspace composer open") } },
+      "/settings": { get: { summary: "Present Atelier settings", parameters: [settingsSection], responses: htmlSurfaceResponses("Atelier with settings open") } },
       "/projects/{projectId}": {
         get: { summary: "Inspect project configuration", parameters: [projectId], responses: jsonResponse("Project configuration", { $ref: "#/components/schemas/ProjectConfigurationEnvelope" }) },
         post: { summary: "Update a project", parameters: [projectId], requestBody: jsonBody({ type: "object", required: ["name", "gitUrl"], properties: { name: { type: "string" }, gitUrl: { type: "string" } }, additionalProperties: false }), responses: jsonResponse("Project updated", { $ref: "#/components/schemas/ProjectEnvelope" }) },
@@ -69,9 +74,10 @@ export function atelierOpenApi(commands: WorkspaceModuleCommandHandler[]) {
           summary: "Present project settings",
           description: "A browser-navigable Atelier surface. Use its URL with the presentation tool.",
           parameters: [projectId, projectSettingsSection],
-          responses: { "200": { description: "Atelier with project settings open", content: { "text/html": { schema: { type: "string" } } } }, "400": errorResponse, "404": errorResponse },
+          responses: htmlSurfaceResponses("Atelier with project settings open"),
         },
       },
+      "/projects/{projectId}/workspaces/new": { get: { summary: "Present a new project workspace composer", parameters: [projectId], responses: htmlSurfaceResponses("Atelier with the project workspace composer open") } },
       "/projects/{projectId}/environment": { post: { summary: "Create a project environment variable", parameters: [projectId], requestBody: jsonBody({ $ref: "#/components/schemas/EnvironmentVariableInput" }), responses: jsonResponse("Environment variable created", { $ref: "#/components/schemas/EnvironmentVariableEnvelope" }) } },
       "/projects/{projectId}/environment/{variableId}": { post: { summary: "Update a project environment variable", parameters: [projectId, variableId], requestBody: jsonBody({ $ref: "#/components/schemas/EnvironmentVariableInput" }), responses: jsonResponse("Environment variable updated", { $ref: "#/components/schemas/EnvironmentVariableEnvelope" }) } },
       "/projects/{projectId}/environment/{variableId}/delete": { post: { summary: "Delete a project environment variable", parameters: [projectId, variableId], requestBody: jsonBody(emptyObjectSchema), responses: jsonResponse("Environment variable deleted", { type: "object", required: ["deleted", "environmentVariable"], properties: { deleted: { const: true }, environmentVariable: { $ref: "#/components/schemas/EnvironmentVariable" } } }) } },
