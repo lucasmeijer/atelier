@@ -289,6 +289,8 @@ export function createWorkspacePresentationController(
     }
 
     agentBodyLoaded(event: Event): void {
+      // Nested transcript Turbo Frames bubble the same event through the body Frame.
+      if (event.target !== event.currentTarget) return;
       // SAFETY: The action is attached directly to the server-rendered Agent Turbo Frame.
       const frame = event.currentTarget as HTMLElement;
       // SAFETY: The action target is the same Atelier-rendered Turbo Frame accepted by hydrateAgentFrame.
