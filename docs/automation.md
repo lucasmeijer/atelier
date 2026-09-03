@@ -26,6 +26,19 @@ Content-Type: application/json
 
 Errors use `{ "error": { "code": "...", "message": "..." } }`.
 
+## Present project settings
+
+Project settings has a browser-navigable surface that agents can pass directly to their presentation tool:
+
+```text
+/projects/:projectId/settings
+/projects/:projectId/settings?section=environment
+```
+
+Supported sections are `repository`, `secrets`, `ssh-keys`, `environment`, and `danger`. Direct navigation renders the complete Atelier shell, opens Project settings, expands configurable sections when selected, and scrolls the selected section into view.
+
+Use `GET /projects` with `Accept: application/json` to discover the project ID before constructing the presentation URL.
+
 ## Create and wait for a workspace
 
 Creation is asynchronous and returns `202 Accepted` immediately:

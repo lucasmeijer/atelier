@@ -15,6 +15,7 @@ const workspaceId = { name: "id", in: "path", required: true, schema: { type: "s
 const projectId = { name: "projectId", in: "path", required: true, schema: { type: "string" } };
 const variableId = { name: "variableId", in: "path", required: true, schema: { type: "string" } };
 const secretId = { name: "secretId", in: "path", required: true, schema: { type: "string" } };
+const projectSettingsSection = { name: "section", in: "query", required: false, schema: { type: "string", enum: ["repository", "secrets", "ssh-keys", "environment", "danger"] } };
 const agentConversationId = { name: "conversationId", in: "path", required: true, schema: { type: "string", format: "uuid" } };
 const attentionTokens = { name: "attentionTokens", in: "query", required: true, description: "JSON object mapping every captured Agent, Work-view, and Workspace Attention key to its occurrence token.", schema: { type: "string" } };
 const jsonBody = (schema: TSchema) => ({ required: true, content: { "application/json": { schema } } });
@@ -62,6 +63,14 @@ export function atelierOpenApi(commands: WorkspaceModuleCommandHandler[]) {
       "/projects/{projectId}": {
         get: { summary: "Inspect project configuration", parameters: [projectId], responses: jsonResponse("Project configuration", { $ref: "#/components/schemas/ProjectConfigurationEnvelope" }) },
         post: { summary: "Update a project", parameters: [projectId], requestBody: jsonBody({ type: "object", required: ["name", "gitUrl"], properties: { name: { type: "string" }, gitUrl: { type: "string" } }, additionalProperties: false }), responses: jsonResponse("Project updated", { $ref: "#/components/schemas/ProjectEnvelope" }) },
+      },
+      "/projects/{projectId}/settings": {
+        get: {
+          summary: "Present project settings",
+          description: "A browser-navigable Atelier surface. Use its URL with the presentation tool.",
+          parameters: [projectId, projectSettingsSection],
+          responses: { "200": { description: "Atelier with project settings open", content: { "text/html": { schema: { type: "string" } } } }, "400": errorResponse, "404": errorResponse },
+        },
       },
       "/projects/{projectId}/environment": { post: { summary: "Create a project environment variable", parameters: [projectId], requestBody: jsonBody({ $ref: "#/components/schemas/EnvironmentVariableInput" }), responses: jsonResponse("Environment variable created", { $ref: "#/components/schemas/EnvironmentVariableEnvelope" }) } },
       "/projects/{projectId}/environment/{variableId}": { post: { summary: "Update a project environment variable", parameters: [projectId, variableId], requestBody: jsonBody({ $ref: "#/components/schemas/EnvironmentVariableInput" }), responses: jsonResponse("Environment variable updated", { $ref: "#/components/schemas/EnvironmentVariableEnvelope" }) } },

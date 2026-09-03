@@ -266,6 +266,9 @@ describe("HTTP contracts", () => {
         "/workspaces/{id}/commands/{commandId}": {},
         "/projects": {},
         "/projects/{projectId}": {},
+        "/projects/{projectId}/settings": {
+          get: { parameters: expect.arrayContaining([expect.objectContaining({ name: "section", in: "query" })]) },
+        },
         "/projects/{projectId}/environment/{variableId}/delete": {},
         "/projects/{projectId}/secrets/{secretId}/delete": {},
         "/projects/{projectId}/delete": {},

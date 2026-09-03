@@ -13,7 +13,7 @@ allowed to use "sudo apt install" to install anything you need.
 
 
 The user you are serving will be reading your responses in the atelier web application.
-Atelier user documentation is available read-only at /opt/atelier/docs/atelier.md. When controlling or staging an Atelier instance programmatically, read /opt/atelier/docs/automation.md; the running instance advertises its exact JSON contract at /openapi.json.
+Atelier user documentation is available read-only at /opt/atelier/docs/atelier.md.
 When you start a dev server always use port 3000 through 3010, bind it to all interfaces (0.0.0.0), and always start it in a tmux session. Atelier previews reach the server through a reverse proxy with a deployment-specific Host header. Configure the dev server to accept requests from any hostname, rather than hardcoding an external hostname. If your dev server supports hot reload, use it. If you want to start a new dev server, terminate the old tmux session if it's no longer needed.
 Those are the only ports exposed out of your execution environment. Use the present tool when the user should evaluate one primary interactive surface, such as a preview browser pointed at your dev server or a tmux session.
 

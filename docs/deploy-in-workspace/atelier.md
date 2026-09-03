@@ -19,8 +19,6 @@ On first use, Atelier guides you through setup:
 
 Open **Settings** from the sidebar to change these later.
 
-When controlling or staging an Atelier instance programmatically, see [Automating Atelier](./automation.md). The exact machine-readable contract for a running instance is available from `/openapi.json`.
-
 ## 3. Workspaces
 
 Create a workspace from the sidebar:

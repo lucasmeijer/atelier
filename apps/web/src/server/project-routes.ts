@@ -26,7 +26,7 @@ const jsonStringSchema = Type.String();
 export interface ProjectRoutes {
   handle(request: Request, url: URL): Promise<Response | undefined>;
   byReference(reference: string): Promise<ProjectSummary>;
-  editorModal(): string;
+  editorModal(options?: { projectId: string; section?: string }): Promise<string>;
 }
 
 interface ProjectWorkspaceReference {
@@ -42,11 +42,15 @@ export function createProjectRoutes(deps: {
   workspaceCommandModalHostId: string;
 }): ProjectRoutes {
   function projectEnvironmentRow(project: ProjectSummary, variable: ProjectEnvironmentVariable): string {
-    const removeButton = buttonHtml({
-      type: "submit",
-      variant: "danger",
-      content: { kind: "icon-only", iconHtml: Icons.Close, label: "Remove environment variable" },
-      attributesHtml: `formaction="/projects/${encodeURIComponent(project.id)}/environment/${encodeURIComponent(variable.id)}/delete"`,
+    const removeButton = destructiveConfirmationHtml({
+      trigger: {
+        type: "button",
+        variant: "danger",
+        content: { kind: "icon-only", iconHtml: Icons.Close, label: "Remove environment variable" },
+      },
+      confirmCaption: "Remove variable",
+      cancelCaption: "Cancel",
+      confirmFormAction: `/projects/${encodeURIComponent(project.id)}/environment/${encodeURIComponent(variable.id)}/delete`,
     });
     return `<form class="project-configuration-row project-environment-row" method="post" action="/projects/${encodeURIComponent(project.id)}/environment/${encodeURIComponent(variable.id)}" data-turbo="true" data-controller="settings-autosave" data-action="focusout->settings-autosave#saveWhenLeaving">
     <input class="text-field" name="name" value="${escapeHtml(variable.name)}" aria-label="Name" autocomplete="off">
@@ -66,15 +70,19 @@ export function createProjectRoutes(deps: {
     </div>`;
   }
 
-  function projectConfigurationDisclosure(label: string, fieldsHtml: string): string {
+  function projectConfigurationDisclosure(label: string, fieldsHtml: string, open = false): string {
     const summary = actionItemHtml({ kind: "single", label: { kind: "text", text: label }, leadingHtml: Icons.Disclosure, element: { tag: "summary" } });
-    return `<details class="project-configuration-disclosure">${summary}${fieldsHtml}</details>`;
+    return `<details class="project-configuration-disclosure"${open ? " open" : ""}>${summary}${fieldsHtml}</details>`;
   }
 
-  function projectEnvironmentEditor(project: ProjectSummary, environment: ProjectEnvironmentVariable[]): string {
-    return `<section class="project-configuration-list project-environment" id="${domId("project_environment", project.id)}">
+  function revealSection(section: ProjectSettingsSection | undefined, current: ProjectSettingsSection): string {
+    return section === current ? ' data-controller="scroll-into-view"' : "";
+  }
+
+  function projectEnvironmentEditor(project: ProjectSummary, environment: ProjectEnvironmentVariable[], section?: ProjectSettingsSection): string {
+    return `<section class="project-configuration-list project-environment" id="${domId("project_environment", project.id)}"${revealSection(section, "environment")}>
       <div class="project-configuration-head"><h3>Environment variables</h3><p>These variables are added to every new workspace container created for this project.</p></div>
-      ${projectConfigurationDisclosure("Configure environment variables", projectEnvironmentFields(project, environment))}
+      ${projectConfigurationDisclosure("Configure environment variables", projectEnvironmentFields(project, environment), section === "environment")}
     </section>`;
   }
 
@@ -107,10 +115,10 @@ export function createProjectRoutes(deps: {
     </div>`;
   }
 
-  function projectSecretEditor(project: ProjectSummary, secrets: ProjectSecretSummary[]): string {
-    return `<section class="project-configuration-list project-secrets" id="${domId("project_secrets", project.id)}">
+  function projectSecretEditor(project: ProjectSummary, secrets: ProjectSecretSummary[], section?: ProjectSettingsSection): string {
+    return `<section class="project-configuration-list project-secrets" id="${domId("project_secrets", project.id)}"${revealSection(section, "secrets")}>
       <div class="project-configuration-head"><h3>Secrets</h3><p>Atelier lets you use secrets without exposing them to agents. Your encrypted secret stays outside agent sandboxes. Agents receive a placeholder that Atelier replaces with the real secret in matching network requests.</p></div>
-      ${projectConfigurationDisclosure("Configure secrets", projectSecretFields(project, secrets))}
+      ${projectConfigurationDisclosure("Configure secrets", projectSecretFields(project, secrets), section === "secrets")}
     </section>`;
   }
 
@@ -129,10 +137,10 @@ export function createProjectRoutes(deps: {
     </form></div>`;
   }
 
-  function projectSshKeyEditor(project: ProjectSummary, keys: ProjectSshKeySummary[]): string {
-    return `<section class="project-configuration-list project-ssh-key" id="${domId("project_ssh_key", project.id)}">
+  function projectSshKeyEditor(project: ProjectSummary, keys: ProjectSshKeySummary[], section?: ProjectSettingsSection): string {
+    return `<section class="project-configuration-list project-ssh-key" id="${domId("project_ssh_key", project.id)}"${revealSection(section, "ssh-keys")}>
       <div class="project-configuration-head"><h3>SSH key</h3><p>If you want to have your agent ssh into a remote machine, but you do not want to expose the required ssh key to the agent, you can paste your private ssh key below. It will be stored and encrypted outside of the agent sandbox. The agent will be given an ssh socket that they can use to do their work, without getting access to the private key.</p></div>
-      ${projectConfigurationDisclosure(keys.length === 0 ? "Add SSH key" : "Configure SSH keys", projectSshKeyFields(project, keys))}
+      ${projectConfigurationDisclosure(keys.length === 0 ? "Add SSH key" : "Configure SSH keys", projectSshKeyFields(project, keys), section === "ssh-keys")}
     </section>`;
   }
 
@@ -154,14 +162,23 @@ export function createProjectRoutes(deps: {
     });
   }
 
-  async function projectEditorFrame(project: ProjectSummary): Promise<string> {
+  type ProjectSettingsSection = "repository" | "secrets" | "ssh-keys" | "environment" | "danger";
+  const projectSettingsSections: readonly ProjectSettingsSection[] = ["repository", "secrets", "ssh-keys", "environment", "danger"];
+
+  function parseProjectSettingsSection(value: string | undefined): ProjectSettingsSection | undefined {
+    if (value === undefined) return undefined;
+    if (value === "repository" || value === "secrets" || value === "ssh-keys" || value === "environment" || value === "danger") return value;
+    throw invalidArguments(`section must be one of: ${projectSettingsSections.join(", ")}`);
+  }
+
+  async function projectEditorFrame(project: ProjectSummary, section?: ProjectSettingsSection): Promise<string> {
     const [environment, secrets, sshKeys] = await Promise.all([listProjectEnvironmentVariables(project.id), listProjectSecrets(project.id), listProjectSshKeys(project.id)]);
     return `<turbo-frame id="project_editor_frame" class="project-editor-frame">
       <div class="project-editor-page project-editor-detail-page">
         <div class="project-editor-detail-body">
-          <section class="project-edit-section"><form class="project-edit-form" aria-label="Repository" method="post" action="/projects/${encodeURIComponent(project.id)}" data-controller="settings-autosave" data-action="change->settings-autosave#save"><label class="project-edit-field"><span>Display name</span><input class="text-field" name="name" value="${escapeHtml(project.name)}" required></label><label class="project-edit-field"><span>Repository</span><input class="text-field" name="gitUrl" value="${escapeHtml(formatProjectSpec(project))}" required></label></form></section>
-          <div class="project-edit-config">${projectSecretEditor(project, secrets)}${projectSshKeyEditor(project, sshKeys)}${projectEnvironmentEditor(project, environment)}</div>
-          <section class="project-edit-danger-zone"><h3>Danger zone</h3><div class="project-edit-danger">${projectDeleteControl(project.id)}</div></section>
+          <section class="project-edit-section"${revealSection(section, "repository")}><form class="project-edit-form" aria-label="Repository" method="post" action="/projects/${encodeURIComponent(project.id)}" data-controller="settings-autosave" data-action="change->settings-autosave#save"><label class="project-edit-field"><span>Display name</span><input class="text-field" name="name" value="${escapeHtml(project.name)}" required></label><label class="project-edit-field"><span>Repository</span><input class="text-field" name="gitUrl" value="${escapeHtml(formatProjectSpec(project))}" required></label></form></section>
+          <div class="project-edit-config">${projectSecretEditor(project, secrets, section)}${projectSshKeyEditor(project, sshKeys, section)}${projectEnvironmentEditor(project, environment, section)}</div>
+          <section class="project-edit-danger-zone"${revealSection(section, "danger")}><h3>Danger zone</h3><div class="project-edit-danger">${projectDeleteControl(project.id)}</div></section>
         </div>
       </div>
     </turbo-frame>`;
@@ -173,12 +190,18 @@ export function createProjectRoutes(deps: {
     return `<turbo-frame id="project_editor_frame" class="project-editor-frame"><div class="project-editor-page project-editor-detail-page"><form class="project-editor-new-form" aria-label="Add project" method="post" action="/projects" data-turbo="true" data-action="turbo:submit-end->dialog#submitted"><div><h3>Repository source</h3><p>Save a remote URL, local path, or search for a GitHub repository.</p><div class="project-github-search" data-controller="project-github-search" data-project-github-search-url-value="/projects/github-search"><input class="text-field" name="gitUrl" placeholder="github.com/org/repo, or /path/to/repo#branch" required autofocus data-project-github-search-target="input" data-action="keydown->project-github-search#keydown input->project-github-search#input"><div class="agent-completion-menu-host project-github-search-menu" data-project-github-search-target="menu" hidden></div></div></div><footer>${cancelButton}${addButton}</footer></form></div></turbo-frame>`;
   }
 
-  function projectEditorModal(): string {
+  async function projectEditorModal(options?: { projectId: string; section?: string }): Promise<string> {
+    const project = options ? await projectById(options.projectId) : undefined;
+    const section = parseProjectSettingsSection(options?.section);
     return dialogHtml({
-      element: { id: "project-editor-modal", className: "dialog--sheet project-editor-modal", attributesHtml: 'aria-label="Project settings"' },
+      element: {
+        id: "project-editor-modal",
+        className: "dialog--sheet project-editor-modal",
+        attributesHtml: `aria-label="Project settings"${project ? " data-dialog-auto-show" : ""}`,
+      },
       iconHtml: Icons.Settings,
       titleCaption: "Project settings",
-      bodyHtml: '<turbo-frame id="project_editor_frame" class="project-editor-frame"></turbo-frame>',
+      bodyHtml: project ? await projectEditorFrame(project, section) : '<turbo-frame id="project_editor_frame" class="project-editor-frame"></turbo-frame>',
       bodyLayout: "full-bleed",
       closeLabel: "Close project settings",
     });

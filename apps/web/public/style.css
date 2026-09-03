@@ -147,7 +147,7 @@ a { color: inherit; text-decoration: none; }
 .project-environment-row { grid-template-columns: minmax(150px, .7fr) minmax(240px, 1.3fr) 56px; min-width: 480px; }
 .project-configuration-row .text-field { height: 30px; background: var(--bg); font-family: var(--font-mono); line-height: var(--leading-tight); }
 .project-configuration-actions { display: inline-flex; align-items: center; gap: 4px; justify-content: flex-end; }
-.project-configuration-row .button { width: 24px; height: 24px; font-weight: var(--weight-bold); }
+.project-configuration-row .button.icon-only { width: 24px; height: 24px; font-weight: var(--weight-bold); }
 .project-secrets-list { display: grid; gap: 8px; }
 .project-secret { display: grid; gap: 8px; padding: 8px 0; }
 .project-secret + .project-secret { margin-top: 8px; padding-top: 16px; border-top: 1px solid var(--line); }

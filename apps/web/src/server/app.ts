@@ -481,14 +481,14 @@ export function createWebApp(deps: WebAppDeps): WebApp {
     </div>`;
   }
 
-  async function renderWorkspaceShell(selectedId?: string): Promise<string> {
+  async function renderWorkspaceShell(selectedId?: string, projectSettings?: { projectId: string; section?: string }): Promise<string> {
     const pane = await workspacePaneCollections(selectedId ?? "");
     return `<div class="app fixed-shell-app" data-controller="atelier-shortcuts workspace-navigation">
     ${renderWorkspacePane(pane, renderGlobalSidebarContributions())}
     <main class="fixed-shell-app-main">${await workspaceDetailHostHtml(pane, selectedId)}</main>
     ${renderAtelierBar(pane)}
   </div>
-  ${projectRoutes.editorModal()}
+  ${await projectRoutes.editorModal(projectSettings)}
   <div id="update_modal_host"></div>
   <div id="settings_modal_host"></div>
   <div id="onboarding_modal_host">${await renderOnboardingDialog()}</div>
@@ -499,6 +499,11 @@ export function createWebApp(deps: WebAppDeps): WebApp {
   async function homePage(): Promise<Response> {
     const selected = registry.list().find((entry) => !entry.parked);
     return response(layout(await renderWorkspaceShell(selected?.id)));
+  }
+
+  async function projectSettingsPage(projectId: string, section?: string): Promise<Response> {
+    const selected = registry.list().find((entry) => !entry.parked);
+    return response(layout(await renderWorkspaceShell(selected?.id, { projectId, section })));
   }
 
   function requireWorkspace(id: string): WorkspaceEntry {
@@ -1212,6 +1217,8 @@ export function createWebApp(deps: WebAppDeps): WebApp {
     if (url.pathname === "/openapi.json" && request.method === "GET") return jsonResponse(atelierOpenApi(workspaceModuleCommands()));
     if (url.pathname === "/launch-composer" && request.method === "GET") return response(await renderProjectlessLaunchComposerFrame());
     if (url.pathname === "/launch-composer/settings" && request.method === "GET") return response(await launchComposerSettingsFrame(url.searchParams.get("model") ?? undefined));
+    const projectSettingsMatch = url.pathname.match(/^\/projects\/([^/]+)\/settings$/);
+    if (projectSettingsMatch && request.method === "GET") return await projectSettingsPage(decodeURIComponent(projectSettingsMatch[1]!), url.searchParams.get("section") ?? undefined);
     if (url.pathname === "/workspaces" && request.method === "GET") return workspaceListEndpoint(request, url);
     if (url.pathname === "/workspaces" && request.method === "POST") return await createWorkspaceEndpoint(url, request);
     if (url.pathname === "/workspaces/open-oldest-unread" && request.method === "POST") return openOldestAttentionWorkspaceEndpoint();
