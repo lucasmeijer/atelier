@@ -1,7 +1,7 @@
 import { Controller } from "@hotwired/stimulus";
 import { createHtmlAutocompleteController, PromptHistoryNavigator } from "@atelier/agent/client";
 import { autocompleteHtml } from "@atelier/design-system/autocomplete";
-import { composerSubmitKey, focusLikelyOpensSoftwareKeyboard, looksLikeProjectSpec, phoneViewportMediaQuery } from "@atelier/shared";
+import { composerSubmitKey, focusLikelyOpensSoftwareKeyboard, looksLikeProjectSpec, phoneLayoutMediaQuery } from "@atelier/shared";
 import { Type } from "typebox";
 import { Value } from "typebox/value";
 import { submitFormWithFirstButton } from "./form-submission.ts";
@@ -139,7 +139,7 @@ class LaunchComposerDialogController extends Controller<HTMLDialogElement> {
   };
 
   private readonly clicked = (event: MouseEvent): void => {
-    if (!window.matchMedia(phoneViewportMediaQuery).matches || event.target !== this.element) return;
+    if (!window.matchMedia(phoneLayoutMediaQuery).matches || event.target !== this.element) return;
     const bounds = this.element.getBoundingClientRect();
     const outside = event.clientX < bounds.left || event.clientX > bounds.right || event.clientY < bounds.top || event.clientY > bounds.bottom;
     if (outside) this.element.close();

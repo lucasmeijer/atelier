@@ -1,6 +1,6 @@
 import { Controller } from "@hotwired/stimulus";
 import { buttonHtml } from "@atelier/design-system/button";
-import { escapeHtml, phoneViewportMediaQuery } from "@atelier/shared";
+import { escapeHtml, phoneLayoutMediaQuery } from "@atelier/shared";
 import { Type } from "typebox";
 import { Value } from "typebox/value";
 import { controllerForElement, registerWorkspaceControllers, workspaceNavigationController } from "./workspace-controller-registry.ts";
@@ -510,7 +510,7 @@ class WorkspaceResidencyController extends Controller<HTMLElement> {
     const row = document.querySelector<HTMLElement>(`.fixed-shell-workspace-row[data-workspace-entry-id="${CSS.escape(workspaceId)}"]`);
     let serializedTokens = row?.dataset.workspaceAttentionTokens;
     if (!serializedTokens) return;
-    if (window.matchMedia(phoneViewportMediaQuery).matches) {
+    if (window.matchMedia(phoneLayoutMediaQuery).matches) {
       const tokens = Value.Parse(workspaceAttentionTokensSchema, JSON.parse(serializedTokens));
       const destination = document.querySelector<HTMLElement>(".workspace-detail-resident.visible .fixed-workspace-presentation")?.dataset.phoneDestination;
       const visibleWorkViewKey = destination?.startsWith("work:") ? destination.slice(5) : undefined;

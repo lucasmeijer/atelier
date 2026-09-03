@@ -1,5 +1,5 @@
 import { Controller } from "@hotwired/stimulus";
-import { phoneViewportMediaQuery, recentWorkspaceProjectStorageKey } from "@atelier/shared";
+import { phoneLayoutMediaQuery, recentWorkspaceProjectStorageKey } from "@atelier/shared";
 import { Type } from "typebox";
 import { Value } from "typebox/value";
 import { cableRequestHeaders } from "./workspace-cable.ts";
@@ -38,7 +38,7 @@ class EmptyWorkspaceOnboardingController extends Controller<HTMLElement> {
     if (origin.width === 0) return;
     const start = { x: origin.left + origin.width / 2, y: origin.bottom + 12 };
     const app = this.element.closest(".fixed-shell-app")!;
-    const isPhone = window.matchMedia(phoneViewportMediaQuery).matches;
+    const isPhone = window.matchMedia(phoneLayoutMediaQuery).matches;
     const workspacePaneOpen = app.classList.contains("is-mobile-workspace-pane-open");
     const pointToMobileNavigation = isPhone && !workspacePaneOpen;
     const destinationSelector = pointToMobileNavigation

@@ -5,7 +5,7 @@ import { setActivityButtonState } from "@atelier/design-system/activity-button/c
 import { buttonElement, type ButtonVariant } from "@atelier/design-system/button";
 import { Icons } from "@atelier/design-system/icons";
 import { setToggleValue, type ToggleChangeEvent } from "@atelier/design-system/toggle/client";
-import { isWorkspacePaneVisible, phoneViewportMediaQuery, type WorkspaceClientModule } from "@atelier/shared";
+import { isWorkspacePaneVisible, phoneLayoutMediaQuery, type WorkspaceClientModule } from "@atelier/shared";
 import { reviewCommentsPrompt, type ReviewCommentModel, type ReviewDiffLayout, type ReviewViewport } from "../model.ts";
 import { reviewDiffOptions } from "../pierre.ts";
 
@@ -123,7 +123,7 @@ function createReviewController(Controller: StimulusControllerConstructor) {
 
     connect(): void {
       document.addEventListener("turbo:before-stream-render", this.beforeStreamRender);
-      this.viewportMedia = window.matchMedia(phoneViewportMediaQuery);
+      this.viewportMedia = window.matchMedia(phoneLayoutMediaQuery);
       this.viewportMedia.addEventListener("change", this.viewportChanged);
       this.diffStyle = this.syncViewportLayout();
       this.restoreDraft();

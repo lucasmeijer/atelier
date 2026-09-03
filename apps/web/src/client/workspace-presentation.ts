@@ -1,6 +1,6 @@
 /// <reference lib="dom" />
 
-import { atelierCableConnectionHeader, phoneViewportMediaQuery, type WorkspaceClientApplication, type WorkspaceClientControllerConstructor, type WorkspaceClientSurfaceVisibilityContext } from "@atelier/shared";
+import { atelierCableConnectionHeader, phoneLayoutMediaQuery, type WorkspaceClientApplication, type WorkspaceClientControllerConstructor, type WorkspaceClientSurfaceVisibilityContext } from "@atelier/shared";
 import { Type, type Static } from "typebox";
 import { Value } from "typebox/value";
 import { hydrateWorkViewFrame } from "./work-view-hydration.ts";
@@ -176,7 +176,7 @@ export function createWorkspacePresentationController(
 
     connect(): void {
       this.state = this.restoreState();
-      this.media = window.matchMedia(phoneViewportMediaQuery);
+      this.media = window.matchMedia(phoneLayoutMediaQuery);
       this.media.addEventListener("change", this.viewportChanged);
       this.element.addEventListener("keydown", this.keydown);
       this.element.addEventListener("atelier:workspace-residency-visible", this.residencyVisible);
@@ -455,7 +455,7 @@ export function createWorkspacePresentationController(
       if (contextual) this.element.dataset.activeContextualWork = key;
     }
 
-    private get isPhone(): boolean { return this.media?.matches ?? window.matchMedia(phoneViewportMediaQuery).matches; }
+    private get isPhone(): boolean { return this.media?.matches ?? window.matchMedia(phoneLayoutMediaQuery).matches; }
     private get agentPane(): HTMLElement { return this.element.querySelector<HTMLElement>("[data-workspace-presentation-target='agentPane']")!; }
     private get storageKey(): string { return workspaceNavigationStorageKey(this.workspaceIdValue); }
 
@@ -824,7 +824,7 @@ export function installWorkspacePresentationTurboStream(Turbo: TurboLike, applic
     const key = this.dataset.workViewKey;
     if (!key) throw new Error("intend-work-view requires a Work view key");
     const workspaceId = behaviorWorkspaceId(this);
-    if (!window.matchMedia(phoneViewportMediaQuery).matches) persistIntendedWorkView(workspaceId, key);
+    if (!window.matchMedia(phoneLayoutMediaQuery).matches) persistIntendedWorkView(workspaceId, key);
     document.dispatchEvent(new CustomEvent("atelier:workspace-preparation-requested", { detail: { workspaceId } }));
     for (const target of this.targetElements) controllerFor(target, workspaceId)?.intendWorkView(key);
   };

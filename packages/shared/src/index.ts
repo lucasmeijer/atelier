@@ -360,7 +360,7 @@ export interface WorkspaceClientSurfaceVisibilityContext {
   application: WorkspaceClientApplication;
 }
 
-export const phoneViewportMediaQuery = "(max-width: 700px)";
+export const phoneLayoutMediaQuery = "(max-width: 700px), (hover: none) and (pointer: coarse)";
 
 type ComposerSubmitKey = "shortcut" | "software-keyboard";
 
@@ -381,7 +381,7 @@ export function isWorkspacePaneVisible(element: Element): boolean {
   if (presentationPane) {
     if (!presentationPane.classList.contains("is-active")) return false;
     const presentation = presentationPane.closest<HTMLElement>(".fixed-workspace-presentation")!;
-    if (window.matchMedia(phoneViewportMediaQuery).matches) {
+    if (window.matchMedia(phoneLayoutMediaQuery).matches) {
       return presentationPane.dataset.workspacePaneRole === "agent"
         ? presentation.dataset.phoneDestination === "agents"
         : presentation.dataset.phoneDestination === `work:${presentationPane.dataset.workspacePaneId}`;
