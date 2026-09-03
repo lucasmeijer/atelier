@@ -233,8 +233,14 @@
 }
 .composer-actions > * { pointer-events: auto; }
 .composer-actions .spacer { display: block; flex: 1; }
-.composer-actions .activity-button { position: absolute; right: 0; top: 0; translate: 0 calc(-50% + 9px); padding: 0; border-radius: var(--radius-round); overflow: visible; }
+/* Reserve the stop control's horizontal hit area instead of letting the spacer
+ * occupy the same flex-space underneath its absolutely positioned button. */
+.composer-primary-action { position: relative; z-index: 1; flex: 0 0 26px; }
+.composer-actions .activity-button { position: absolute; z-index: 1; right: 0; top: 0; translate: 0 calc(-50% + 9px); padding: 0; border-radius: var(--radius-round); overflow: visible; pointer-events: auto; }
 .composer-actions .activity-button__content { padding: 0; }
+@media (max-width: 700px) {
+  .composer-primary-action { flex-basis: 50px; }
+}
 
 .agent-completion-menu-host { position: absolute; z-index: 20; }
 .composer-surface > .agent-completion-menu-host {

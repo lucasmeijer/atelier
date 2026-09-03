@@ -136,7 +136,7 @@ async function renderSharedComposer(options: SharedComposerRenderOptions): Promi
     ? ["keydown->agent-completions#keydown", "keydown->agent-pane#inputKeydown", ...actionAttrs].join(" ")
     : ["submit->transcription-composer#submit", options.formActions].filter(Boolean).join(" ");
   const actions = options.includePaneActions && options.ctx
-    ? `<span id="${ids.actions(options.ctx)}">${renderPromptActions(options.ctx, Boolean(options.busy))}</span>`
+    ? `<span class="composer-primary-action" id="${ids.actions(options.ctx)}">${renderPromptActions(options.ctx, Boolean(options.busy))}</span>`
     : renderPromptActionButton(false);
   const formId = options.formId ?? `agent_pane_composer_${draftId}`;
   const footer = options.stats && options.ctx
