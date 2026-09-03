@@ -78,7 +78,7 @@ function buildContext(workspaceId: string, secrets: Record<string, SecretDefinit
 }
 
 function secretPlaceholder(name: string): string {
-  return `ATELIER_INJECT_${name.replaceAll(/[^A-Za-z0-9_]/g, "_").toUpperCase()}`;
+  return `ATELIER_PROXY_READY_${name.replaceAll(/[^A-Za-z0-9_]/g, "_").toUpperCase()}`;
 }
 
 function parseHostPatterns(hostPattern: string): string[] {

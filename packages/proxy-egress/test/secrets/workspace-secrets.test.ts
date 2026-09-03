@@ -36,10 +36,10 @@ describe("workspace secrets", () => {
     setWorkspaceGitHubToken("real-secret");
     const context = await createWorkspaceSecretContext("test-workspace");
 
-    expect(context.env.GH_TOKEN).toBe("ATELIER_INJECT_GH_TOKEN");
+    expect(context.env.GH_TOKEN).toBe("ATELIER_PROXY_READY_GH_TOKEN");
     expect(context.secrets).toContainEqual({
       name: "GH_TOKEN",
-      placeholder: "ATELIER_INJECT_GH_TOKEN",
+      placeholder: "ATELIER_PROXY_READY_GH_TOKEN",
       hosts: ["github.com", "api.github.com"],
     });
   });
@@ -52,9 +52,9 @@ describe("workspace secrets", () => {
     const context = await createWorkspaceSecretContext("test-workspace", projectInit(project.id));
     const result = await context.hooks.onRequest(new Request("https://api.example.com/v1/sk-test-placeholder", { headers: { authorization: "Bearer sk-test-placeholder" } }));
 
-    expect(context.env.API_TOKEN).toBe("ATELIER_INJECT_API_TOKEN");
+    expect(context.env.API_TOKEN).toBe("ATELIER_PROXY_READY_API_TOKEN");
     expect(context.env.STRICT_TOKEN).toBe("sk-test-placeholder");
-    expect(context.secrets).toContainEqual({ name: "API_TOKEN", placeholder: "ATELIER_INJECT_API_TOKEN", hosts: ["api.example.com", "*.example.org"] });
+    expect(context.secrets).toContainEqual({ name: "API_TOKEN", placeholder: "ATELIER_PROXY_READY_API_TOKEN", hosts: ["api.example.com", "*.example.org"] });
     expect(context.secrets).toContainEqual({ name: "STRICT_TOKEN", placeholder: "sk-test-placeholder", hosts: ["api.example.com"] });
     expect(result.headers.get("authorization")).toBe("Bearer strict-secret");
     expect(result.url).toBe("https://api.example.com/v1/strict-secret");
@@ -79,10 +79,10 @@ describe("workspace secrets", () => {
   });
 
   test("passes an inherited placeholder onward for nested Atelier", async () => {
-    process.env.GH_TOKEN = "ATELIER_INJECT_GH_TOKEN";
+    process.env.GH_TOKEN = "ATELIER_PROXY_READY_GH_TOKEN";
 
     const context = await createWorkspaceSecretContext("test-workspace");
-    const basic = Buffer.from("x-access-token:ATELIER_INJECT_GH_TOKEN").toString("base64");
+    const basic = Buffer.from("x-access-token:ATELIER_PROXY_READY_GH_TOKEN").toString("base64");
     const result = await context.hooks.onRequest(new Request("https://github.com/repo.git", { headers: { authorization: `Basic ${basic}` } }));
 
     expect(result.headers.get("authorization")).toBe(`Basic ${basic}`);
