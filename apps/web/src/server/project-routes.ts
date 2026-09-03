@@ -135,14 +135,14 @@ export function createProjectRoutes(deps: {
       return `<form class="project-ssh-key-configured" method="post" action="${projectPath}/ssh-keys/${encodeURIComponent(key.id)}/delete" data-turbo="true"><span title="${escapeHtml(`${key.keyType} ${key.fingerprint}`)}"><code>${escapeHtml(key.keyType)}</code> <code>${escapeHtml(key.fingerprint)}</code></span>${removeButton}</form>`;
     }).join("");
     return `<div class="project-ssh-key-fields" id="${domId("project_ssh_key_fields", project.id)}">${configuredKeys}<form class="project-ssh-key-form" method="post" action="${projectPath}/ssh-keys" data-turbo="true" data-controller="settings-autosave" data-action="focusout->settings-autosave#saveWhenLeaving submit->settings-autosave#submit">
-      <label><span>Private key</span><textarea class="textarea" name="privateKey" placeholder="-----BEGIN OPENSSH PRIVATE KEY-----\nb3BlbnNzaC1rZXktdjEAAAAA…\n-----END OPENSSH PRIVATE KEY-----" autocomplete="off" required></textarea></label>
+      <label><span>Add a new private key</span><textarea class="textarea" name="privateKey" placeholder="-----BEGIN OPENSSH PRIVATE KEY-----\nb3BlbnNzaC1rZXktdjEAAAAA…\n-----END OPENSSH PRIVATE KEY-----" autocomplete="off" required></textarea></label>
     </form></div>`;
   }
 
   function projectSshKeyEditor(project: ProjectSummary, keys: ProjectSshKeySummary[], section?: ProjectSettingsSection): string {
     return `<section class="project-configuration-list project-ssh-key" id="${domId("project_ssh_key", project.id)}"${revealSection(section, "ssh-keys")}>
       <div class="project-configuration-head"><h3>SSH key</h3><p>If you want to have your agent ssh into a remote machine, but you do not want to expose the required ssh key to the agent, you can paste your private ssh key below. It will be stored and encrypted outside of the agent sandbox. The agent will be given an ssh socket that they can use to do their work, without getting access to the private key.</p></div>
-      ${projectConfigurationDisclosure(keys.length === 0 ? "Add SSH key" : "Configure SSH keys", projectSshKeyFields(project, keys), section === "ssh-keys")}
+      ${projectConfigurationDisclosure(keys.length === 0 ? "Configure SSH private keys" : "Configure SSH keys", projectSshKeyFields(project, keys), section === "ssh-keys")}
     </section>`;
   }
 
