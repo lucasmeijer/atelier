@@ -464,6 +464,10 @@ function createReviewController(Controller: StimulusControllerConstructor) {
       actions.append(save);
       body.append(textarea);
       editor.append(body, actions);
+      editor.addEventListener("click", (event) => {
+        if (event.target instanceof Element && event.target.closest("button")) return;
+        textarea.focus();
+      });
       requestAnimationFrame(() => {
         fitTextarea(textarea);
         textarea.focus();
