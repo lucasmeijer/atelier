@@ -177,7 +177,7 @@ export const reviewWorkspaceModule: WorkspaceModule = {
     const workView = { ...reviewWorkViewPresentation, labelHtml: reviewTitles.get(workspaceId) };
     return {
       workViews: [workView],
-      commands: [{ id: "review.open", label: "Review", scope: "workspace", surfaces: { ui: { placement: "work-launcher", label: "Review" } } }],
+      commands: [{ id: "review.open", label: "Review", description: "Show Review. New workspaces include it by default; use this command to reopen it after closing.", scope: "workspace", surfaces: { ui: { placement: "work-launcher", label: "Review" } } }],
     };
   },
 };
