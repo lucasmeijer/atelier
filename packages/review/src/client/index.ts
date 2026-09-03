@@ -75,10 +75,14 @@ function requestReviewFile(event: Event): void {
   if (!frame.hasAttribute("src")) frame.setAttribute("src", frame.dataset.src!);
 }
 
+function parseDiffModel(script: HTMLScriptElement): DiffModel {
+  // SAFETY: Review renders this private DiffModel beside the diff host.
+  return JSON.parse(script.textContent ?? "") as DiffModel;
+}
+
 function serverRenderedDiff(host: HTMLElement) {
   const script = host.querySelector<HTMLScriptElement>("script[data-review-model]")!;
-  // SAFETY: Review renders this private DiffModel beside the diff host.
-  const model = JSON.parse(script.textContent ?? "") as DiffModel;
+  const model = parseDiffModel(script);
   const container = host.querySelector<HTMLElement>("diffs-container")!;
   const shadowTemplate = container.querySelector<HTMLTemplateElement>(":scope > template[shadowrootmode]");
   const prerenderedHTML = shadowTemplate?.innerHTML;
@@ -89,7 +93,7 @@ function serverRenderedDiff(host: HTMLElement) {
 function createReviewController(Controller: StimulusControllerConstructor) {
   return class ReviewController extends Controller {
     static values = { workspaceId: String };
-    static targets = ["file", "diff", "layoutStatus", "layoutStatusText"];
+    static targets = ["file", "diff", "model", "layoutStatus", "layoutStatusText"];
     declare readonly element: HTMLElement;
     declare readonly workspaceIdValue: string;
     declare readonly fileTargets: HTMLDetailsElement[];
@@ -162,6 +166,16 @@ function createReviewController(Controller: StimulusControllerConstructor) {
 
     diffTargetConnected(host: HTMLElement): void {
       if (this.hydrated) void this.hydrateHost(host);
+    }
+
+    modelTargetConnected(script: HTMLScriptElement): void {
+      if (!this.hydrated) return;
+      const host = script.closest<HTMLElement>('[data-review-target="diff"]')!;
+      const instance = this.instancesByHost.get(host);
+      if (!instance) return;
+      const model = parseDiffModel(script);
+      this.models.set(host.dataset.reviewPath!, model);
+      instance.render({ fileDiff: model.fileDiff, lineAnnotations: this.annotations(host.dataset.reviewPath!) });
     }
 
     requestFile(event: Event): void {
@@ -500,7 +514,6 @@ function createReviewController(Controller: StimulusControllerConstructor) {
       data.set("startLine", String(draft.startLine));
       data.set("endLine", String(draft.endLine));
       data.set("body", body);
-      this.rememberPosition();
       const endpoint = draft.commentId
         ? `/workspaces/${encodeURIComponent(this.workspaceIdValue)}/review/comments/${encodeURIComponent(draft.commentId)}/update`
         : `/workspaces/${encodeURIComponent(this.workspaceIdValue)}/review/comments`;
@@ -511,7 +524,6 @@ function createReviewController(Controller: StimulusControllerConstructor) {
     }
 
     private async deleteComment(id: string): Promise<void> {
-      this.rememberPosition();
       const response = await fetch(`/workspaces/${encodeURIComponent(this.workspaceIdValue)}/review/comments/${encodeURIComponent(id)}/delete`, { method: "POST", headers: { Accept: "text/vnd.turbo-stream.html" } });
       if (!response.ok) throw new Error(await response.text());
       window.Turbo?.renderStreamMessage(await response.text());

@@ -34,12 +34,23 @@ function commentModel(comment: ReviewComment): ReviewCommentModel {
   };
 }
 
-async function renderTextFile(file: ReviewFile, comments: ReviewComment[], target = "review"): Promise<string> {
+function reviewDiffModelId(workspaceId: string, path: string): string {
+  return domId("review", workspaceId, "diff_model", path);
+}
+
+function diffModel(file: ReviewFile, comments: ReviewComment[]) {
+  return { fileDiff: file.diff, comments: comments.map(commentModel) };
+}
+
+function renderDiffModel(workspaceId: string, file: ReviewFile, comments: ReviewComment[]): string {
+  return `<script id="${reviewDiffModelId(workspaceId, file.path)}" type="application/json" data-review-model data-review-target="model">${jsonForHtml(diffModel(file, comments))}</script>`;
+}
+
+async function renderTextFile(file: ReviewFile, comments: ReviewComment[], target: "review" | "deletion-review", modelHtml: string): Promise<string> {
   const annotations = comments.map(commentModel);
   const pierreAnnotations = annotations.map((comment) => ({ side: comment.side, lineNumber: comment.startLine, metadata: comment }));
   const prerendered = await preloadDiffHTML({ fileDiff: file.diff!, options: reviewDiffOptions, annotations: pierreAnnotations });
-  const model = { fileDiff: file.diff, comments: annotations };
-  return `<div class="atelier-pierre-host review-pierre-host" data-${target}-target="diff" data-review-path="${escapeHtml(file.path)}"><diffs-container><template shadowrootmode="open">${prerendered}</template></diffs-container><script type="application/json" data-review-model>${jsonForHtml(model)}</script></div>`;
+  return `<div class="atelier-pierre-host review-pierre-host" data-${target}-target="diff" data-review-path="${escapeHtml(file.path)}"><diffs-container><template shadowrootmode="open">${prerendered}</template></diffs-container>${modelHtml}</div>`;
 }
 
 function renderSpecialFile(file: ReviewFile): string {
@@ -74,6 +85,14 @@ function anchoredCommentsFor(comments: ReviewComment[], path: string): ReviewCom
 
 export function reviewFileFrameId(workspaceId: string, path: string): string {
   return domId("review", workspaceId, "file", path);
+}
+
+function reviewFileCommentCountId(workspaceId: string, path: string): string {
+  return domId("review", workspaceId, "comment_count", path);
+}
+
+function reviewCommentControlsId(workspaceId: string): string {
+  return domId("review", workspaceId, "comment_controls");
 }
 
 function reviewFileStatsId(workspaceId: string, path: string): string {
@@ -120,23 +139,39 @@ function renderFile(workspaceId: string, file: ReviewFileSummary, comments: Revi
   const frameId = reviewFileFrameId(workspaceId, file.path);
   const detailUrl = `/workspaces/${encodeURIComponent(workspaceId)}/review/files/${encodeURIComponent(file.path)}`;
   const label = `${file.previousPath ? `${renderFilePath(file.previousPath)}<b aria-label="renamed to">→</b>` : ""}${renderFilePath(file.path)}`;
-  const summary = renderFileSummary({ kind: "html", html: label }, `${renderCommentCount(fileComments.length)}${renderGitStats(workspaceId, file)}`, file.path);
+  const summary = renderFileSummary({ kind: "html", html: label }, `<span id="${reviewFileCommentCountId(workspaceId, file.path)}">${renderCommentCount(fileComments.length)}</span>${renderGitStats(workspaceId, file)}`, file.path);
   return `<details class="review-file" data-review-target="file" data-review-path="${escapeHtml(file.path)}" data-review-change="${file.change}" data-review-comments="${fileComments.length}" data-action="pointerenter->review#requestFile pointerdown->review#requestFile focusin->review#requestFile focusin->review#selectFile focusout->review#deselectFile toggle->review#requestFile">
     ${summary}
     <turbo-frame id="${frameId}" data-src="${escapeHtml(detailUrl)}"><div class="review-file-loading" role="status"><span class="status-spinner" aria-hidden="true"></span> Loading changes…</div></turbo-frame>
   </details>`;
 }
 
+function renderCommentsModel(workspaceId: string, comments: ReviewComment[]): string {
+  return `<script id="${reviewCommentsModelId(workspaceId)}" type="application/json" data-review-comments>${jsonForHtml(comments.map(commentModel))}</script>`;
+}
+
 export async function renderReviewFileDetails(workspaceId: string, file: ReviewFile, comments: ReviewComment[]): Promise<string> {
   const fileComments = anchoredCommentsFor(comments, file.path);
   const unanchoredComments = comments.filter((comment) => comment.outdated);
-  const body = file.kind === "text" ? await renderTextFile(file, fileComments) : renderSpecialFile(file);
-  const commentModels = comments.map(commentModel);
-  return `<turbo-frame id="${reviewFileFrameId(workspaceId, file.path)}"><turbo-stream action="replace" target="${reviewUnanchoredId(workspaceId)}"><template>${renderUnanchoredSlot(workspaceId, unanchoredComments)}</template></turbo-stream><turbo-stream action="replace" target="${reviewCommentsModelId(workspaceId)}"><template><script id="${reviewCommentsModelId(workspaceId)}" type="application/json" data-review-comments>${jsonForHtml(commentModels)}</script></template></turbo-stream><div class="review-file-diff">${body}</div></turbo-frame>`;
+  const globalUpdates = turboStream("replace", reviewUnanchoredId(workspaceId), renderUnanchoredSlot(workspaceId, unanchoredComments))
+    + turboStream("replace", reviewCommentsModelId(workspaceId), renderCommentsModel(workspaceId, comments));
+  const body = file.kind === "text"
+    ? await renderTextFile(file, fileComments, "review", renderDiffModel(workspaceId, file, fileComments))
+    : renderSpecialFile(file);
+  return `<turbo-frame id="${reviewFileFrameId(workspaceId, file.path)}">${globalUpdates}<div class="review-file-diff">${body}</div></turbo-frame>`;
+}
+
+export function renderReviewCommentUpdate(workspaceId: string, file: ReviewFile, comments: ReviewComment[]): string {
+  const fileComments = anchoredCommentsFor(comments, file.path);
+  return turboStream("replace", reviewDiffModelId(workspaceId, file.path), renderDiffModel(workspaceId, file, fileComments))
+    + turboStream("update", reviewFileCommentCountId(workspaceId, file.path), renderCommentCount(fileComments.length))
+    + turboStream("replace", reviewCommentsModelId(workspaceId), renderCommentsModel(workspaceId, comments))
+    + turboStream("replace", reviewCommentControlsId(workspaceId), renderReviewCommentControls(workspaceId, comments));
 }
 
 export async function renderReadOnlyReviewFile(frameId: string, file: ReviewFile): Promise<string> {
-  const body = file.kind === "text" ? await renderTextFile(file, [], "deletion-review") : renderSpecialFile(file);
+  const model = `<script type="application/json" data-review-model>${jsonForHtml(diffModel(file, []))}</script>`;
+  const body = file.kind === "text" ? await renderTextFile(file, [], "deletion-review", model) : renderSpecialFile(file);
   return `<turbo-frame id="${escapeHtml(frameId)}"><div class="review-file-diff">${body}</div></turbo-frame>`;
 }
 
@@ -176,6 +211,24 @@ function iconButton(label: string, action: string, iconHtml: string, disabled = 
   });
 }
 
+function renderReviewCommentControls(workspaceId: string, comments: ReviewComment[]): string {
+  const disabled = comments.length === 0;
+  const copyIntoComposer = iconButton("Copy review comments into composer", "click->review#copyCommentsToComposer", Icons.ArrowDown, disabled);
+  const copyToClipboard = copyButtonHtml({ label: "Copy review comments to clipboard", disabled });
+  const deleteButton = buttonHtml({
+    type: "submit",
+    variant: "danger",
+    content: { kind: "icon-only", iconHtml: Icons.Trash, label: "Delete all review comments" },
+    disabled,
+  });
+  return buttonGroupHtml({
+    orientation: "horizontal",
+    semantics: "layout",
+    attributesHtml: `id="${reviewCommentControlsId(workspaceId)}"`,
+    itemsHtml: `${copyIntoComposer}${copyToClipboard}<form method="post" action="/workspaces/${encodeURIComponent(workspaceId)}/review/comments/delete" data-turbo="true">${deleteButton}</form><span data-copy-source hidden>${escapeHtml(reviewCommentsPrompt(comments))}</span>`,
+  });
+}
+
 function refreshForm(workspaceId: string, caption = ""): string {
   const content = {
     variant: "secondary" as const,
@@ -193,16 +246,6 @@ function refreshForm(workspaceId: string, caption = ""): string {
 function toolbar(workspaceId: string, comments: ReviewComment[], settings: ReviewSettings): string {
   const collapse = iconButton("Collapse all files", "review#collapseAll", Icons.CollapseAll);
   const expand = iconButton("Expand all files", "review#expandAll", Icons.ExpandAll);
-  const copyButton = copyButtonHtml({
-    label: "Copy review comments to clipboard",
-    disabled: comments.length === 0,
-  });
-  const deleteCommentsButton = buttonHtml({
-    type: "submit",
-    variant: "danger",
-    content: { kind: "icon-only", iconHtml: Icons.Trash, label: "Delete all review comments" },
-    disabled: comments.length === 0,
-  });
   const diffLayoutToggle = toggleHtml({
     variant: "text-subtle",
     label: "Diff layout",
@@ -231,15 +274,13 @@ function toolbar(workspaceId: string, comments: ReviewComment[], settings: Revie
     orientation: "horizontal",
     semantics: "group",
     label: "Review actions and display",
-    itemsHtml: `${iconButton("Copy review comments into composer", "click->review#copyCommentsToComposer", Icons.ArrowDown, comments.length === 0)}
-      ${copyButton}
-      <form method="post" action="/workspaces/${encodeURIComponent(workspaceId)}/review/comments/delete" data-turbo="true">${deleteCommentsButton}</form>
+    itemsHtml: `${renderReviewCommentControls(workspaceId, comments)}
       ${refreshForm(workspaceId)}
       ${collapse}${expand}
       <div class="review-display-toggles"><span class="review-layout-status" data-review-target="layoutStatus" role="status" aria-live="polite" hidden><span class="status-spinner" aria-hidden="true"></span><span data-review-target="layoutStatusText"></span></span>${diffLayoutToggle}${diffHighlighting}${diffOverflow}</div>`,
   });
   return `<header class="review-toolbar">
-    <div class="review-toolbar-actions copy-region">${controls}<span data-copy-source hidden>${escapeHtml(reviewCommentsPrompt(comments))}</span></div>
+    <div class="review-toolbar-actions copy-region">${controls}</div>
   </header>`;
 }
 
@@ -253,9 +294,8 @@ export function renderReviewBody(workspaceId: string, index: ReviewIndex, commen
   const content = renderedFiles.length || unanchoredComments.length
     ? `<div class="review-files action-list" data-controller="linear-navigation" data-action="keydown->review#changeFileDisclosure">${renderedFiles.join("")}${renderUnanchoredSlot(workspaceId, unanchoredComments)}</div>`
     : `<div class="review-no-changes"><p>No changes to review<br>The working tree matches HEAD.</p></div>`;
-  const commentModels = comments.map(commentModel);
   const statsUrl = `/workspaces/${encodeURIComponent(workspaceId)}/review/stats`;
-  return `<section id="${reviewBodyId(workspaceId)}" class="review-body" data-controller="review" data-review-workspace-id-value="${escapeHtml(workspaceId)}" data-mobile-diff-layout="${settings.mobile}" data-desktop-diff-layout="${settings.desktop}" data-diff-highlighting="${settings.highlighting}" data-diff-overflow="${settings.overflow}">${toolbar(workspaceId, comments, settings)}${content}<turbo-frame id="${reviewStatsFrameId(workspaceId)}" src="${escapeHtml(statsUrl)}"></turbo-frame><script id="${reviewCommentsModelId(workspaceId)}" type="application/json" data-review-comments>${jsonForHtml(commentModels)}</script></section>`;
+  return `<section id="${reviewBodyId(workspaceId)}" class="review-body" data-controller="review" data-review-workspace-id-value="${escapeHtml(workspaceId)}" data-mobile-diff-layout="${settings.mobile}" data-desktop-diff-layout="${settings.desktop}" data-diff-highlighting="${settings.highlighting}" data-diff-overflow="${settings.overflow}">${toolbar(workspaceId, comments, settings)}${content}<turbo-frame id="${reviewStatsFrameId(workspaceId)}" src="${escapeHtml(statsUrl)}"></turbo-frame>${renderCommentsModel(workspaceId, comments)}</section>`;
 }
 
 export const reviewWorkViewPresentation: WorkspaceWorkViewPresentation = {
