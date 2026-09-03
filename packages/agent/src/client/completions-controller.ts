@@ -214,6 +214,10 @@ export function createAgentCompletionsController(Controller: StimulusControllerC
       else if (option.dataset.completionKind === "file") insertFileCompletion(option, input);
     },
     keydown(event, input, url, actions) {
+      if (event.key === "ArrowUp" && input.value === "" && !event.metaKey && !event.ctrlKey && !event.altKey && !event.shiftKey) {
+        actions.close();
+        return false;
+      }
       const send = composerSubmitKey(event) === "shortcut";
       const expand = event.key === "Enter" && event.shiftKey && !event.metaKey && !event.ctrlKey && !event.altKey;
       if (event.key === "Enter" && input.value.trim() === "/tree") {
