@@ -362,11 +362,19 @@ function renderAgentTab(workspaceId: string, agent: AgentPaneContribution): stri
 }
 
 function renderAgentNavigation(presentation: WorkspacePresentation): string {
-  const multiple = presentation.agentConversations.length > 1;
-  if (multiple) return `<div id="${agentTabListDomId(presentation.workspace.id)}" class="fixed-shell-agent-conversations" role="tablist" aria-label="Agent conversations">${presentation.agentConversations.map((agent) => renderAgentTab(presentation.workspace.id, agent)).join("")}</div>`;
-  const agent = presentation.agentConversations[0];
-  const title = agent && agent.title !== untitledAgentConversationTitle ? agent.title : presentation.workspace.title;
-  return `<div class="fixed-shell-workspace-title"><span class="fixed-shell-agent-icon">${Icons.Agent}</span><strong>${escapeHtml(title)}</strong></div>`;
+  let conversations: string;
+  if (presentation.agentConversations.length > 1) {
+    conversations = `<div id="${agentTabListDomId(presentation.workspace.id)}" class="fixed-shell-agent-conversations" role="tablist" aria-label="Agent conversations">${presentation.agentConversations.map((agent) => renderAgentTab(presentation.workspace.id, agent)).join("")}</div>`;
+  } else {
+    const agent = presentation.agentConversations[0];
+    const title = agent && agent.title !== untitledAgentConversationTitle ? agent.title : presentation.workspace.title;
+    conversations = `<div class="fixed-shell-workspace-title"><span class="fixed-shell-agent-icon">${Icons.Agent}</span><strong>${escapeHtml(title)}</strong></div>`;
+  }
+  const agentActions = (presentation.commands ?? []).filter((command) => command.placement === "agent-action").map((command) => {
+    const button = buttonHtml({ type: "submit", variant: "secondary", content: { kind: "icon-only", iconHtml: Icons.Plus, label: command.label } });
+    return `<form class="fixed-shell-new-agent" data-turbo="true" method="post" action="/workspaces/${encodeURIComponent(presentation.workspace.id)}/commands/${encodeURIComponent(command.id)}">${button}</form>`;
+  }).join("");
+  return `${conversations}${agentActions}`;
 }
 
 function renderAgentPaneSlot(workspaceId: string, agent: AgentPaneContribution): string {
@@ -376,10 +384,6 @@ function renderAgentPaneSlot(workspaceId: string, agent: AgentPaneContribution):
 }
 
 function renderAgentActions(presentation: WorkspacePresentation): string {
-  const agentActions = (presentation.commands ?? []).filter((command) => command.placement === "agent-action").map((command) => {
-    const button = buttonHtml({ type: "submit", variant: "secondary", content: { kind: "icon-only", iconHtml: Icons.Plus, label: command.label } });
-    return `<form data-turbo="true" method="post" action="/workspaces/${encodeURIComponent(presentation.workspace.id)}/commands/${encodeURIComponent(command.id)}">${button}</form>`;
-  }).join("");
   const parkButton = buttonHtml({ type: "submit", variant: "secondary", content: { kind: "icon-only", iconHtml: Icons.Park, label: "Park workspace" } });
   const parkWorkspace = `<form class="fixed-shell-park-workspace" method="post" action="/workspaces/${encodeURIComponent(presentation.workspace.id)}/park" data-action="submit->workspace-navigation#parkWorkspace">${parkButton}</form>`;
   const deleteConfirmation = destructiveConfirmationHtml({
@@ -388,7 +392,7 @@ function renderAgentActions(presentation: WorkspacePresentation): string {
     cancelCaption: "Oops",
   });
   const deleteWorkspace = `<form class="fixed-shell-delete-workspace" data-turbo="true" method="post" action="/workspaces/${encodeURIComponent(presentation.workspace.id)}/delete">${deleteConfirmation}</form>`;
-  const itemsHtml = `${agentActions}${parkWorkspace}${deleteWorkspace}${topBarButton("Show Work pane", "click->workspace-presentation#toggleWorkPane", Icons.Panel, "data-show-work-pane")}`;
+  const itemsHtml = `${parkWorkspace}${deleteWorkspace}${topBarButton("Show Work pane", "click->workspace-presentation#toggleWorkPane", Icons.Panel, "data-show-work-pane")}`;
   return buttonGroupHtml({ orientation: "horizontal", semantics: "layout", itemsHtml });
 }
 
