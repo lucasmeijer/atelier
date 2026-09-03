@@ -130,6 +130,10 @@ describe("transcript rendering", () => {
   test("read summaries include ranges", () => {
     const item: TranscriptItem = { type: "tool", key: "read-range", tool: tool({ name: "read", args: { path: "a.ts", offset: 40, limit: 80 } }) };
     expect(renderTranscript(ctx, [item], { systemPrompt: "", tools: [] })).toContain("a.ts:40-119");
+
+    const streaming = renderTranscriptItem(ctx, { ...item, tool: { ...item.tool, status: "streaming" } }, { live: true });
+    expect(streaming).toContain("agent-tool-summary-only");
+    expect(streaming).not.toContain("agent-tool-detail");
   });
 
   test("bash summaries only show non-zero exit codes", () => {
@@ -203,19 +207,21 @@ describe("transcript rendering", () => {
     expect(bash.indexOf('class="agent-tool-result', bashWindow)).toBeGreaterThan(bash.indexOf('class="agent-more-lines"', bashWindow));
   });
 
-  test("streaming edits show a pending message until an edit is available", () => {
+  test("streaming edits remain a summary until an edit is available", () => {
     const item: TranscriptItem = { type: "tool", key: "edit-stream", tool: tool({ name: "edit", status: "streaming", args: undefined, argsStream: '{"path":"a.ts"' }) };
     const html = renderTranscriptItem(ctx, item, { live: true });
-    expect(html).toContain("Edit toolcall still streaming in");
+    expect(html).toContain("agent-tool-summary-only");
+    expect(html).not.toContain("agent-tool-detail");
     expect(html).not.toContain("copy-button");
+    expect(html).not.toContain("disclosure-icon");
   });
 
-  test("running edits are open disclosures with live detail", () => {
+  test("running edits wait for the authoritative result before rendering a diff", () => {
     const item: TranscriptItem = { type: "tool", key: "edit-live", tool: tool({ name: "edit", status: "running", args: { path: "a.ts", oldText: "old", newText: "new" } }) };
     const html = renderTranscriptItem(ctx, item, { live: true });
-    expect(html).toContain('<details class="agent-tool tool-edit active" open>');
-    expect(html).toContain("agent-tool-detail");
-    expect(html).toContain('data-controller="agent-edit-diff"');
+    expect(html).toContain("agent-tool-summary-only");
+    expect(html).not.toContain("agent-tool-detail");
+    expect(html).not.toContain('data-controller="agent-edit-diff"');
   });
 
   test("completed edits distinguish removals and additions", () => {

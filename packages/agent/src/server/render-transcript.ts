@@ -3,7 +3,7 @@ import { escapeHtml } from "./html.ts";
 import { thinkingBlockRendererFor } from "./thinking-block-renderers.ts";
 import { formatDuration, formatTokens, type TranscriptItem, type WorkingTranscriptItem, type SessionImageRef } from "./transcript.ts";
 import { ids, sessionImageUrl, transcriptItemPath, type AgentRenderContext } from "./render-context.ts";
-import { codeBlockHtml, detailFullscreen, disclosureActionItemHtml, fullscreenAttributes, markdown, renderMarkdownRow, transcriptRow } from "./render-markup.ts";
+import { codeBlockHtml, detailFullscreen, fullscreenAttributes, markdown, renderMarkdownRow, transcriptActionItemHtml, transcriptRow } from "./render-markup.ts";
 import { renderToolCard, renderToolDetail, statusHtml, tailFrameAttributes } from "./render-tool.ts";
 
 export interface AgentToolDefinitionView {
@@ -32,7 +32,7 @@ function renderModelContextCard(ctx: AgentRenderContext, modelContext: AgentMode
   if (!prompt && tools.length === 0) return "";
   const meta = [prompt ? "system-prompt.md" : undefined, tools.length ? `tools.json (${tools.length})` : undefined].filter(Boolean).join(" · ");
   const label = `<span class="agent-tool-name">model_context</span><span class="agent-tool-args">${escapeHtml(meta)}</span>`;
-  return transcriptRow(`<details class="agent-tool tool-model-context" data-agent-historical-detail data-controller="agent-lazy-detail" data-action="toggle->agent-lazy-detail#load">${disclosureActionItemHtml({ kind: "html", html: label }, { leadingHtml: statusHtml("ok") })}${lazyTranscriptItemFrame(ctx, "model-context", true)}</details>`);
+  return transcriptRow(`<details class="agent-tool tool-model-context" data-agent-historical-detail data-controller="agent-lazy-detail" data-action="toggle->agent-lazy-detail#load">${transcriptActionItemHtml({ kind: "html", html: label }, { disclosure: true, leadingHtml: statusHtml("ok") })}${lazyTranscriptItemFrame(ctx, "model-context", true)}</details>`);
 }
 
 export function renderModelContextDetailFrame(ctx: AgentRenderContext, modelContext: AgentModelContextView): string {
@@ -82,7 +82,7 @@ function renderWorkingSection(ctx: AgentRenderContext, section: WorkingTranscrip
   const contextLabel = !active && section.contextTokens !== undefined ? ` · ${formatTokens(section.contextTokens)} tokens` : "";
   const label = `${activityLabel}${contextLabel}`;
   const status = active ? '<i class="status-dot running action-item__status" aria-label="In progress"></i>' : "";
-  const summary = disclosureActionItemHtml({ kind: "text", text: label }, { leadingHtml: status });
+  const summary = transcriptActionItemHtml({ kind: "text", text: label }, { disclosure: true, leadingHtml: status });
   if (!active && !section.live) {
     return `<details class="agent-working" id="${ids.item(ctx, section.key)}" data-controller="agent-lazy-detail" data-action="toggle->agent-lazy-detail#load mouseenter->agent-lazy-detail#load">${summary}${lazyTranscriptItemFrame(ctx, section.key)}</details>`;
   }

@@ -8,7 +8,7 @@ import { createSnapshotFirstLivePresentation } from "./live-presentation.ts";
 import { renderNotice } from "./render-attachments.ts";
 import { renderAgentPaneComposerFooter, renderPromptActions, type AgentPaneState, type AgentStatsView } from "./render-composer.ts";
 import { ids, type AgentRenderContext } from "./render-context.ts";
-import { renderActiveToolContent } from "./render-tool.ts";
+import { renderActiveToolContent, toolPresentation } from "./render-tool.ts";
 import {
   renderModelContextDetailFrame,
   renderTranscript,
@@ -480,6 +480,7 @@ export abstract class BaseAgentRuntime implements WorkspaceAgentRuntime {
     live.terminalTimers.delete(callId);
     const item = live.items[index];
     if (item?.type !== "tool") return;
+    const wasShowingDetail = toolPresentation(item.tool).showsDetail;
     const completedAt = Date.now();
     item.tool.durationMs = item.tool.startedAt ? completedAt - item.tool.startedAt : undefined;
     live.lastActivityAt = completedAt;
@@ -488,7 +489,12 @@ export abstract class BaseAgentRuntime implements WorkspaceAgentRuntime {
     item.tool.details = details;
     item.tool.tmuxSession = undefined;
     item.tool.terminalVisible = undefined;
-    this.streamActiveToolContent(item);
+    const presentation = toolPresentation(item.tool);
+    if (wasShowingDetail !== presentation.showsDetail) {
+      this.stream(turboStream("replace", ids.item(this.ctx, item.key), renderTranscriptItem(this.ctx, item, { live: true, open: presentation.autoOpenOnReveal })));
+    } else {
+      this.streamActiveToolContent(item);
+    }
   }
 
   protected liveNote(text: string, tone: "system" | "summary" | "error"): void {

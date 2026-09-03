@@ -9,7 +9,7 @@ import { embeddedBashCommand, formatBashCommandForDisplay, highlightedBashComman
 import { escapeHtml } from "./html.ts";
 import { formatDuration, formatTokens, type ToolView, type ToolViewDetails } from "./transcript.ts";
 import { ids, sessionImageUrl, transcriptItemPath, type AgentRenderContext } from "./render-context.ts";
-import { codeBlockHtml, detailFullscreen, disclosureActionItemHtml, fullscreenAttributes } from "./render-markup.ts";
+import { codeBlockHtml, detailFullscreen, fullscreenAttributes, transcriptActionItemHtml } from "./render-markup.ts";
 
 type ToolArgumentKey = "command" | "path" | "file_path" | "content" | "offset" | "limit" | "timeout" | "edits" | "oldText" | "newText";
 
@@ -81,11 +81,23 @@ export interface ActiveToolContent {
   detail?: string;
 }
 
+export interface ToolPresentation {
+  showsDetail: boolean;
+  autoOpenOnReveal: boolean;
+}
+
+export function toolPresentation(tool: ToolView): ToolPresentation {
+  const active = tool.status === "streaming" || tool.status === "running";
+  const showsDetail = !(active && (tool.name === "read" || tool.name === "edit"));
+  return { showsDetail, autoOpenOnReveal: showsDetail && tool.name === "edit" };
+}
+
 export function renderActiveToolContent(ctx: AgentRenderContext, key: string, original: ToolView): ActiveToolContent {
   const tool = toolForRender(original);
+  const presentation = toolPresentation(tool);
   return {
     summary: toolSummaryContentHtml(tool),
-    detail: renderToolDetail(ctx, key, tool, 100),
+    detail: presentation.showsDetail ? renderToolDetail(ctx, key, tool, 100) : undefined,
   };
 }
 
@@ -99,8 +111,13 @@ function lazyTranscriptItemFrame(ctx: AgentRenderContext, key: string): string {
 
 export function renderToolCard(ctx: AgentRenderContext, key: string, original: ToolView, options: { open?: boolean; live?: boolean } = {}): string {
   const tool = toolForRender(original);
-  const summaryHtml = disclosureActionItemHtml({ kind: "html", html: toolSummaryContentHtml(tool) }, { leadingHtml: statusHtml(tool.status), labelId: ids.itemSummaryContent(ctx, key) });
+  const label = { kind: "html" as const, html: toolSummaryContentHtml(tool) };
+  const labelOptions = { leadingHtml: statusHtml(tool.status), labelId: ids.itemSummaryContent(ctx, key) };
   const active = tool.status === "streaming" || tool.status === "running";
+  if (!toolPresentation(tool).showsDetail) {
+    return `<div class="agent-tool agent-tool-summary-only ${toolClass(tool.name)} active">${transcriptActionItemHtml(label, { ...labelOptions, disclosure: false })}</div>`;
+  }
+  const summaryHtml = transcriptActionItemHtml(label, { ...labelOptions, disclosure: true });
   const open = Boolean(options.open || active);
   if (!options.live && !active) {
     return `<details class="agent-tool ${toolClass(tool.name)}${tool.status === "error" ? " error" : ""}" data-agent-historical-detail data-controller="agent-lazy-detail" data-action="toggle->agent-lazy-detail#load">${summaryHtml}${lazyTranscriptItemFrame(ctx, key)}</details>`;
@@ -257,7 +274,6 @@ function editDiffHtml(tool: ToolView, contextual: boolean): string {
 
 function renderEditDetail(tool: ToolView): string {
   const preview = editDiffHtml(tool, true) || genericParamsHtml(tool);
-  if (tool.status === "streaming" && !preview) return `<div class="agent-tool-pending">Edit toolcall still streaming in</div>`;
   const full = editDiffHtml(tool, false) || genericParamsHtml(tool);
   const edits = fullscreenSourceRegion("Edit", `<section class="agent-tool-region agent-edit-result">${copyableToolBody(`<div class="agent-edit-details agent-tool-region-body">${preview}</div>`, "edit")}</section>`, `<div class="agent-edit-details agent-tool-region-body">${full}</div>`);
   const error = tool.status === "error" && tool.resultText ? `<pre class="agent-tool-error-output">${escapeHtml(trimResult(tool))}</pre>` : "";

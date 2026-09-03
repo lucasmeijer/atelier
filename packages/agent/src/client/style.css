@@ -312,16 +312,15 @@
 .agent-stream-markdown > div { display: contents; }
 
 .agent-tool { margin: 0; border: 0; border-radius: 0; background: transparent; overflow: visible; }
-.agent-tool-head { display: flex; align-items: center; gap: 8px; }
 .agent-tool > summary.action-item { width: fit-content; max-width: 100%; }
-summary > .agent-tool-head { width: 100%; }
 .agent-tool-detail-host { display: contents; }
 .agent-tool-args, .agent-tool-elapsed { margin-inline-start: 8px; }
 .agent-tool-args { color: var(--text-muted); }
 .agent-tool-args.error { color: var(--danger); }
 .agent-token-arrow { color: var(--text-muted); }
 .agent-duration-slot { white-space: nowrap; }
-.agent-tool-summary-only .agent-tool-head { cursor: default; }
+.agent-tool-summary-only > .action-item { width: fit-content; max-width: 100%; gap: 6px; }
+.agent-tool-summary-only > .action-item:hover { color: var(--text); background: transparent; }
 
 .agent-tool-detail { margin: 2px 0 8px; padding: 0; border: 1px solid var(--line); border-radius: var(--radius-control); overflow: hidden; background: var(--panel); }
 .agent-region-header { min-height: 29px; padding: 4px 8px; display: flex; align-items: center; gap: 8px; color: var(--text-bright); background: color-mix(in srgb, var(--bg) 82%, #000 6%); border-bottom: 1px solid color-mix(in srgb, var(--text-bright) 15%, transparent); }
@@ -361,7 +360,6 @@ summary > .agent-tool-head { width: 100%; }
 .agent-tool-images .agent-tool-image { width: auto; max-width: 100%; max-height: none; margin: 0; }
 .agent-tool-note { margin: 0; padding: 8px 8px; color: var(--text); white-space: pre-wrap; font-family: var(--font-mono); font-size: var(--text-code); }
 .agent-tool-error-output { margin: 0; padding: 8px 8px; color: var(--danger); background: color-mix(in srgb, var(--danger) 8%, var(--bg)); font-family: var(--font-mono); font-size: var(--text-code); }
-.agent-tool-pending { padding: 8px; color: var(--text-muted); }
 
 .agent-edit-details { background: var(--panel); }
 .agent-edit-pierre + .agent-edit-pierre { border-top: 7px solid var(--panel); }
