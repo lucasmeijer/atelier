@@ -101,6 +101,18 @@
   --atelier-mermaid-accent: var(--accent); --atelier-mermaid-muted: var(--text-muted); --atelier-mermaid-surface: var(--panel); --atelier-mermaid-border: var(--line-strong);
   min-height: 120px; background: color-mix(in srgb, var(--bg) 55%, #000 8%);
 }
+[data-theme="nord"] .agent-mermaid-diagram {
+  /* beautiful-mermaid's purpose-built Nord palette is quieter than the app's
+     high-contrast text and surface roles. Keep diagrams canonical Nord. */
+  --atelier-mermaid-bg: #2e3440;
+  --atelier-mermaid-fg: #d8dee9;
+  --atelier-mermaid-line: #4c566a;
+  --atelier-mermaid-accent: #88c0d0;
+  --atelier-mermaid-muted: #616e88;
+  --atelier-mermaid-surface: color-mix(in srgb, #d8dee9 3%, #2e3440);
+  --atelier-mermaid-border: color-mix(in srgb, #d8dee9 20%, #2e3440);
+  background: #2e3440;
+}
 .agent-mermaid-canvas { width: 100%; min-height: 120px; overflow: hidden; display: grid; place-items: center; }
 .agent-mermaid-canvas[aria-busy="true"]::after { content: "Rendering diagram…"; color: var(--text-muted); }
 .agent-mermaid-canvas svg { display: block; width: min(100%, var(--agent-mermaid-natural-width, 100%)); height: auto; margin: auto; }
