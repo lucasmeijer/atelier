@@ -15,8 +15,8 @@ const diffLayoutSchema = Type.Union([Type.Literal("unified"), Type.Literal("spli
 const settingsSchema = Type.Object({
   mobile: diffLayoutSchema,
   desktop: diffLayoutSchema,
-  highlighting: Type.Union([Type.Literal("line"), Type.Literal("word")]),
-  overflow: Type.Union([Type.Literal("scroll"), Type.Literal("wrap")]),
+  highlighting: Type.Optional(Type.Union([Type.Literal("line"), Type.Literal("word")])),
+  overflow: Type.Optional(Type.Union([Type.Literal("scroll"), Type.Literal("wrap")])),
 });
 
 function settingsPath(): string {
@@ -37,7 +37,7 @@ export async function readReviewSettings(path = settingsPath()): Promise<ReviewS
     throw error;
   });
   if (!text) return { ...defaultReviewSettings };
-  return Value.Parse(settingsSchema, JSON.parse(text));
+  return { ...defaultReviewSettings, ...Value.Parse(settingsSchema, JSON.parse(text)) };
 }
 
 export async function updateReviewSettings(update: Partial<ReviewSettings>, path = settingsPath()): Promise<void> {

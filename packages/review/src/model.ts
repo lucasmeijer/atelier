@@ -14,7 +14,7 @@ export interface ReviewSettings {
 export const defaultReviewSettings = {
   mobile: "unified",
   desktop: "unified",
-  highlighting: "line",
+  highlighting: "word",
   overflow: "wrap",
 } satisfies ReviewSettings;
 

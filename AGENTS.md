@@ -8,7 +8,7 @@ Do not write UI tests. Follow the [UI testing policy](docs/ui-testing-policy.md)
 - Use client JavaScript only for behavior that cannot reasonably be expressed server-side, such as WebSocket terminals, focusing/activating views, dialogs, or browser-only APIs.
 - When JavaScript is necessary, implement it as Stimulus controllers rather than inline scripts or ad-hoc global event listeners.
 - Keep Stimulus controllers small and behavior-focused; keep markup generation on the server.
-- Never implement fallbacks of migrations unless expliticly asked to do so.
+- Be very reluctant in implementing fallbacks or migrations.  The only area that warrants migrations is ateliers ability to not crash when loading older persisted files like settings, workspace settings etc
 - Do not use defensive programming.  We don't want to swallow errors, we want to notice them. Only be defensive when parsing external inputs.
 - Never add a new environment variable to the codebase without explicit instructions to do so. We're striving for minimal configuration, and minimal environment variables.
 - Run `bun run generate:workspace-modules` before raw TypeScript checks; otherwise missing ignored generated modules cause cascading unrelated server errors.

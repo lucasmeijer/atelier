@@ -168,8 +168,9 @@ describe("Review settings", () => {
     roots.push(root);
     const path = join(root, "review-settings.json");
 
-    expect(await readReviewSettings(path)).toEqual({ mobile: "unified", desktop: "unified", highlighting: "line", overflow: "wrap" });
-    await updateReviewSettings({ mobile: "split" }, path);
+    expect(await readReviewSettings(path)).toEqual({ mobile: "unified", desktop: "unified", highlighting: "word", overflow: "wrap" });
+    await writeFile(path, `${JSON.stringify({ mobile: "split", desktop: "unified" })}\n`);
+    expect(await readReviewSettings(path)).toEqual({ mobile: "split", desktop: "unified", highlighting: "word", overflow: "wrap" });
     await updateReviewSettings({ desktop: "split", highlighting: "word", overflow: "scroll" }, path);
     expect(await readReviewSettings(path)).toEqual({ mobile: "split", desktop: "split", highlighting: "word", overflow: "scroll" });
 
@@ -250,8 +251,8 @@ describe("Review presentation", () => {
     expect(html).toContain('name="review-diff-layout" value="unified" aria-pressed="true">Unified</button>');
     expect(html).toContain('name="review-diff-layout" value="split" aria-pressed="false">Side by side</button>');
     expect(html).toContain('role="group" aria-label="Diff highlighting" data-controller="toggle" data-action="change-&gt;review#setDiffHighlighting" method="post" action="/review/settings/diff-highlighting"');
-    expect(html).toContain('name="review-diff-highlighting" value="line" aria-pressed="true">Lines</button>');
-    expect(html).toContain('name="review-diff-highlighting" value="word" aria-pressed="false">Words</button>');
+    expect(html).toContain('name="review-diff-highlighting" value="line" aria-pressed="false">Lines</button>');
+    expect(html).toContain('name="review-diff-highlighting" value="word" aria-pressed="true">Words</button>');
     expect(html).toContain('role="group" aria-label="Long lines" data-controller="toggle" data-action="change-&gt;review#setDiffOverflow" method="post" action="/review/settings/diff-overflow"');
     expect(html).toContain('name="review-diff-overflow" value="scroll" aria-pressed="false">Scroll</button>');
     expect(html).toContain('name="review-diff-overflow" value="wrap" aria-pressed="true">Wrap</button>');
