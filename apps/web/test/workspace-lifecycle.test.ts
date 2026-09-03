@@ -34,6 +34,43 @@ describe("workspace lifecycle", () => {
     expect(registry.hasAttention(id)).toBe(false);
   });
 
+  test("provisioning waits for explicit confirmation after a recoverable failure", async () => {
+    const waiting = deferred();
+    let finished = false;
+    const { app, registry } = createTestApp({
+      provision: async (_id, options) => {
+        const confirmation = options?.waitForContinue("workspace.setup");
+        waiting.resolve();
+        await confirmation;
+        finished = true;
+      },
+    });
+    await registry.seed([]);
+
+    const response = await app.fetch(post("/workspaces"));
+    const id = (response.headers.get("location") ?? "").match(/\/workspaces\/([^/]+)$/)?.[1] ?? "";
+    await waiting.promise;
+
+    expect(registry.get(id)?.phase).toBe("starting");
+    expect(finished).toBe(false);
+
+    const continued = await app.fetch(new Request(`http://test.local/workspaces/${id}/provisioning/continue`, {
+      method: "POST",
+      headers: { accept: "application/json" },
+    }));
+    expect(continued.status).toBe(200);
+    expect(await continued.json()).toEqual({ continued: true, stepId: "workspace.setup" });
+    while (registry.get(id)?.phase === "starting") await Bun.sleep(1);
+    expect(finished).toBe(true);
+    expect(registry.get(id)?.phase).toBe("ready");
+
+    const repeated = await app.fetch(new Request(`http://test.local/workspaces/${id}/provisioning/continue`, {
+      method: "POST",
+      headers: { accept: "application/json" },
+    }));
+    expect(repeated.status).toBe(409);
+  });
+
   test("failed provisioning marks the workspace failed and needing attention", async () => {
     const { app, registry } = createTestApp({ provision: async () => { throw new Error("docker exploded"); } });
     await registry.seed([]);

@@ -251,6 +251,7 @@ export interface WorkspaceServerProvisioningHook {
   id: string;
   label: string;
   parentId?: string;
+  onFailure?: "abort" | "await-continue";
   run(context: { workspaceId: string; creationContext?: WorkspaceCreationContext; events?: AtelierEventBus }): Promise<void> | void;
 }
 

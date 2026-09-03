@@ -5,7 +5,7 @@ import { Type } from "typebox";
 import { Value } from "typebox/value";
 import { createAtelierEventBus, getAtelierRuntimeContext } from "@atelier/core";
 import { attachHostObservableTerminal, observableTerminalCols, observableTerminalRows, type ObservableTerminalConnection } from "@atelier/observable-terminal/server";
-import { createWorkspace, deleteWorkspace, isWorkspaceRunning, listWorkspaces, resolveWorkspace, setWorkspaceContainerRunning, workspaceSetupProvisioningHook } from "@atelier/workspace";
+import { createWorkspace, deleteWorkspace, isWorkspaceRunning, listWorkspaces, resolveWorkspace, runWorkspaceProvisioningHooks, setWorkspaceContainerRunning, workspaceSetupProvisioningHook } from "@atelier/workspace";
 import { atelierName, CableTopics, escapeHtml, type WorkspaceAppBackend, type WorkspaceAppRef, type WorkspaceServerAppResolver, type WorkspaceServerProvisioningHook, type WorkspaceServerSocketHandler, type WorkspaceServerSocketSession } from "@atelier/shared";
 import {
   createFileOriginIdentityStore,
@@ -236,16 +236,7 @@ app = createWebApp({
   workspaceRemovedHandlers,
   async provisionWorkspace(id, options) {
     await createWorkspace({ id, events: atelierEvents, init: options?.init, context: options?.context });
-    for (const hook of provisioningHooks) {
-      await atelierEvents.emit("workspace_provision_step", { workspaceId: id, id: hook.id, label: hook.label, parentId: hook.parentId, status: "running" });
-      try {
-        await hook.run({ workspaceId: id, creationContext: options?.context, events: atelierEvents });
-        await atelierEvents.emit("workspace_provision_step", { workspaceId: id, id: hook.id, label: hook.label, parentId: hook.parentId, status: "done" });
-      } catch (error) {
-        await atelierEvents.emit("workspace_provision_step", { workspaceId: id, id: hook.id, label: hook.label, parentId: hook.parentId, status: "failed", error: error instanceof Error ? error.message : String(error) });
-        throw error;
-      }
-    }
+    await runWorkspaceProvisioningHooks(provisioningHooks, { workspaceId: id, creationContext: options?.context, events: atelierEvents, waitForContinue: options?.waitForContinue });
     await atelierEvents.emit("workspace_provision_step", { workspaceId: id, id: "workspace.integrations", label: "Run workspace startup integrations", status: "running" });
     await atelierEvents.emit("workspace_created", { workspaceId: id, init: options?.init, context: options?.context });
     await atelierEvents.emit("workspace_provision_step", { workspaceId: id, id: "workspace.integrations", label: "Run workspace startup integrations", status: "done" });

@@ -26,6 +26,7 @@ export type {
 } from "./events.ts";
 
 export { createWorkspaceMetadataState, type WorkspaceMetadataState } from "./metadata-state.ts";
+export { runWorkspaceProvisioningHooks, type RunWorkspaceProvisioningHooksOptions, type WorkspaceProvisionStepEvent, type WorkspaceProvisionStepStatus, type WorkspaceProvisionTerminal } from "./provisioning.ts";
 
 export {
   createWorkspacePresentationStore,
@@ -395,6 +396,7 @@ export async function runWorkspaceSetupScript(id: string, options: { events?: At
 export const workspaceSetupProvisioningHook: WorkspaceServerProvisioningHook = {
   id: workspaceSetupStep,
   label: "Run project setup",
+  onFailure: "await-continue",
   async run({ workspaceId, creationContext, events }) {
     if (creationContext?.fork) {
       await events?.emit("workspace_provision_step", { workspaceId, id: workspaceSetupStep, detail: "Skipped for copied workspace" });

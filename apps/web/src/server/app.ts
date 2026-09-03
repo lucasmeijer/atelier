@@ -77,7 +77,7 @@ export interface WebAppDeps {
   events?: AtelierEventBus;
   devReload?: boolean;
   /** Create the container + default agent etc. for an already-registered workspace id. */
-  provisionWorkspace(id: string, options?: { init?: WorkspaceInitInstruction; context?: WorkspaceCreationContext }): Promise<void>;
+  provisionWorkspace(id: string, options?: { init?: WorkspaceInitInstruction; context?: WorkspaceCreationContext; waitForContinue(stepId: string): Promise<void> }): Promise<void>;
   /** Test/embedding override. Production obtains this contribution from the Review module. */
   deletionReview?: WorkspaceDeletionReview;
   /** Force-remove the workspace container. */
@@ -158,6 +158,7 @@ export function createWebApp(deps: WebAppDeps): WebApp {
   });
 
   const provisioning = createWorkspaceProvisioningStore({ onChange: (workspaceId) => broadcastWorkspaceBoot(workspaceId), seedSteps: deps.provisioningHooks });
+  const provisioningContinuations = new Map<string, { stepId: string; resolve(): void }>();
   const workspaceCommandModalHostId = "workspace_command_modal_host";
   const launchComposerFrameId = "launch_composer";
   // Every server-rendered LaunchComposer has one attachment draft ID. Retried POSTs
@@ -586,16 +587,22 @@ export function createWebApp(deps: WebAppDeps): WebApp {
   // Create / delete
   // ---------------------------------------------------------------------------
 
+  function waitForProvisioningContinue(workspaceId: string, stepId: string): Promise<void> {
+    if (provisioningContinuations.has(workspaceId)) throw new Error(`workspace ${workspaceId} is already waiting for provisioning confirmation`);
+    return new Promise((resolve) => provisioningContinuations.set(workspaceId, { stepId, resolve }));
+  }
+
   function startWorkspaceProvisioning(id: string, options: { init?: WorkspaceInitInstruction; context?: WorkspaceCreationContext; title?: string } = {}): void {
     provisioning.seed(id);
     void (async () => {
       try {
-        await deps.provisionWorkspace(id, { init: options.init, context: options.context });
+        await deps.provisionWorkspace(id, { init: options.init, context: options.context, waitForContinue: (stepId) => waitForProvisioningContinue(id, stepId) });
         if (options.title) await setWorkspaceTitle(id, options.title);
         registry.setPhase(id, "ready");
         if (options.context?.agent && !options.context.agent.initialPrompt?.trim()) registry.markViewAttention(id, "workspace");
         await broadcastWorkspaceReady(id);
       } catch (error) {
+        provisioningContinuations.delete(id);
         const message = error instanceof Error ? error.message : String(error);
         logError(`could not provision workspace ${id}: ${message}`);
         registry.setPhase(id, "failed", message);
@@ -869,6 +876,17 @@ export function createWebApp(deps: WebAppDeps): WebApp {
 
   function deleteCurrentWorkspaceFromAgent(id: string, force: boolean): Promise<DeleteCurrentWorkspaceResult> {
     return requestWorkspaceDeletion(id, force);
+  }
+
+  function continueWorkspaceProvisioningEndpoint(id: string, request: Request): Response {
+    const entry = requireWorkspace(id);
+    const pending = provisioningContinuations.get(id);
+    if (entry.phase !== "starting" || !pending) throw new AtelierCoreError("workspace_not_ready", `workspace ${id} is not waiting for provisioning confirmation`);
+    provisioningContinuations.delete(id);
+    provisioning.apply({ workspaceId: id, id: pending.stepId, status: "failed", detail: "Continuing despite this failure", awaitingContinue: false });
+    pending.resolve();
+    if (requestAcceptsJson(request)) return jsonResponse({ continued: true, stepId: pending.stepId });
+    return turboStreamResponse(turboReplaceStream(workspaceBootId(id), workspaceBootResidentHtml(entry)));
   }
 
   async function deleteWorkspaceEndpoint(id: string, request: Request): Promise<Response> {
@@ -1177,7 +1195,7 @@ export function createWebApp(deps: WebAppDeps): WebApp {
   function errorPage(error: Error): Response {
     const status = error instanceof AtelierCoreError && ["invalid_arguments", "invalid_git_url"].includes(error.code) ? 400
       : error instanceof AtelierCoreError && ["workspace_not_found", "project_not_found", "repo_not_found", "terminal_not_found", "agent_conversation_not_found"].includes(error.code) ? 404
-        : error instanceof AtelierCoreError && error.code === "last_agent_conversation" ? 409
+        : error instanceof AtelierCoreError && ["last_agent_conversation", "workspace_not_ready"].includes(error.code) ? 409
           : 500;
     const message = error.message;
     const backLink = actionLinkHtml({ href: "/", variant: "secondary", content: { kind: "caption", caption: "Back home" } });
@@ -1275,6 +1293,7 @@ export function createWebApp(deps: WebAppDeps): WebApp {
     }
     if ((params = match(/^\/workspaces\/([^/]+)\/park$/)) && request.method === "POST") return parkWorkspaceEndpoint(params[0], true, request);
     if ((params = match(/^\/workspaces\/([^/]+)\/unpark$/)) && request.method === "POST") return parkWorkspaceEndpoint(params[0], false, request);
+    if ((params = match(/^\/workspaces\/([^/]+)\/provisioning\/continue$/)) && request.method === "POST") return continueWorkspaceProvisioningEndpoint(params[0], request);
     if ((params = match(/^\/workspaces\/([^/]+)\/delete\/cancel$/)) && request.method === "POST") return await cancelWorkspaceDeletionEndpoint(params[0], request);
     if ((params = match(/^\/workspaces\/([^/]+)\/delete\/confirm$/)) && request.method === "POST") return await confirmWorkspaceDeletionEndpoint(params[0], request);
     if ((params = match(/^\/workspaces\/([^/]+)\/delete\/retry$/)) && request.method === "POST") return await retryWorkspaceDeletionEndpoint(params[0], request);

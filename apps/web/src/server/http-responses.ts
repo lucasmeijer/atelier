@@ -32,7 +32,7 @@ export function jsonResponse<Body extends object>(body: Body, init: HtmlResponse
 export function problemJsonResponse(error: Error): Response {
   const status = error instanceof AtelierCoreError && ["invalid_arguments", "invalid_git_url"].includes(error.code) ? 400
     : error instanceof AtelierCoreError && ["project_not_found", "project_environment_variable_not_found", "project_secret_not_found", "workspace_not_found", "command_not_found", "agent_conversation_not_found", "view_not_found", "terminal_not_found"].includes(error.code) ? 404
-      : error instanceof AtelierCoreError && error.code === "last_agent_conversation" ? 409
+      : error instanceof AtelierCoreError && ["last_agent_conversation", "workspace_not_ready"].includes(error.code) ? 409
         : 500;
   const code = error instanceof AtelierCoreError ? error.code : "internal_error";
   const details = error instanceof AtelierCoreError ? error.details : undefined;

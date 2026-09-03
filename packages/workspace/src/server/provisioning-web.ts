@@ -1,30 +1,8 @@
-export type WorkspaceProvisionStepStatus = "pending" | "running" | "done" | "failed";
-
 import { observableTerminalStaticFiles } from "@atelier/observable-terminal/server";
 import { escapeHtml } from "@atelier/shared";
+import type { WorkspaceProvisionStepEvent, WorkspaceProvisionStepStatus } from "../provisioning.ts";
 
-export interface WorkspaceProvisionTerminal {
-  kind: "host-tmux";
-  session: string;
-}
-
-export interface WorkspaceProvisionStepEvent {
-  workspaceId: string;
-  id: string;
-  label?: string;
-  status?: WorkspaceProvisionStepStatus;
-  parentId?: string;
-  detail?: string;
-  output?: string;
-  terminal?: WorkspaceProvisionTerminal;
-  error?: string;
-}
-
-declare module "@atelier/core" {
-  interface AtelierEventMap {
-    workspace_provision_step: WorkspaceProvisionStepEvent;
-  }
-}
+export type { WorkspaceProvisionStepEvent, WorkspaceProvisionStepStatus, WorkspaceProvisionTerminal } from "../provisioning.ts";
 
 export interface WorkspaceProvisionStep {
   id: string;
@@ -35,6 +13,7 @@ export interface WorkspaceProvisionStep {
   output?: string;
   terminal?: { kind: "host-tmux"; session: string };
   error?: string;
+  awaitingContinue?: boolean;
   order: number;
 }
 
@@ -95,8 +74,8 @@ function renderStatusMarker(status: WorkspaceProvisionStepStatus): string {
   return `<span class="status-list__marker"${failedAttributes}>${marker}</span>`;
 }
 
-function renderProvisionStep(step: WorkspaceProvisionStep, children: WorkspaceProvisionStep[]): string {
-  const childHtml = children.map((child) => renderProvisionStep(child, [])).join("");
+function renderProvisionStep(workspaceId: string, step: WorkspaceProvisionStep, children: WorkspaceProvisionStep[]): string {
+  const childHtml = children.map((child) => renderProvisionStep(workspaceId, child, [])).join("");
   const liveOutput = step.status === "running" ? step.output : undefined;
   const activity = liveOutput
     ? `<pre class="provision-terminal-progress provision-output-log" data-controller="auto-scroll">${escapeHtml(liveOutput)}</pre>`
@@ -106,7 +85,10 @@ function renderProvisionStep(step: WorkspaceProvisionStep, children: WorkspacePr
   const output = step.output && step.status !== "running" ? `<details class="provision-output-disclosure"${step.status === "failed" ? " open" : ""}><summary class="action-item action-item__primary"><svg class="disclosure-icon" aria-hidden="true" viewBox="0 0 24 24"><path d="m6 9 6 6 6-6"/></svg><span class="action-item__label"><span class="action-item__label-text">View output</span></span></summary><pre class="provision-output-log provision-output" data-controller="auto-scroll">${escapeHtml(step.output)}</pre></details>` : "";
   const error = step.error ? `<div class="provision-error">${escapeHtml(step.error)}</div>` : "";
   const detail = step.detail ? `<span class="r-sub provision-step-detail">${escapeHtml(step.detail)}</span>` : "";
-  return `<li class="status-list__item provision-step"${stepStatusAttributes(step.status)}>${renderStatusMarker(step.status)}<div class="provision-step-content"><span class="provision-step-label">${escapeHtml(step.label)}</span>${detail}${activity}${output}${error}${childHtml ? `<ol class="status-list provision-children">${childHtml}</ol>` : ""}</div></li>`;
+  const continueAction = step.awaitingContinue
+    ? `<form class="provision-continue" method="post" action="/workspaces/${encodeURIComponent(workspaceId)}/provisioning/continue"><button class="button primary" type="submit"><span class="button__caption">Continue anyway</span></button></form>`
+    : "";
+  return `<li class="status-list__item provision-step"${stepStatusAttributes(step.status)}>${renderStatusMarker(step.status)}<div class="provision-step-content"><span class="provision-step-label">${escapeHtml(step.label)}</span>${detail}${activity}${output}${error}${continueAction}${childHtml ? `<ol class="status-list provision-children">${childHtml}</ol>` : ""}</div></li>`;
 }
 
 export function createWorkspaceProvisioningStore(options: { onChange: (workspaceId: string) => void; seedSteps: WorkspaceProvisionSeedStep[] }): WorkspaceProvisioningStore {
@@ -140,6 +122,7 @@ export function createWorkspaceProvisioningStore(options: { onChange: (workspace
       output: event.output ?? existing?.output ?? "",
       terminal: event.terminal ?? existing?.terminal,
       error: event.error ?? existing?.error,
+      awaitingContinue: event.awaitingContinue ?? existing?.awaitingContinue,
       order: existing?.order ?? ++order,
     });
     options.onChange(event.workspaceId);
@@ -158,7 +141,7 @@ export function createWorkspaceProvisioningStore(options: { onChange: (workspace
       const childrenByParent = new Map<string, WorkspaceProvisionStep[]>();
       for (const step of allSteps) if (step.parentId) childrenByParent.set(step.parentId, [...(childrenByParent.get(step.parentId) ?? []), step]);
       const body = top.length
-        ? top.map((step) => renderProvisionStep(step, childrenByParent.get(step.id) ?? [])).join("")
+        ? top.map((step) => renderProvisionStep(workspaceId, step, childrenByParent.get(step.id) ?? [])).join("")
         : '<li class="status-list__item provision-step" aria-busy="true"><span class="status-list__marker"></span><div class="provision-step-content"><span class="provision-step-label">Preparing workspace</span></div></li>';
       const failed = allSteps.find((step) => step.status === "failed");
       const failure = failed?.label ? `Failed while: ${failed.label}` : renderOptions.failed ? (renderOptions.error ?? "unknown error") : "";

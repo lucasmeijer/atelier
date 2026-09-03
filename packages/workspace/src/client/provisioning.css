@@ -14,3 +14,4 @@
 .provision-terminal-progress { height: 300px; max-height: none; margin: 12px 0 0; }
 .provision-output { margin: 4px 0 0; }
 .provision-error { margin-top: 8px; color: var(--danger); white-space: pre-wrap; }
+.provision-continue { margin-top: 12px; }
