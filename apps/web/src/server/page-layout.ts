@@ -5,6 +5,7 @@ import { parseAssetManifest, type AssetManifest } from "./asset-manifest.ts";
 
 export function createPageLayout(options: { devReload?: boolean; workspaceModules: readonly WorkspaceModule[] }): (body: string) => string {
   let cachedAssetManifest: AssetManifest | undefined;
+  const defaultTheme = process.env.ATELIER_HOST_UID ? "cappuccino" : "nord";
 
   function loadAssetManifest(): AssetManifest {
     const manifestUrl = new URL("../../public/assets-manifest.json", import.meta.url);
@@ -39,7 +40,7 @@ export function createPageLayout(options: { devReload?: boolean; workspaceModule
     if (options.devReload) cachedAssetManifest = loadAssetManifest();
     const pageId = randomUUID();
     return `<!DOCTYPE html>
-<html lang="en" data-theme="nord" data-atelier-page-id="${escapeHtml(pageId)}">
+<html lang="en" data-theme="${defaultTheme}" data-atelier-page-id="${escapeHtml(pageId)}">
 <head>
 <meta charset="utf-8">
 <style>
