@@ -27,9 +27,6 @@ import {
   domId,
   escapeHtml,
   turboStreamResponse,
-  type AgentWorkspaceCreateRequest,
-  type AgentWorkspaceCreateResult,
-  type AgentWorkspaceForkRequest,
   type AgentWorkspaceParameters,
   type CableIdentifier,
   type DeleteCurrentWorkspaceResult,
@@ -80,7 +77,7 @@ export interface WebAppDeps {
   events?: AtelierEventBus;
   devReload?: boolean;
   /** Create the container + default agent etc. for an already-registered workspace id. */
-  provisionWorkspace(id: string, options?: { init?: import("@atelier/workspace").WorkspaceInitInstruction; context?: WorkspaceCreationContext; fork?: { sourceWorkspaceId: string } }): Promise<void>;
+  provisionWorkspace(id: string, options?: { init?: WorkspaceInitInstruction; context?: WorkspaceCreationContext }): Promise<void>;
   /** Test/embedding override. Production obtains this contribution from the Review module. */
   deletionReview?: WorkspaceDeletionReview;
   /** Force-remove the workspace container. */
@@ -98,8 +95,6 @@ export interface WebApp {
   shellSnapshot(): Promise<string>;
   deleteCurrentWorkspaceFromAgent(workspaceId: string, force: boolean): Promise<DeleteCurrentWorkspaceResult>;
   resumeWorkspaceDeletions(): void;
-  createWorkspaceFromAgent(workspaceId: string, request: AgentWorkspaceCreateRequest): Promise<AgentWorkspaceCreateResult>;
-  forkCurrentWorkspaceFromAgent(workspaceId: string, request: AgentWorkspaceForkRequest): Promise<AgentWorkspaceCreateResult>;
   presentWorkViewFromAgent(workspaceId: string, reference: WorkspaceWorkViewReference): Promise<void>;
   globalSidebarContributions: GlobalSidebarContributionRegistry;
 }
@@ -589,11 +584,11 @@ export function createWebApp(deps: WebAppDeps): WebApp {
   // Create / delete
   // ---------------------------------------------------------------------------
 
-  function startWorkspaceProvisioning(id: string, options: { init?: import("@atelier/workspace").WorkspaceInitInstruction; context?: WorkspaceCreationContext; title?: string; fork?: { sourceWorkspaceId: string } } = {}): void {
+  function startWorkspaceProvisioning(id: string, options: { init?: WorkspaceInitInstruction; context?: WorkspaceCreationContext; title?: string } = {}): void {
     provisioning.seed(id);
     void (async () => {
       try {
-        await deps.provisionWorkspace(id, { init: options.init, context: options.context, fork: options.fork });
+        await deps.provisionWorkspace(id, { init: options.init, context: options.context });
         if (options.title) await setWorkspaceTitle(id, options.title);
         registry.setPhase(id, "ready");
         if (options.context?.agent && !options.context.agent.initialPrompt?.trim()) registry.markViewAttention(id, "workspace");
@@ -612,16 +607,10 @@ export function createWebApp(deps: WebAppDeps): WebApp {
     })();
   }
 
-  type WorkspaceCreateSource = { type: "empty" } | { type: "project"; project: ProjectSummary } | { type: "init"; init: WorkspaceInitInstruction } | { type: "fork"; sourceWorkspaceId: string; init?: WorkspaceInitInstruction };
+  type WorkspaceCreateSource = { type: "empty" } | { type: "project"; project: ProjectSummary };
 
   function initForSource(source: WorkspaceCreateSource): WorkspaceInitInstruction | undefined {
-    if (source.type === "project") return projectWorkspaceInit(source.project);
-    if (source.type === "init" || source.type === "fork") return source.init;
-    return undefined;
-  }
-
-  function forkForSource(source: WorkspaceCreateSource): { sourceWorkspaceId: string } | undefined {
-    return source.type === "fork" ? { sourceWorkspaceId: source.sourceWorkspaceId } : undefined;
+    return source.type === "project" ? projectWorkspaceInit(source.project) : undefined;
   }
 
   function agentContext(agent: AgentWorkspaceParameters | undefined): AgentWorkspaceParameters | undefined {
@@ -638,16 +627,6 @@ export function createWebApp(deps: WebAppDeps): WebApp {
     return parameters;
   }
 
-  function creationContext(source: WorkspaceCreateSource, agent: AgentWorkspaceParameters | undefined): WorkspaceCreationContext | undefined {
-    const fork = forkForSource(source);
-    const agentParameters = agentContext(agent);
-    if (source.type !== "project" && !fork && !agentParameters) return undefined;
-    const context: WorkspaceCreationContext = {};
-    if (fork) context.fork = fork;
-    if (agentParameters) context.agent = agentParameters;
-    return context;
-  }
-
   interface CreatedWorkspace {
     id: string;
     isFirstWorkspace: boolean;
@@ -658,14 +637,13 @@ export function createWebApp(deps: WebAppDeps): WebApp {
     const id = generateWorkspaceId();
     const init = initForSource(command.source);
     const title = command.title?.trim() ?? "";
-    const context = creationContext(command.source, await prepareNewWorkspaceAgentParameters(command.agent));
-    const fork = forkForSource(command.source);
+    const agent = agentContext(await prepareNewWorkspaceAgentParameters(command.agent));
+    const context: WorkspaceCreationContext | undefined = agent ? { agent } : undefined;
     registry.add(id, title || null, init);
     const options: Parameters<typeof startWorkspaceProvisioning>[1] = {};
     if (init !== undefined) options.init = init;
     if (context) options.context = context;
     if (title) options.title = title;
-    if (fork) options.fork = fork;
     startWorkspaceProvisioning(id, options);
     return { id, isFirstWorkspace };
   }
@@ -752,27 +730,6 @@ export function createWebApp(deps: WebAppDeps): WebApp {
     if (value === undefined || value === null) return undefined;
     if (!Value.Check(jsonStringSchema, value)) throw invalidArguments(`${name} must be a string`);
     return value.trim();
-  }
-
-  async function createWorkspaceFromAgent(workspaceId: string, request: AgentWorkspaceCreateRequest): Promise<AgentWorkspaceCreateResult> {
-    const source: WorkspaceCreateSource = request.seedWithCurrentProjectClone
-      ? (() => {
-          const entry = registry.get(workspaceId);
-          if (!isGitProjectInit(entry?.init)) throw invalidArguments("current workspace was not seeded from a project git clone");
-          return { type: "init", init: entry.init };
-        })()
-      : { type: "empty" };
-    const { id } = await createWorkspaceFromCommand({ source, title: request.title, agent: request });
-    return { id, url: `/workspaces/${encodeURIComponent(id)}`, phase: "starting" };
-  }
-
-  async function forkCurrentWorkspaceFromAgent(workspaceId: string, request: AgentWorkspaceForkRequest): Promise<AgentWorkspaceCreateResult> {
-    const title = request.title.trim();
-    if (!title) throw invalidArguments("title is required");
-    const entry = registry.get(workspaceId);
-    if (!entry || entry.phase !== "ready") throw new AtelierCoreError("workspace_not_found", `workspace not found: ${workspaceId}`);
-    const { id } = await createWorkspaceFromCommand({ source: { type: "fork", sourceWorkspaceId: workspaceId, init: entry.init }, title, agent: request });
-    return { id, url: `/workspaces/${encodeURIComponent(id)}`, phase: "starting" };
   }
 
   async function broadcastWorkspaceReady(id: string): Promise<void> {
@@ -1328,8 +1285,6 @@ export function createWebApp(deps: WebAppDeps): WebApp {
     shellSnapshot: async () => workspacePaneCollectionsTurboStream(await workspacePaneCollections("")),
     deleteCurrentWorkspaceFromAgent,
     resumeWorkspaceDeletions,
-    createWorkspaceFromAgent,
-    forkCurrentWorkspaceFromAgent,
     presentWorkViewFromAgent,
     globalSidebarContributions,
     async fetch(request) {

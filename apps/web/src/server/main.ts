@@ -235,7 +235,7 @@ app = createWebApp({
   provisioningHooks,
   workspaceRemovedHandlers,
   async provisionWorkspace(id, options) {
-    await createWorkspace({ id, events: atelierEvents, init: options?.init, context: options?.context, fork: options?.fork });
+    await createWorkspace({ id, events: atelierEvents, init: options?.init, context: options?.context });
     for (const hook of provisioningHooks) {
       await atelierEvents.emit("workspace_provision_step", { workspaceId: id, id: hook.id, label: hook.label, parentId: hook.parentId, status: "running" });
       try {
@@ -272,8 +272,6 @@ for (const module of workspaceModules) {
     presentWorkView: (workspaceId, reference) => app.presentWorkViewFromAgent(workspaceId, reference),
     broadcastWorkspace: (workspaceId, html) => cableServer.broadcast(CableTopics.workspace(workspaceId), html),
     deleteCurrentWorkspace: (workspaceId, force) => app.deleteCurrentWorkspaceFromAgent(workspaceId, force),
-    createWorkspaceFromAgent: (workspaceId, request) => app.createWorkspaceFromAgent(workspaceId, request),
-    forkCurrentWorkspaceFromAgent: (workspaceId, request) => app.forkCurrentWorkspaceFromAgent(workspaceId, request),
     registerSocketHandler: (handler) => socketHandlers.push(handler),
     registerWorkspaceAppResolver: (resolver) => workspaceAppResolvers.push(resolver),
     registerProvisioningHook: (hook) => provisioningHooks.push(hook),

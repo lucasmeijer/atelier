@@ -295,21 +295,6 @@ export interface WorkspaceCreationContext extends Record<string, unknown> {
   fork?: { sourceWorkspaceId: string };
 }
 
-export interface AgentWorkspaceCreateRequest extends AgentWorkspaceParameters {
-  title?: string;
-  seedWithCurrentProjectClone: boolean;
-}
-
-export interface AgentWorkspaceForkRequest extends AgentWorkspaceParameters {
-  title: string;
-}
-
-export interface AgentWorkspaceCreateResult {
-  id: string;
-  url: string;
-  phase: "starting";
-}
-
 export interface WorkspaceServerModuleContext {
   events: AtelierEventBus;
   registry: {
@@ -320,8 +305,6 @@ export interface WorkspaceServerModuleContext {
   presentWorkView(workspaceId: string, reference: WorkspaceWorkViewReference): Promise<void>;
   broadcastWorkspace(workspaceId: string, html: string): void;
   deleteCurrentWorkspace(workspaceId: string, force: boolean): Promise<DeleteCurrentWorkspaceResult>;
-  createWorkspaceFromAgent(workspaceId: string, request: AgentWorkspaceCreateRequest): Promise<AgentWorkspaceCreateResult>;
-  forkCurrentWorkspaceFromAgent(workspaceId: string, request: AgentWorkspaceForkRequest): Promise<AgentWorkspaceCreateResult>;
   registerSocketHandler(handler: WorkspaceServerSocketHandler): void;
   registerWorkspaceAppResolver(resolver: WorkspaceServerAppResolver): void;
   registerProvisioningHook(hook: WorkspaceServerProvisioningHook): void;

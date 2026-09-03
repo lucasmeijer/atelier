@@ -30,7 +30,6 @@ export { prepareNewWorkspaceAgentParameters, rememberNewWorkspaceAgentSettings }
 export {
   applyExactEdits,
   createDeleteCurrentWorkspaceTool,
-  createForkCurrentWorkspaceTool,
   createWorkspaceAgentTools,
   normalizeWorkspacePath,
   registerWorkspaceAgentTool,

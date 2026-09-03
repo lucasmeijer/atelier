@@ -1,8 +1,6 @@
 import type { WorkspaceAgentTabProvider, WorkspaceCommandContribution, WorkspaceModule } from "@atelier/shared";
 import {
   createDeleteCurrentWorkspaceTool,
-  // createForkCurrentWorkspaceTool,
-  createWorkspaceTool,
   registerWorkspaceAgentTool,
 } from "./tools.ts";
 import { createAgentTermSocketSession } from "./bash-tmux.ts";
@@ -199,9 +197,6 @@ export const agentWorkspaceModule: WorkspaceModule = {
     context.onWorkspaceRemoved(removeWorkspaceAgentRuntimes);
     context.onWorkspaceRemoved(removeWorkspaceInitialPromptDrafts);
     registerWorkspaceAgentTool("delete_current_workspace", (workspaceId) => createDeleteCurrentWorkspaceTool(workspaceId, async (force) => await context.deleteCurrentWorkspace(workspaceId, force)));
-    registerWorkspaceAgentTool("create_workspace", (workspaceId) => createWorkspaceTool((request) => context.createWorkspaceFromAgent(workspaceId, request)));
-    // Temporarily keep workspace forking unavailable to agents; they invoke it too readily.
-    // registerWorkspaceAgentTool("fork_current_workspace", (workspaceId) => createForkCurrentWorkspaceTool((request) => context.forkCurrentWorkspaceFromAgent(workspaceId, request)));
   },
   attachToWorkspace() {
     return { commands: [...agentWorkspaceCommands, projectAgentWorkspaceCommand] };

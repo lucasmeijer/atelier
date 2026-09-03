@@ -33,8 +33,6 @@ Workspace actions:
 - Park with the sleep icon to keep it but skip it during next/previous workspace navigation.
 - Delete with the trash icon. Atelier warns before deleting uncommitted changes or unpushed commits.
 
-Agents can also fork their current workspace with the `fork_current_workspace` tool. A fork creates a fresh container from the same workspace image and copies the current workspace's entire `/work` folder, including unversioned files. It does not copy live terminals, open Work views, running processes, or Agent conversation history. If the tool includes an initial prompt, Atelier runs that prompt in a new fresh agent context in the fork. Repository workspaces share `/persistent`, so the spawning workspace and the fork can use `/persistent` as a communication channel for notes, handoff files, or artifacts that should outlive either workspace.
-
 ## 4. Working With Agents
 
 Use an Agent conversation to ask for code changes, explanations, reviews, or debugging help.

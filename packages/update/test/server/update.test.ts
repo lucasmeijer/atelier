@@ -95,8 +95,6 @@ function context() {
       presentWorkView: async () => {},
       broadcastWorkspace: () => {},
       deleteCurrentWorkspace: async () => ({ deleted: false, blocked: false }),
-      createWorkspaceFromAgent: async () => ({ id: "workspace-id", url: "/workspaces/workspace-id", phase: "starting" as const }),
-      forkCurrentWorkspaceFromAgent: async () => ({ id: "workspace-id", url: "/workspaces/workspace-id", phase: "starting" as const }),
       registerSocketHandler: () => {},
       registerWorkspaceAppResolver: () => {},
       registerProvisioningHook: () => {},
