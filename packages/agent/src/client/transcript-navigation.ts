@@ -21,12 +21,19 @@ export function workspaceSelectionScrollTop(transcript: ScrollTranscript, target
   return Math.min(targetTop, end);
 }
 
-export function transcriptFollowingAfterScroll(wasFollowing: boolean, previousEnd: number, scrollTop: number, nextEnd: number): boolean {
+interface TranscriptScrollPosition {
+  top: number;
+  end: number;
+}
+
+export function transcriptFollowingAfterScroll(wasFollowing: boolean, previous: TranscriptScrollPosition, next: TranscriptScrollPosition): boolean {
+  const atEnd = next.top > next.end - 1;
+  if (!wasFollowing || next.top < previous.top) return atEnd;
+
   const threshold = 60;
-  const atNextEnd = scrollTop >= nextEnd - threshold;
-  const endMovedAway = nextEnd > previousEnd;
-  const remainedAtPreviousEnd = scrollTop >= previousEnd - threshold;
-  return atNextEnd || (wasFollowing && endMovedAway && remainedAtPreviousEnd);
+  const endMovedAway = next.end > previous.end;
+  const remainedAtPreviousEnd = next.top >= previous.end - threshold;
+  return next.top >= next.end - threshold || (endMovedAway && remainedAtPreviousEnd);
 }
 
 export function shouldPositionTranscriptAfterSnapshot(hasBeenReady: boolean, selectedSinceLastReady: boolean): boolean {

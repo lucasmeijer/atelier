@@ -52,6 +52,7 @@ export function createAgentPaneController(Controller: StimulusControllerConstruc
     private reconnectingStatusTimer?: ReturnType<typeof setTimeout>;
     private transcriptLayoutFrame = 0;
     private transcriptEnd = 0;
+    private transcriptScrollTop = 0;
     private selectedWhileBusy?: boolean;
     private connected = false;
     private composerRevision = 0;
@@ -59,9 +60,10 @@ export function createAgentPaneController(Controller: StimulusControllerConstruc
     private readonly promptHistory = new PromptHistoryNavigator();
     private readonly onScroll = (): void => {
       const el = this.transcriptTarget;
-      const nextEnd = scrollEnd(el);
-      this.stuck = transcriptFollowingAfterScroll(this.stuck, this.transcriptEnd, el.scrollTop, nextEnd);
-      this.transcriptEnd = nextEnd;
+      const next = { top: el.scrollTop, end: scrollEnd(el) };
+      this.stuck = transcriptFollowingAfterScroll(this.stuck, { top: this.transcriptScrollTop, end: this.transcriptEnd }, next);
+      this.transcriptEnd = next.end;
+      this.transcriptScrollTop = next.top;
       this.transcriptEndTarget.hidden = this.stuck;
     };
     private latestUserTranscriptItem(): HTMLElement | null {
@@ -145,6 +147,7 @@ export function createAgentPaneController(Controller: StimulusControllerConstruc
       this.transcriptMutationObserver.observe(this.transcriptTarget, { childList: true, subtree: true });
       this.transcriptLayoutObserver.observe(this.element.querySelector<HTMLElement>(".composer")!);
       this.transcriptEnd = scrollEnd(this.transcriptTarget);
+      this.transcriptScrollTop = this.transcriptTarget.scrollTop;
       this.transcriptTarget.addEventListener("scroll", this.onScroll);
       this.transcriptEndTarget.hidden = this.stuck;
       document.addEventListener("visibilitychange", this.onVisibilityChange);

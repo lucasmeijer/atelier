@@ -56,16 +56,16 @@ describe("agent transcript navigation", () => {
   });
 
   test("preserves following when a delayed scroll event observes newly streamed content", () => {
-    expect(transcriptFollowingAfterScroll(true, 400, 400, 580)).toBe(true);
+    expect(transcriptFollowingAfterScroll(true, { top: 400, end: 400 }, { top: 400, end: 580 })).toBe(true);
   });
 
-  test("stops following when the user scrolls away from the previous end", () => {
-    expect(transcriptFollowingAfterScroll(true, 400, 300, 580)).toBe(false);
+  test("stops following when the user scrolls up", () => {
+    expect(transcriptFollowingAfterScroll(true, { top: 400, end: 400 }, { top: 399, end: 580 })).toBe(false);
   });
 
-  test("resumes following when the user returns within the end threshold", () => {
-    expect(transcriptFollowingAfterScroll(false, 580, 525, 580)).toBe(true);
-    expect(transcriptFollowingAfterScroll(false, 580, 519, 580)).toBe(false);
+  test("resumes following only at the end", () => {
+    expect(transcriptFollowingAfterScroll(false, { top: 525, end: 580 }, { top: 579, end: 580 })).toBe(false);
+    expect(transcriptFollowingAfterScroll(false, { top: 525, end: 580 }, { top: 580, end: 580 })).toBe(true);
   });
 
   test("does not treat terminal initialization escapes as visible output", () => {
