@@ -1,5 +1,5 @@
 import { setActivityButtonState } from "@atelier/design-system/activity-button/client";
-import { CableTopics, composerSubmitKey, focusLikelyOpensSoftwareKeyboard, setTextInputValue, type CableIdentifier, type CableSubscriptionOptions, type WorkspaceClientApplication as StimulusApplication, type WorkspaceClientControllerConstructor as StimulusControllerConstructor, type WorkspaceClientHooks } from "@atelier/shared";
+import { CableTopics, composerSubmitKey, focusLikelyOpensSoftwareKeyboard, setTextInputValue, type CableSubscription, type WorkspaceClientApplication as StimulusApplication, type WorkspaceClientControllerConstructor as StimulusControllerConstructor, type WorkspaceClientHooks } from "@atelier/shared";
 import { agentComposerPrimaryAction, agentComposerTextStorageKey, PromptHistoryNavigator } from "./composer-state.ts";
 import { scrollEnd, shouldPositionTranscriptAfterSnapshot, transcriptFollowingAfterScroll, workspaceSelectionScrollTop } from "./transcript-navigation.ts";
 
@@ -42,7 +42,7 @@ export function createAgentPaneController(Controller: StimulusControllerConstruc
 
     private stuck = true;
     private logicallyVisible = false;
-    private subscribed = false;
+    private cableSubscription?: CableSubscription;
     private hasBeenReady = false;
     private selectionAwaitingReady = false;
     private transcriptMutationObserver?: MutationObserver;
@@ -104,7 +104,7 @@ export function createAgentPaneController(Controller: StimulusControllerConstruc
       else this.transcriptLayoutChanged();
     };
     private readonly cableDisconnected = (): void => {
-      if (this.subscribed) this.setReconnecting(true);
+      if (this.cableSubscription) this.setReconnecting(true);
     };
     private relinquishSoftwareKeyboardFocus(): void {
       if (focusLikelyOpensSoftwareKeyboard() && document.activeElement === this.inputTarget) this.inputTarget.blur();
@@ -201,22 +201,21 @@ export function createAgentPaneController(Controller: StimulusControllerConstruc
         return;
       }
       this.startAgentTerminals();
-      if (!this.subscribed) this.subscribe();
+      if (!this.cableSubscription) this.subscribe();
     }
 
     private subscribe(): void {
       if (this.hasBeenReady) this.setReconnecting(true);
-      const options: CableSubscriptionOptions = { onReady: this.cableReady, onDisconnected: this.cableDisconnected };
-      window.AtelierCable?.subscribe(this.cableIdentifier(), options);
-      this.subscribed = true;
+      this.cableSubscription = window.AtelierCable?.subscribe(
+        CableTopics.agent(this.workspaceIdValue, this.conversationIdValue),
+        { onReady: this.cableReady, onDisconnected: this.cableDisconnected },
+      );
     }
 
     private stopConnection(): void {
       this.setReconnecting(false);
-      if (this.subscribed) {
-        window.AtelierCable?.unsubscribe(this.cableIdentifier());
-        this.subscribed = false;
-      }
+      this.cableSubscription?.unsubscribe();
+      this.cableSubscription = undefined;
       this.stopAgentTerminals();
     }
 
@@ -246,10 +245,6 @@ export function createAgentPaneController(Controller: StimulusControllerConstruc
       this.element.querySelectorAll<HTMLElement>('[data-controller~="agent-term"]').forEach((terminal) => {
         agentTermController(this.application, terminal)?.start();
       });
-    }
-
-    private cableIdentifier(): CableIdentifier {
-      return CableTopics.agent(this.workspaceIdValue, this.conversationIdValue);
     }
 
     private stopAgentTerminals(): void {

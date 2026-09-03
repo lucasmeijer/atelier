@@ -8,7 +8,7 @@ import { EditorState } from "@codemirror/state";
 import { drawSelection, EditorView, highlightActiveLine, keymap } from "@codemirror/view";
 import { tags } from "@lezer/highlight";
 import { setToggleValue, type ToggleChangeEvent } from "@atelier/design-system/toggle/client";
-import { CableTopics, type WorkspaceClientApplication, type WorkspaceClientControllerConstructor } from "@atelier/shared";
+import { CableTopics, type CableSubscription, type WorkspaceClientApplication, type WorkspaceClientControllerConstructor } from "@atelier/shared";
 import { parseEditableFileResponse, parseFileSaveResponse, type EditableFileResponse } from "../protocol.ts";
 import { languageExtension } from "./editor-language.ts";
 
@@ -282,14 +282,16 @@ function createFilesRefreshSignalController(Controller: WorkspaceClientControlle
   return class FilesRefreshSignalController extends Controller {
     static values = { workspaceId: String };
     declare readonly workspaceIdValue: string;
+    private cableSubscription?: CableSubscription;
 
     connect(): void {
-      window.AtelierCable?.subscribe(CableTopics.workspace(this.workspaceIdValue));
+      this.cableSubscription = window.AtelierCable?.subscribe(CableTopics.workspace(this.workspaceIdValue));
       queueMicrotask(() => window.dispatchEvent(new CustomEvent<EditorRefreshDetail>("atelier:files-refresh", { detail: { workspaceId: this.workspaceIdValue } })));
     }
 
     disconnect(): void {
-      window.AtelierCable?.unsubscribe(CableTopics.workspace(this.workspaceIdValue));
+      this.cableSubscription?.unsubscribe();
+      this.cableSubscription = undefined;
     }
   };
 }

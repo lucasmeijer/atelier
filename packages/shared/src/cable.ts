@@ -15,17 +15,19 @@ const cableIdentifierSchema = Type.Union([
   Type.Object({ channel: Type.Literal("agent"), workspaceId: Type.String({ minLength: 1 }), conversationId: Type.String({ minLength: 1 }) }),
 ]);
 
+const subscriptionIdSchema = Type.String({ minLength: 1 });
+
 const cableClientMessageSchema = Type.Union([
-  Type.Object({ command: Type.Literal("subscribe"), identifier: cableIdentifierSchema }),
-  Type.Object({ command: Type.Literal("unsubscribe"), identifier: cableIdentifierSchema }),
+  Type.Object({ command: Type.Literal("subscribe"), identifier: cableIdentifierSchema, subscriptionId: subscriptionIdSchema }),
+  Type.Object({ command: Type.Literal("unsubscribe"), identifier: cableIdentifierSchema, subscriptionId: subscriptionIdSchema }),
   Type.Object({ command: Type.Literal("pong"), time: Type.Optional(Type.Number()) }),
 ]);
 
 const cableServerMessageSchema = Type.Union([
   Type.Object({ type: Type.Literal("welcome"), connectionId: Type.String() }),
-  Type.Object({ type: Type.Literal("confirm_subscription"), identifier: cableIdentifierSchema, html: Type.Optional(Type.String()) }),
-  Type.Object({ type: Type.Literal("reject_subscription"), identifier: cableIdentifierSchema, reason: Type.String() }),
-  Type.Object({ type: Type.Literal("turbo_stream"), identifier: cableIdentifierSchema, html: Type.String() }),
+  Type.Object({ type: Type.Literal("confirm_subscription"), identifier: cableIdentifierSchema, subscriptionId: subscriptionIdSchema, html: Type.Optional(Type.String()) }),
+  Type.Object({ type: Type.Literal("reject_subscription"), identifier: cableIdentifierSchema, subscriptionId: subscriptionIdSchema, reason: Type.String() }),
+  Type.Object({ type: Type.Literal("turbo_stream"), identifier: cableIdentifierSchema, subscriptionId: subscriptionIdSchema, html: Type.String() }),
   Type.Object({ type: Type.Literal("ping"), time: Type.Number() }),
   Type.Object({ type: Type.Literal("error"), message: Type.String() }),
 ]);
@@ -62,9 +64,12 @@ export function decodeCableServerMessage(text: string): CableServerMessage {
   }
 }
 
+export interface CableSubscription {
+  unsubscribe(): void;
+}
+
 export interface AtelierCableClient {
-  subscribe(identifier: CableIdentifier, options?: CableSubscriptionOptions): void;
-  unsubscribe(identifier: CableIdentifier): void;
+  subscribe(identifier: CableIdentifier, options?: CableSubscriptionOptions): CableSubscription;
   connected(): boolean;
   connectionId(): string | undefined;
 }

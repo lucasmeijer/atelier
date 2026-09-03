@@ -1,5 +1,5 @@
 import { Controller } from "@hotwired/stimulus";
-import { atelierCableConnectionHeader, CableTopics } from "@atelier/shared";
+import { atelierCableConnectionHeader, CableTopics, type CableSubscription } from "@atelier/shared";
 import { registerWorkspaceControllers } from "./workspace-controller-registry.ts";
 import { createAtelierCableClient } from "./cable.ts";
 
@@ -11,8 +11,15 @@ export function cableRequestHeaders(initial: HeadersInit = {}): Headers {
 }
 
 class CableShellController extends Controller {
+  private cableSubscription?: CableSubscription;
+
   connect(): void {
-    window.AtelierCable?.subscribe(CableTopics.shell());
+    this.cableSubscription = window.AtelierCable?.subscribe(CableTopics.shell());
+  }
+
+  disconnect(): void {
+    this.cableSubscription?.unsubscribe();
+    this.cableSubscription = undefined;
   }
 }
 

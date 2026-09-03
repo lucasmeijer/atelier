@@ -1,6 +1,6 @@
 import { describe, expect, test } from "bun:test";
 import { createAtelierEventBus } from "@atelier/core";
-import { CableTopics, decodeCableServerMessage, serializeCableIdentifier, type CableServerMessage } from "@atelier/shared";
+import { CableTopics, decodeCableServerMessage, serializeCableIdentifier, type CableClientMessage, type CableServerMessage } from "@atelier/shared";
 import { createCableServer, type CableSocketData } from "../src/server/cable.ts";
 import { createAtelierCableClient } from "../src/client/cable.ts";
 import { createWorkspaceRegistry } from "../src/server/workspace-registry.ts";
@@ -54,27 +54,28 @@ describe("cable server", () => {
     const ws = fakeSocket({ kind: "cable", connectionId: "conn-1" });
 
     cable.open(ws, ws.data);
-    cable.message(ws, JSON.stringify({ command: "subscribe", identifier: { channel: "shell" } }));
+    cable.message(ws, JSON.stringify({ command: "subscribe", subscriptionId: "subscription-1", identifier: { channel: "shell" } }));
     await Bun.sleep(0);
 
     expect(ws.sent).toEqual([
       { type: "welcome", connectionId: "conn-1" },
       {
         type: "confirm_subscription",
+        subscriptionId: "subscription-1",
         identifier: { channel: "shell" },
         html: '<turbo-stream action="replace" target="initial"><template>ok</template></turbo-stream>',
       },
     ]);
 
     cable.broadcast({ channel: "shell" }, '<turbo-stream action="replace" target="x"><template>1</template></turbo-stream>');
-    expect(ws.sent).toContainEqual({ type: "turbo_stream", identifier: { channel: "shell" }, html: '<turbo-stream action="replace" target="x"><template>1</template></turbo-stream>' });
+    expect(ws.sent).toContainEqual({ type: "turbo_stream", subscriptionId: "subscription-1", identifier: { channel: "shell" }, html: '<turbo-stream action="replace" target="x"><template>1</template></turbo-stream>' });
 
-    cable.message(ws, JSON.stringify({ command: "unsubscribe", identifier: { channel: "shell" } }));
+    cable.message(ws, JSON.stringify({ command: "unsubscribe", subscriptionId: "subscription-1", identifier: { channel: "shell" } }));
     await Bun.sleep(0);
     cable.broadcast({ channel: "shell" }, '<turbo-stream action="replace" target="x"><template>2</template></turbo-stream>');
-    expect(ws.sent).not.toContainEqual({ type: "turbo_stream", identifier: { channel: "shell" }, html: '<turbo-stream action="replace" target="x"><template>2</template></turbo-stream>' });
+    expect(ws.sent).not.toContainEqual({ type: "turbo_stream", subscriptionId: "subscription-1", identifier: { channel: "shell" }, html: '<turbo-stream action="replace" target="x"><template>2</template></turbo-stream>' });
 
-    cable.message(ws, JSON.stringify({ command: "subscribe", identifier: { channel: "shell" } }));
+    cable.message(ws, JSON.stringify({ command: "subscribe", subscriptionId: "subscription-1", identifier: { channel: "shell" } }));
     await Bun.sleep(0);
     cable.close(ws);
     expect(cable.stats().sockets).toBe(0);
@@ -98,15 +99,15 @@ describe("cable server", () => {
     const ws = fakeSocket({ kind: "cable", connectionId: "ordered" });
     cable.open(ws, ws.data);
 
-    cable.message(ws, JSON.stringify({ command: "subscribe", identifier: { channel: "shell" } }));
+    cable.message(ws, JSON.stringify({ command: "subscribe", subscriptionId: "subscription-1", identifier: { channel: "shell" } }));
     await snapshotStarted.promise;
-    cable.message(ws, JSON.stringify({ command: "unsubscribe", identifier: { channel: "shell" } }));
-    cable.message(ws, JSON.stringify({ command: "subscribe", identifier: { channel: "workspace", workspaceId: "workspace-b" } }));
+    cable.message(ws, JSON.stringify({ command: "unsubscribe", subscriptionId: "subscription-1", identifier: { channel: "shell" } }));
+    cable.message(ws, JSON.stringify({ command: "subscribe", subscriptionId: "subscription-1", identifier: { channel: "workspace", workspaceId: "workspace-b" } }));
 
     expect(cable.stats().subscriptions).toEqual({ '["workspace","workspace-b"]': 1 });
     expect(ws.sent).toEqual([
       { type: "welcome", connectionId: "ordered" },
-      { type: "confirm_subscription", identifier: { channel: "workspace", workspaceId: "workspace-b" } },
+      { type: "confirm_subscription", subscriptionId: "subscription-1", identifier: { channel: "workspace", workspaceId: "workspace-b" } },
     ]);
 
     releaseSnapshot.resolve();
@@ -114,7 +115,7 @@ describe("cable server", () => {
 
     expect(ws.sent).toEqual([
       { type: "welcome", connectionId: "ordered" },
-      { type: "confirm_subscription", identifier: { channel: "workspace", workspaceId: "workspace-b" } },
+      { type: "confirm_subscription", subscriptionId: "subscription-1", identifier: { channel: "workspace", workspaceId: "workspace-b" } },
     ]);
   });
 
@@ -141,16 +142,17 @@ describe("cable server", () => {
     const ws = fakeSocket({ kind: "cable", connectionId: "same-key" });
     cable.open(ws, ws.data);
 
-    cable.message(ws, JSON.stringify({ command: "subscribe", identifier: { channel: "shell" } }));
+    cable.message(ws, JSON.stringify({ command: "subscribe", subscriptionId: "old", identifier: { channel: "shell" } }));
     await firstSnapshotStarted.promise;
-    cable.message(ws, JSON.stringify({ command: "unsubscribe", identifier: { channel: "shell" } }));
-    cable.message(ws, JSON.stringify({ command: "subscribe", identifier: { channel: "shell" } }));
+    cable.message(ws, JSON.stringify({ command: "unsubscribe", subscriptionId: "old", identifier: { channel: "shell" } }));
+    cable.message(ws, JSON.stringify({ command: "subscribe", subscriptionId: "current", identifier: { channel: "shell" } }));
     await Bun.sleep(0);
 
     expect(ws.sent).toEqual([
       { type: "welcome", connectionId: "same-key" },
       {
         type: "confirm_subscription",
+        subscriptionId: "current",
         identifier: { channel: "shell" },
         html: '<turbo-stream action="update" target="shell"><template>fresh</template></turbo-stream>',
       },
@@ -186,19 +188,36 @@ describe("cable server", () => {
     const ws = fakeSocket({ kind: "cable", connectionId: "same-key-newer" });
     cable.open(ws, ws.data);
 
-    cable.message(ws, JSON.stringify({ command: "subscribe", identifier: { channel: "shell" } }));
+    cable.message(ws, JSON.stringify({ command: "subscribe", subscriptionId: "old", identifier: { channel: "shell" } }));
     await firstSnapshotStarted.promise;
-    cable.message(ws, JSON.stringify({ command: "subscribe", identifier: { channel: "shell" } }));
+    cable.message(ws, JSON.stringify({ command: "subscribe", subscriptionId: "current", identifier: { channel: "shell" } }));
     await Bun.sleep(0);
 
     expect(ws.sent).toEqual([
       { type: "welcome", connectionId: "same-key-newer" },
-      { type: "confirm_subscription", identifier: { channel: "shell" }, html: "fresh" },
+      { type: "confirm_subscription", subscriptionId: "current", identifier: { channel: "shell" }, html: "fresh" },
     ]);
 
     releaseFirstSnapshot.resolve();
     await Bun.sleep(0);
     expect(ws.sent).toHaveLength(2);
+  });
+
+  test("an obsolete unsubscribe cannot release a newer same-topic generation", async () => {
+    const registry = createWorkspaceRegistry({ activityStore: { load: async () => ({}), save: async () => {} } });
+    const cable = createCableServer({ registry, events: createAtelierEventBus() });
+    const ws = fakeSocket({ kind: "cable", connectionId: "generation-aware" });
+    const identifier = CableTopics.shell();
+    cable.open(ws, ws.data);
+
+    cable.message(ws, JSON.stringify({ command: "subscribe", identifier, subscriptionId: "old" }));
+    cable.message(ws, JSON.stringify({ command: "subscribe", identifier, subscriptionId: "current" }));
+    cable.message(ws, JSON.stringify({ command: "unsubscribe", identifier, subscriptionId: "old" }));
+    await Bun.sleep(0);
+
+    expect(cable.stats().subscriptions).toEqual({ '["shell"]': 1 });
+    cable.broadcast(identifier, "live");
+    expect(ws.sent).toContainEqual({ type: "turbo_stream", identifier, subscriptionId: "current", html: "live" });
   });
 
   test("buffers shell broadcasts until the authoritative snapshot is confirmed", async () => {
@@ -216,7 +235,7 @@ describe("cable server", () => {
     });
     const ws = fakeSocket({ kind: "cable", connectionId: "buffered" });
     cable.open(ws, ws.data);
-    cable.message(ws, JSON.stringify({ command: "subscribe", identifier: { channel: "shell" } }));
+    cable.message(ws, JSON.stringify({ command: "subscribe", subscriptionId: "subscription-1", identifier: { channel: "shell" } }));
     await snapshotStarted.promise;
 
     cable.broadcast({ channel: "shell" }, '<turbo-stream action="update" target="one"><template>1</template></turbo-stream>');
@@ -230,16 +249,19 @@ describe("cable server", () => {
       { type: "welcome", connectionId: "buffered" },
       {
         type: "confirm_subscription",
+        subscriptionId: "subscription-1",
         identifier: { channel: "shell" },
         html: '<turbo-stream action="update" target="shell"><template>snapshot</template></turbo-stream>',
       },
       {
         type: "turbo_stream",
+        subscriptionId: "subscription-1",
         identifier: { channel: "shell" },
         html: '<turbo-stream action="update" target="one"><template>1</template></turbo-stream>',
       },
       {
         type: "turbo_stream",
+        subscriptionId: "subscription-1",
         identifier: { channel: "shell" },
         html: '<turbo-stream action="update" target="two"><template>2</template></turbo-stream>',
       },
@@ -261,7 +283,7 @@ describe("cable server", () => {
     });
     const ws = fakeSocket({ kind: "cable", connectionId: "closing" });
     cable.open(ws, ws.data);
-    cable.message(ws, JSON.stringify({ command: "subscribe", identifier: { channel: "shell" } }));
+    cable.message(ws, JSON.stringify({ command: "subscribe", subscriptionId: "subscription-1", identifier: { channel: "shell" } }));
     await snapshotStarted.promise;
 
     cable.close(ws);
@@ -306,11 +328,11 @@ describe("cable server", () => {
       const ws = fakeSocket({ kind: "cable", connectionId: `agent-${cancellation}` });
       const identifier = CableTopics.agent("agent-workspace", "agent-conversation");
       cable.open(ws, ws.data);
-      cable.message(ws, JSON.stringify({ command: "subscribe", identifier }));
+      cable.message(ws, JSON.stringify({ command: "subscribe", identifier, subscriptionId: "subscription-1" }));
       await snapshotStarted.promise;
       expect(runtimeSubscribers).toBe(1);
 
-      if (cancellation === "unsubscribe") cable.message(ws, JSON.stringify({ command: "unsubscribe", identifier }));
+      if (cancellation === "unsubscribe") cable.message(ws, JSON.stringify({ command: "unsubscribe", identifier, subscriptionId: "subscription-1" }));
       else cable.close(ws);
 
       expect(runtimeSubscribers).toBe(0);
@@ -332,7 +354,7 @@ describe("cable server", () => {
     const observer = fakeSocket({ kind: "cable", connectionId: "observer" });
     for (const socket of [initiating, observer]) {
       cable.open(socket, socket.data);
-      cable.message(socket, JSON.stringify({ command: "subscribe", identifier: { channel: "shell" } }));
+      cable.message(socket, JSON.stringify({ command: "subscribe", subscriptionId: "subscription-1", identifier: { channel: "shell" } }));
     }
     await Bun.sleep(0);
     initiating.sent.length = 0;
@@ -344,6 +366,7 @@ describe("cable server", () => {
     expect(observer.sent).toEqual([{
       type: "turbo_stream",
       identifier: { channel: "shell" },
+      subscriptionId: "subscription-1",
       html: '<turbo-stream action="append" target="agent_bodies"></turbo-stream>',
     }]);
 
@@ -354,6 +377,7 @@ describe("cable server", () => {
     expect(initiating.sent).toEqual([{
       type: "turbo_stream",
       identifier: { channel: "shell" },
+      subscriptionId: "subscription-1",
       html: '<turbo-stream action="select-agent"></turbo-stream>',
     }]);
     expect(observer.sent).toEqual([]);
@@ -366,9 +390,9 @@ describe("cable server", () => {
     const cable = createCableServer({ registry, events: createAtelierEventBus() });
     const ws = fakeSocket({ kind: "cable", connectionId: "conn-1" });
     cable.open(ws, ws.data);
-    cable.message(ws, JSON.stringify({ command: "subscribe", identifier: { channel: "workspace", workspaceId: "missing" } }));
+    cable.message(ws, JSON.stringify({ command: "subscribe", subscriptionId: "subscription-1", identifier: { channel: "workspace", workspaceId: "missing" } }));
     await Bun.sleep(0);
-    expect(ws.sent).toContainEqual({ type: "reject_subscription", identifier: { channel: "workspace", workspaceId: "missing" }, reason: "workspace not found: missing" });
+    expect(ws.sent).toContainEqual({ type: "reject_subscription", subscriptionId: "subscription-1", identifier: { channel: "workspace", workspaceId: "missing" }, reason: "workspace not found: missing" });
   });
 
   test("routes Agent updates exclusively through the snapshot-first runtime subscription", () => {
@@ -379,8 +403,10 @@ describe("cable server", () => {
   });
 
   for (const [name, raw, reason] of [
-    ["empty workspace identifiers", JSON.stringify({ command: "subscribe", identifier: { channel: "workspace", workspaceId: "" } }), "unsupported cable message"],
-    ["missing Agent conversation identifiers", JSON.stringify({ command: "subscribe", identifier: { channel: "agent", workspaceId: "workspace", label: "Agent 1" } }), "unsupported cable message"],
+    ["subscriptions without an ID", JSON.stringify({ command: "subscribe", identifier: { channel: "shell" } }), "unsupported cable message"],
+    ["unsubscriptions without an ID", JSON.stringify({ command: "unsubscribe", identifier: { channel: "shell" } }), "unsupported cable message"],
+    ["empty workspace identifiers", JSON.stringify({ command: "subscribe", subscriptionId: "subscription-1", identifier: { channel: "workspace", workspaceId: "" } }), "unsupported cable message"],
+    ["missing Agent conversation identifiers", JSON.stringify({ command: "subscribe", subscriptionId: "subscription-1", identifier: { channel: "agent", workspaceId: "workspace", label: "Agent 1" } }), "unsupported cable message"],
     ["unknown commands", JSON.stringify({ command: "mystery", identifier: { channel: "shell" } }), "unsupported cable message"],
     ["unsupported channel messages", JSON.stringify({ command: "message", identifier: { channel: "shell" }, data: { event: "run" } }), "unsupported cable message"],
     ["invalid pong timestamps", JSON.stringify({ command: "pong", time: "now" }), "unsupported cable message"],
@@ -409,14 +435,14 @@ describe("cable server", () => {
     const ws = fakeSocket({ kind: "cable", connectionId: "conn-1" });
     cable.open(ws, ws.data);
 
-    cable.message(ws, JSON.stringify({ command: "subscribe", identifier: { channel: "shell", extra: true }, extra: true }));
+    cable.message(ws, JSON.stringify({ command: "subscribe", subscriptionId: "subscription-1", identifier: { channel: "shell", extra: true }, extra: true }));
     await Bun.sleep(0);
 
-    expect(ws.sent).toContainEqual({ type: "confirm_subscription", identifier: { channel: "shell" } });
+    expect(ws.sent).toContainEqual({ type: "confirm_subscription", subscriptionId: "subscription-1", identifier: { channel: "shell" } });
   });
 });
 
-test("cable reconnect applies a fresh snapshot before reporting the subscription ready", async () => {
+test("cable leases share topics and reject stale generations across reconnects", async () => {
   type SocketHandler = ((event: { data: string }) => void) | null;
   class FakeWebSocket {
     static readonly CONNECTING = 0;
@@ -427,7 +453,7 @@ test("cable reconnect applies a fresh snapshot before reporting the subscription
     onmessage: SocketHandler = null;
     onclose: (() => void) | null = null;
     onerror: (() => void) | null = null;
-    readonly sent: unknown[] = [];
+    readonly sent: CableClientMessage[] = [];
 
     constructor(readonly url: string) {
       FakeWebSocket.instances.push(this);
@@ -469,27 +495,51 @@ test("cable reconnect applies a fresh snapshot before reporting the subscription
   try {
     const identifier = CableTopics.agent("workspace", "conversation-1");
     const cable = createAtelierCableClient();
-    cable.subscribe(identifier, {
-      onReady: () => events.push("ready"),
-      onDisconnected: () => events.push("disconnected"),
+    const firstLease = cable.subscribe(identifier, {
+      onReady: () => events.push("ready:first"),
+      onDisconnected: () => events.push("disconnected:first"),
+    });
+    const secondLease = cable.subscribe(identifier, {
+      onReady: () => events.push("ready:second"),
+      onDisconnected: () => events.push("disconnected:second"),
     });
 
     const first = FakeWebSocket.instances[0]!;
     expect(first.url).toBe("ws://atelier.test/cable");
     first.open("connection-1");
-    expect(first.sent).toEqual([{ command: "subscribe", identifier }]);
-    first.receive({ type: "confirm_subscription", identifier, html: "snapshot-1" });
-    expect(events).toEqual(["render:snapshot-1", "ready"]);
+    const firstMessage = first.sent[0]!;
+    if (firstMessage.command !== "subscribe") throw new Error("expected first Cable message to subscribe");
+    const firstSubscriptionId = firstMessage.subscriptionId;
+    expect(first.sent).toEqual([{ command: "subscribe", identifier, subscriptionId: firstSubscriptionId }]);
+    first.receive({ type: "confirm_subscription", identifier, subscriptionId: firstSubscriptionId, html: "snapshot-1" });
+    expect(events).toEqual(["render:snapshot-1", "ready:first", "ready:second"]);
+
+    firstLease.unsubscribe();
+    expect(first.sent).toHaveLength(1);
+    first.receive({ type: "turbo_stream", identifier, subscriptionId: firstSubscriptionId, html: "live-1" });
+    expect(events).toEqual(["render:snapshot-1", "ready:first", "ready:second", "render:live-1"]);
 
     first.close();
-    expect(events).toEqual(["render:snapshot-1", "ready", "disconnected"]);
+    expect(events).toEqual(["render:snapshot-1", "ready:first", "ready:second", "render:live-1", "disconnected:second"]);
     await Bun.sleep(120);
 
     const second = FakeWebSocket.instances[1]!;
     second.open("connection-2");
-    expect(second.sent).toEqual([{ command: "subscribe", identifier }]);
-    second.receive({ type: "confirm_subscription", identifier, html: "snapshot-2" });
-    expect(events).toEqual(["render:snapshot-1", "ready", "disconnected", "render:snapshot-2", "ready"]);
+    const secondMessage = second.sent[0]!;
+    if (secondMessage.command !== "subscribe") throw new Error("expected second Cable message to subscribe");
+    const secondSubscriptionId = secondMessage.subscriptionId;
+    expect(secondSubscriptionId).not.toBe(firstSubscriptionId);
+    expect(second.sent).toEqual([{ command: "subscribe", identifier, subscriptionId: secondSubscriptionId }]);
+    second.receive({ type: "confirm_subscription", identifier, subscriptionId: firstSubscriptionId, html: "stale-snapshot" });
+    second.receive({ type: "turbo_stream", identifier, subscriptionId: firstSubscriptionId, html: "stale-stream" });
+    expect(events).toEqual(["render:snapshot-1", "ready:first", "ready:second", "render:live-1", "disconnected:second"]);
+    second.receive({ type: "confirm_subscription", identifier, subscriptionId: secondSubscriptionId, html: "snapshot-2" });
+    expect(events).toEqual(["render:snapshot-1", "ready:first", "ready:second", "render:live-1", "disconnected:second", "render:snapshot-2", "ready:second"]);
+    secondLease.unsubscribe();
+    expect(second.sent).toEqual([
+      { command: "subscribe", identifier, subscriptionId: secondSubscriptionId },
+      { command: "unsubscribe", identifier, subscriptionId: secondSubscriptionId },
+    ]);
     testWindow.dispatchEvent(new Event("pagehide"));
   } finally {
     for (const name of names) {

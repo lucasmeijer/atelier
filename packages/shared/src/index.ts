@@ -443,6 +443,7 @@ export {
   type CableClientMessage,
   type CableIdentifier,
   type CableServerMessage,
+  type CableSubscription,
   type CableSubscriptionOptions,
 } from "./cable.ts";
 

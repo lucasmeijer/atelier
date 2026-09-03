@@ -1,6 +1,6 @@
 /// <reference lib="dom" />
 
-import { decodeCableServerMessage, serializeCableIdentifier, type AtelierCableClient, type CableClientMessage, type CableIdentifier } from "@atelier/shared";
+import { decodeCableServerMessage, serializeCableIdentifier, type AtelierCableClient, type CableClientMessage, type CableIdentifier, type CableSubscription, type CableSubscriptionOptions } from "@atelier/shared";
 
 declare global {
   interface Window {
@@ -9,8 +9,19 @@ declare global {
   }
 }
 
+type SubscriptionLease = CableSubscription & {
+  options?: CableSubscriptionOptions;
+};
+
+type DesiredSubscription = {
+  identifier: CableIdentifier;
+  leases: Set<SubscriptionLease>;
+  ready: boolean;
+  subscriptionId?: string;
+};
+
 export function createAtelierCableClient(): AtelierCableClient {
-  const desired = new Map<string, { identifier: CableIdentifier; ready: boolean; onReady?: () => void; onDisconnected?: () => void }>();
+  const desired = new Map<string, DesiredSubscription>();
   const delays = [100, 250, 500, 1000, 2000, 5000];
   let socket: WebSocket | undefined;
   let reconnectTimer: ReturnType<typeof setTimeout> | undefined;
@@ -27,8 +38,15 @@ export function createAtelierCableClient(): AtelierCableClient {
     if (socket?.readyState === WebSocket.OPEN) socket.send(JSON.stringify(message));
   }
 
+  function subscribeOnWire(subscription: DesiredSubscription): void {
+    const subscriptionId = crypto.randomUUID();
+    subscription.ready = false;
+    subscription.subscriptionId = subscriptionId;
+    sendRaw({ command: "subscribe", identifier: subscription.identifier, subscriptionId });
+  }
+
   function resubscribeAll(): void {
-    for (const subscription of desired.values()) sendRaw({ command: "subscribe", identifier: subscription.identifier });
+    for (const subscription of desired.values()) subscribeOnWire(subscription);
   }
 
   function scheduleReconnect(): void {
@@ -40,7 +58,23 @@ export function createAtelierCableClient(): AtelierCableClient {
     }, delay);
   }
 
-  function handleMessage(event: MessageEvent): void {
+  function matchingSubscription(identifier: CableIdentifier, subscriptionId: string): DesiredSubscription | undefined {
+    const subscription = desired.get(serializeCableIdentifier(identifier));
+    return subscription?.subscriptionId === subscriptionId ? subscription : undefined;
+  }
+
+  function markSubscriptionsDisconnected(notify: boolean): void {
+    for (const subscription of desired.values()) {
+      if (notify && subscription.ready) {
+        for (const lease of subscription.leases) lease.options?.onDisconnected?.();
+      }
+      subscription.ready = false;
+      subscription.subscriptionId = undefined;
+    }
+  }
+
+  function handleMessage(source: WebSocket, event: MessageEvent): void {
+    if (socket !== source) return;
     const message = decodeCableServerMessage(String(event.data));
     switch (message.type) {
       case "welcome":
@@ -49,24 +83,22 @@ export function createAtelierCableClient(): AtelierCableClient {
         resubscribeAll();
         break;
       case "confirm_subscription": {
-        const key = serializeCableIdentifier(message.identifier);
-        const subscription = desired.get(key);
+        const subscription = matchingSubscription(message.identifier, message.subscriptionId);
         if (!subscription) break;
         if (message.html) window.Turbo?.renderStreamMessage(message.html);
         requestAnimationFrame(() => {
-          if (desired.get(key) !== subscription) return;
+          if (matchingSubscription(message.identifier, message.subscriptionId) !== subscription) return;
           subscription.ready = true;
-          subscription.onReady?.();
+          for (const lease of subscription.leases) lease.options?.onReady?.();
         });
         break;
       }
       case "reject_subscription":
-        console.error("Cable subscription rejected", message);
+        if (matchingSubscription(message.identifier, message.subscriptionId)) console.error("Cable subscription rejected", message);
         break;
-      case "turbo_stream": {
-        if (desired.has(serializeCableIdentifier(message.identifier))) window.Turbo?.renderStreamMessage(message.html);
+      case "turbo_stream":
+        if (matchingSubscription(message.identifier, message.subscriptionId)) window.Turbo?.renderStreamMessage(message.html);
         break;
-      }
       case "ping":
         sendRaw({ command: "pong", time: message.time });
         break;
@@ -80,17 +112,12 @@ export function createAtelierCableClient(): AtelierCableClient {
     if (socket && (socket.readyState === WebSocket.OPEN || socket.readyState === WebSocket.CONNECTING)) return;
     const connecting = new WebSocket(cableUrl());
     socket = connecting;
-    connecting.onmessage = handleMessage;
+    connecting.onmessage = (event) => handleMessage(connecting, event);
     connecting.onclose = () => {
       if (socket !== connecting) return;
       socket = undefined;
       activeConnectionId = undefined;
-      if (!closingForPageHide) {
-        for (const subscription of desired.values()) {
-          if (subscription.ready) subscription.onDisconnected?.();
-          subscription.ready = false;
-        }
-      }
+      if (!closingForPageHide) markSubscriptionsDisconnected(true);
       scheduleReconnect();
     };
     connecting.onerror = () => connecting.close();
@@ -98,6 +125,7 @@ export function createAtelierCableClient(): AtelierCableClient {
 
   window.addEventListener("pagehide", () => {
     closingForPageHide = true;
+    markSubscriptionsDisconnected(false);
     socket?.close();
   });
   window.addEventListener("pageshow", () => {
@@ -108,26 +136,31 @@ export function createAtelierCableClient(): AtelierCableClient {
   const client: AtelierCableClient = {
     subscribe(identifier, options) {
       const key = serializeCableIdentifier(identifier);
-      const existing = desired.get(key);
-      if (existing) {
-        existing.onReady = options?.onReady;
-        existing.onDisconnected = options?.onDisconnected;
+      let subscription = desired.get(key);
+      if (!subscription) {
+        subscription = { identifier, leases: new Set(), ready: false };
+        desired.set(key, subscription);
         closingForPageHide = false;
         connect();
-        if (existing.ready) requestAnimationFrame(() => {
-          if (desired.get(key) === existing) existing.onReady?.();
-        });
-        return;
+        if (socket?.readyState === WebSocket.OPEN) subscribeOnWire(subscription);
       }
-      desired.set(key, { identifier, ready: false, onReady: options?.onReady, onDisconnected: options?.onDisconnected });
-      closingForPageHide = false;
-      connect();
-      sendRaw({ command: "subscribe", identifier });
-    },
-    unsubscribe(identifier) {
-      const key = serializeCableIdentifier(identifier);
-      desired.delete(key);
-      sendRaw({ command: "unsubscribe", identifier });
+
+      const lease: SubscriptionLease = {
+        options,
+        unsubscribe() {
+          if (!subscription.leases.delete(lease) || subscription.leases.size > 0) return;
+          if (desired.get(key) !== subscription) return;
+          desired.delete(key);
+          if (subscription.subscriptionId) {
+            sendRaw({ command: "unsubscribe", identifier: subscription.identifier, subscriptionId: subscription.subscriptionId });
+          }
+        },
+      };
+      subscription.leases.add(lease);
+      if (subscription.ready) requestAnimationFrame(() => {
+        if (subscription.leases.has(lease) && desired.get(key) === subscription && subscription.ready) lease.options?.onReady?.();
+      });
+      return lease;
     },
     connected() {
       return socket?.readyState === WebSocket.OPEN;

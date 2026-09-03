@@ -26,8 +26,7 @@ type SocketSubscriptionAttempt = {
   ws: CableSocket;
   identifier: CableIdentifier;
   key: string;
-  active: boolean;
-  registered: boolean;
+  subscriptionId: string;
   confirmed: boolean;
   bufferedHtml: string[];
   unsubscribe?: () => void;
@@ -99,46 +98,36 @@ export function createCableServer(options: CableServerOptions): CableServer {
   }
 
   function attemptIsCurrent(attempt: SocketSubscriptionAttempt): boolean {
-    return attempt.active && sockets.has(attempt.ws) && attemptsBySocket.get(attempt.ws)?.get(attempt.key) === attempt;
-  }
-
-  function registerAttempt(attempt: SocketSubscriptionAttempt): void {
-    if (attempt.registered) return;
-    let attempts = attemptsByIdentifier.get(attempt.key);
-    if (!attempts) attemptsByIdentifier.set(attempt.key, attempts = new Set());
-    attempts.add(attempt);
-    attempt.registered = true;
+    return sockets.has(attempt.ws) && attemptsBySocket.get(attempt.ws)?.get(attempt.key) === attempt;
   }
 
   function releaseAttempt(attempt: SocketSubscriptionAttempt): void {
-    attempt.active = false;
     attempt.bufferedHtml.length = 0;
     const unsubscribe = attempt.unsubscribe;
     attempt.unsubscribe = undefined;
     unsubscribe?.();
 
-    if (attempt.registered) {
-      const attempts = attemptsByIdentifier.get(attempt.key)!;
-      attempts.delete(attempt);
-      if (attempts.size === 0) attemptsByIdentifier.delete(attempt.key);
-      attempt.registered = false;
-    }
+    const attempts = attemptsByIdentifier.get(attempt.key);
+    attempts?.delete(attempt);
+    if (attempts?.size === 0) attemptsByIdentifier.delete(attempt.key);
 
     const socketAttempts = attemptsBySocket.get(attempt.ws);
-    if (socketAttempts?.get(attempt.key) !== attempt) return;
-    socketAttempts.delete(attempt.key);
-    if (socketAttempts.size === 0) attemptsBySocket.delete(attempt.ws);
+    if (socketAttempts?.get(attempt.key) === attempt) socketAttempts.delete(attempt.key);
   }
 
   function confirm(attempt: SocketSubscriptionAttempt, html = ""): void {
     if (!attemptIsCurrent(attempt)) return;
     attempt.confirmed = true;
-    const message: Extract<CableServerMessage, { type: "confirm_subscription" }> = { type: "confirm_subscription", identifier: attempt.identifier };
+    const message: Extract<CableServerMessage, { type: "confirm_subscription" }> = {
+      type: "confirm_subscription",
+      identifier: attempt.identifier,
+      subscriptionId: attempt.subscriptionId,
+    };
     if (html) message.html = html;
     send(attempt.ws, message);
     for (const buffered of attempt.bufferedHtml.splice(0)) {
       if (!attemptIsCurrent(attempt)) return;
-      send(attempt.ws, { type: "turbo_stream", identifier: attempt.identifier, html: buffered });
+      send(attempt.ws, { type: "turbo_stream", identifier: attempt.identifier, subscriptionId: attempt.subscriptionId, html: buffered });
     }
   }
 
@@ -146,7 +135,7 @@ export function createCableServer(options: CableServerOptions): CableServer {
     if (!attemptIsCurrent(attempt)) return;
     releaseAttempt(attempt);
     if (!sockets.has(attempt.ws)) return;
-    send(attempt.ws, { type: "reject_subscription", identifier: attempt.identifier, reason });
+    send(attempt.ws, { type: "reject_subscription", identifier: attempt.identifier, subscriptionId: attempt.subscriptionId, reason });
     logError(`cable message failed: ${reason}`);
   }
 
@@ -179,7 +168,7 @@ export function createCableServer(options: CableServerOptions): CableServer {
         if (!attempt.confirmed) {
           confirm(attempt, html);
         } else if (html) {
-          send(attempt.ws, { type: "turbo_stream", identifier, html });
+          send(attempt.ws, { type: "turbo_stream", identifier, subscriptionId: attempt.subscriptionId, html });
         }
       });
       attempt.unsubscribe = () => subscription.unsubscribe();
@@ -194,17 +183,14 @@ export function createCableServer(options: CableServerOptions): CableServer {
     }
   }
 
-  function subscribe(ws: CableSocket, identifier: CableIdentifier): void {
+  function subscribe(ws: CableSocket, identifier: CableIdentifier, subscriptionId: string): void {
     if (!sockets.has(ws)) return;
     const key = serializeCableIdentifier(identifier);
     let socketAttempts = attemptsBySocket.get(ws);
     if (!socketAttempts) attemptsBySocket.set(ws, socketAttempts = new Map());
     const previous = socketAttempts.get(key);
     if (previous) releaseAttempt(previous);
-    // Releasing the only prior attempt removes this map from the WeakMap. A
-    // direct same-topic resubscribe still owns the same local map instance.
-    if (attemptsBySocket.get(ws) !== socketAttempts) attemptsBySocket.set(ws, socketAttempts);
-    const attempt: SocketSubscriptionAttempt = { ws, identifier, key, active: true, registered: false, confirmed: false, bufferedHtml: [] };
+    const attempt: SocketSubscriptionAttempt = { ws, identifier, key, subscriptionId, confirmed: false, bufferedHtml: [] };
     socketAttempts.set(key, attempt);
 
     if (identifier.channel !== "agent") {
@@ -215,15 +201,17 @@ export function createCableServer(options: CableServerOptions): CableServer {
         return;
       }
     }
-    registerAttempt(attempt);
+    let attempts = attemptsByIdentifier.get(key);
+    if (!attempts) attemptsByIdentifier.set(key, attempts = new Set());
+    attempts.add(attempt);
     if (identifier.channel === "agent") void initializeAgentAttempt(attempt);
     else void initializeNonAgentAttempt(attempt);
   }
 
-  function unsubscribe(ws: CableSocket, identifier: CableIdentifier): void {
+  function unsubscribe(ws: CableSocket, identifier: CableIdentifier, subscriptionId: string): void {
     const key = serializeCableIdentifier(identifier);
     const attempt = attemptsBySocket.get(ws)?.get(key);
-    if (attempt) releaseAttempt(attempt);
+    if (attempt?.subscriptionId === subscriptionId) releaseAttempt(attempt);
   }
 
   function broadcast(identifier: CableIdentifier, html: string, options: CableBroadcastOptions = {}): void {
@@ -231,13 +219,12 @@ export function createCableServer(options: CableServerOptions): CableServer {
     if (options.exceptConnectionId && options.onlyConnectionId) throw new Error("Cable broadcast cannot combine exceptConnectionId and onlyConnectionId");
     if (identifier.channel === "agent") throw new Error("Agent updates must be published through the runtime live-presentation interface");
     const key = serializeCableIdentifier(identifier);
-    const message: Extract<CableServerMessage, { type: "turbo_stream" }> = { type: "turbo_stream", identifier, html };
     for (const attempt of attemptsByIdentifier.get(key) ?? []) {
       if (!attemptIsCurrent(attempt)) continue;
       const connectionId = connectionIdsBySocket.get(attempt.ws);
       if (options.exceptConnectionId && connectionId === options.exceptConnectionId) continue;
       if (options.onlyConnectionId && connectionId !== options.onlyConnectionId) continue;
-      if (attempt.confirmed) send(attempt.ws, message);
+      if (attempt.confirmed) send(attempt.ws, { type: "turbo_stream", identifier, subscriptionId: attempt.subscriptionId, html });
       else attempt.bufferedHtml.push(html);
     }
   }
@@ -252,8 +239,8 @@ export function createCableServer(options: CableServerOptions): CableServer {
     if (!sockets.has(ws)) return;
     try {
       const message: CableClientMessage = decodeCableClientMessage(textMessage(raw));
-      if (message.command === "subscribe") subscribe(ws, message.identifier);
-      else if (message.command === "unsubscribe") unsubscribe(ws, message.identifier);
+      if (message.command === "subscribe") subscribe(ws, message.identifier, message.subscriptionId);
+      else if (message.command === "unsubscribe") unsubscribe(ws, message.identifier, message.subscriptionId);
     } catch (error) {
       if (!sockets.has(ws)) return;
       const reason = error instanceof Error ? error.message : String(error);
