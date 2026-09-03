@@ -1,7 +1,7 @@
 import { setActivityButtonState } from "@atelier/design-system/activity-button/client";
 import { CableTopics, composerSubmitKey, focusLikelyOpensSoftwareKeyboard, setTextInputValue, type CableIdentifier, type CableSubscriptionOptions, type WorkspaceClientApplication as StimulusApplication, type WorkspaceClientControllerConstructor as StimulusControllerConstructor, type WorkspaceClientHooks } from "@atelier/shared";
 import { agentComposerPrimaryAction, agentComposerTextStorageKey, PromptHistoryNavigator } from "./composer-state.ts";
-import { messageNavigationDirection, scrollEnd, scrollMessageToTop, shouldPositionTranscriptAfterSnapshot, transcriptFollowingAfterScroll, workspaceSelectionScrollTop } from "./transcript-navigation.ts";
+import { scrollEnd, shouldPositionTranscriptAfterSnapshot, transcriptFollowingAfterScroll, workspaceSelectionScrollTop } from "./transcript-navigation.ts";
 
 type TurboSubmitEndEvent = CustomEvent<{ success: boolean; fetchResponse?: { response: Response } }>;
 
@@ -29,13 +29,13 @@ export function agentConnectionShouldRun(logicallyVisible: boolean, documentVisi
 export function createAgentPaneController(Controller: StimulusControllerConstructor) {
   return class AgentPaneController extends Controller implements AgentPaneControllerInstance {
     static values = { workspaceId: String, conversationId: String };
-    static targets = ["transcript", "transcriptNav", "input", "form", "sendStop"];
+    static targets = ["transcript", "transcriptEnd", "input", "form", "sendStop"];
     declare readonly element: HTMLElement;
     declare readonly application: StimulusApplication;
     declare readonly workspaceIdValue: string;
     declare readonly conversationIdValue: string;
     declare readonly transcriptTarget: HTMLElement;
-    declare readonly transcriptNavTarget: HTMLButtonElement;
+    declare readonly transcriptEndTarget: HTMLElement;
     declare readonly inputTarget: HTMLTextAreaElement;
     declare readonly formTarget: HTMLFormElement;
     declare readonly sendStopTarget: HTMLButtonElement;
@@ -45,7 +45,6 @@ export function createAgentPaneController(Controller: StimulusControllerConstruc
     private subscribed = false;
     private hasBeenReady = false;
     private selectionAwaitingReady = false;
-    private transcriptNavigationSuspendsFollowing = false;
     private transcriptMutationObserver?: MutationObserver;
     private transcriptLayoutObserver?: ResizeObserver;
     private composerMutationObserver?: MutationObserver;
@@ -53,7 +52,7 @@ export function createAgentPaneController(Controller: StimulusControllerConstruc
     private reconnectingStatusTimer?: ReturnType<typeof setTimeout>;
     private transcriptLayoutFrame = 0;
     private transcriptEnd = 0;
-    private selectionPosition?: { busy: boolean };
+    private selectedWhileBusy?: boolean;
     private connected = false;
     private composerRevision = 0;
     private submittedComposer?: { revision: number; attachmentIds: string[] };
@@ -61,32 +60,19 @@ export function createAgentPaneController(Controller: StimulusControllerConstruc
     private readonly onScroll = (): void => {
       const el = this.transcriptTarget;
       const nextEnd = scrollEnd(el);
-      this.stuck = this.transcriptNavigationSuspendsFollowing
-        ? false
-        : transcriptFollowingAfterScroll(this.stuck, this.transcriptEnd, el.scrollTop, nextEnd);
+      this.stuck = transcriptFollowingAfterScroll(this.stuck, this.transcriptEnd, el.scrollTop, nextEnd);
       this.transcriptEnd = nextEnd;
-      this.updateTranscriptNavigation();
-    };
-    private readonly clearTranscriptFollowingSuspension = (): void => {
-      this.transcriptNavigationSuspendsFollowing = false;
+      this.transcriptEndTarget.hidden = this.stuck;
     };
     private latestUserTranscriptItem(): HTMLElement | null {
       const matches = this.transcriptTarget.querySelectorAll<HTMLElement>(".agent-user");
       return matches.item(matches.length - 1)?.closest<HTMLElement>(".agent-item") ?? null;
     }
-    private updateTranscriptNavigation(): void {
-      const latest = this.latestUserTranscriptItem();
-      const direction = latest ? messageNavigationDirection(this.transcriptTarget, latest) : undefined;
-      if (direction) this.transcriptNavTarget.dataset.direction = direction;
-      else delete this.transcriptNavTarget.dataset.direction;
-      this.transcriptNavTarget.disabled = !direction;
-      this.transcriptNavTarget.setAttribute("aria-hidden", String(!direction));
-    }
     private updateTranscriptPosition(): void {
       if (!this.logicallyVisible) return;
-      if (this.selectionPosition) {
-        this.transcriptTarget.scrollTop = workspaceSelectionScrollTop(this.transcriptTarget, this.latestUserTranscriptItem(), this.selectionPosition.busy);
-        this.selectionPosition = undefined;
+      if (this.selectedWhileBusy !== undefined) {
+        this.transcriptTarget.scrollTop = workspaceSelectionScrollTop(this.transcriptTarget, this.latestUserTranscriptItem(), this.selectedWhileBusy);
+        this.selectedWhileBusy = undefined;
       } else if (this.stuck) {
         this.transcriptTarget.scrollTop = this.transcriptTarget.scrollHeight;
       }
@@ -105,8 +91,7 @@ export function createAgentPaneController(Controller: StimulusControllerConstruc
     private readonly positionForSelection = (): void => {
       const busy = this.sendStopTarget.dataset.agentBusy === "true";
       this.stuck = busy;
-      this.clearTranscriptFollowingSuspension();
-      this.selectionPosition = { busy };
+      this.selectedWhileBusy = busy;
       this.transcriptLayoutChanged();
     };
     private readonly cableReady = (): void => {
@@ -137,7 +122,6 @@ export function createAgentPaneController(Controller: StimulusControllerConstruc
         });
       }
       this.stuck = true;
-      this.clearTranscriptFollowingSuspension();
       this.transcriptLayoutChanged();
       this.relinquishSoftwareKeyboardFocus();
     };
@@ -152,11 +136,7 @@ export function createAgentPaneController(Controller: StimulusControllerConstruc
       this.transcriptLayoutObserver.observe(this.element.querySelector<HTMLElement>(".composer")!);
       this.transcriptEnd = scrollEnd(this.transcriptTarget);
       this.transcriptTarget.addEventListener("scroll", this.onScroll);
-      this.transcriptTarget.addEventListener("wheel", this.clearTranscriptFollowingSuspension, { capture: true, passive: true });
-      this.transcriptTarget.addEventListener("touchstart", this.clearTranscriptFollowingSuspension);
-      this.transcriptTarget.addEventListener("pointerdown", this.clearTranscriptFollowingSuspension);
-      this.transcriptTarget.addEventListener("keydown", this.clearTranscriptFollowingSuspension);
-      this.updateTranscriptNavigation();
+      this.transcriptEndTarget.hidden = this.stuck;
       document.addEventListener("visibilitychange", this.onVisibilityChange);
       this.formTarget.addEventListener("submit", this.submitting);
       this.composerMutationObserver = new MutationObserver(() => this.updateSendStopButton());
@@ -174,10 +154,6 @@ export function createAgentPaneController(Controller: StimulusControllerConstruc
       this.composerMutationObserver?.disconnect();
       cancelAnimationFrame(this.transcriptLayoutFrame);
       this.transcriptTarget.removeEventListener("scroll", this.onScroll);
-      this.transcriptTarget.removeEventListener("wheel", this.clearTranscriptFollowingSuspension, { capture: true });
-      this.transcriptTarget.removeEventListener("touchstart", this.clearTranscriptFollowingSuspension);
-      this.transcriptTarget.removeEventListener("pointerdown", this.clearTranscriptFollowingSuspension);
-      this.transcriptTarget.removeEventListener("keydown", this.clearTranscriptFollowingSuspension);
       document.removeEventListener("visibilitychange", this.onVisibilityChange);
       this.formTarget.removeEventListener("submit", this.submitting);
       this.logicallyVisible = false;
@@ -284,12 +260,10 @@ export function createAgentPaneController(Controller: StimulusControllerConstruc
 
     // ---- transcript navigation ----
 
-    jumpToLatestMessage(): void {
-      const latest = this.latestUserTranscriptItem();
-      if (!latest) return;
-      this.stuck = false;
-      this.transcriptNavigationSuspendsFollowing = true;
-      scrollMessageToTop(this.transcriptTarget, latest);
+    scrollToTranscriptEnd(): void {
+      this.stuck = true;
+      this.transcriptTarget.scrollTop = this.transcriptTarget.scrollHeight;
+      this.onScroll();
     }
 
     private userPrompts(): string[] {

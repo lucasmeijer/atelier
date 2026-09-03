@@ -13,26 +13,12 @@ export function scrollEnd(element: Pick<ScrollTranscript, "scrollHeight" | "clie
   return Math.max(0, element.scrollHeight - element.clientHeight);
 }
 
-function messageScrollTop(transcript: ScrollTranscript, message: TranscriptMessage): number {
-  return transcript.scrollTop + message.getBoundingClientRect().top - transcript.getBoundingClientRect().top;
-}
-
-function messageScrollTarget(transcript: ScrollTranscript, message: TranscriptMessage): number {
-  return Math.min(messageScrollTop(transcript, message), scrollEnd(transcript));
-}
-
 export function workspaceSelectionScrollTop(transcript: ScrollTranscript, target: TranscriptMessage | null, busy: boolean): number {
-  if (busy) return scrollEnd(transcript);
-  return target ? messageScrollTarget(transcript, target) : 0;
-}
-
-export function scrollMessageToTop(transcript: ScrollTranscript & Pick<HTMLElement, "scrollTo">, message: TranscriptMessage): void {
-  transcript.scrollTo({ top: messageScrollTarget(transcript, message), behavior: "smooth" });
-}
-
-export function messageNavigationDirection(transcript: ScrollTranscript, message: TranscriptMessage): "up" | "down" | undefined {
-  const distance = transcript.scrollTop - messageScrollTarget(transcript, message);
-  return Math.abs(distance) < 1 ? undefined : distance > 0 ? "up" : "down";
+  const end = scrollEnd(transcript);
+  if (busy) return end;
+  if (!target) return 0;
+  const targetTop = transcript.scrollTop + target.getBoundingClientRect().top - transcript.getBoundingClientRect().top;
+  return Math.min(targetTop, end);
 }
 
 export function transcriptFollowingAfterScroll(wasFollowing: boolean, previousEnd: number, scrollTop: number, nextEnd: number): boolean {

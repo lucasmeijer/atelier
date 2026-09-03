@@ -150,7 +150,7 @@ async function renderSharedComposer(options: SharedComposerRenderOptions): Promi
     dropTarget ? agentAttachmentDropAttrs(uploadUrl) : "",
     options.ctx ? `data-agent-completions-url-value="${escapeHtml(agentPath(options.ctx, "/completions"))}"` : "",
   ].filter(Boolean).join(" ");
-  const composerOverlays = options.includePaneActions && options.ctx ? renderTranscriptNavigation() : "";
+  const composerOverlays = options.includePaneActions && options.ctx ? renderTranscriptEndNavigation() : "";
   const completionMenu = completionsEnabled ? `<div class="agent-completion-menu-host" data-agent-completions-target="menu" hidden></div>` : "";
   const textarea = options.ctx && options.formTarget
     ? renderAgentPanePromptInput(options.ctx, options.initialText ?? "")
@@ -256,19 +256,18 @@ ${renderSharedComposerSelections({
   })}</turbo-frame>`;
 }
 
-function renderTranscriptNavigation(): string {
+function renderTranscriptEndNavigation(): string {
   const button = buttonHtml({
     type: "button",
     variant: "secondary",
     content: {
       kind: "icon-only",
       iconHtml: '<svg viewBox="0 0 20 20" aria-hidden="true"><path d="M4 16h12M10 4v9m-4-4 4 4 4-4"/></svg>',
-      label: "Jump to beginning of latest message",
+      label: "Jump to end of transcript",
     },
-    disabled: true,
-    attributesHtml: 'data-agent-pane-target="transcriptNav" data-action="agent-pane#jumpToLatestMessage" aria-hidden="true"',
+    attributesHtml: 'data-action="agent-pane#scrollToTranscriptEnd"',
   });
-  return `<div class="agent-transcript-navs">${button}</div>`;
+  return `<div class="agent-transcript-navigation" data-agent-pane-target="transcriptEnd" hidden>${button}</div>`;
 }
 
 function renderPromptActionButton(busy: boolean, ctx?: AgentRenderContext): string {

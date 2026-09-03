@@ -199,11 +199,8 @@
   position: absolute; z-index: 20; left: 0; right: 0; bottom: calc(100% + 4px);
   display: flex; flex-direction: column; align-items: stretch; gap: 4px; pointer-events: none;
 }
-.agent-transcript-navs { align-self: flex-end; display: flex; gap: 4px; margin-right: var(--composer-control-inset); pointer-events: auto; }
-.agent-transcript-navs:has([data-agent-pane-target="transcriptNav"]:disabled) { display: none; }
-[data-agent-pane-target="transcriptNav"].button { opacity: 1; visibility: visible; transform: scale(1); transition-property: opacity, visibility, transform, background-color, border-color, color; }
-[data-agent-pane-target="transcriptNav"].button:disabled { opacity: 0; visibility: hidden; pointer-events: none; transform: scale(.76) translateY(3px); transition: opacity .12s ease-in, transform .12s ease-in, visibility 0s .12s; }
-[data-agent-pane-target="transcriptNav"][data-direction="up"] svg { transform: rotate(180deg); }
+.agent-transcript-navigation { align-self: flex-end; display: flex; margin-right: var(--composer-control-inset); pointer-events: auto; }
+.agent-transcript-navigation[hidden] { display: none; }
 .composer-surface form { min-height: calc(1.5em * 2 + 21px); }
 .composer-input-area { position: relative; }
 .composer-input { font: 400 var(--text-body)/var(--leading-copy) var(--font-sans); padding: 12px 58px 6px 16px; min-height: calc(1.5em * 2 + 21px); max-height: var(--composer-input-max-height); }

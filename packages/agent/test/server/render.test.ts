@@ -30,7 +30,6 @@ describe("transcript rendering", () => {
     expect(html).toContain('data-action="keydown-&gt;agent-completions#keydown keydown-&gt;agent-pane#inputKeydown submit-&gt;transcription-composer#submit turbo:submit-end-&gt;agent-pane#submitted click-&gt;agent-pane#focusInput"');
     expect(html).toContain('data-action="input->agent-completions#input input->agent-pane#promptChanged"');
     expect(html).toContain('enterkeyhint="send"');
-    expect(html).toContain('aria-label="Jump to beginning of latest message"');
     expect(html).toContain('data-agent-pane-target="sendStop"');
   });
 
