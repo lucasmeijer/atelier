@@ -66,7 +66,7 @@
       "dependencies": {
         "@atelier/agent": "workspace:*",
         "@atelier/core": "workspace:*",
-        "@atelier/proxy-ingress": "workspace:*"
+        "@atelier/proxy-ingress": "workspace:*",
         "@atelier/shared": "workspace:*",
         "@atelier/workspace": "workspace:*",
         "@earendil-works/pi-coding-agent": "catalog:",
@@ -249,7 +249,7 @@
       "dependencies": {
         "@atelier/agent": "workspace:*",
         "@atelier/core": "workspace:*",
-        "@atelier/observable-terminal": "workspace:*"
+        "@atelier/observable-terminal": "workspace:*",
         "@atelier/shared": "workspace:*",
         "@atelier/workspace": "workspace:*",
         "@earendil-works/pi-coding-agent": "catalog:",
