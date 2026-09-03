@@ -23,10 +23,12 @@ import { jsonResponse, response, turboReplaceStream, turboUpdateStream, wantsTur
 
 const jsonStringSchema = Type.String();
 
+type ProjectEditorModalOptions = { kind: "settings"; projectId: string; section: string | undefined } | { kind: "new" };
+
 export interface ProjectRoutes {
   handle(request: Request, url: URL): Promise<Response | undefined>;
   byReference(reference: string): Promise<ProjectSummary>;
-  editorModal(options?: { kind: "settings"; projectId: string; section?: string } | { kind: "new" }): Promise<string>;
+  editorModal(options?: ProjectEditorModalOptions): Promise<string>;
 }
 
 interface ProjectWorkspaceReference {
@@ -163,12 +165,11 @@ export function createProjectRoutes(deps: {
   }
 
   type ProjectSettingsSection = "repository" | "secrets" | "ssh-keys" | "environment" | "danger";
-  const projectSettingsSections: readonly ProjectSettingsSection[] = ["repository", "secrets", "ssh-keys", "environment", "danger"];
 
   function parseProjectSettingsSection(value: string | undefined): ProjectSettingsSection | undefined {
     if (value === undefined) return undefined;
     if (value === "repository" || value === "secrets" || value === "ssh-keys" || value === "environment" || value === "danger") return value;
-    throw invalidArguments(`section must be one of: ${projectSettingsSections.join(", ")}`);
+    throw invalidArguments("section must be one of: repository, secrets, ssh-keys, environment, danger");
   }
 
   async function projectEditorFrame(project: ProjectSummary, section?: ProjectSettingsSection): Promise<string> {
@@ -190,7 +191,7 @@ export function createProjectRoutes(deps: {
     return `<turbo-frame id="project_editor_frame" class="project-editor-frame"><div class="project-editor-page project-editor-detail-page"><form class="project-editor-new-form" aria-label="Add project" method="post" action="/projects" data-turbo="true" data-action="turbo:submit-end->dialog#submitted"><div><h3>Repository source</h3><p>Save a remote URL, local path, or search for a GitHub repository.</p><div class="project-github-search" data-controller="project-github-search" data-project-github-search-url-value="/projects/github-search"><input class="text-field" name="gitUrl" placeholder="github.com/org/repo, or /path/to/repo#branch" required autofocus data-project-github-search-target="input" data-action="keydown->project-github-search#keydown input->project-github-search#input"><div class="agent-completion-menu-host project-github-search-menu" data-project-github-search-target="menu" hidden></div></div></div><footer>${cancelButton}${addButton}</footer></form></div></turbo-frame>`;
   }
 
-  async function projectEditorModal(options?: { kind: "settings"; projectId: string; section?: string } | { kind: "new" }): Promise<string> {
+  async function projectEditorModal(options?: ProjectEditorModalOptions): Promise<string> {
     const project = options?.kind === "settings" ? await projectById(options.projectId) : undefined;
     const section = parseProjectSettingsSection(options?.kind === "settings" ? options.section : undefined);
     const title = options?.kind === "new" ? "Add project" : "Project settings";

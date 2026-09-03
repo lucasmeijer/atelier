@@ -11,7 +11,13 @@ const jsonResponse = (description: string, schema: TSchema, status = "200") => (
   "400": errorResponse,
   "404": errorResponse,
 });
+const jsonAndHtmlResponse = (description: string, schema: TSchema) => ({
+  ...jsonResponse(description, schema),
+  "200": { description, content: { "application/json": { schema }, "text/html": { schema: { type: "string" } } } },
+});
 const workspaceId = { name: "id", in: "path", required: true, schema: { type: "string" } };
+const agentConversation = { name: "agent", in: "query", required: false, description: "Agent conversation to select in the browser surface.", schema: { type: "string" } };
+const selectedWorkView = { name: "workView", in: "query", required: false, description: "Work-view key to select and reveal in the browser surface.", schema: { type: "string" } };
 const projectId = { name: "projectId", in: "path", required: true, schema: { type: "string" } };
 const variableId = { name: "variableId", in: "path", required: true, schema: { type: "string" } };
 const secretId = { name: "secretId", in: "path", required: true, schema: { type: "string" } };
@@ -85,7 +91,7 @@ export function atelierOpenApi(commands: WorkspaceModuleCommandHandler[]) {
       "/projects/{projectId}/secrets/{secretId}": { post: { summary: "Update a project secret", description: "Omit secretValue to preserve the stored secret. The value is never returned.", parameters: [projectId, secretId], requestBody: jsonBody({ $ref: "#/components/schemas/UpdateSecret" }), responses: jsonResponse("Secret metadata updated", { $ref: "#/components/schemas/SecretEnvelope" }) } },
       "/projects/{projectId}/secrets/{secretId}/delete": { post: { summary: "Delete a project secret", parameters: [projectId, secretId], requestBody: jsonBody(emptyObjectSchema), responses: jsonResponse("Secret deleted", { type: "object", required: ["deleted", "secret"], properties: { deleted: { const: true }, secret: { $ref: "#/components/schemas/SecretSummary" } } }) } },
       "/projects/{projectId}/delete": { post: { summary: "Delete a project", parameters: [projectId], requestBody: jsonBody(emptyObjectSchema), responses: jsonResponse("Project deleted or blocked by workspace references", { $ref: "#/components/schemas/DeleteProjectResult" }) } },
-      "/workspaces/{id}": { get: { summary: "Inspect workspace readiness, Agent conversations, Work views, and commands", parameters: [workspaceId], responses: jsonResponse("Workspace state", { $ref: "#/components/schemas/WorkspaceEnvelope" }) } },
+      "/workspaces/{id}": { get: { summary: "Inspect or present a workspace", description: "JSON requests inspect workspace state. Browser navigation presents the workspace and can select an Agent conversation or Work view.", parameters: [workspaceId, agentConversation, selectedWorkView], responses: jsonAndHtmlResponse("Workspace state or browser surface", { $ref: "#/components/schemas/WorkspaceEnvelope" }) } },
       "/workspaces/{id}/attention/acknowledge": { post: { summary: "Acknowledge all Attention captured when selecting a Workspace", parameters: [workspaceId, attentionTokens], responses: { "204": { description: "Captured Attention acknowledged; newer occurrences preserved" }, "400": errorResponse, "404": errorResponse } } },
       "/workspaces/{id}/sidebar-title": { post: { summary: "Rename a workspace", parameters: [workspaceId], requestBody: jsonBody({ type: "object", required: ["title"], properties: { title: { type: "string" } }, additionalProperties: false }), responses: jsonResponse("Workspace renamed", { $ref: "#/components/schemas/WorkspaceEnvelope" }) } },
       "/workspaces/{id}/commands/{commandId}": { post: { summary: "Execute a workspace command", parameters: [workspaceId, { name: "commandId", in: "path", required: true, schema: { type: "string", enum: Object.keys(commandSchemas) } }], requestBody: jsonBody({ anyOf: Object.values(commandSchemas) }), responses: jsonResponse("Command executed", { $ref: "#/components/schemas/CommandResult" }), "x-atelier-command-schemas": commandSchemas } },
@@ -163,7 +169,7 @@ export function atelierOpenApi(commands: WorkspaceModuleCommandHandler[]) {
           properties: { workspace: { type: "object", required: ["id", "phase", "url"], properties: {
             id: { type: "string" }, title: { type: "string" }, phase: { type: "string" }, url: { type: "string" }, error: { type: "string" },
             agentConversations: { type: "array", items: { $ref: "#/components/schemas/AgentConversationSummary" } },
-            workViews: { type: "array", items: { $ref: "#/components/schemas/WorkView" } },
+            workViews: { type: "array", items: { $ref: "#/components/schemas/PresentedWorkView" } },
             commands: { type: "array", items: { type: "object" } },
           } } },
         },
@@ -213,6 +219,7 @@ export function atelierOpenApi(commands: WorkspaceModuleCommandHandler[]) {
         },
         WorkViewReference: workViewReferenceSchema,
         WorkView: { type: "object", required: ["reference", "attention"], properties: { reference: { $ref: "#/components/schemas/WorkViewReference" }, attention: { type: "boolean" }, attentionSequence: { type: "integer" } }, additionalProperties: false },
+        PresentedWorkView: { type: "object", required: ["key", "reference", "attention"], properties: { key: { type: "string" }, reference: { $ref: "#/components/schemas/WorkViewReference" }, attention: { type: "boolean" }, attentionSequence: { type: "integer" } }, additionalProperties: false },
         WorkViewsEnvelope: { type: "object", required: ["workViews"], properties: { workViews: { type: "array", items: { $ref: "#/components/schemas/WorkView" } } } },
         CommandResult: { type: "object", required: ["command", "workViews"], properties: {
           command: { type: "object", required: ["id"], properties: { id: { type: "string" }, workView: { $ref: "#/components/schemas/WorkViewReference" }, agentConversationId: { type: "string", format: "uuid" } }, additionalProperties: false },

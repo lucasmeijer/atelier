@@ -491,14 +491,20 @@ export function createWorkspacePresentationController(
     private applyDeepLink(): void {
       const url = new URL(window.location.href);
       if (!url.pathname.endsWith(`/workspaces/${encodeURIComponent(this.workspaceIdValue)}`)) return;
-      const key = url.searchParams.get("workView");
-      if (!key) return;
-      const selector = this.element.querySelector<HTMLElement>(`[data-work-view-key="${CSS.escape(key)}"]`);
-      if (!selector) return;
-      this.selectWorkViewState(key, selector.dataset.workViewKind === "contextual");
-      url.searchParams.delete("workView");
-      window.history.replaceState(window.history.state, "", url);
-      this.persist();
+      const agentId = url.searchParams.get("agent");
+      const workViewKey = url.searchParams.get("workView");
+      if (agentId) {
+        const agent = this.element.querySelector<HTMLElement>(`[data-agent-conversation-id="${CSS.escape(agentId)}"]`);
+        if (!agent) return;
+        this.state.activeAgentId = agentId;
+        this.state.phoneDestination = "agents";
+      }
+      if (workViewKey) {
+        const workView = this.element.querySelector<HTMLElement>(`[data-work-view-key="${CSS.escape(workViewKey)}"]`);
+        if (!workView) return;
+        this.selectWorkViewState(workViewKey, workView.dataset.workViewKind === "contextual");
+      }
+      if (agentId || workViewKey) this.persist();
     }
 
     private persist(): void {

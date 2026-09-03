@@ -56,7 +56,7 @@ import { agentTabsTurboStream, openWorkViewTurboStream, presentWorkViewTurboStre
 import type { CableBroadcastOptions } from "./cable.ts";
 import { jsonResponse, problemJsonResponse, response, turboReplaceStream, turboUpdateStream, wantsTurboStream } from "./http-responses.ts";
 import { createPageLayout } from "./page-layout.ts";
-import { createProjectRoutes, type ProjectRoutes } from "./project-routes.ts";
+import { createProjectRoutes } from "./project-routes.ts";
 
 const jsonStringSchema = Type.String();
 const attentionTokensSchema = Type.Record(Type.String(), Type.Integer({ minimum: 1 }));
@@ -396,7 +396,11 @@ export function createWebApp(deps: WebAppDeps): WebApp {
     });
   }
 
-  async function fixedWorkspacePresentation(workspaceId: string): Promise<FixedWorkspacePresentation> {
+  async function workspacePresentationBundle(workspaceId: string): Promise<{
+    presentation: FixedWorkspacePresentation;
+    attachments: WorkspaceAttachment[];
+    storedWorkViews: WorkspaceWorkViewState[];
+  }> {
     const entry = requireWorkspace(workspaceId);
     const attachments = await attachWorkspaceModules(workspaceId);
     const agentConversations = await agentTabs.list({ workspaceId });
@@ -406,7 +410,7 @@ export function createWebApp(deps: WebAppDeps): WebApp {
     const commands = attachments.flatMap((attachment) => attachment.commands ?? []).map((command) => ({
       id: command.id, label: command.surfaces?.ui?.label ?? command.label, description: command.description, scope: command.scope, placement: command.surfaces?.ui?.placement, binding: command.surfaces?.shortcut?.defaultBinding,
     }));
-    return {
+    const presentation: FixedWorkspacePresentation = {
       workspace: { id: entry.id, title: workspaceTitle(entry) },
       agentConversations: agentConversations.map((conversation) => {
         const presented: AgentPaneContribution = { id: conversation.id, title: conversation.title, bodyUrl: `/workspaces/${encodeURIComponent(workspaceId)}/agents/${encodeURIComponent(conversation.id)}/body` };
@@ -417,6 +421,11 @@ export function createWebApp(deps: WebAppDeps): WebApp {
       commands,
       overlayHtml: attachments.flatMap((attachment) => attachment.overlayHtml ?? []),
     };
+    return { presentation, attachments, storedWorkViews };
+  }
+
+  async function fixedWorkspacePresentation(workspaceId: string): Promise<FixedWorkspacePresentation> {
+    return (await workspacePresentationBundle(workspaceId)).presentation;
   }
 
   async function workspaceDetailContent(id: string): Promise<string> {
@@ -482,31 +491,16 @@ export function createWebApp(deps: WebAppDeps): WebApp {
   }
 
   type ShellSurface =
-    | { kind: "project-settings"; projectId: string; section?: string }
+    | { kind: "project-settings"; projectId: string; section: string | undefined }
     | { kind: "new-project" }
     | { kind: "new-workspace"; project?: ProjectSummary }
-    | { kind: "settings"; section?: string };
-
-  function projectSettingsSurface(projectId: string, section: string | null): Extract<ShellSurface, { kind: "project-settings" }> {
-    const surface: Extract<ShellSurface, { kind: "project-settings" }> = { kind: "project-settings", projectId };
-    if (section !== null) surface.section = section;
-    return surface;
-  }
-
-  function settingsSurface(section: string | null): Extract<ShellSurface, { kind: "settings" }> {
-    const surface: Extract<ShellSurface, { kind: "settings" }> = { kind: "settings" };
-    if (section !== null) surface.section = section;
-    return surface;
-  }
+    | { kind: "settings"; section: string | undefined };
 
   async function renderWorkspaceShell(selectedId?: string, surface?: ShellSurface): Promise<string> {
     const pane = await workspacePaneCollections(selectedId ?? "");
-    let projectEditorOptions: Parameters<ProjectRoutes["editorModal"]>[0];
-    if (surface?.kind === "project-settings") {
-      projectEditorOptions = { kind: "settings", projectId: surface.projectId };
-      if (surface.section) projectEditorOptions.section = surface.section;
-    } else if (surface?.kind === "new-project") projectEditorOptions = { kind: "new" };
-    const projectEditor = await projectRoutes.editorModal(projectEditorOptions);
+    const projectEditor = surface?.kind === "project-settings"
+      ? await projectRoutes.editorModal({ kind: "settings", projectId: surface.projectId, section: surface.section })
+      : await projectRoutes.editorModal(surface?.kind === "new-project" ? { kind: "new" } : undefined);
     const settings = surface?.kind === "settings" ? await renderSettingsDialog(surface.section) : "";
     const launchComposer = surface?.kind === "new-workspace"
       ? surface.project ? await renderProjectLaunchComposerFrame(surface.project) : await renderProjectlessLaunchComposerFrame()
@@ -552,13 +546,12 @@ export function createWebApp(deps: WebAppDeps): WebApp {
     if (entry.error) workspace.error = entry.error;
     if (entry.deletion || entry.parked || entry.phase !== "ready") return jsonResponse({ workspace });
 
-    const presentation = await fixedWorkspacePresentation(id);
-    const attachments = await attachWorkspaceModules(id);
+    const { presentation, storedWorkViews, attachments } = await workspacePresentationBundle(id);
     const handlers = new Map(workspaceModuleCommands().map((handler) => [handler.id, handler]));
     return jsonResponse({ workspace: {
       ...workspace,
       agentConversations: presentation.agentConversations.map(({ id, title }) => ({ id, title })),
-      workViews: await presentationStore.listWorkViews(id),
+      workViews: storedWorkViews.map((workView) => ({ key: workViewKey(workView.reference), ...workView })),
       commands: attachments.flatMap((attachment) => attachment.commands ?? []).filter((command) => handlers.has(command.id)).map((command) => ({
         id: command.id,
         label: command.label,
@@ -1246,12 +1239,12 @@ export function createWebApp(deps: WebAppDeps): WebApp {
     if (url.pathname === "/launch-composer" && request.method === "GET") return response(await renderProjectlessLaunchComposerFrame());
     if (url.pathname === "/launch-composer/settings" && request.method === "GET") return response(await launchComposerSettingsFrame(url.searchParams.get("model") ?? undefined));
     const projectSettingsMatch = url.pathname.match(/^\/projects\/([^/]+)\/settings$/);
-    if (projectSettingsMatch && request.method === "GET") return await surfacePage(projectSettingsSurface(decodeURIComponent(projectSettingsMatch[1]!), url.searchParams.get("section")));
+    if (projectSettingsMatch && request.method === "GET") return await surfacePage({ kind: "project-settings", projectId: decodeURIComponent(projectSettingsMatch[1]!), section: url.searchParams.get("section") ?? undefined });
     const projectWorkspaceMatch = url.pathname.match(/^\/projects\/([^/]+)\/workspaces\/new$/);
     if (projectWorkspaceMatch && request.method === "GET") return await surfacePage({ kind: "new-workspace", project: await projectRoutes.byReference(decodeURIComponent(projectWorkspaceMatch[1]!)) });
     if (url.pathname === "/workspaces/new" && request.method === "GET") return await surfacePage({ kind: "new-workspace" });
     if (url.pathname === "/projects/new" && request.method === "GET") return await surfacePage({ kind: "new-project" });
-    if (url.pathname === "/settings" && request.method === "GET" && !wantsTurboStream(request)) return await surfacePage(settingsSurface(url.searchParams.get("section")));
+    if (url.pathname === "/settings" && request.method === "GET" && !wantsTurboStream(request)) return await surfacePage({ kind: "settings", section: url.searchParams.get("section") ?? undefined });
     if (url.pathname === "/workspaces" && request.method === "GET") return workspaceListEndpoint(request, url);
     if (url.pathname === "/workspaces" && request.method === "POST") return await createWorkspaceEndpoint(url, request);
     if (url.pathname === "/workspaces/open-oldest-unread" && request.method === "POST") return openOldestAttentionWorkspaceEndpoint();

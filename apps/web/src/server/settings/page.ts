@@ -60,7 +60,7 @@ for (const module of workspaceModules) {
 }
 
 function settingsDialogHtml(titleCaption: string, bodyHtml: string, sectionId?: string): string {
-  const sectionAttributes = sectionId ? ` data-controller="settings-section" data-settings-section-target-id-value="${escapeHtml(`settings-sec-${sectionId}`)}"` : "";
+  const sectionAttributes = sectionId ? ` data-controller="scroll-into-view" data-scroll-into-view-target-id-value="${escapeHtml(`settings-sec-${sectionId}`)}"` : "";
   return dialogHtml({
     element: {
       id: "settings_dialog",

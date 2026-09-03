@@ -263,6 +263,12 @@ describe("HTTP contracts", () => {
     expect(specification).toMatchObject({
       paths: {
         "/workspaces": {},
+        "/workspaces/{id}": {
+          get: { parameters: expect.arrayContaining([
+            expect.objectContaining({ name: "agent", in: "query" }),
+            expect.objectContaining({ name: "workView", in: "query" }),
+          ]) },
+        },
         "/workspaces/{id}/commands/{commandId}": {},
         "/projects": {},
         "/projects/{projectId}": {},

@@ -188,17 +188,13 @@ class AutoScrollController extends Controller<HTMLElement> {
 }
 
 class ScrollIntoViewController extends Controller<HTMLElement> {
-  connect(): void {
-    requestAnimationFrame(() => this.element.scrollIntoView({ block: "start" }));
-  }
-}
-
-class SettingsSectionController extends Controller<HTMLElement> {
   static values = { targetId: String };
   declare readonly targetIdValue: string;
+  declare readonly hasTargetIdValue: boolean;
 
   connect(): void {
-    requestAnimationFrame(() => document.getElementById(this.targetIdValue)!.scrollIntoView({ block: "start" }));
+    const target = this.hasTargetIdValue ? document.getElementById(this.targetIdValue)! : this.element;
+    requestAnimationFrame(() => target.scrollIntoView({ block: "start" }));
   }
 }
 
@@ -228,6 +224,5 @@ export function registerWorkspaceDialogControllers(): void {
     "project-github-search": ProjectGithubSearchController,
     "auto-scroll": AutoScrollController,
     "scroll-into-view": ScrollIntoViewController,
-    "settings-section": SettingsSectionController,
   });
 }

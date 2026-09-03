@@ -26,6 +26,18 @@ Content-Type: application/json
 
 Errors use `{ "error": { "code": "...", "message": "..." } }`.
 
+## Present a workspace
+
+Workspace, Agent conversation, and Work-view destinations are browser-navigable surfaces:
+
+```text
+/workspaces/:workspaceId
+/workspaces/:workspaceId?agent=:conversationId
+/workspaces/:workspaceId?workView=:key
+```
+
+The `agent` and `workView` parameters may be combined to choose both sides of the desktop workspace. Use `GET /workspaces/:workspaceId` with `Accept: application/json` to discover the available Agent conversation IDs and the `key` of each Work view.
+
 ## Present project settings
 
 Project settings has a browser-navigable surface that agents can pass directly to their presentation tool:
