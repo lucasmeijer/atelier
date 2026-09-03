@@ -293,13 +293,21 @@ function renderAtelierNextUnreadButton(presentation: WorkspacePanePresentation):
   });
 }
 
+function renderAtelierNewWorkspaceButton(): string {
+  return actionItemHtml({
+    kind: "single",
+    contentHtml: Icons.Plus,
+    element: { tag: "button", className: "fixed-shell-atelier-action", attributesHtml: 'type="button" aria-label="New Workspace With Same Project" title="New Workspace With Same Project" data-command-id="agent.open-launch-composer" data-action="click->atelier-shortcuts#runCommand"' },
+  });
+}
+
 export function renderAtelierBar(presentation: WorkspacePanePresentation): string {
   const workspace = actionItemHtml({
     kind: "single",
     contentHtml: Icons.Workspace,
     element: { tag: "button", className: "fixed-shell-mobile-fixed", attributesHtml: 'type="button" aria-label="Show Workspace pane" title="Show Workspace pane" aria-expanded="false" data-mobile-workspace-destination data-action="click->workspace-navigation#toggleWorkspacePane"' },
   });
-  return `<nav class="fixed-shell-mobile-nav fixed-shell-atelier-bar" aria-label="Atelier">${workspace}${renderAtelierNextUnreadButton(presentation)}</nav>`;
+  return `<nav class="fixed-shell-mobile-nav fixed-shell-atelier-bar" aria-label="Atelier">${workspace}${renderAtelierNextUnreadButton(presentation)}${renderAtelierNewWorkspaceButton()}</nav>`;
 }
 
 export function workspacePresentationDomId(workspaceId: string): string {

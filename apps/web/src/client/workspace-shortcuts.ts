@@ -158,6 +158,13 @@ class AtelierShortcutsController extends Controller<HTMLElement> {
     return [...commands.values()];
   }
 
+  async runCommand(event: Event): Promise<void> {
+    // SAFETY: This action is attached only to server-rendered command buttons whose registered command ID is in the dataset.
+    const commandId = (event.currentTarget as HTMLElement).dataset.commandId!;
+    const command = this.currentCommands().find((candidate) => candidate.id === commandId)!;
+    await command.run();
+  }
+
   private visibleWorkspaceDeleteCommands(): WorkspaceClientCommand[] {
     if (!this.visibleWorkspaceDeleteForm()) return [];
     return [{
