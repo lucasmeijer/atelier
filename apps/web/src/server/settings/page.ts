@@ -33,6 +33,13 @@ async function renderGitIdentitySettings(): Promise<string> {
   return `<section class="settings-sec" id="settings-sec-git-identity">${await renderGitIdentityForm()}</section>`;
 }
 
+function renderBuildIdentity(): string {
+  const commit = process.env.ATELIER_COMMIT_ID;
+  if (!commit) return `<span class="settings-build-identity">Local development build</span>`;
+  const commitUrl = `https://github.com/lucasmeijer/atelier/commit/${encodeURIComponent(commit)}`;
+  return `<a class="settings-build-identity" href="${commitUrl}" target="_blank" rel="noreferrer">${escapeHtml(commit.slice(0, 7))}</a>`;
+}
+
 export type WorkspaceCleanupResult = { deleted: number; errors: string[] };
 
 function renderForceDeleteWorkspaces(result?: WorkspaceCleanupResult): string {
@@ -79,7 +86,7 @@ export async function renderSettingsDialog(sectionId?: string): Promise<string> 
   const contributions = listSettingsContributions().filter((contribution) => contribution.id !== "keypress-probe");
   if (sectionId && !contributions.some((contribution) => contribution.id === sectionId)) throw invalidArguments(`settings section not found: ${sectionId}`);
   const sections = await Promise.all(contributions.map((contribution) => contribution.render()));
-  return settingsDialogHtml("Settings", `<main class="settings-main">${sections.join("")}<div class="settings-dev-link"><a href="/settings/development" data-turbo-frame="_top" data-turbo-stream="true">Development settings</a></div></main>`, sectionId);
+  return settingsDialogHtml("Settings", `<main class="settings-main">${sections.join("")}<div class="settings-dev-link"><a class="settings-development-link" href="/settings/development" data-turbo-frame="_top" data-turbo-stream="true">Development settings</a>${renderBuildIdentity()}</div></main>`, sectionId);
 }
 
 export async function renderDevelopmentSettingsDialog(): Promise<string> {
