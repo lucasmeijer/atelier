@@ -2,22 +2,11 @@
 
 import type { WorkspaceClientModule } from "@atelier/shared";
 
-function currentAtelierTheme(): string {
-  const active = document.documentElement.dataset.theme;
-  if (active) return active;
-  try {
-    return localStorage.getItem("atelier.theme") || "nord";
-  } catch {
-    return "nord";
-  }
-}
-
 function cssVariable(name: string): string {
   return getComputedStyle(document.documentElement).getPropertyValue(name).trim();
 }
 
 function addAtelierThemeParams(url: URL): void {
-  url.searchParams.set("atelierTheme", currentAtelierTheme());
   url.searchParams.set("atelierBg", cssVariable("--bg"));
   url.searchParams.set("atelierPanel", cssVariable("--panel"));
   url.searchParams.set("atelierElev", cssVariable("--elev"));
