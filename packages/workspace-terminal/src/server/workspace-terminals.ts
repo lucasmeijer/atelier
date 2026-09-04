@@ -21,13 +21,7 @@ interface TmuxSessionMetadata {
   name: string;
   createdAt: number;
   lastActivityAt: number;
-  windows: number;
-  attachedClients: number;
   command: string;
-  cwd: string;
-  width: number;
-  height: number;
-  dead: boolean;
 }
 
 interface WorkspaceTerminalCreateOptions {
@@ -51,23 +45,17 @@ async function writeTerminals(workspaceId: string, terminals: WorkspaceTerminal[
 
 export async function listTmuxSessions(workspaceId: string): Promise<TmuxSessionMetadata[]> {
   const separator = "\u001f";
-  const format = ["#{session_name}", "#{session_created}", "#{session_activity}", "#{session_windows}", "#{session_attached}", "#{pane_current_command}", "#{pane_current_path}", "#{pane_width}", "#{pane_height}", "#{pane_dead}"].join(separator);
+  const format = ["#{session_name}", "#{session_created}", "#{session_activity}", "#{pane_current_command}"].join(separator);
   const result = await execWorkspaceShell(workspaceId, buildListSessionsCommand(format));
   if (result.exitCode !== 0) return [];
 
   return result.stdout.trim().split("\n").filter(Boolean).map((line) => {
-    const [name, createdAt, lastActivityAt, windows, attachedClients, command, cwd, width, height, dead] = line.split(separator);
+    const [name, createdAt, lastActivityAt, command] = line.split(separator);
     return {
       name: name!,
       createdAt: Number(createdAt),
       lastActivityAt: Number(lastActivityAt),
-      windows: Number(windows),
-      attachedClients: Number(attachedClients),
       command: command!,
-      cwd: cwd!,
-      width: Number(width),
-      height: Number(height),
-      dead: dead === "1",
     };
   });
 }
