@@ -1,4 +1,4 @@
-import { mkdir, readFile, rename, writeFile } from "node:fs/promises";
+import { mkdir, readFile, rename, unlink, writeFile } from "node:fs/promises";
 import { dirname, join } from "node:path";
 import { atelierDataPath, getAtelierRuntimeContext, isJsonObject, type JsonObject, type JsonValue } from "@atelier/core";
 import type { AgentServiceTier } from "@atelier/shared";
@@ -27,9 +27,21 @@ interface AgentModelsSettings {
   providerPreferences?: Record<string, ProviderPreference>;
 }
 
+export interface CustomModelsSaveResult {
+  skippedOfficialModels: ModelReference[];
+}
+
 function piConfigDir(): string { return atelierDataPath(getAtelierRuntimeContext(), "pi-config"); }
 function piModelsJsonPath(): string { return join(piConfigDir(), "models.json"); }
+function piCustomModelsJsonPath(): string { return join(piConfigDir(), "custom-models.json"); }
 function piAuthJsonPath(): string { return join(piConfigDir(), "auth.json"); }
+
+async function writeJsonFile(path: string, value: JsonObject): Promise<void> {
+  await mkdir(dirname(path), { recursive: true });
+  const tmp = `${path}.tmp`;
+  await writeFile(tmp, `${JSON.stringify(value, null, 2)}\n`);
+  await rename(tmp, path);
+}
 
 function jsonString(value: JsonValue | undefined): string | undefined {
   return Value.Check(stringSchema, value) ? value : undefined;
@@ -85,12 +97,104 @@ async function getAgentModelsSettings(path = piModelsJsonPath()): Promise<AgentM
 }
 
 async function setAgentModelsSettings(config: AgentModelsSettings): Promise<void> {
-  const path = piModelsJsonPath();
-  const normalized = { providers: config.providers ?? {}, ...config };
-  await mkdir(dirname(path), { recursive: true });
-  const tmp = `${path}.tmp`;
-  await writeFile(tmp, `${JSON.stringify(normalized, null, 2)}\n`);
-  await rename(tmp, path);
+  const value: JsonObject = { providers: config.providers ?? {} };
+  if (config.picker) value.picker = config.picker.map((model) => ({ provider: model.provider, id: model.id, label: model.label }));
+  if (config.activeModel) value.activeModel = { provider: config.activeModel.provider, id: config.activeModel.id };
+  if (config.modelPreferences) value.modelPreferences = Object.fromEntries(Object.entries(config.modelPreferences).map(([key, preference]) => [key, { ...preference }]));
+  if (config.providerPreferences) value.providerPreferences = Object.fromEntries(Object.entries(config.providerPreferences).map(([key, preference]) => [key, { ...preference }]));
+  await writeJsonFile(piModelsJsonPath(), value);
+}
+
+function parseCustomModelsJson(source: string): JsonObject {
+  let parsed: unknown;
+  try {
+    parsed = JSON.parse(source);
+  } catch (error) {
+    throw new Error(`Invalid JSON: ${error instanceof Error ? error.message : String(error)}`);
+  }
+  if (!isJsonObject(parsed)) throw new Error("Custom model configuration must be a JSON object.");
+  const unexpected = Object.keys(parsed).filter((key) => key !== "providers");
+  if (unexpected.length) throw new Error(`Only the providers property is accepted here. Remove: ${unexpected.join(", ")}.`);
+  if (!isJsonObject(parsed.providers)) throw new Error('Custom model configuration must contain a "providers" object.');
+  return parsed.providers;
+}
+
+async function validateCustomModelProviders(providers: JsonObject): Promise<void> {
+  const path = join(piConfigDir(), `.custom-models-validation-${crypto.randomUUID()}.json`);
+  await writeJsonFile(path, { providers });
+  try {
+    const validationRuntime = await ModelRuntime.create({ modelsPath: path, allowModelNetwork: false, refreshOnCreate: false });
+    const error = validationRuntime.getError();
+    if (error) throw new Error(error.replace(`\n\nFile: ${path}`, ""));
+  } finally {
+    await unlink(path);
+  }
+}
+
+async function readStoredCustomModelProviders(): Promise<JsonObject | undefined> {
+  try {
+    const parsed: unknown = JSON.parse(await readFile(piCustomModelsJsonPath(), "utf8"));
+    if (!isJsonObject(parsed) || !isJsonObject(parsed.providers)) throw new Error(`${piCustomModelsJsonPath()} must contain a providers object`);
+    return parsed.providers;
+  } catch (error) {
+    if (error instanceof Error && "code" in error && error.code === "ENOENT") return undefined;
+    throw error;
+  }
+}
+
+async function writeStoredCustomModelProviders(providers: JsonObject): Promise<void> {
+  await writeJsonFile(piCustomModelsJsonPath(), { providers });
+}
+
+function withoutOfficialModelDuplicates(providers: JsonObject, officialRuntime: ModelRuntime): CustomModelsSaveResult & { providers: JsonObject } {
+  const skippedOfficialModels: ModelReference[] = [];
+  const filtered = structuredClone(providers);
+  for (const [providerId, value] of Object.entries(filtered)) {
+    if (!isJsonObject(value) || !Array.isArray(value.models)) continue;
+    const officialIds = new Set(officialRuntime.getModels(providerId).map((model) => model.id));
+    value.models = value.models.filter((model) => {
+      if (!isJsonObject(model)) return true;
+      const id = jsonString(model.id);
+      if (!id || !officialIds.has(id)) return true;
+      skippedOfficialModels.push({ provider: providerId, id });
+      return false;
+    });
+  }
+  return { providers: filtered, skippedOfficialModels };
+}
+
+async function officialPiModelRuntime(): Promise<ModelRuntime> {
+  return await ModelRuntime.create({ modelsPath: null, allowModelNetwork: false, refreshOnCreate: false });
+}
+
+async function materializeCustomModelProviders(providers: JsonObject): Promise<CustomModelsSaveResult> {
+  const filtered = withoutOfficialModelDuplicates(providers, await officialPiModelRuntime());
+  const settings = await getAgentModelsSettings();
+  settings.providers = filtered.providers;
+  await setAgentModelsSettings(settings);
+  return { skippedOfficialModels: filtered.skippedOfficialModels };
+}
+
+async function preparePiModelsJson(): Promise<void> {
+  const settings = await getAgentModelsSettings();
+  const stored = await readStoredCustomModelProviders();
+  const providers = stored ?? settings.providers ?? {};
+  if (!stored && Object.keys(providers).length) await writeStoredCustomModelProviders(providers);
+  await materializeCustomModelProviders(providers);
+}
+
+export async function getCustomModelsJson(): Promise<string> {
+  const providers = await readStoredCustomModelProviders() ?? (await getAgentModelsSettings()).providers ?? {};
+  return Object.keys(providers).length ? JSON.stringify({ providers }, null, 2) : "";
+}
+
+export async function setCustomModelsJson(source: string): Promise<CustomModelsSaveResult> {
+  const providers = source.trim() ? parseCustomModelsJson(source) : {};
+  await validateCustomModelProviders(providers);
+  await writeStoredCustomModelProviders(providers);
+  const result = await materializeCustomModelProviders(providers);
+  if (modelRuntime) await (await modelRuntime).refresh();
+  return result;
 }
 
 function modelSettingsKey(provider: string, id: string): string { return `${provider}::${id}`; }
@@ -156,7 +260,10 @@ export async function setLastProviderServiceTier(provider: string, serviceTier: 
 
 let modelRuntime: Promise<ModelRuntime> | undefined;
 export function createPiModelRuntime(): Promise<ModelRuntime> {
-  return modelRuntime ??= ModelRuntime.create({ authPath: piAuthJsonPath(), modelsPath: piModelsJsonPath() });
+  return modelRuntime ??= (async () => {
+    await preparePiModelsJson();
+    return await ModelRuntime.create({ authPath: piAuthJsonPath(), modelsPath: piModelsJsonPath() });
+  })();
 }
 
 export type PiAuthPrompt = AuthPrompt;

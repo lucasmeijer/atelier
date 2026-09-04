@@ -44,13 +44,16 @@ export {
   createPiModelRuntime,
   disconnectModelProvider,
   getConfiguredAgentModels,
+  getCustomModelsJson,
   getModelThinkingLevel,
   hasAvailableConfiguredAgentModel,
   loginPiOAuthProvider,
   type PiAuthPrompt,
   setActiveAgentModel,
+  setCustomModelsJson,
   setModelThinkingLevel,
   setPickerAgentModels,
   type ConfiguredAgentModel,
+  type CustomModelsSaveResult,
 } from "./pi-config-models.ts";
 export { getPopularModelRank, getProviderApiKeyExample } from "./hardcoded-provider-knowledge.ts";

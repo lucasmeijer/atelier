@@ -9,9 +9,11 @@ import {
   createPiModelRuntime,
   disconnectModelProvider,
   getConfiguredAgentModels,
+  getCustomModelsJson,
   getPopularModelRank,
   getProviderApiKeyExample,
   loginPiOAuthProvider,
+  setCustomModelsJson,
   setPickerAgentModels,
   type ConfiguredAgentModel,
   type PiAuthPrompt,
@@ -232,18 +234,53 @@ function renderModelCatalogue(data: ModelSetupData, surface: ModelSetupSurface):
   </div>`;
 }
 
-function renderModelSetupData(data: ModelSetupData, surface: ModelSetupSurface): string {
+const customModelsPlaceholder = `{
+  "providers": {
+    "openai-codex": {
+      "models": [
+        {
+          "id": "gpt-6-astra",
+          "name": "GPT-6 Astra",
+          "reasoning": true,
+          "input": ["text", "image"],
+          "contextWindow": 272000,
+          "maxTokens": 128000
+        }
+      ]
+    }
+  }
+}`;
+
+type CustomModelsView = { source: string; open?: boolean; error?: string; status?: string };
+
+function renderCustomModelsSettings(view: CustomModelsView): string {
+  const saveButton = buttonHtml({ type: "submit", variant: "secondary", content: { kind: "caption", caption: "Validate and save" } });
+  return `<details class="custom-models-settings" id="custom_models_settings"${view.open ? " open" : ""}>
+    <summary>Custom models.json</summary>
+    <form class="custom-models-form form-stack" method="post" action="/settings/models/custom" data-turbo="true">
+      <div><label for="custom_models_json">Custom Pi model configuration</label><p>Paste a Pi <code>models.json</code> object containing <code>providers</code>. Custom models are merged with the official catalogue.</p></div>
+      <textarea class="textarea custom-models-json" id="custom_models_json" name="models" placeholder="${escapeHtml(customModelsPlaceholder)}" spellcheck="false" autocomplete="off">${escapeHtml(view.source)}</textarea>
+      ${view.error ? `<p class="settings-error" role="alert">${escapeHtml(view.error)}</p>` : ""}
+      ${view.status ? `<p class="custom-models-status" role="status">${escapeHtml(view.status)}</p>` : ""}
+      <div class="custom-models-actions">${saveButton}</div>
+    </form>
+  </details>`;
+}
+
+function renderModelSetupData(data: ModelSetupData, surface: ModelSetupSurface, customModels?: CustomModelsView): string {
   const working = data.working;
   const id = surface === "dialog" ? "model_setup_dialog_content" : `model_setup_${surface}`;
   return `<div class="model-setup form-stack" id="${id}">
     ${modelSetupWorkingState(working)}
     <div class="configured-model-section configured-model-section-${surface}">${renderConfiguredModelsSection(data, surface)}</div>
     <section class="model-setup-section form-section"><h2>Available models</h2><div class="model-catalogue" data-controller="model-catalogue">${renderModelCatalogue(data, surface)}</div></section>
+    ${surface === "settings" && customModels ? renderCustomModelsSettings(customModels) : ""}
   </div>`;
 }
 
-export async function renderModelSetup(surface: ModelSetupSurface = "settings"): Promise<string> {
-  return renderModelSetupData(await modelSetupData(), surface);
+export async function renderModelSetup(surface: ModelSetupSurface = "settings", customModelsView?: Omit<CustomModelsView, "source">): Promise<string> {
+  const customModels = surface === "settings" ? { source: await getCustomModelsJson(), ...customModelsView } : undefined;
+  return renderModelSetupData(await modelSetupData(), surface, customModels);
 }
 
 export async function renderModelSetupDialog(): Promise<string> {
@@ -511,6 +548,20 @@ export async function handleModelSettingsRequest(request: Request, url: URL): Pr
   if (url.pathname === "/settings/models/dialog" && request.method === "GET") {
     const html = await renderModelSetupDialog();
     return wantsStream(request) ? stream(update("settings_modal_host", html)) : response(html);
+  }
+  if (url.pathname === "/settings/models/custom" && request.method === "POST") {
+    const form = await request.formData();
+    const source = String(form.get("models") ?? "");
+    try {
+      const result = await setCustomModelsJson(source);
+      const skipped = result.skippedOfficialModels;
+      const status = skipped.length
+        ? `Saved. ${skipped.length} ${skipped.length === 1 ? "model is" : "models are"} already in the official catalogue and will use the official definition: ${skipped.map(modelKey).join(", ")}.`
+        : "Custom model configuration saved.";
+      return stream(replace("model_setup_settings", await renderModelSetup("settings", { open: true, status })));
+    } catch (error) {
+      return stream(replace("custom_models_settings", renderCustomModelsSettings({ source, open: true, error: error instanceof Error ? error.message : String(error) })));
+    }
   }
   let match = url.pathname.match(/^\/settings\/providers\/([^/]+)\/flow$/);
   if (match && request.method === "POST") {
