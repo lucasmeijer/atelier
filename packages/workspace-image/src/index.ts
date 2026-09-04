@@ -8,7 +8,6 @@ import { runHostObservableCommand } from "@atelier/observable-terminal/server";
 import { buildWorkspaceImageCarrier, defaultAtelierWorkspaceImageSpecifier, findWorkspaceImageCarrier, nativeLinuxDockerPlatform, nestedDockerDaemonInitScript, type ResolvedDockerImagePreload } from "./carrier.ts";
 import { parseWorkspaceImageMetadata, type WorkspaceImageMetadata } from "./metadata.ts";
 import { pruneSupersededWorkspaceImages, workspaceImageKindLabel, type WorkspaceImageKind } from "./prune.ts";
-import { createSerializedImageTagger } from "./tag-queue.ts";
 import { dockerImageStoreQueue, workspaceImageStoreWaitReporter } from "./image-store-queue.ts";
 
 export * from "./carrier.ts";
@@ -312,10 +311,10 @@ async function repoWorkspaceImageMetadata(dockerfile: string, baseImage: string)
   return { tag: repositoryWorkspaceImageTag(baseImage, await readFile(dockerfile)), modules: ["repo"] };
 }
 
-const tagAtelierWorkspaceBase = createSerializedImageTagger(async (baseImage) => {
+async function tagAtelierWorkspaceBase(baseImage: string): Promise<void> {
   const result = await dockerImageStoreQueue.run({ label: "Tagging the workspace base image" }, () => runDocker(["tag", baseImage, "atelier-workspace"]));
   if (result.exitCode !== 0) throw new Error(result.stderr.trim() || `docker tag ${baseImage} atelier-workspace failed`);
-});
+}
 
 function uniqueStrings(values: string[]): string[] { return [...new Set(values)]; }
 
