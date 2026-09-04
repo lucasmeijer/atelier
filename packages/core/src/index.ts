@@ -47,7 +47,6 @@ export {
 
 export {
   atelierDataPath,
-  discoverAtelierRuntimeContext,
   dockerHostAtelierDataPath,
   getAtelierRuntimeContext,
   resetAtelierRuntimeContextForTests,

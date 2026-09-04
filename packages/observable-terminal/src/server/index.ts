@@ -13,7 +13,6 @@ export {
 } from "./text.ts";
 export {
   buildCapturePaneCommand,
-  buildHasSessionCommand,
   buildKillSessionCommand,
   buildListSessionsCommand,
   buildNaturalScrollCommand,

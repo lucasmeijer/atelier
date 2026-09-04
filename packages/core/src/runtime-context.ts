@@ -37,14 +37,6 @@ export function resetAtelierRuntimeContextForTests(): void {
   cachedRuntimeContextKey = undefined;
 }
 
-export function discoverAtelierRuntimeContext(): AtelierRuntimeContext {
-  return readRuntimeContextFromEnv();
-}
-
-function readRuntimeContextFromEnv(): AtelierRuntimeContext {
-  return createRuntimeContext(runtimePathsFromEnv());
-}
-
 function createRuntimeContext(paths: Pick<AtelierRuntimeContext, "atelierDataDir" | "dockerHostAtelierDataDir">): AtelierRuntimeContext {
   let dockerBridgeHost: string | undefined;
   return {
