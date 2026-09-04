@@ -102,6 +102,12 @@ async function run(): Promise<void> {
   }
 }
 
+const componentCssPaths = new Map([
+  "action-item", "autocomplete", "activity-button", "button", "button-group", "copy-button",
+  "destructive-confirmation", "dialog", "floating-surface", "icons", "panel", "popup",
+  "perimeter-button", "progress-button", "transient-feedback", "toggle",
+].map((name) => [`/${name}.css`, `/app/packages/design-system/src/${name}/${name}.css`]));
+
 Bun.serve({
   hostname: "127.0.0.1",
   port: updaterPort,
@@ -110,22 +116,8 @@ Bun.serve({
     if (url.pathname === "/up") return new Response("ok", { headers: { "cache-control": "no-store" } });
     if (url.pathname === "/state") return Response.json({ failed, redirect: steps.find((s) => s.id === "redirect")?.status === "running" ? options.returnUrl : undefined, steps });
     if (url.pathname === "/design-system.css") return new Response(Bun.file("/app/apps/web/public/design-system.css"), { headers: { "content-type": "text/css; charset=utf-8" } });
-    if (url.pathname === "/action-item.css") return new Response(Bun.file("/app/packages/design-system/src/action-item/action-item.css"), { headers: { "content-type": "text/css; charset=utf-8" } });
-    if (url.pathname === "/autocomplete.css") return new Response(Bun.file("/app/packages/design-system/src/autocomplete/autocomplete.css"), { headers: { "content-type": "text/css; charset=utf-8" } });
-    if (url.pathname === "/activity-button.css") return new Response(Bun.file("/app/packages/design-system/src/activity-button/activity-button.css"), { headers: { "content-type": "text/css; charset=utf-8" } });
-    if (url.pathname === "/button.css") return new Response(Bun.file("/app/packages/design-system/src/button/button.css"), { headers: { "content-type": "text/css; charset=utf-8" } });
-    if (url.pathname === "/button-group.css") return new Response(Bun.file("/app/packages/design-system/src/button-group/button-group.css"), { headers: { "content-type": "text/css; charset=utf-8" } });
-    if (url.pathname === "/copy-button.css") return new Response(Bun.file("/app/packages/design-system/src/copy-button/copy-button.css"), { headers: { "content-type": "text/css; charset=utf-8" } });
-    if (url.pathname === "/destructive-confirmation.css") return new Response(Bun.file("/app/packages/design-system/src/destructive-confirmation/destructive-confirmation.css"), { headers: { "content-type": "text/css; charset=utf-8" } });
-    if (url.pathname === "/dialog.css") return new Response(Bun.file("/app/packages/design-system/src/dialog/dialog.css"), { headers: { "content-type": "text/css; charset=utf-8" } });
-    if (url.pathname === "/floating-surface.css") return new Response(Bun.file("/app/packages/design-system/src/floating-surface/floating-surface.css"), { headers: { "content-type": "text/css; charset=utf-8" } });
-    if (url.pathname === "/icons.css") return new Response(Bun.file("/app/packages/design-system/src/icons/icons.css"), { headers: { "content-type": "text/css; charset=utf-8" } });
-    if (url.pathname === "/panel.css") return new Response(Bun.file("/app/packages/design-system/src/panel/panel.css"), { headers: { "content-type": "text/css; charset=utf-8" } });
-    if (url.pathname === "/popup.css") return new Response(Bun.file("/app/packages/design-system/src/popup/popup.css"), { headers: { "content-type": "text/css; charset=utf-8" } });
-    if (url.pathname === "/perimeter-button.css") return new Response(Bun.file("/app/packages/design-system/src/perimeter-button/perimeter-button.css"), { headers: { "content-type": "text/css; charset=utf-8" } });
-    if (url.pathname === "/progress-button.css") return new Response(Bun.file("/app/packages/design-system/src/progress-button/progress-button.css"), { headers: { "content-type": "text/css; charset=utf-8" } });
-    if (url.pathname === "/transient-feedback.css") return new Response(Bun.file("/app/packages/design-system/src/transient-feedback/transient-feedback.css"), { headers: { "content-type": "text/css; charset=utf-8" } });
-    if (url.pathname === "/toggle.css") return new Response(Bun.file("/app/packages/design-system/src/toggle/toggle.css"), { headers: { "content-type": "text/css; charset=utf-8" } });
+    const componentCssPath = componentCssPaths.get(url.pathname);
+    if (componentCssPath) return new Response(Bun.file(componentCssPath), { headers: { "content-type": "text/css; charset=utf-8" } });
     if (url.pathname === "/fonts/jetbrains-mono-latin-400-normal.woff2") return new Response(Bun.file("/app/node_modules/@fontsource/jetbrains-mono/files/jetbrains-mono-latin-400-normal.woff2"), { headers: { "content-type": "font/woff2" } });
     if (url.pathname === "/") startUpdate();
     return new Response(page(url.searchParams.get("theme") ?? ""), { headers: { "content-type": "text/html; charset=utf-8", "cache-control": "no-store" } });
