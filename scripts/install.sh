@@ -351,17 +351,97 @@ start_docker() {
   success "Docker is running"
 }
 
-require_tailscale() {
-  local status_json
+confirm_tailscale_setup() {
+  local question="$1"
+  local answer
 
-  command_exists tailscale || fail "Tailscale is required. Install it, run 'tailscale up', then rerun this installer."
-  tailscale status >/dev/null || fail "Tailscale is not up. Run 'tailscale up', then rerun this installer."
+  log "$question"
+  printf 'Continue? [Y/n]: '
+  IFS= read -r answer </dev/tty || fail "Tailscale setup needs an interactive terminal; set up Tailscale manually, then rerun this installer"
+  case "$answer" in
+    ""|y|Y|yes|YES|Yes) ;;
+    *) fail "installation cancelled; Atelier requires a connected Tailscale tailnet" ;;
+  esac
+}
+
+install_tailscale() {
+  command_exists curl || fail "curl is required to install Tailscale"
+
+  info "Running the official Tailscale installer..."
+  curl -fsSL https://tailscale.com/install.sh | sh
+  command_exists tailscale || fail "the Tailscale installer finished, but the tailscale command is unavailable"
+  success "Tailscale installed"
+}
+
+start_tailscale_daemon() {
+  info "Starting Tailscale..."
+
+  if command_exists systemctl && systemctl list-unit-files tailscaled.service >/dev/null 2>&1; then
+    systemctl enable --now tailscaled
+  elif command_exists service; then
+    service tailscaled start
+  else
+    fail "could not start tailscaled; systemctl/service is unavailable"
+  fi
+}
+
+wait_for_tailscale_status() {
+  local status_json="$1"
+  local attempt=0
+
+  while [ "$attempt" -lt 20 ]; do
+    if tailscale status --json >"$status_json" 2>/dev/null; then
+      return 0
+    fi
+    attempt=$((attempt + 1))
+    sleep 0.5
+  done
+  return 1
+}
+
+connect_tailscale() {
+  log ""
+  log "Tailscale will print a sign-in link if this machine needs approval."
+  log "Open that link on your computer and approve the machine. Keep this installer running; it will wait for the tailnet to come up."
+  log ""
+  tailscale up --timeout=0s
+}
+
+require_tailscale() {
+  local status_json backend_state setup_approved=0
+
+  if ! command_exists tailscale; then
+    log "Tailscale is not installed. Atelier uses it to give you a private HTTPS address without exposing Atelier to the public internet."
+    confirm_tailscale_setup "Run the official installer from https://tailscale.com/install.sh and connect this machine now?"
+    install_tailscale
+    setup_approved=1
+  else
+    success "Tailscale is already installed"
+  fi
+
+  status_json="$(mktemp)"
+  if ! tailscale status --json >"$status_json" 2>/dev/null; then
+    start_tailscale_daemon
+    wait_for_tailscale_status "$status_json" || {
+      tailscale status --json || true
+      fail "could not connect to tailscaled"
+    }
+  fi
+
+  backend_state="$(sed -n 's/.*"BackendState": *"\([^"]*\)".*/\1/p' "$status_json" | head -n 1)"
+  if [ "$backend_state" != Running ]; then
+    if [ "$setup_approved" -eq 0 ]; then
+      log "Tailscale is installed, but this machine is not connected to a tailnet (state: ${backend_state:-unknown})."
+      confirm_tailscale_setup "Connect it now with 'tailscale up'?"
+    fi
+    connect_tailscale
+    wait_for_tailscale_status "$status_json" || fail "Tailscale did not come up"
+    backend_state="$(sed -n 's/.*"BackendState": *"\([^"]*\)".*/\1/p' "$status_json" | head -n 1)"
+    [ "$backend_state" = Running ] || fail "Tailscale did not come up (state: ${backend_state:-unknown})"
+  fi
 
   tailscale_ip="$(tailscale ip -4 | head -n 1)"
   [ -n "$tailscale_ip" ] || fail "could not determine this machine's Tailscale IPv4 address"
-
-  status_json="$(mktemp)"
-  tailscale status --json >"$status_json"
 
   tailscale_dns="$(sed -n 's/.*"DNSName": "\([^"]*\)".*/\1/p' "$status_json" | head -n 1 | sed 's/\.$//')"
   [ -n "$tailscale_dns" ] || fail_tailscale_serve_not_enabled
