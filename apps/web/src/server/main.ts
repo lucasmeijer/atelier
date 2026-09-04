@@ -1,4 +1,5 @@
 import { join } from "node:path";
+import { timingSafeEqual as timingSafeEqualBytes } from "node:crypto";
 import { gzipSync } from "node:zlib";
 import type { ServerWebSocket } from "bun";
 import { Type } from "typebox";
@@ -51,9 +52,7 @@ function authEnabled(): boolean {
 
 function base64Url(bytes: ArrayBuffer | Uint8Array): string {
   const array = bytes instanceof Uint8Array ? bytes : new Uint8Array(bytes);
-  let binary = "";
-  for (const byte of array) binary += String.fromCharCode(byte);
-  return btoa(binary).replaceAll("+", "-").replaceAll("/", "_").replaceAll("=", "");
+  return Buffer.from(array).toString("base64url");
 }
 
 async function hmac(input: string): Promise<string> {
@@ -64,10 +63,7 @@ async function hmac(input: string): Promise<string> {
 function timingSafeEqual(a: string, b: string): boolean {
   const left = new TextEncoder().encode(a);
   const right = new TextEncoder().encode(b);
-  if (left.length !== right.length) return false;
-  let diff = 0;
-  for (let i = 0; i < left.length; i++) diff |= left[i]! ^ right[i]!;
-  return diff === 0;
+  return left.length === right.length && timingSafeEqualBytes(left, right);
 }
 
 function cookieValue(request: Request, name: string): string | undefined {
@@ -117,18 +113,11 @@ function sharedCookieDomain(request: Request): string | undefined {
   return `.${labels.slice(-2).join(".")}`;
 }
 
-function authCookieAttributes(request: Request): string {
+function authCookieAttributes(request: Request, maxAge = authCookieMaxAgeSeconds): string {
   const secure = isHttpsRequest(request) ? "; Secure" : "";
   const cookieDomain = sharedCookieDomain(request);
   const domain = cookieDomain ? `; Domain=${cookieDomain}` : "";
-  return `Path=/; HttpOnly; SameSite=Lax; Max-Age=${authCookieMaxAgeSeconds}${secure}${domain}`;
-}
-
-function clearAuthCookieAttributes(request: Request): string {
-  const secure = isHttpsRequest(request) ? "; Secure" : "";
-  const cookieDomain = sharedCookieDomain(request);
-  const domain = cookieDomain ? `; Domain=${cookieDomain}` : "";
-  return `Path=/; HttpOnly; SameSite=Lax; Max-Age=0${secure}${domain}`;
+  return `Path=/; HttpOnly; SameSite=Lax; Max-Age=${maxAge}${secure}${domain}`;
 }
 
 function loginPage(next: string, error = ""): Response {
@@ -189,7 +178,7 @@ async function authResponse(request: Request): Promise<Response | undefined> {
   }
   if (url.pathname === "/logout") {
     const response = Response.redirect(new URL("/login", url).toString(), 303);
-    response.headers.append("set-cookie", `${authCookieName}=; ${clearAuthCookieAttributes(request)}`);
+    response.headers.append("set-cookie", `${authCookieName}=; ${authCookieAttributes(request, 0)}`);
     return response;
   }
   if (await isAuthenticated(request)) return undefined;
