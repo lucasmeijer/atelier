@@ -316,12 +316,7 @@ export class RealAgentRuntime extends BaseAgentRuntime {
 
     let accepted = false;
     let acceptedPrompt: { text: string; images: SessionImageRef[] } | undefined;
-    let resolveAcceptance!: () => void;
-    let rejectAcceptance!: (error: Error) => void;
-    const acceptance = new Promise<void>((resolve, reject) => {
-      resolveAcceptance = resolve;
-      rejectAcceptance = reject;
-    });
+    const { promise: acceptance, resolve: resolveAcceptance, reject: rejectAcceptance } = Promise.withResolvers<void>();
     const thisRuntime = this;
     const promptOptions: AgentPromptPreflightOptions = {
       preflightResult(success) {
@@ -509,12 +504,7 @@ export class RealAgentRuntime extends BaseAgentRuntime {
 
   private startDetachedRewindSummary(target: string, customInstructions?: string): Promise<void> {
     let started = false;
-    let resolveStarted!: () => void;
-    let rejectStarted!: (error: Error) => void;
-    const startedOperation = new Promise<void>((resolve, reject) => {
-      resolveStarted = resolve;
-      rejectStarted = reject;
-    });
+    const { promise: startedOperation, resolve: resolveStarted, reject: rejectStarted } = Promise.withResolvers<void>();
     const lifecycle = (async () => {
       this.beginBranchSummary();
       try {

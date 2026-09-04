@@ -71,10 +71,7 @@ export function createSnapshotFirstLivePresentation(captureAuthoritativeUpdate: 
   function beginChange(kind: LivePresentationChange["kind"], subscriber?: LivePresentationSubscriber): BegunLivePresentationChange {
     const sequence = nextChange++;
     const predecessors = deliveredTail;
-    let resolveDelivered!: () => void;
-    const delivered = new Promise<void>((resolve) => {
-      resolveDelivered = resolve;
-    });
+    const { promise: delivered, resolve: resolveDelivered } = Promise.withResolvers<void>();
     deliveredTail = delivered;
     changes.set(sequence, { complete: false, kind, resolveDelivered, subscriber });
     return { sequence, predecessors, delivered };
@@ -122,10 +119,7 @@ export function createSnapshotFirstLivePresentation(captureAuthoritativeUpdate: 
       subscribers.add(subscriber);
       const { sequence, predecessors, delivered } = beginChange("snapshot", subscriber);
       let changeCompleted = false;
-      let resolveCancelled!: () => void;
-      const cancelled = new Promise<void>((resolve) => {
-        resolveCancelled = resolve;
-      });
+      const { promise: cancelled, resolve: resolveCancelled } = Promise.withResolvers<void>();
       const completeSubscriptionChange = (html?: string): void => {
         if (changeCompleted) return;
         changeCompleted = true;
