@@ -23,54 +23,14 @@ declare module "@atelier/workspace" {
   }
 }
 
-export interface ProjectSummary {
-  id: string;
-  name: string;
-  gitUrl: string;
-  branch: string | null;
-  sessionShareKey: string;
-}
-
-export interface ProjectSecretSummary {
-  id: string;
-  projectId: string;
-  envName: string;
-  hostPattern: string;
-  placeholder?: string;
-  createdAt: string;
-  updatedAt: string;
-}
-
-export interface StoredProjectSecret extends ProjectSecretSummary {
-  encryptedSecret: string;
-}
-
-export interface ProjectSshKeySummary {
-  id: string;
-  projectId: string;
-  keyType: string;
-  fingerprint: string;
-  createdAt: string;
-}
-
-export interface StoredProjectSshKey extends ProjectSshKeySummary {
-  encryptedPrivateKey: string;
-}
-
-export interface ProjectEnvironmentVariable {
-  id: string;
-  projectId: string;
-  name: string;
-  value: string;
-  createdAt: string;
-  updatedAt: string;
-}
-
-export interface ProjectRecord extends ProjectSummary {
-  secrets?: StoredProjectSecret[];
-  sshKeys?: StoredProjectSshKey[];
-  environment?: ProjectEnvironmentVariable[];
-}
+export type ProjectSummary = Omit<ProjectRecord, "secrets" | "sshKeys" | "environment">;
+export type StoredProjectSecret = Static<typeof storedProjectSecretSchema>;
+export type ProjectSecretSummary = Omit<StoredProjectSecret, "encryptedSecret">;
+export type StoredProjectSshKey = Static<typeof storedProjectSshKeySchema>;
+export type ProjectSshKeySummary = Omit<StoredProjectSshKey, "encryptedPrivateKey">;
+export type ProjectEnvironmentVariable = Static<typeof projectEnvironmentVariableSchema>;
+export type ProjectRecord = Static<typeof projectRecordSchema>;
+export type ProjectStore = Static<typeof projectStoreSchema>;
 
 export interface ProjectListResult {
   projects: ProjectSummary[];
@@ -86,10 +46,6 @@ export interface DeleteProjectResult {
 
 export interface UpdateProjectResult {
   project: ProjectSummary;
-}
-
-export interface ProjectStore {
-  projects: ProjectRecord[];
 }
 
 const storedProjectSecretSchema = Type.Object({
@@ -112,24 +68,28 @@ const projectEnvironmentVariableSchema = Type.Object({
   updatedAt: Type.String(),
 });
 
+const storedProjectSshKeySchema = Type.Object({
+  id: Type.String(),
+  projectId: Type.String(),
+  keyType: Type.String(),
+  fingerprint: Type.String(),
+  createdAt: Type.String(),
+  encryptedPrivateKey: Type.String(),
+});
+
+const projectRecordSchema = Type.Object({
+  id: Type.String(),
+  name: Type.String(),
+  gitUrl: Type.String(),
+  branch: Type.Union([Type.String(), Type.Null()]),
+  sessionShareKey: Type.String(),
+  secrets: Type.Optional(Type.Array(storedProjectSecretSchema)),
+  sshKeys: Type.Optional(Type.Array(storedProjectSshKeySchema)),
+  environment: Type.Optional(Type.Array(projectEnvironmentVariableSchema)),
+});
+
 const projectStoreSchema = Type.Object({
-  projects: Type.Array(Type.Object({
-    id: Type.String(),
-    name: Type.String(),
-    gitUrl: Type.String(),
-    branch: Type.Union([Type.String(), Type.Null()]),
-    sessionShareKey: Type.String(),
-    secrets: Type.Optional(Type.Array(storedProjectSecretSchema)),
-    sshKeys: Type.Optional(Type.Array(Type.Object({
-      id: Type.String(),
-      projectId: Type.String(),
-      keyType: Type.String(),
-      fingerprint: Type.String(),
-      createdAt: Type.String(),
-      encryptedPrivateKey: Type.String(),
-    }))),
-    environment: Type.Optional(Type.Array(projectEnvironmentVariableSchema)),
-  })),
+  projects: Type.Array(projectRecordSchema),
 });
 
 export function projectsFile(dataDir = getAtelierRuntimeContext().atelierDataDir): string {
