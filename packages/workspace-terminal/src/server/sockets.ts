@@ -1,8 +1,8 @@
 import { AtelierCoreError } from "@atelier/core";
-import { attachObservableTerminal, type ObservableTerminalConnection } from "@atelier/observable-terminal/server";
+import { attachObservableTerminal, buildNaturalScrollCommand, type ObservableTerminalConnection } from "@atelier/observable-terminal/server";
 import { parseObservableTerminalMessage } from "@atelier/observable-terminal/shared";
 import type { WorkspaceServerSocketHandler, WorkspaceSocketConnection } from "@atelier/shared";
-import { workspaceContainerName, workspaceRoot } from "@atelier/workspace";
+import { execWorkspaceShell, workspaceContainerName, workspaceRoot } from "@atelier/workspace";
 import { terminalIdFromViewKey, terminalViewKey } from "../shared.ts";
 import { listWorkspaceTerminals } from "./workspace-terminals.ts";
 
@@ -40,6 +40,8 @@ export function createTerminalSocketHandler(options: { setViewBusy(workspaceId: 
     if (!terminalId) return undefined;
     const terminal = (await listWorkspaceTerminals(workspaceId)).find((item) => item.id === terminalId);
     if (!terminal) throw new AtelierCoreError("terminal_not_found", `terminal not found: ${terminalId}`);
+    const configured = await execWorkspaceShell(workspaceId, buildNaturalScrollCommand());
+    if (configured.exitCode !== 0) throw new AtelierCoreError("terminal_scrollback_failed", configured.stderr.trim() || "could not configure terminal scrollback");
     return {
       workspaceId,
       terminalId,

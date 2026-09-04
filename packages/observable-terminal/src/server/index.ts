@@ -16,6 +16,7 @@ export {
   buildHasSessionCommand,
   buildKillSessionCommand,
   buildListSessionsCommand,
+  buildNaturalScrollCommand,
   buildObservableSessionCommand,
   buildSendInterruptCommand,
   buildSetRemainOnExitCommand,

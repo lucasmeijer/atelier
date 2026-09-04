@@ -13,6 +13,7 @@ const workspaceTerminalSchema = Type.Object({
   sessionRelationship: Type.Union([Type.Literal("owned"), Type.Literal("attached")]),
 });
 const workspaceTerminalsSchema = Type.Array(workspaceTerminalSchema);
+const workspaceTerminalHistoryLimit = 10_000;
 
 export type WorkspaceTerminal = Static<typeof workspaceTerminalSchema>;
 
@@ -125,6 +126,7 @@ export async function createWorkspaceTerminal(workspaceId: string, options: Work
     command: sessionCommand(options.command),
     passthrough: true,
     status: false,
+    historyLimit: workspaceTerminalHistoryLimit,
   }));
   if (result.exitCode !== 0) throw new AtelierCoreError("terminal_create_failed", result.stderr.trim() || `could not create terminal: ${tmuxSession}`);
 

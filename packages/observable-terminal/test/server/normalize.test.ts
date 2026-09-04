@@ -2,6 +2,7 @@ import { describe, expect, test } from "bun:test";
 import {
   buildAttachArgs,
   buildListSessionsCommand,
+  buildNaturalScrollCommand,
   buildObservableSessionCommand,
   normalizeCarriageReturns,
   observableTerminalCols,
@@ -33,6 +34,14 @@ describe("observable terminal normalization", () => {
 
   test("quotes custom tmux session list formats", () => {
     expect(buildListSessionsCommand("#{session_name} | #{pane_current_path}")).toBe("tmux list-sessions -F '#{session_name} | #{pane_current_path}'");
+  });
+
+  test("configures natural scrolling through tmux history", () => {
+    const command = buildNaturalScrollCommand();
+    expect(command).toContain("set-option -g mouse on");
+    expect(command).toContain("S-PPage copy-mode -e");
+    expect(command).toContain("S-PPage send-keys -X page-up");
+    expect(command).toContain("S-NPage send-keys -X page-down");
   });
 
   test("builds fixed-size observable sessions", () => {
