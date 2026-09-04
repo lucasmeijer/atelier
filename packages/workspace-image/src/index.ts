@@ -1,6 +1,6 @@
 import { createHash } from "node:crypto";
 import { existsSync } from "node:fs";
-import { mkdir, readFile, rm, writeFile } from "node:fs/promises";
+import { mkdir, readFile, writeFile } from "node:fs/promises";
 import { dirname, join } from "node:path";
 import { fileURLToPath } from "node:url";
 import { requireDocker, runDocker, shellQuote, type AtelierEventBus } from "@atelier/core";
@@ -170,13 +170,11 @@ async function waitForBuildTask(task: WorkspaceImageBuildTask, options: ResolveW
   }
 }
 
-async function generateContext(contextDir: string, args: string[] = []): Promise<void> {
+function generateContext(contextDir: string): void {
   const root = repoRoot();
   const script = join(root, "packages/workspace-image/scripts/build-context.mjs");
   if (!existsSync(script)) throw new Error(`workspace image context generator not found: ${script}`);
-  await rm(contextDir, { recursive: true, force: true });
-  await mkdir(contextDir, { recursive: true });
-  const generated = Bun.spawnSync(["bun", script, contextDir, ...args], { cwd: root, stdout: "pipe", stderr: "pipe" });
+  const generated = Bun.spawnSync(["bun", script, contextDir], { cwd: root, stdout: "pipe", stderr: "pipe" });
   if (generated.exitCode !== 0) throw new Error(`could not generate workspace image context: ${generated.stderr.toString() || generated.stdout.toString()}`);
 }
 
@@ -194,7 +192,7 @@ async function describeDefaultWorkspaceImage(): Promise<DefaultWorkspaceImageDes
   if (baked) return { image: baked };
 
   const contextDir = defaultContextDir();
-  await generateContext(contextDir);
+  generateContext(contextDir);
   const metadata = await contextMetadata(contextDir);
   return { image: metadata.tag, build: { contextDir, metadata } };
 }
