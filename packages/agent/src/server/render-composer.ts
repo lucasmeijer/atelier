@@ -65,7 +65,7 @@ async function renderAgentPaneFrame(ctx: AgentRenderContext, agent: WorkspaceAge
       data-agent-pane-workspace-id-value="${escapeHtml(ctx.workspaceId)}"
       data-agent-pane-conversation-id-value="${escapeHtml(ctx.conversationId)}"
       ${agentAttachmentDropAttrs(uploadUrl)}>
-      <div class="agent-transcript" id="${ids.transcript(ctx)}" data-agent-pane-target="transcript">${state.transcriptHtml}</div>
+      <div class="agent-transcript" tabindex="0" role="region" aria-label="Agent transcript" id="${ids.transcript(ctx)}" data-agent-pane-target="transcript">${state.transcriptHtml}</div>
       ${await renderAgentPaneComposer({
         ctx,
         action: agentPath(ctx, "/messages"),

@@ -20,9 +20,13 @@
   min-height: 0; overflow-y: auto; scroll-behavior: auto;
   padding-block: 1.875rem;
   padding-inline: var(--agent-inline-gutter);
-  display: block; scrollbar-width: none;
+  display: block; scrollbar-gutter: stable;
 }
-.agent-transcript::-webkit-scrollbar { display: none; }
+/* Keep the design-system scrollbar, but hide its thumb while idle. */
+.agent-transcript:not(.is-scrolling) { scrollbar-color: transparent transparent; }
+.agent-transcript:not(.is-scrolling)::-webkit-scrollbar-thumb { background-color: transparent; }
+/* The scroll region accepts keyboard navigation without outlining the entire pane. */
+.agent-transcript:focus { outline: none; }
 .agent-reconnecting-status {
   position: absolute; z-index: 3; top: 10px; left: 50%; translate: -50% 0;
   padding: 4px 10px; border: 1px solid var(--line-strong); border-radius: var(--radius-round);

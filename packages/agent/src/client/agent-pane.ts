@@ -50,6 +50,7 @@ export function createAgentPaneController(Controller: StimulusControllerConstruc
     private composerMutationObserver?: MutationObserver;
     private reconnectingStatus?: HTMLElement;
     private reconnectingStatusTimer?: ReturnType<typeof setTimeout>;
+    private scrollbarHideTimer?: ReturnType<typeof setTimeout>;
     private transcriptLayoutFrame = 0;
     private transcriptEnd = 0;
     private transcriptScrollTop = 0;
@@ -58,8 +59,13 @@ export function createAgentPaneController(Controller: StimulusControllerConstruc
     private composerRevision = 0;
     private submittedComposer?: { revision: number; attachmentIds: string[] };
     private readonly promptHistory = new PromptHistoryNavigator();
-    private readonly onScroll = (): void => {
+    private readonly onScroll = (event?: Event): void => {
       const el = this.transcriptTarget;
+      if (event) {
+        el.classList.add("is-scrolling");
+        clearTimeout(this.scrollbarHideTimer);
+        this.scrollbarHideTimer = setTimeout(() => el.classList.remove("is-scrolling"), 800);
+      }
       const next = { top: el.scrollTop, end: scrollEnd(el) };
       this.stuck = transcriptFollowingAfterScroll(this.stuck, { top: this.transcriptScrollTop, end: this.transcriptEnd }, next);
       this.transcriptEnd = next.end;
@@ -168,6 +174,8 @@ export function createAgentPaneController(Controller: StimulusControllerConstruc
       this.composerMutationObserver?.disconnect();
       cancelAnimationFrame(this.transcriptLayoutFrame);
       this.transcriptTarget.removeEventListener("scroll", this.onScroll);
+      clearTimeout(this.scrollbarHideTimer);
+      this.transcriptTarget.classList.remove("is-scrolling");
       document.removeEventListener("visibilitychange", this.onVisibilityChange);
       window.visualViewport?.removeEventListener("resize", this.onViewportResize);
       this.formTarget.removeEventListener("submit", this.submitting);
