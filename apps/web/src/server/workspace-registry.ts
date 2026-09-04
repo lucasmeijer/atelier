@@ -1,17 +1,12 @@
 import { mkdir, readFile, rename, writeFile } from "node:fs/promises";
 import { dirname } from "node:path";
 import type { WorkspaceInitInstruction } from "@atelier/workspace";
-import { Type, type TSchema } from "typebox";
+import { Type, type Static, type TSchema } from "typebox";
 import { Value } from "typebox/value";
 
 export type WorkspacePhase = "starting" | "ready" | "checking_delete" | "deleting" | "failed";
 
-export type WorkspaceDeletionState =
-  | { status: "checking" }
-  | { status: "blocked"; fingerprint: string }
-  | { status: "deleting"; forced: boolean }
-  | { status: "failed"; operation: "checking"; error: string }
-  | { status: "failed"; operation: "deleting"; forced: boolean; error: string };
+export type WorkspaceDeletionState = Static<typeof workspaceDeletionStateSchema>;
 
 export interface WorkspaceEntry {
   id: string;
@@ -36,32 +31,11 @@ export interface WorkspaceRegistryCallbacks {
   removed?(id: string): void;
 }
 
-export interface WorkspaceActivityStore {
-  load(): Promise<Record<string, number>>;
-  save(activity: Record<string, number>): Promise<void>;
-}
-
-export interface WorkspaceUnreadOccurrence {
-  /** First transition to unread; stable across repeated occurrences for oldest-ready ordering. */
-  unreadAt: number;
-  /** Exact occurrence identity used for compare-and-clear acknowledgement. */
-  token: number;
-}
-
-export interface WorkspaceUnreadSnapshot {
-  nextToken: number;
-  views: Record<string, Record<string, WorkspaceUnreadOccurrence>>;
-}
-
-export interface WorkspaceUnreadStore {
-  load(): Promise<WorkspaceUnreadSnapshot>;
-  save(unread: WorkspaceUnreadSnapshot): Promise<void>;
-}
-
-export interface WorkspaceDeletionStore {
-  load(): Promise<Record<string, WorkspaceDeletionState>>;
-  save(deletions: Record<string, WorkspaceDeletionState>): Promise<void>;
-}
+export type WorkspaceActivityStore = FileValueStore<Static<typeof workspaceTimestampsSchema>>;
+export type WorkspaceUnreadOccurrence = Static<typeof workspaceUnreadOccurrenceSchema>;
+export type WorkspaceUnreadSnapshot = Static<typeof workspaceUnreadSchema>;
+export type WorkspaceUnreadStore = FileValueStore<WorkspaceUnreadSnapshot>;
+export type WorkspaceDeletionStore = FileValueStore<Static<typeof workspaceDeletionsSchema>>;
 
 export interface WorkspaceRegistryOptions {
   activityStore?: WorkspaceActivityStore;
@@ -82,7 +56,9 @@ const allowedTransitions: WorkspacePhaseTransitions = {
 
 const workspaceTimestampsSchema = Type.Record(Type.String(), Type.Number());
 const workspaceUnreadOccurrenceSchema = Type.Object({
+  /** First transition to unread; stable across repeated occurrences for oldest-ready ordering. */
   unreadAt: Type.Number(),
+  /** Exact occurrence identity used for compare-and-clear acknowledgement. */
   token: Type.Integer({ minimum: 1 }),
 }, { additionalProperties: false });
 const workspaceUnreadSchema = Type.Object({
@@ -103,14 +79,13 @@ interface FileValueStore<T> {
   save(values: T): Promise<void>;
 }
 
-function createFileValueStore<T>(path: string, schema: TSchema, empty: () => T): FileValueStore<T> {
+function createFileValueStore<Schema extends TSchema>(path: string, schema: Schema, empty: () => Static<Schema>): FileValueStore<Static<Schema>> {
   let saveChain = Promise.resolve();
   let tempCounter = 0;
   return {
     async load() {
       try {
-        // SAFETY: The supplied schema validates every loaded value as T.
-        return Value.Parse(schema, JSON.parse(await readFile(path, "utf8"))) as T;
+        return Value.Parse(schema, JSON.parse(await readFile(path, "utf8")));
       } catch (error) {
         if (error instanceof Error && "code" in error && error.code === "ENOENT") return empty();
         throw error;
