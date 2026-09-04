@@ -4,7 +4,7 @@ import { mkdir, readFile, rm, writeFile } from "node:fs/promises";
 import { dirname, join } from "node:path";
 import { fileURLToPath } from "node:url";
 import { requireDocker, runDocker, shellQuote, type AtelierEventBus } from "@atelier/core";
-import { runHostObservableCommand } from "@atelier/observable-terminal/server";
+import { runHostObservableCommand, tailTerminalText } from "@atelier/observable-terminal/server";
 import { buildWorkspaceImageCarrier, defaultAtelierWorkspaceImageSpecifier, findWorkspaceImageCarrier, nativeLinuxDockerPlatform, nestedDockerDaemonInitScript, type ResolvedDockerImagePreload } from "./carrier.ts";
 import { parseWorkspaceImageMetadata, type WorkspaceImageMetadata } from "./metadata.ts";
 import { pruneSupersededWorkspaceImages, workspaceImageKindLabel, type WorkspaceImageKind } from "./prune.ts";
@@ -90,11 +90,6 @@ function appendOutput(task: WorkspaceImageBuildTask, chunk: string): void {
   if (task.output.length > maxBuildOutputBytes) task.output = task.output.slice(-maxBuildOutputBytes);
 }
 
-function tailOutput(output: string): string {
-  const lines = output.replaceAll("\r", "").split("\n");
-  return lines.slice(-120).join("\n").trimEnd();
-}
-
 function imageDetail(task: Pick<WorkspaceImageBuildTask, "tag" | "modules">): string {
   return `Image: ${task.tag}${task.modules.length ? ` · Modules: ${task.modules.join(", ")}` : ""}`;
 }
@@ -107,7 +102,7 @@ async function emitImageStep(events: AtelierEventBus | undefined, workspaceId: s
     label: "Resolve workspace image",
     status,
     detail: imageDetail(task),
-    output: tailOutput(task.output),
+    output: tailTerminalText(task.output),
     error,
   };
   if (task.session) Object.assign(event, { terminal: { kind: "host-tmux" as const, session: task.session } });
@@ -171,7 +166,7 @@ async function waitForBuildTask(task: WorkspaceImageBuildTask, options: ResolveW
   } catch (error) {
     const message = error instanceof Error ? error.message : String(error);
     await emitImageStep(options.events, options.workspaceId, task, "failed", message);
-    throw new Error(`${message}\n\n${tailOutput(task.output)}`.trim());
+    throw new Error(`${message}\n\n${tailTerminalText(task.output)}`.trim());
   }
 }
 
