@@ -4,12 +4,13 @@ import { buttonHtml } from "@atelier/design-system/button";
 import { popupMenuHtml } from "@atelier/design-system/popup";
 import { renderTranscriptionComposerControl, transcriptionComposerController } from "@atelier/transcription/server";
 import { providerBrandIconHtml } from "@atelier/shared";
-import { domId, escapeHtml } from "./html.ts";
+import { domId, escapeHtml, turboStream } from "./html.ts";
 import { launchComposerThinkingLevel, launchComposerThinkingLevels, configuredModelOptionViews, modelRefValue, resolveNewWorkspaceAgentModel, type ModelRef } from "./model-state.ts";
 import type { WorkspaceAgentConversationInfo } from "./session-store.ts";
 import { agentAttachmentDraftId, listStagedAttachments, type StagedAttachment } from "./attachment-drafts.ts";
 import { readInitialPromptDraft } from "./initial-prompt-draft.ts";
 import { formatCost, formatTokens } from "./transcript.ts";
+import { renderWorkspaceCompletionCatalog } from "./completion-catalog.ts";
 import { agentConversationKey, agentPath, ids, type AgentRenderContext } from "./render-context.ts";
 import { renderAttachmentChip } from "./render-attachments.ts";
 
@@ -46,11 +47,11 @@ function agentAttachmentDropAttrs(uploadUrl: string): string {
   return `data-agent-attachments-upload-url-value="${escapeHtml(uploadUrl)}" data-action="${agentAttachmentDropAction}"`;
 }
 
-export async function renderAgentPane(ctx: AgentRenderContext, agent: WorkspaceAgentConversationInfo, state: AgentPaneState): Promise<string> {
-  return await renderAgentPaneFrame(ctx, agent, state);
+export async function renderAgentPane(ctx: AgentRenderContext, agent: WorkspaceAgentConversationInfo, state: AgentPaneState, completionCatalogHtml = ""): Promise<string> {
+  return await renderAgentPaneFrame(ctx, agent, state, completionCatalogHtml);
 }
 
-async function renderAgentPaneFrame(ctx: AgentRenderContext, agent: WorkspaceAgentConversationInfo, state: AgentPaneState): Promise<string> {
+async function renderAgentPaneFrame(ctx: AgentRenderContext, agent: WorkspaceAgentConversationInfo, state: AgentPaneState, completionCatalogHtml: string): Promise<string> {
   const key = agentConversationKey(agent.conversationId);
   const draftId = agentAttachmentDraftId(ctx.workspaceId, ctx.conversationId);
   const attachments = await listStagedAttachments(draftId);
@@ -76,6 +77,7 @@ async function renderAgentPaneFrame(ctx: AgentRenderContext, agent: WorkspaceAge
         includePaneActions: true,
         busy: state.busy,
         stats: state.stats,
+        completionCatalogHtml,
         dropTarget: false,
       })}
     </div>
@@ -105,11 +107,25 @@ interface SharedComposerRenderOptions {
   formActions?: string;
   formTurbo?: boolean;
   launchComposerSettings?: { frameId: string; url: string };
+  completionCatalogHtml?: string;
   dropTarget?: boolean;
 }
 
 export async function renderAgentPaneComposer(options: Omit<SharedComposerRenderOptions, "kind">): Promise<string> {
   return await renderSharedComposer({ ...options, kind: "agent-pane" });
+}
+
+function completionCatalogClass(workspaceId: string): string {
+  return domId("agent_completion_catalog", workspaceId);
+}
+
+function renderAgentCompletionCatalog(ctx: AgentRenderContext, catalog: string): string {
+  return `<div class="${completionCatalogClass(ctx.workspaceId)}" data-agent-completions-target="catalog" hidden>${catalog}</div>`;
+}
+
+export async function renderAgentCompletionCatalogTurboStream(workspaceId: string): Promise<string> {
+  const catalog = await renderWorkspaceCompletionCatalog(workspaceId);
+  return turboStream("update", `.${completionCatalogClass(workspaceId)}`, catalog, { targets: true });
 }
 
 export async function renderLaunchComposer(options: Omit<SharedComposerRenderOptions, "kind">): Promise<string> {
@@ -152,6 +168,7 @@ async function renderSharedComposer(options: SharedComposerRenderOptions): Promi
   ].filter(Boolean).join(" ");
   const composerOverlays = options.includePaneActions && options.ctx ? renderTranscriptEndNavigation() : "";
   const completionMenu = completionsEnabled ? `<div class="agent-completion-menu-host" data-agent-completions-target="menu" hidden></div>` : "";
+  const completionCatalog = options.ctx ? renderAgentCompletionCatalog(options.ctx, options.completionCatalogHtml ?? "") : "";
   const textarea = options.ctx && options.formTarget
     ? renderAgentPanePromptInput(options.ctx, options.initialText ?? "")
     : `<textarea${options.inputId ? ` id="${escapeHtml(options.inputId)}"` : ""} class="composer-input" name="text" rows="${options.rows ?? 2}" enterkeyhint="send" placeholder="${escapeHtml(options.placeholder)}" aria-label="${escapeHtml(options.placeholder)}"${inputTarget ? ` ${inputTarget}` : ""}${inputActions}>${escapeHtml(options.initialText ?? "")}</textarea>`;
@@ -171,6 +188,7 @@ async function renderSharedComposer(options: SharedComposerRenderOptions): Promi
             </div>
           </form>
           ${completionMenu}
+          ${completionCatalog}
           ${options.includePaneActions && options.ctx ? `<form id="${ids.abortForm(options.ctx)}" method="post" action="${escapeHtml(agentPath(options.ctx, "/abort"))}" hidden></form>` : ""}
           ${footer}
         </div>

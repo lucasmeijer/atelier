@@ -1,7 +1,7 @@
 import { autocompleteHtml } from "@atelier/design-system/autocomplete";
 import { composerSubmitKey, focusLikelyOpensSoftwareKeyboard, setTextInputValue, type WorkspaceClientCommand, type WorkspaceClientControllerConstructor as StimulusControllerConstructor, type WorkspaceClientHooks } from "@atelier/shared";
 import { agentCompletionRequest, insertFileCompletion, insertSlashCommand } from "./completion-input.ts";
-import { createHtmlAutocompleteController, type HtmlAutocompleteInteraction } from "./html-autocomplete-controller.ts";
+import { createHtmlAutocompleteController } from "./html-autocomplete-controller.ts";
 import { handleAgentTreeKeydown, handleAgentTreeMenuEvent, selectAgentTreeOption } from "./session-tree.ts";
 
 const treeComingSoonMessage = "/tree feature is coming soon!";
@@ -21,42 +21,6 @@ function runApplicationCommand(option: HTMLElement, input: HTMLInputElement | HT
   input.value = "";
   showApplicationCommandNotice(input, option.dataset.commandMessage!);
   return true;
-}
-
-interface SlashCatalogCacheEntry {
-  html?: string;
-  refresh?: Promise<string>;
-}
-
-const slashCatalogCache = new Map<string, SlashCatalogCacheEntry>();
-const slashCatalogSnapshots = new WeakMap<object, string>();
-
-function slashCatalogUrl(completionsUrl: string | URL): URL {
-  const url = new URL(completionsUrl, window.location.href);
-  const workspacePath = url.pathname.match(/^\/workspaces\/[^/]+/)![0];
-  url.pathname = `${workspacePath}/completion-catalog`;
-  url.search = "";
-  return url;
-}
-
-function refreshSlashCatalog(completionsUrl: string | URL): Promise<string> {
-  const catalogUrl = slashCatalogUrl(completionsUrl);
-  const key = catalogUrl.href;
-  const entry = slashCatalogCache.get(key) ?? {};
-  slashCatalogCache.set(key, entry);
-  if (entry.refresh) return entry.refresh;
-
-  entry.refresh = fetch(catalogUrl, { headers: { Accept: "text/html" } })
-    .then((response) => response.text())
-    .then((html) => {
-      entry.html = html;
-      entry.refresh = undefined;
-      return html;
-    }, (error) => {
-      entry.refresh = undefined;
-      throw error;
-    });
-  return entry.refresh;
 }
 
 function promptTemplateTriggerForHotkey(html: string, hotkey: string): string | undefined {
@@ -132,28 +96,13 @@ function filterSlashCompletionCatalog(html: string, query: string, compactAvaila
   return menu.outerHTML;
 }
 
-async function commandCatalogHtml(url: URL, interaction: HtmlAutocompleteInteraction): Promise<string> {
-  let catalog = slashCatalogSnapshots.get(interaction);
-  if (!catalog) {
-    const entry = slashCatalogCache.get(slashCatalogUrl(url).href);
-    if (entry?.html) {
-      catalog = entry.html;
-      void refreshSlashCatalog(url);
-    } else {
-      catalog = await refreshSlashCatalog(url);
-    }
-    slashCatalogSnapshots.set(interaction, catalog);
-  }
-  return catalog;
+function slashCompletionHtml(catalog: string, query: string, compactAvailable: boolean): string {
+  return filterSlashCompletionCatalog(catalog, query, compactAvailable);
 }
 
-async function slashCompletionHtml(url: URL, interaction: HtmlAutocompleteInteraction, query: string, compactAvailable: boolean): Promise<string> {
-  return filterSlashCompletionCatalog(await commandCatalogHtml(url, interaction), query, compactAvailable);
-}
-
-async function quickLaunchHtml(url: URL, interaction: HtmlAutocompleteInteraction): Promise<string> {
+function quickLaunchHtml(catalog: string): string {
   const container = document.createElement("template");
-  container.innerHTML = (await commandCatalogHtml(url, interaction)).trim();
+  container.innerHTML = catalog.trim();
   return container.content.querySelector<HTMLElement>(".agent-quick-launches")?.outerHTML ?? "";
 }
 
@@ -192,13 +141,14 @@ export function createAgentCompletionsController(Controller: StimulusControllerC
       }
       return { query: completion.query, params, debounceMs: completion.kind === "file" ? 70 : 0 };
     },
-    loadHtml(request, url, interaction) {
+    loadHtml(request, host) {
+      const catalog = host.querySelector<HTMLElement>("[data-agent-completions-target='catalog']")!.innerHTML;
       const html = request.params?.kind === "quick-launch"
-        ? quickLaunchHtml(url, interaction)
+        ? quickLaunchHtml(catalog)
         : request.params?.kind === "slash-command"
-          ? slashCompletionHtml(url, interaction, request.query, request.params.compactAvailable !== "false")
+          ? slashCompletionHtml(catalog, request.query, request.params.compactAvailable !== "false")
           : undefined;
-      return html?.then((content) => markPromptTemplateShortcutConflicts(content, hooks));
+      return html === undefined ? undefined : markPromptTemplateShortcutConflicts(html, hooks);
     },
     select(option, input, url) {
       if (runApplicationCommand(option, input)) return;
@@ -250,14 +200,20 @@ export function createAgentCompletionsController(Controller: StimulusControllerC
   });
 
   return class AgentCompletionsController extends HtmlAutocompleteController {
+    declare readonly catalogTarget: HTMLElement;
+    private catalogObserver?: MutationObserver;
+
     connect(): void {
       super.connect();
       window.addEventListener("keydown", this.promptTemplateHotkey);
-      void refreshSlashCatalog(this.urlValue).then(() => this.input());
+      this.catalogObserver = new MutationObserver(() => this.input());
+      this.catalogObserver.observe(this.catalogTarget, { childList: true });
+      this.input();
     }
 
     disconnect(): void {
       window.removeEventListener("keydown", this.promptTemplateHotkey);
+      this.catalogObserver?.disconnect();
       super.disconnect();
     }
 
@@ -267,8 +223,7 @@ export function createAgentCompletionsController(Controller: StimulusControllerC
       if (!match || this.element.getClientRects().length === 0 || composerIsTranscribing(this.element)) return;
       const resident = this.element.closest<HTMLElement>(".workspace-detail-resident");
       if (resident && !resident.classList.contains("visible")) return;
-      const catalog = slashCatalogCache.get(slashCatalogUrl(this.urlValue).href)?.html;
-      if (!catalog) return;
+      const catalog = this.catalogTarget.innerHTML;
       const hotkey = match[1]!.toLowerCase();
       if (promptTemplateShortcutConflict(hooks, hotkey)) return;
       const trigger = promptTemplateTriggerForHotkey(catalog, hotkey);

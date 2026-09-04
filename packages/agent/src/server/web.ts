@@ -10,8 +10,9 @@ import { handleAgentRequest } from "./routes.ts";
 import { workspaceFileEndpoint } from "./workspace-files.ts";
 import { resolveWorkspacePortProxyTarget } from "./workspace-proxy.ts";
 import { archiveWorkspaceAgentConversation, createNextWorkspaceAgentConversation, ensureDefaultWorkspaceAgentConversation, listWorkspaceAgentConversations, sessionShareDir, sessionShareKeyForInit, sessionShareMountPath, type WorkspaceAgentConversationInfo } from "./session-store.ts";
+import { renderWorkspaceCompletionCatalog } from "./completion-catalog.ts";
 import { agentConversationKey } from "./render-context.ts";
-import { renderAgentPane } from "./render-composer.ts";
+import { renderAgentCompletionCatalogTurboStream, renderAgentPane } from "./render-composer.ts";
 import { resolveNewWorkspaceAgentModel } from "./model-state.ts";
 import { dockerHostAtelierDataPath, getAtelierRuntimeContext, AtelierCoreError, type AtelierEventBus } from "@atelier/core";
 import { agentStaticFiles } from "./static.ts";
@@ -84,10 +85,15 @@ export const workspaceAgentTabProvider = createWorkspaceAgentTabProvider({
   list: listOrCreateWorkspaceAgentConversations,
   async render(conversation) {
     const runtime = await getWorkspaceAgentRuntime(conversation, { events: agentEvents });
+    const [state, completionCatalog] = await Promise.all([
+      runtime.paneState(),
+      renderWorkspaceCompletionCatalog(conversation.workspaceId),
+    ]);
     return await renderAgentPane(
       { workspaceId: conversation.workspaceId, conversationId: conversation.conversationId },
       conversation,
-      await runtime.paneState(),
+      state,
+      completionCatalog,
     );
   },
   dispose: removeWorkspaceAgentRuntime,
@@ -168,8 +174,9 @@ export const agentWorkspaceModule: WorkspaceModule = {
     agentEvents = events;
     registerAgentEvents(events);
     registerSessionShareMountEvents(events);
-    events.on("workspace_agent_turn_finished", ({ workspaceId, conversationId }) => {
+    events.on("workspace_agent_turn_finished", async ({ workspaceId, conversationId }) => {
       context.registry.markViewAttention(workspaceId, agentConversationKey(conversationId));
+      context.broadcastWorkspace(workspaceId, await renderAgentCompletionCatalogTurboStream(workspaceId));
     });
     context.registerProvisioningHook({
       id: "workspace.agent",

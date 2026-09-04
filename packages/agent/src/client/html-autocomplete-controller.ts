@@ -3,12 +3,10 @@ import { agentTreeOwnsMenu } from "./session-tree.ts";
 
 export type HtmlAutocompleteRequest = { query: string; params?: Record<string, string>; debounceMs?: number };
 
-export interface HtmlAutocompleteInteraction {}
-
 export type HtmlAutocompleteOptions = {
   optionSelector: string;
   request(input: HTMLInputElement | HTMLTextAreaElement, force?: boolean): HtmlAutocompleteRequest | undefined;
-  loadHtml?(request: HtmlAutocompleteRequest, url: URL, interaction: HtmlAutocompleteInteraction): Promise<string> | undefined;
+  loadHtml?(request: HtmlAutocompleteRequest, host: HTMLElement): string | Promise<string> | undefined;
   /** Return false when selection starts an interaction that owns the open menu. */
   select(option: HTMLElement, input: HTMLInputElement | HTMLTextAreaElement, url: string): boolean | void;
   keydown?(event: KeyboardEvent, input: HTMLInputElement | HTMLTextAreaElement, url: string, actions: HtmlAutocompleteActions): boolean;
@@ -33,7 +31,7 @@ export type HtmlAutocompleteActions = {
 export function createHtmlAutocompleteController(Controller: StimulusControllerConstructor, autocomplete: HtmlAutocompleteOptions) {
   return class HtmlAutocompleteController extends Controller {
     static values = { url: String };
-    static targets = ["input", "menu"];
+    static targets = ["input", "menu", "catalog"];
     declare readonly element: HTMLElement;
     declare readonly urlValue: string;
     declare readonly inputTarget: HTMLInputElement | HTMLTextAreaElement;
@@ -42,7 +40,6 @@ export function createHtmlAutocompleteController(Controller: StimulusControllerC
     private optionId = 0;
     private debounceTimer: number | undefined;
     private form: HTMLFormElement | null = null;
-    private interaction = {};
 
     connect(): void {
       this.form = this.inputTarget.closest("form");
@@ -198,7 +195,7 @@ export function createHtmlAutocompleteController(Controller: StimulusControllerC
       const url = new URL(this.urlValue, window.location.href);
       url.searchParams.set("q", request.query);
       for (const [name, value] of Object.entries(request.params ?? {})) url.searchParams.set(name, value);
-      const html = await (autocomplete.loadHtml?.(request, url, this.interaction)
+      const html = await (autocomplete.loadHtml?.(request, this.element)
         ?? fetch(url, { headers: { Accept: "text/html" } }).then((response) => response.text()));
       if (id !== this.requestId) return;
       if (!html.trim()) {
@@ -217,7 +214,6 @@ export function createHtmlAutocompleteController(Controller: StimulusControllerC
       this.menuTarget.hidden = true;
       this.inputTarget.removeAttribute("aria-activedescendant");
       this.menuTarget.replaceChildren();
-      this.interaction = {};
     }
 
     private options(): HTMLElement[] {
