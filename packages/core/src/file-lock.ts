@@ -4,20 +4,17 @@ import { dirname } from "node:path";
 export function createProcessFileLock(options: { lockDir(): string; label: string }): <T>(fn: () => Promise<T>) => Promise<T> {
   let processLock: Promise<void> = Promise.resolve();
 
-  return async function withProcessFileLock<T>(fn: () => Promise<T>): Promise<T> {
-    const previous = processLock;
-    let releaseProcessLock!: () => void;
-    processLock = new Promise<void>((resolve) => { releaseProcessLock = resolve; });
-    await previous;
-
-    let releaseFileLock: (() => Promise<void>) | undefined;
-    try {
-      releaseFileLock = await acquireFileLock(options.lockDir(), options.label);
-      return await fn();
-    } finally {
-      await releaseFileLock?.();
-      releaseProcessLock();
-    }
+  return function withProcessFileLock<T>(fn: () => Promise<T>): Promise<T> {
+    const operation = processLock.then(async () => {
+      const releaseFileLock = await acquireFileLock(options.lockDir(), options.label);
+      try {
+        return await fn();
+      } finally {
+        await releaseFileLock();
+      }
+    });
+    processLock = operation.then(() => undefined, () => undefined);
+    return operation;
   };
 }
 
