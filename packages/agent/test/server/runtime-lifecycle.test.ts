@@ -23,6 +23,10 @@ function deferred<Value>(): Deferred<Value> {
 }
 
 type SessionListener = (event: any) => void;
+type ToolStreamEvent =
+  | { type: "toolcall_start"; contentIndex: number; partial: { content: Array<{ name: string }> } }
+  | { type: "toolcall_delta"; delta: string }
+  | { type: "toolcall_end"; toolCall: { id: string; name: string; arguments: { path: string; content: string } } };
 
 interface FakeSessionHarness {
   session: any;
@@ -89,6 +93,12 @@ const emptyStats: AgentStatsView = {
 
 class InspectableAgentRuntime extends RealAgentRuntime {
   private readonly statsCompletions: Array<() => Promise<void>> = [];
+  readonly toolContentUpdates: Array<{ prefix?: string; status: string }> = [];
+
+  protected override streamActiveToolContent(item: Extract<TranscriptItem, { type: "tool" }>): void {
+    this.toolContentUpdates.push({ prefix: item.tool.argsStream, status: item.tool.status });
+    super.streamActiveToolContent(item);
+  }
 
   protected override canonicalItems(_leafId?: string): TranscriptItem[] {
     return [];
@@ -131,6 +141,44 @@ function runtimeFor(session: any, events = createAtelierEventBus()): Inspectable
     { events },
   );
 }
+
+test("tool deltas update authoritative state immediately and coalesce server publications", async () => {
+  const { session, emit } = fakeSession(deferred());
+  const runtime = runtimeFor(session);
+  const subscription = runtime.subscribeLivePresentation(() => {});
+  await subscription.ready;
+  const event = (inner: ToolStreamEvent) => emit({ type: "message_update", assistantMessageEvent: inner });
+  emit({ type: "agent_start" });
+  event({ type: "toolcall_start", contentIndex: 0, partial: { content: [{ name: "write" }] } });
+  const args = { path: "coalescing.js", content: "const n = 42;" };
+  const json = JSON.stringify(args);
+  for (const delta of json) event({ type: "toolcall_delta", delta });
+  const item = runtime.inspectLiveItems().flatMap((item) => item.type === "working" ? item.items : [item]).find((item) => item.type === "tool");
+  expect(item?.type === "tool" && item.tool.argsStream).toBe(json);
+  expect(runtime.toolContentUpdates).toHaveLength(0);
+  await Bun.sleep(70);
+  expect(runtime.toolContentUpdates).toEqual([{ prefix: json, status: "streaming" }]);
+  event({ type: "toolcall_delta", delta: " " });
+  event({ type: "toolcall_end", toolCall: { id: "call", name: "write", arguments: args } });
+  expect(runtime.toolContentUpdates.at(-1)?.status).toBe("running");
+  const count = runtime.toolContentUpdates.length;
+  await Bun.sleep(70);
+  expect(runtime.toolContentUpdates).toHaveLength(count);
+  subscription.unsubscribe();
+});
+
+test("pending tool updates stop when the last subscriber leaves", async () => {
+  const { session, emit } = fakeSession(deferred());
+  const runtime = runtimeFor(session);
+  const subscription = runtime.subscribeLivePresentation(() => {});
+  await subscription.ready;
+  emit({ type: "agent_start" });
+  emit({ type: "message_update", assistantMessageEvent: { type: "toolcall_start", contentIndex: 0, partial: { content: [{ name: "write" }] } } });
+  emit({ type: "message_update", assistantMessageEvent: { type: "toolcall_delta", delta: '{"path":"file.js"' } });
+  subscription.unsubscribe();
+  await Bun.sleep(70);
+  expect(runtime.toolContentUpdates).toHaveLength(0);
+});
 
 test("awaited tree summarization leaves busy and emits one terminal event when navigation fails", async () => {
   const navigation = deferred<{ editorText?: string }>();
@@ -594,7 +642,7 @@ test("a joining snapshot absorbs queued paced text at its actual capture boundar
   const predecessor = runtime.refreshStatsForTest();
   runtime.queueStatsCompletion(() => releaseSnapshotStats.promise);
   const subscribing = runtime.subscribeLivePresentation((html) => secondDeliveries.push(html));
-  await Bun.sleep(20);
+  await Bun.sleep(70);
 
   releasePredecessor.resolve();
   await predecessor;
@@ -606,7 +654,7 @@ test("a joining snapshot absorbs queued paced text at its actual capture boundar
   expect(firstDeliveries.at(-1)).toContain(beforeBoundary);
 
   emit({ type: "message_update", assistantMessageEvent: { type: "text_delta", contentIndex: 0, delta: "Z", partial: { stopReason: "pending", content: [{ type: "text", text: `${beforeBoundary}Z` }] } } });
-  await Bun.sleep(20);
+  await Bun.sleep(70);
   expect(firstDeliveries).toHaveLength(deliveriesAtBoundary);
 
   releaseSnapshotStats.resolve();

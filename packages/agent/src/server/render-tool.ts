@@ -239,8 +239,10 @@ function renderReadDetail(ctx: AgentRenderContext, key: string, tool: ToolView, 
   const window = textWindow(result, "first", count);
   const path = stringArg(toolArgs(tool), "path", "file_path");
   const bodyClass = "agent-tool-code agent-tool-region-body";
-  const shown = tailOutput(codeBlockHtml(window.text, path, bodyClass), moreLink(ctx, key, count, window.hidden, "first"), "first");
-  return `<div class="agent-tool-detail">${fullscreenSourceRegion("Read", `<section class="agent-tool-region agent-read-result">${copyableToolBody(shown, "read result")}</section>`, codeBlockHtml(result, path, bodyClass))}</div>`;
+  const full = codeBlockHtml(result, path, bodyClass);
+  const preview = window.text === result ? full : codeBlockHtml(window.text, path, bodyClass);
+  const shown = tailOutput(preview, moreLink(ctx, key, count, window.hidden, "first"), "first");
+  return `<div class="agent-tool-detail">${fullscreenSourceRegion("Read", `<section class="agent-tool-region agent-read-result">${copyableToolBody(shown, "read result")}</section>`, full)}</div>`;
 }
 
 function renderWriteDetail(ctx: AgentRenderContext, key: string, tool: ToolView, count: number): string {
@@ -249,9 +251,11 @@ function renderWriteDetail(ctx: AgentRenderContext, key: string, tool: ToolView,
   const path = stringArg(args, "path", "file_path");
   const shown = tool.status === "streaming" || tool.status === "running" ? { text: content, hidden: 0 } : textWindow(content, "first", count);
   const bodyClass = "agent-tool-code agent-tool-region-body";
-  const preview = tailOutput(codeBlockHtml(shown.text, path, bodyClass), moreLink(ctx, key, count, shown.hidden, "first"), "first");
+  const full = codeBlockHtml(content, path, bodyClass);
+  const highlighted = shown.text === content ? full : codeBlockHtml(shown.text, path, bodyClass);
+  const preview = tailOutput(highlighted, moreLink(ctx, key, count, shown.hidden, "first"), "first");
   const error = tool.status === "error" && tool.resultText ? `<pre class="agent-tool-error-output">${escapeHtml(trimResult(tool))}</pre>` : "";
-  return `<div class="agent-tool-detail">${fullscreenSourceRegion("Write", `<section class="agent-tool-region agent-write-result">${copyableToolBody(preview, "written content")}</section>`, codeBlockHtml(content, path, bodyClass))}${error}</div>`;
+  return `<div class="agent-tool-detail">${fullscreenSourceRegion("Write", `<section class="agent-tool-region agent-write-result">${copyableToolBody(preview, "written content")}</section>`, full)}${error}</div>`;
 }
 
 function editDiffs(tool: ToolView, contextual: boolean): FileDiffMetadata[] {

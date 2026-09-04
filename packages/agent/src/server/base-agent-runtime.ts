@@ -75,8 +75,7 @@ function bashTimeoutSeconds(args: JsonObject): number {
 
 /** Only attach the inline terminal when a tool call has been running this long. */
 const terminalRevealMs = 3000;
-const assistantTextFlushIntervalMs = 16;
-const assistantTextCharactersPerFlush = 24;
+const liveContentFlushIntervalMs = 50;
 export abstract class BaseAgentRuntime implements WorkspaceAgentRuntime {
   workspaceId: string;
   conversationId: string;
@@ -87,6 +86,7 @@ export abstract class BaseAgentRuntime implements WorkspaceAgentRuntime {
   protected live?: LiveState;
   private announcedBusy = false;
   private disposed = false;
+  private toolArgsFlushTimer?: ReturnType<typeof setTimeout>;
   protected liveSubscriberCount = 0;
   private readonly livePresentation = createSnapshotFirstLivePresentation((publishToExisting) => {
     this.alignTextStreamForSnapshot(publishToExisting);
@@ -125,7 +125,10 @@ export abstract class BaseAgentRuntime implements WorkspaceAgentRuntime {
       active = false;
       subscription.unsubscribe();
       this.liveSubscriberCount -= 1;
-      if (this.liveSubscriberCount === 0) this.cancelTextFlush();
+      if (this.liveSubscriberCount === 0) {
+        this.cancelTextFlush();
+        this.cancelToolArgsFlush();
+      }
     };
     const ready = subscription.ready.catch((error) => {
       unsubscribe();
@@ -156,6 +159,7 @@ export abstract class BaseAgentRuntime implements WorkspaceAgentRuntime {
   protected markDisposed(): boolean {
     if (this.disposed) return false;
     this.disposed = true;
+    this.cancelToolArgsFlush();
     return true;
   }
 
@@ -254,23 +258,21 @@ export abstract class BaseAgentRuntime implements WorkspaceAgentRuntime {
     if (!streamState || streamState.timer || this.liveSubscriberCount === 0) return;
     streamState.timer = setTimeout(() => {
       streamState.timer = undefined;
-      this.flushTextChunk();
-    }, assistantTextFlushIntervalMs);
+      this.flushText();
+    }, liveContentFlushIntervalMs);
   }
 
-  private flushTextChunk(): void {
+  private flushText(): void {
     const item = this.openTextItem();
     const streamState = this.live?.textStream;
     if (!item || !streamState) return;
-    const nextLength = Math.min(item.text.length, streamState.displayedLength + assistantTextCharactersPerFlush);
-    if (nextLength === streamState.displayedLength) return;
-    const update = streamState.renderer.render(item.text.slice(0, nextLength));
-    streamState.displayedLength = nextLength;
+    if (item.text.length === streamState.displayedLength) return;
+    const update = streamState.renderer.render(item.text);
+    streamState.displayedLength = item.text.length;
     const stable = update.stableHtmlAddition
       ? turboStream("append", ids.itemTextStable(this.ctx, item.key), update.stableHtmlAddition)
       : "";
     this.streamText(stable + turboStream("update", ids.itemTextTail(this.ctx, item.key), update.tailHtml));
-    if (streamState.displayedLength < item.text.length) this.scheduleTextFlush();
   }
 
   private releaseTextStream(): void {
@@ -279,6 +281,10 @@ export abstract class BaseAgentRuntime implements WorkspaceAgentRuntime {
   }
 
   protected streamActiveToolContent(item: Extract<TranscriptItem, { type: "tool" }>): void {
+    if (this.liveSubscriberCount === 0) {
+      this.livePresentation.publish();
+      return;
+    }
     const content = renderActiveToolContent(this.ctx, item.key, item.tool);
     const summary = turboStream("update", ids.itemSummaryContent(this.ctx, item.key), content.summary);
     const detail = content.detail === undefined ? "" : turboStream("update", ids.detailFrame(this.ctx, item.key), content.detail);
@@ -294,7 +300,7 @@ export abstract class BaseAgentRuntime implements WorkspaceAgentRuntime {
       item.live = false;
       item.final = final;
       if (!final) live.lastActivityAt = Date.now();
-      this.stream(turboStream("replace", ids.item(this.ctx, item.key), renderTranscriptItem(this.ctx, item)));
+      if (this.liveSubscriberCount > 0) this.stream(turboStream("replace", ids.item(this.ctx, item.key), renderTranscriptItem(this.ctx, item)));
     }
     live.open = undefined;
   }
@@ -391,6 +397,7 @@ export abstract class BaseAgentRuntime implements WorkspaceAgentRuntime {
   }
 
   protected liveToolStreamStart(name: string): number {
+    this.cancelToolArgsFlush();
     const live = this.liveEnsure();
     if (live.open?.kind === "text") this.finishOpenText(false);
     if (live.open?.kind === "thinking") this.finishOpenThinking();
@@ -411,11 +418,22 @@ export abstract class BaseAgentRuntime implements WorkspaceAgentRuntime {
     const item = live.items[live.open.index];
     if (item?.type !== "tool") return;
     item.tool.argsStream = (item.tool.argsStream ?? "") + text;
-    try { item.tool.args = JSON.parse(item.tool.argsStream); } catch { /* partial external JSON */ }
-    this.streamActiveToolContent(item);
+    // The authoritative prefix changes immediately. Only rendering is coalesced.
+    this.livePresentation.publish();
+    if (this.liveSubscriberCount === 0 || this.toolArgsFlushTimer) return;
+    this.toolArgsFlushTimer = setTimeout(() => {
+      this.toolArgsFlushTimer = undefined;
+      this.streamActiveToolContent(item);
+    }, liveContentFlushIntervalMs);
+  }
+
+  private cancelToolArgsFlush(): void {
+    if (this.toolArgsFlushTimer) clearTimeout(this.toolArgsFlushTimer);
+    this.toolArgsFlushTimer = undefined;
   }
 
   protected liveToolCallComplete(call: LiveToolCall): void {
+    this.cancelToolArgsFlush();
     const { callId, name, args } = call;
     const live = this.liveEnsure();
     const streamedIndex = live.open?.kind === "toolargs" ? live.open.index : undefined;
@@ -550,6 +568,7 @@ export abstract class BaseAgentRuntime implements WorkspaceAgentRuntime {
 
   /** End the live model synchronously; terminal lifecycle must not wait on stats I/O. */
   protected finishLivePresentation(): void {
+    this.cancelToolArgsFlush();
     // Supersede any paced tail with one canonical full-source render before the
     // live state (and its renderer session) is discarded.
     this.finishOpenText(false);
@@ -558,7 +577,7 @@ export abstract class BaseAgentRuntime implements WorkspaceAgentRuntime {
       for (const timer of this.live.terminalTimers.values()) clearTimeout(timer);
       if (this.live.working.completedAt === undefined) {
         this.live.working.stoppedAt = Date.now();
-        this.stream(turboStream("replace", ids.item(this.ctx, this.live.working.key), renderTranscriptItem(this.ctx, this.liveWorkingSection(this.live))));
+        if (this.liveSubscriberCount > 0) this.stream(turboStream("replace", ids.item(this.ctx, this.live.working.key), renderTranscriptItem(this.ctx, this.liveWorkingSection(this.live))));
       }
     }
     this.live = undefined;

@@ -19,6 +19,7 @@ const annotationCSS = `[data-line-annotation]:has(slot[name^="annotation-additio
 function diffOptions(presentation: "review" | "tool") {
   const review = presentation === "review";
   return {
+    preferredHighlighter: "shiki-wasm" as const,
     theme: atelierPierreTheme,
     themeType: "dark" as const,
     diffStyle: "unified" as const,

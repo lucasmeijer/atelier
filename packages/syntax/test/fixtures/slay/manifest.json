@@ -1,0 +1,36 @@
+{
+  "workspaceId": "61f5996e",
+  "conversationId": "5ab1f00b-c2fa-4d13-add7-aba811324ac0",
+  "files": {
+    "style.css": {
+      "sha256": "d9656f9798646c424539f74e60b233fee85f9ba56d6532f1dd28423a5c3f8c99",
+      "bytes": 9634,
+      "characters": 9634,
+      "longestLine": 9495
+    },
+    "view.js": {
+      "sha256": "f3aba436712cb70a20ff9784e11fc27125869573fa42981cfa25cc2007140f1e",
+      "bytes": 5660,
+      "characters": 5660,
+      "longestLine": 2122
+    },
+    "board.js": {
+      "sha256": "7b5e245d50bb7b473527ed10661fd9c4ff926550552b42edc0607e8d85f122d7",
+      "bytes": 1502,
+      "characters": 1502,
+      "longestLine": 1069
+    },
+    "constructor.js": {
+      "sha256": "be546f4410af15d85bdaf8da196422b4d08b8dbcafb6e4ce1e238865e93712f5",
+      "bytes": 2123,
+      "characters": 2123,
+      "longestLine": 2122
+    },
+    "index.html": {
+      "sha256": "b0a79cdcbdd4d33b6cd95b71681ec96416f7c494b118674910109b6875298a9e",
+      "bytes": 3670,
+      "characters": 3634,
+      "longestLine": 3634
+    }
+  }
+}

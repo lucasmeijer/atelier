@@ -1,0 +1,7 @@
+export const W=35,H=25;
+export const COLORS=[0x8cae69,0xe4ad62,0xcd8581,0x9c8cbc,0x70aeb9,0xd1cc80];
+export const PLAYERS=['The Mossfolk','The Amberlings','The Roseguard','The Duskwings','The Tidekeepers','The Sunseeds'];
+export const DIRS=[[1,0],[-1,0],[0,1],[0,-1],[1,-1],[-1,1]];
+export const key=(q,r)=>r*W+q;
+export function neighbors(c,cells){return DIRS.map(([q,r])=>cells.find(x=>x.q===c.q+q&&x.r===c.r+r)).filter(Boolean)}
+export function makeBoard(seed=42){let s=seed;const rand=()=>{s=(s*1664525+1013904223)>>>0;return s/4294967296};const cells=[];for(let r=0;r<H;r++)for(let q=0;q<W;q++){const x=Math.sqrt(3)*(q+r/2-23),z=1.5*(r-12);const a=Math.atan2(z/16,x/23);const edge=1+.075*Math.sin(a*5+1)+.06*Math.cos(a*9)+.04*Math.sin(a*13);const land=(x*x/529+z*z/256)<edge && !(q===18&&r===10)&&!(q===17&&r===11);if(!land)continue;let owner=Math.floor(((a+Math.PI*2+Math.PI/6)%(Math.PI*2))/(Math.PI/3));cells.push({id:key(q,r),q,r,x,z,owner,piece:null,moved:false,money:0,size:0});}for(const c of cells){const coast=neighbors(c,cells).length<6;const n=rand();if(n<(coast?.17:.075))c.piece=coast?'palm':'tree';}for(let p=0;p<6;p++){const group=cells.filter(c=>c.owner===p);const a=p*Math.PI/3;const near=[...group].sort((c,d)=>Math.hypot(c.x-11*Math.cos(a),c.z-8*Math.sin(a))-Math.hypot(d.x-11*Math.cos(a),d.z-8*Math.sin(a)));near[0].piece='village';near[0].money=45;near[0].size=group.length;near[1].piece=1;near[2].piece=1;near[4].piece='castle';near[6].piece=2;near[9].piece=3;}return cells;}
