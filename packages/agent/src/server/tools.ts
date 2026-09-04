@@ -18,28 +18,6 @@ export function normalizeWorkspacePath(path: string): string {
   return absolute;
 }
 
-export function applyExactEdits(content: string, edits: Array<{ oldText: string; newText: string }>): string {
-  const ranges: Array<{ start: number; end: number; newText: string }> = [];
-  for (const edit of edits) {
-    if (!edit.oldText) throw new Error("oldText must not be empty");
-    const first = content.indexOf(edit.oldText);
-    if (first === -1) throw new Error(`oldText not found: ${edit.oldText.slice(0, 80)}`);
-    if (content.indexOf(edit.oldText, first + edit.oldText.length) !== -1) throw new Error(`oldText is not unique: ${edit.oldText.slice(0, 80)}`);
-    ranges.push({ start: first, end: first + edit.oldText.length, newText: edit.newText });
-  }
-  ranges.sort((a, b) => a.start - b.start);
-  for (let i = 1; i < ranges.length; i += 1) {
-    if (ranges[i].start < ranges[i - 1].end) throw new Error("edits overlap");
-  }
-  let result = "";
-  let cursor = 0;
-  for (const range of ranges) {
-    result += content.slice(cursor, range.start) + range.newText;
-    cursor = range.end;
-  }
-  return result + content.slice(cursor);
-}
-
 const supportedImageMimeTypes = new Set(["image/jpeg", "image/png", "image/gif", "image/webp", "image/bmp"]);
 
 async function detectWorkspaceImageMimeType(workspaceId: string, absolutePath: string): Promise<string | null> {

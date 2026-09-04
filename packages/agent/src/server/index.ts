@@ -28,7 +28,6 @@ export { renderAgentPane, renderAgentPaneComposer, renderLaunchComposer, renderL
 export { agentWorkspaceModule, agentWorkspaceModule as atelierServerModule, workspaceAgentTabProvider } from "./web.ts";
 export { prepareNewWorkspaceAgentParameters, rememberNewWorkspaceAgentSettings } from "./model-state.ts";
 export {
-  applyExactEdits,
   createDeleteCurrentWorkspaceTool,
   createWorkspaceAgentTools,
   normalizeWorkspacePath,

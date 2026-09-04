@@ -1,7 +1,6 @@
 import { describe, expect, test } from "bun:test";
 import { Type } from "typebox";
 import {
-  applyExactEdits,
   createWorkspaceAgentTools,
   executeDeleteCurrentWorkspace,
   normalizeWorkspacePath,
@@ -19,17 +18,6 @@ describe("workspace agent tools", () => {
     expect(normalizeWorkspacePath("../foo.ts")).toBe("/foo.ts");
     expect(normalizeWorkspacePath("/etc/passwd")).toBe("/etc/passwd");
     expect(normalizeWorkspacePath("/workspace/work/x")).toBe("/workspace/work/x");
-  });
-
-  test("applies exact edits", () => {
-    expect(applyExactEdits("hello world", [{ oldText: "world", newText: "atelier" }])).toBe("hello atelier");
-    expect(applyExactEdits("a b c", [{ oldText: "a", newText: "A" }, { oldText: "c", newText: "C" }])).toBe("A b C");
-  });
-
-  test("rejects missing, duplicate, and overlapping edits", () => {
-    expect(() => applyExactEdits("abc", [{ oldText: "x", newText: "y" }])).toThrow();
-    expect(() => applyExactEdits("abc abc", [{ oldText: "abc", newText: "x" }])).toThrow();
-    expect(() => applyExactEdits("abcdef", [{ oldText: "abc", newText: "x" }, { oldText: "bcd", newText: "y" }])).toThrow();
   });
 
   test("present tool uses a top-level object schema accepted by Moonshot", () => {
