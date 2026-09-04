@@ -9,6 +9,9 @@ atelier_data_dir="/var/lib/atelier"
 atelier_port="80"
 atelier_workspace_slice="atelier-workspaces.slice"
 atelier_reserved_memory_bytes=$((2 * 1024 * 1024 * 1024))
+workspace_memory_bytes=""
+cpu_count=""
+workspace_cpu_quota=""
 pull_only=0
 
 if [ -t 1 ] && command -v tput >/dev/null 2>&1 && [ -n "${TERM:-}" ]; then
@@ -229,10 +232,11 @@ latency_rating() {
 measure_latency() {
   local client_ip="$1"
   local latency_output="$2"
+  local ssh_client_address ssh_client_port ssh_server_address ssh_server_port
 
   if [ -n "${SSH_CONNECTION:-}" ] && command_exists ss; then
-    set -- $SSH_CONNECTION
-    ss -tin "src $3:$4 dst $1:$2" >"$latency_output" 2>&1
+    read -r ssh_client_address ssh_client_port ssh_server_address ssh_server_port <<<"$SSH_CONNECTION"
+    ss -tin "src $ssh_server_address:$ssh_server_port dst $ssh_client_address:$ssh_client_port" >"$latency_output" 2>&1
     grep -q 'rtt:' "$latency_output" && return
   fi
 
@@ -308,6 +312,46 @@ check_ssh_latency() {
   else
     rm -f "$latency_output"
   fi
+}
+
+require_supported_host() {
+  local command controllers total_memory_kib total_memory_bytes
+
+  info "Checking host requirements..."
+  for command in awk cat curl getconf grep head mktemp ps sed timeout tr; do
+    command_exists "$command" || fail "$command is required to install Atelier"
+  done
+  command_exists systemctl || fail "Atelier workspace resource isolation requires systemd"
+  [ "$(ps -p 1 -o comm= | tr -d ' ')" = systemd ] || fail "Atelier workspace resource isolation requires systemd as PID 1"
+  [ -f /sys/fs/cgroup/cgroup.controllers ] || fail "Atelier requires cgroup v2 for workspace resource isolation; this host appears to use cgroup v1"
+
+  controllers=" $(cat /sys/fs/cgroup/cgroup.controllers) "
+  for controller in cpu io memory pids; do
+    case "$controllers" in
+      *" $controller "*) ;;
+      *) fail "Atelier requires the cgroup v2 $controller controller" ;;
+    esac
+  done
+
+  total_memory_kib="$(awk '/^MemTotal:/ { print $2; exit }' /proc/meminfo)"
+  total_memory_bytes=$((total_memory_kib * 1024))
+  workspace_memory_bytes=$((total_memory_bytes - atelier_reserved_memory_bytes))
+  [ "$workspace_memory_bytes" -ge $((1024 * 1024 * 1024)) ] || fail "Atelier requires at least 3 GiB of memory: 2 GiB is reserved for Atelier and the host"
+
+  cpu_count="$(getconf _NPROCESSORS_ONLN)"
+  [ "$cpu_count" -ge 2 ] || fail "Atelier requires at least 2 logical CPUs: one CPU is reserved from workspace use"
+  workspace_cpu_quota=$(((cpu_count - 1) * 100))
+
+  if ! command_exists docker \
+    && ! command_exists apt-get \
+    && ! command_exists dnf \
+    && ! command_exists yum \
+    && ! command_exists zypper \
+    && ! command_exists pacman; then
+    fail "could not find Docker or a supported package manager to install it"
+  fi
+
+  success "Host requirements met: $((workspace_memory_bytes / 1024 / 1024)) MiB and $((cpu_count - 1)) CPU(s) available to workspaces"
 }
 
 install_docker() {
@@ -440,6 +484,7 @@ require_tailscale() {
     [ "$backend_state" = Running ] || fail "Tailscale did not come up (state: ${backend_state:-unknown})"
   fi
 
+  [ -S /var/run/tailscale/tailscaled.sock ] || fail "tailscaled local API socket not found"
   tailscale_ip="$(tailscale ip -4 | head -n 1)"
   [ -n "$tailscale_ip" ] || fail "could not determine this machine's Tailscale IPv4 address"
 
@@ -456,9 +501,6 @@ require_tailscale() {
 
 configure_tailscale_serve() {
   local config_file output_file
-
-  command_exists curl || fail "curl is required to configure Tailscale Serve"
-  [ -S /var/run/tailscale/tailscaled.sock ] || fail "tailscaled local API socket not found"
 
   info "Configuring Tailscale Serve for Atelier..."
   config_file="$(mktemp)"
@@ -484,8 +526,6 @@ configure_tailscale_serve() {
 
 prepare_tailscale_https() {
   local cert_file key_file output_file
-
-  command_exists timeout || fail "timeout is required to prepare Tailscale HTTPS"
 
   cert_file="$(mktemp)"
   key_file="$(mktemp)"
@@ -522,31 +562,29 @@ pull_atelier_images() {
   pull_required_workspace_images
 }
 
-configure_workspace_resource_controls() {
-  local controllers total_memory_kib total_memory_bytes workspace_memory_bytes cpu_count workspace_cpu_quota slice_path slice_cgroup cgroup_driver cpu_quota cpu_period
+prepare_installation_assets() {
+  local certificate_pid images_pid certificate_status=0 images_status=0
 
-  if [ ! -f /sys/fs/cgroup/cgroup.controllers ]; then
-    fail "Atelier requires cgroup v2 for workspace resource isolation; this host appears to use cgroup v1"
+  prepare_tailscale_https &
+  certificate_pid="$!"
+  pull_atelier_images &
+  images_pid="$!"
+
+  wait "$images_pid" || images_status="$?"
+  if kill -0 "$certificate_pid" 2>/dev/null; then
+    info "Docker image preparation finished; waiting for Tailscale HTTPS certificate..."
   fi
-  [ "$(ps -p 1 -o comm= | tr -d ' ')" = systemd ] || fail "Atelier workspace resource isolation requires systemd as PID 1"
-  controllers=" $(cat /sys/fs/cgroup/cgroup.controllers) "
-  for controller in cpu io memory pids; do
-    case "$controllers" in
-      *" $controller "*) ;;
-      *) fail "Atelier requires the cgroup v2 $controller controller" ;;
-    esac
-  done
+  wait "$certificate_pid" || certificate_status="$?"
+
+  [ "$images_status" -eq 0 ] || return "$images_status"
+  [ "$certificate_status" -eq 0 ] || return "$certificate_status"
+}
+
+configure_workspace_resource_controls() {
+  local slice_path slice_cgroup cgroup_driver cpu_quota cpu_period
 
   cgroup_driver="$(docker info --format '{{.CgroupDriver}}')"
   [ "$cgroup_driver" = systemd ] || fail "Atelier requires Docker's systemd cgroup driver (found $cgroup_driver)"
-
-  total_memory_kib="$(awk '/^MemTotal:/ { print $2; exit }' /proc/meminfo)"
-  total_memory_bytes=$((total_memory_kib * 1024))
-  workspace_memory_bytes=$((total_memory_bytes - atelier_reserved_memory_bytes))
-  [ "$workspace_memory_bytes" -ge $((1024 * 1024 * 1024)) ] || fail "Atelier requires at least 3 GiB of memory: 2 GiB is reserved for Atelier and the host"
-  cpu_count="$(getconf _NPROCESSORS_ONLN)"
-  [ "$cpu_count" -ge 2 ] || fail "Atelier requires at least 2 logical CPUs: one CPU is reserved from workspace use"
-  workspace_cpu_quota=$(((cpu_count - 1) * 100))
 
   slice_path="/etc/systemd/system/$atelier_workspace_slice"
   info "Reserving 2 GiB memory and 1 CPU from all workspace containers..."
@@ -575,16 +613,19 @@ EOF
 }
 
 install_atelier() {
+  local updater_ids updater_id
+
   mkdir -p "$atelier_data_dir"
   chown 1000:1000 "$atelier_data_dir"
   chmod 0755 "$atelier_data_dir"
   success "Data directory ready: $atelier_data_dir"
 
-  pull_atelier_images
-
-  if docker ps -aq --filter "name=^/atelier-updater-" | grep -q .; then
+  updater_ids="$(docker ps -aq --filter "name=^/atelier-updater-")"
+  if [ -n "$updater_ids" ]; then
     info "Removing stale Atelier update helpers..."
-    docker rm -f $(docker ps -aq --filter "name=^/atelier-updater-") >/dev/null
+    while IFS= read -r updater_id; do
+      docker rm -f "$updater_id" >/dev/null
+    done <<<"$updater_ids"
     success "Stale Atelier update helpers removed"
   fi
 
@@ -619,28 +660,41 @@ install_atelier() {
   success "Atelier container started"
 }
 
-follow_atelier_logs() {
+show_atelier_startup_failure() {
+  log "" >&2
+  warning "Recent Atelier logs:" >&2
+  docker logs --tail 100 "$atelier_name" >&2 || true
+}
+
+wait_for_atelier() {
+  local readiness_url readiness_response deadline
+
+  readiness_url="http://127.0.0.1:$atelier_port/up"
+  deadline=$((SECONDS + 120))
+  info "Waiting for Atelier to become ready..."
+
+  while [ "$SECONDS" -lt "$deadline" ]; do
+    if readiness_response="$(curl -fsS --max-time 2 "$readiness_url" 2>/dev/null)" \
+      && [ "$readiness_response" = ok ] \
+      && [ "$(docker inspect --format '{{.State.Running}}' "$atelier_name")" = true ]; then
+      return
+    fi
+    if [ "$(docker inspect --format '{{.State.Running}}' "$atelier_name")" != true ]; then
+      show_atelier_startup_failure
+      fail "Atelier exited before becoming ready"
+    fi
+    sleep 1
+  done
+
+  show_atelier_startup_failure
+  fail "Atelier did not become ready within 120 seconds"
+}
+
+finish_installation() {
   log ""
-  log "${bold}Atelier is starting. Following logs now.${reset}"
-  log "Press Ctrl-C to stop watching logs; Atelier will keep running."
-  log ""
-
-  docker logs -f "$atelier_name" &
-  local logs_pid="$!"
-
-  trap '
-    trap - INT TERM
-    log ""
-    log "Stopped watching logs. Atelier is still running."
-    kill "$logs_pid" >/dev/null 2>&1 || true
-    wait "$logs_pid" >/dev/null 2>&1 || true
-    exit 0
-  ' INT TERM
-
-  local logs_status=0
-  wait "$logs_pid" || logs_status="$?"
-  trap - INT TERM
-  return "$logs_status"
+  success "Atelier is ready"
+  log "Open ${bold}https://$atelier_public_host/${reset}"
+  log "Atelier will keep running in the background."
 }
 
 main() {
@@ -652,7 +706,6 @@ main() {
 
   require_linux
   require_root
-  check_ssh_latency
 
   if [ "$pull_only" -eq 1 ]; then
     install_docker
@@ -662,14 +715,17 @@ main() {
     return
   fi
 
+  require_supported_host
   require_tailscale
+  check_ssh_latency
   install_docker
   start_docker
   configure_workspace_resource_controls
   configure_tailscale_serve
-  prepare_tailscale_https
+  prepare_installation_assets
   install_atelier
-  follow_atelier_logs
+  wait_for_atelier
+  finish_installation
 }
 
 main "$@"
