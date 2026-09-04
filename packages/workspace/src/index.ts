@@ -78,7 +78,6 @@ export function generateWorkspaceId(): string { return crypto.randomUUID().repla
 export function workspaceContainerName(id: string): string { return `atelier-${id}`; }
 
 function workspacePublishHost(): string { return "127.0.0.1"; }
-function workspaceConnectHost(): string { return "127.0.0.1"; }
 async function configuredWorkspaceCgroupParent(): Promise<string | undefined> {
   const inspected = await runDocker(["inspect", "--format", `{{index .Config.Labels "${workspaceCgroupParentLabel}"}}`, hostname()]);
   if (inspected.exitCode !== 0) return undefined;
@@ -588,56 +587,45 @@ export async function createWorkspace(options: CreateWorkspaceOptions = {}): Pro
   return { id };
 }
 
-interface WorkspacePublishedEndpoint { host: string; port: number }
+const workspacePublishedPortCache = new Map<string, Promise<number>>();
 
-const workspacePublishedEndpointCache = new Map<string, Promise<WorkspacePublishedEndpoint>>();
-
-function workspacePublishedEndpointCacheKey(id: string, containerPort: number): string {
+function workspacePublishedPortCacheKey(id: string, containerPort: number): string {
   return `${namespace()}\0${id}\0${containerPort}`;
 }
 
-function clearWorkspacePublishedEndpointCache(id: string): void {
+function clearWorkspacePublishedPortCache(id: string): void {
   const prefix = `${namespace()}\0${id}\0`;
-  for (const key of workspacePublishedEndpointCache.keys()) {
-    if (key.startsWith(prefix)) workspacePublishedEndpointCache.delete(key);
+  for (const key of workspacePublishedPortCache.keys()) {
+    if (key.startsWith(prefix)) workspacePublishedPortCache.delete(key);
   }
 }
 
-async function inspectWorkspacePublishedEndpoint(id: string, containerPort: number): Promise<WorkspacePublishedEndpoint> {
+async function inspectWorkspacePublishedPort(id: string, containerPort: number): Promise<number> {
   await resolveWorkspace(id);
   const result = await runDocker(["port", workspaceContainerName(id), `${containerPort}/tcp`]);
   if (result.exitCode !== 0) throw new AtelierCoreError("workspace_port_not_found", result.stderr.trim() || `workspace ${id} does not publish port ${containerPort}`);
   const line = result.stdout.trim().split(/\n+/)[0] ?? "";
   const match = line.match(/^\[([^\]]+)\]:(\d+)$/) ?? line.match(/^(.+):(\d+)$/);
   if (!match) throw new AtelierCoreError("workspace_port_not_found", `could not parse published port for ${id}:${containerPort}: ${line}`);
-  return { host: match[1]!, port: Number(match[2]!) };
+  return Number(match[2]!);
 }
 
-async function workspacePublishedEndpoint(id: string, containerPort: number): Promise<WorkspacePublishedEndpoint> {
-  const key = workspacePublishedEndpointCacheKey(id, containerPort);
-  const cached = workspacePublishedEndpointCache.get(key);
+async function workspacePublishedPort(id: string, containerPort: number): Promise<number> {
+  const key = workspacePublishedPortCacheKey(id, containerPort);
+  const cached = workspacePublishedPortCache.get(key);
   if (cached) return await cached;
 
-  const inspected = inspectWorkspacePublishedEndpoint(id, containerPort).catch((error) => {
-    workspacePublishedEndpointCache.delete(key);
+  const inspected = inspectWorkspacePublishedPort(id, containerPort).catch((error) => {
+    workspacePublishedPortCache.delete(key);
     throw error;
   });
-  workspacePublishedEndpointCache.set(key, inspected);
+  workspacePublishedPortCache.set(key, inspected);
   return await inspected;
-}
-
-async function reachableWorkspacePublishedEndpoint(id: string, containerPort: number): Promise<WorkspacePublishedEndpoint> {
-  const endpoint = await workspacePublishedEndpoint(id, containerPort);
-  return { host: workspaceConnectHost(), port: endpoint.port };
-}
-
-function endpointAuthority({ host, port }: WorkspacePublishedEndpoint): string {
-  return `${host.includes(":") && !host.startsWith("[") ? `[${host}]` : host}:${port}`;
 }
 
 export async function workspacePortUrl(id: string, containerPort: number, pathAndSearch: string, protocol = "http:"): Promise<URL> {
   const path = pathAndSearch.startsWith("/") ? pathAndSearch : `/${pathAndSearch}`;
-  return new URL(path, `${protocol}//${endpointAuthority(await reachableWorkspacePublishedEndpoint(id, containerPort))}`);
+  return new URL(path, `${protocol}//127.0.0.1:${await workspacePublishedPort(id, containerPort)}`);
 }
 
 export async function workspacePreviewPortUrl(id: string, containerPort: number, pathAndSearch: string, protocol = "http:"): Promise<URL> {
@@ -690,7 +678,7 @@ export async function deleteWorkspace(id: string, options: DeleteWorkspaceOption
   }
   if (containerExists) await requireDocker(["rm", "-f", workspaceContainerName(id)]);
   await retireWorkspaceId(id);
-  clearWorkspacePublishedEndpointCache(id);
+  clearWorkspacePublishedPortCache(id);
   await options.events?.emit("workspace_deleted", { workspaceId: id });
   await deleteWorkspaceWorkDir(id);
   return null;
