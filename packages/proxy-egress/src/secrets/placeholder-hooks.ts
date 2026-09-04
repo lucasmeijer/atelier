@@ -36,27 +36,25 @@ export function createHttpHooks(options: CreateHttpHooksOptions = {}): CreateHtt
   const configuredAllowedHosts = options.allowedHosts === undefined ? ["*"] : uniqueHosts(options.allowedHosts);
   const allowedInternalHosts = uniqueHosts(options.allowedInternalHosts ?? []);
   const allowedHosts = configuredAllowedHosts.includes("*") ? ["*"] : uniqueHosts([...configuredAllowedHosts, ...allowedInternalHosts]);
-  const secretEntries = new Map<string, SecretEntry>();
+  const entries: SecretEntry[] = [];
 
   for (const [name, secret] of Object.entries(options.secrets ?? {})) {
     const placeholder = secret.placeholder ?? makeDefaultSecretPlaceholder();
     if (!placeholder) throw new Error(`invalid placeholder for secret: ${name}`);
-    assertSecretPlaceholderIsSafe(name, placeholder, secretEntries.values());
+    assertSecretPlaceholderIsSafe(name, placeholder, entries);
     env[name] = placeholder;
-    secretEntries.set(name, { name, placeholder, value: secret.value, hosts: uniqueHosts(secret.hosts) });
+    entries.push({ name, placeholder, value: secret.value, hosts: uniqueHosts(secret.hosts) });
   }
 
-  const getEntries = () => Array.from(secretEntries.values());
-  const secrets = getEntries().map((entry) => ({ name: entry.name, placeholder: entry.placeholder, hosts: [...entry.hosts] }));
+  const secrets = entries.map((entry) => ({ name: entry.name, placeholder: entry.placeholder, hosts: [...entry.hosts] }));
 
   const applySecretsToRequest = (request: Request): Request => {
     const hostname = getHostname(request.url);
-    const entries = getEntries();
     assertSecretValuesAllowedForHost(request, hostname, entries, options.replaceSecretsInQuery ?? false);
     const headers = replaceSecretPlaceholdersInHeaders(request.headers, hostname, entries);
     const url = replaceSecretPlaceholdersInUrl(request.url, hostname, entries, options.replaceSecretsInPath ?? false, options.replaceSecretsInQuery ?? false);
     if (url === request.url) {
-      if (headers !== request.headers) syncHeaders(request.headers, headers);
+      if (headers !== request.headers) headers.forEach((value, name) => request.headers.set(name, value));
       return request;
     }
     return cloneRequestWith(request, { url, headers });
@@ -110,17 +108,6 @@ function cloneRequestWith(request: Request, options: { url: string; headers: Hea
   if (canHaveBody && request.body) init.duplex = "half";
   return new Request(options.url, init);
 }
-function syncHeaders(target: Headers, source: Headers): void {
-  const sourceNames = new Set<string>();
-  source.forEach((_value, name) => sourceNames.add(name.toLowerCase()));
-  const removedNames: string[] = [];
-  target.forEach((_value, name) => {
-    if (!sourceNames.has(name.toLowerCase())) removedNames.push(name);
-  });
-  for (const name of removedNames) target.delete(name);
-  source.forEach((value, name) => target.set(name, value));
-}
-
 function getHostname(url: string): string {
   return new URL(url).hostname.toLowerCase();
 }

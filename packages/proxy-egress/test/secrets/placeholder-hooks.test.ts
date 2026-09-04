@@ -27,6 +27,22 @@ describe("secret placeholder hooks", () => {
     await expect(hooks.httpHooks.onRequest!(new Request("https://example.com", { headers: { authorization: "Bearer ATELIER_SECRET_fake" } }))).rejects.toBeInstanceOf(HttpRequestBlockedError);
   });
 
+  test("preserves unrelated headers and request ownership during repeated secret injection", async () => {
+    for (const replaceSecretsInPath of [false, true]) {
+      const hooks = createHttpHooks({ replaceSecretsInPath, secrets: { TOKEN: { value: "real-secret", hosts: ["example.com"], placeholder: "ATELIER_SECRET_fake" } } });
+      for (let attempt = 0; attempt < 2; attempt++) {
+        const request = new Request("https://example.com/ATELIER_SECRET_fake", {
+          headers: { authorization: "Bearer ATELIER_SECRET_fake", "x-request-id": String(attempt) },
+        });
+        const result = await hooks.httpHooks.onRequest(request);
+        expect(result === request).toBe(!replaceSecretsInPath);
+        expect(result.headers.get("authorization")).toBe("Bearer real-secret");
+        expect(result.headers.get("x-request-id")).toBe(String(attempt));
+        expect(request.headers.get("authorization")).toBe(replaceSecretsInPath ? "Bearer ATELIER_SECRET_fake" : "Bearer real-secret");
+      }
+    }
+  });
+
   test("replaces Basic auth password placeholders", async () => {
     const hooks = createHttpHooks({ secrets: { GH_TOKEN: { value: "real-secret", hosts: ["github.com"], placeholder: "ATELIER_SECRET_fake" } } });
     const basic = Buffer.from("x-access-token:ATELIER_SECRET_fake").toString("base64");
