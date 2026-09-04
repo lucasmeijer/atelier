@@ -456,6 +456,7 @@ button.settings-link:disabled { opacity: .45; cursor: default; filter: none; }
 .model-catalogue-row:has(> .model-provider-state[data-connected="true"]) .model-provider-connected-actions { display: flex; }
 .model-provider-actions:has(.model-provider-state[data-connected="true"]) .model-provider-disconnected-actions,
 .model-catalogue-row:has(> .model-provider-state[data-connected="true"]) .model-provider-disconnected-actions { display: none; }
+.model-catalogue-feedback { margin: 0; padding: 12px; border-bottom: 1px solid var(--line); overflow-wrap: anywhere; }
 .model-catalogue-loading { display: none; align-items: center; justify-content: center; gap: var(--space-sm); padding: var(--space-md); border-bottom: 1px solid var(--line); color: var(--text); }
 .model-catalogue-results[busy] > .model-catalogue-loading { display: flex; }
 .model-catalogue-results[busy] > .managed-list__items { opacity: .55; }

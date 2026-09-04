@@ -208,7 +208,9 @@ function modelCatalogueFrameId(surface: ModelSetupSurface): string {
   return domId("model_catalogue_results", surface);
 }
 
-function renderModelCatalogueResults(data: ModelSetupData, surface: ModelSetupSurface, query: string): string {
+type ModelCatalogueFeedback = { message: string; error?: boolean; details?: string };
+
+function renderModelCatalogueResults(data: ModelSetupData, surface: ModelSetupSurface, query: string, feedback?: ModelCatalogueFeedback): string {
   const normalizedQuery = query.trim().toLowerCase();
   const matchingModels = (normalizedQuery
     ? data.models.filter((model) => `${model.label} ${model.provider} ${model.id} ${data.providers.get(model.provider)?.label ?? ""}`.toLowerCase().includes(normalizedQuery))
@@ -220,15 +222,16 @@ function renderModelCatalogueResults(data: ModelSetupData, surface: ModelSetupSu
   const remaining = matchingModels.length - visibleModels.length;
   const more = remaining > 0 ? `<div class="managed-list__item model-catalogue-more" role="status" aria-disabled="true">Many results, use the filter box</div>` : "";
   const empty = matchingModels.length ? "" : `<div class="managed-list__empty">No matching models.</div>`;
-  return `<turbo-frame id="${modelCatalogueFrameId(surface)}" class="model-catalogue-results">${providerForms}<div class="model-catalogue-loading" role="status"><span class="status-spinner" aria-hidden="true"></span>Filtering models…</div><div class="managed-list__items">${rows}${more}</div>${empty}</turbo-frame>`;
+  return `<turbo-frame id="${modelCatalogueFrameId(surface)}" class="model-catalogue-results">${providerForms}${feedback ? `<div class="model-catalogue-feedback${feedback.error ? " settings-error" : ""}" role="${feedback.error ? "alert" : "status"}">${escapeHtml(feedback.message)}${feedback.details ? `<details><summary>Refresh error details</summary>${escapeHtml(feedback.details)}</details>` : ""}</div>` : ""}<div class="model-catalogue-loading" role="status"><span class="status-spinner" aria-hidden="true"></span>Loading models…</div><div class="managed-list__items">${rows}${more}</div>${empty}</turbo-frame>`;
 }
 
 function renderModelCatalogue(data: ModelSetupData, surface: ModelSetupSurface): string {
   const frameId = modelCatalogueFrameId(surface);
   return `<div class="managed-list" data-managed-list-server-filter="true">
-    <form class="managed-list__filter" method="get" action="/settings/models/catalogue" data-controller="server-filter" data-action="input->server-filter#submit" data-turbo-frame="${frameId}">
+    <form id="${domId("model_catalogue_filter", surface)}" class="managed-list__filter" method="get" action="/settings/models/catalogue" data-controller="server-filter" data-action="input->server-filter#submit" data-turbo-frame="${frameId}">
       <input type="hidden" name="surface" value="${surface}">
       <input class="text-field" type="search" name="q" placeholder="Filter models and providers…" aria-label="Filter available models" autocomplete="off">
+      <button type="submit" hidden>Filter models</button>
     </form>
     ${renderModelCatalogueResults(data, surface, "")}
   </div>`;
@@ -255,8 +258,15 @@ type CustomModelsView = { source: string; open?: boolean; error?: string; status
 
 function renderCustomModelsSettings(view: CustomModelsView): string {
   const saveButton = buttonHtml({ type: "submit", variant: "secondary", content: { kind: "caption", caption: "Validate and save" } });
+  const refreshButton = buttonHtml({
+    type: "submit",
+    variant: "secondary",
+    content: { kind: "caption", caption: "Refresh model catalogue" },
+    attributesHtml: `form="${domId("model_catalogue_filter", "settings")}" formaction="/settings/models/catalogue/refresh" formmethod="post" data-turbo-submits-with="Refreshing…"`,
+  });
   return `<details class="custom-models-settings" id="custom_models_settings"${view.open ? " open" : ""}>
-    <summary>Custom models.json</summary>
+    <summary>Advanced model settings</summary>
+    <div>${refreshButton}</div>
     <form class="custom-models-form form-stack" method="post" action="/settings/models/custom" data-turbo="true">
       <div><label for="custom_models_json">Custom Pi model configuration</label><p>Paste a Pi <code>models.json</code> object containing <code>providers</code>. Custom models are merged with the official catalogue.</p></div>
       <textarea class="textarea custom-models-json" id="custom_models_json" name="models" placeholder="${escapeHtml(customModelsPlaceholder)}" spellcheck="false" autocomplete="off">${escapeHtml(view.source)}</textarea>
@@ -544,6 +554,24 @@ export async function handleModelSettingsRequest(request: Request, url: URL): Pr
     const surface = modelSetupSurfaces.find((candidate) => candidate === requestedSurface);
     if (!surface) return response("Unknown model catalogue surface", { status: 400 });
     return response(renderModelCatalogueResults(await modelSetupData(), surface, url.searchParams.get("q") ?? ""));
+  }
+  if (url.pathname === "/settings/models/catalogue/refresh" && request.method === "POST") {
+    const form = await request.formData();
+    const surface = modelSetupSurfaces.find((candidate) => candidate === form.get("surface"));
+    if (!surface) return response("Unknown model catalogue surface", { status: 400 });
+    let feedback: ModelCatalogueFeedback;
+    try {
+      const runtime = await createPiModelRuntime();
+      const result = await runtime.refresh({ allowNetwork: true, force: true });
+      const errors = [...result.errors].map(([provider, error]) => `${provider}: ${error.message}`);
+      if (result.aborted) errors.push("Refresh was interrupted.");
+      feedback = errors.length
+        ? { message: result.aborted ? "Model catalogue refresh was interrupted." : `Could not refresh: ${[...result.errors.keys()].join(", ")}. Other catalogue updates have been applied.`, error: true, details: errors.join(" ") }
+        : { message: "Model catalogue refreshed." };
+    } catch (error) {
+      feedback = { message: "Model catalogue refresh failed.", error: true, details: error instanceof Error ? error.message : String(error) };
+    }
+    return stream(replace(modelCatalogueFrameId(surface), renderModelCatalogueResults(await modelSetupData(), surface, String(form.get("q") ?? ""), feedback)));
   }
   if (url.pathname === "/settings/models/dialog" && request.method === "GET") {
     const html = await renderModelSetupDialog();
