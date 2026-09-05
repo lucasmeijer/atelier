@@ -61,3 +61,5 @@ export {
   hasWorkspaceGitHubToken,
   setWorkspaceGitHubToken,
 } from "./github-token.ts";
+
+export { createKeyedOperationQueue } from "./keyed-operation-queue.ts";

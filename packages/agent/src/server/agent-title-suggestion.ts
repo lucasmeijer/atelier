@@ -1,4 +1,4 @@
-import type { AtelierEventBus } from "@atelier/core";
+import { createKeyedOperationQueue, type AtelierEventBus } from "@atelier/core";
 import { listWorkspaces, setWorkspaceTitle } from "@atelier/workspace";
 import { getProviderFastModel } from "./hardcoded-provider-knowledge.ts";
 import type { ModelRef } from "./model-state.ts";
@@ -6,7 +6,7 @@ import { createPiModelRuntime } from "./pi-config-models.ts";
 import { listWorkspaceAgentConversations, setWorkspaceAgentConversationTitle, untitledAgentConversationTitle, type WorkspaceAgentConversationInfo } from "./session-store.ts";
 
 const pending = new Set<string>();
-const titleOperationQueues = new Map<string, Promise<void>>();
+const serializeTitleOperation = createKeyedOperationQueue();
 
 function promptFor(userPrompt: string): string {
   return `Your job is to come with a slug to describe an agent session. The session was initiated with this user prompt:
@@ -43,17 +43,6 @@ async function workspaceShouldFollowAgentTitle(workspaceId: string, agentTitle: 
   const { workspaces } = await listWorkspaces();
   const workspace = workspaces.find((candidate) => candidate.id === workspaceId);
   return workspace?.title === null || workspace?.title === agentTitle;
-}
-
-async function serializeTitleOperation<Result>(workspaceId: string, operation: () => Promise<Result>): Promise<Result> {
-  const previous = titleOperationQueues.get(workspaceId) ?? Promise.resolve();
-  const result = previous.then(operation);
-  const settled = result.then(() => undefined, () => undefined);
-  titleOperationQueues.set(workspaceId, settled);
-  void settled.then(() => {
-    if (titleOperationQueues.get(workspaceId) === settled) titleOperationQueues.delete(workspaceId);
-  });
-  return await result;
 }
 
 interface AgentSessionTitleStore {

@@ -14,7 +14,7 @@ import { renderWorkspaceCompletionCatalog } from "./completion-catalog.ts";
 import { agentConversationKey } from "./render-context.ts";
 import { renderAgentCompletionCatalogTurboStream, renderAgentPane } from "./render-composer.ts";
 import { resolveNewWorkspaceAgentModel } from "./model-state.ts";
-import { dockerHostAtelierDataPath, getAtelierRuntimeContext, AtelierCoreError, type AtelierEventBus } from "@atelier/core";
+import { createKeyedOperationQueue, dockerHostAtelierDataPath, getAtelierRuntimeContext, AtelierCoreError, type AtelierEventBus } from "@atelier/core";
 import { agentStaticFiles } from "./static.ts";
 import { mkdir } from "node:fs/promises";
 import { removeWorkspaceInitialPromptDrafts } from "./initial-prompt-draft.ts";
@@ -39,18 +39,7 @@ export function createWorkspaceAgentTabProvider(dependencies: {
   restore(workspaceId: string, conversationId: string): void;
   archive(conversation: WorkspaceAgentConversationInfo): Promise<void>;
 }): WorkspaceAgentTabProvider {
-  const closeQueues = new Map<string, Promise<void>>();
-
-  async function serializedClose<Result>(workspaceId: string, operation: () => Promise<Result>): Promise<Result> {
-    const previous = closeQueues.get(workspaceId) ?? Promise.resolve();
-    const result = previous.then(operation);
-    const settled = result.then(() => undefined, () => undefined);
-    closeQueues.set(workspaceId, settled);
-    void settled.then(() => {
-      if (closeQueues.get(workspaceId) === settled) closeQueues.delete(workspaceId);
-    });
-    return await result;
-  }
+  const serializedClose = createKeyedOperationQueue();
 
   return {
     async list({ workspaceId }) {

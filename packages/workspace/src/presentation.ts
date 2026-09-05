@@ -1,7 +1,7 @@
 import { randomUUID } from "node:crypto";
 import { mkdir, readFile, rename, writeFile } from "node:fs/promises";
 import { join } from "node:path";
-import { AtelierCoreError, getAtelierRuntimeContext, isJsonObject, type JsonValue } from "@atelier/core";
+import { createKeyedOperationQueue, AtelierCoreError, getAtelierRuntimeContext, isJsonObject, type JsonValue } from "@atelier/core";
 import type { WorkspaceWorkViewReference } from "@atelier/shared";
 import { Type } from "typebox";
 import { Value } from "typebox/value";
@@ -60,7 +60,7 @@ function assertWorkspaceId(workspaceId: string): void {
 export function createWorkspacePresentationStore(options: WorkspacePresentationStoreOptions): WorkspacePresentationStore {
   const dataDir = options.dataDir ?? getAtelierRuntimeContext().atelierDataDir;
   const adapters = new Map(options.workViewContributions.map((adapter) => [adapter.type, adapter]));
-  const workspaceQueues = new Map<string, Promise<void>>();
+  const serialized = createKeyedOperationQueue();
 
   if (adapters.size !== options.workViewContributions.length) throw new AtelierCoreError("invalid_arguments", "Work view contribution types must be unique");
 
@@ -135,17 +135,6 @@ export function createWorkspacePresentationStore(options: WorkspacePresentationS
     const temporaryPath = `${path}.tmp-${process.pid}-${randomUUID()}`;
     await writeFile(temporaryPath, `${JSON.stringify(state, null, 2)}\n`);
     await rename(temporaryPath, path);
-  }
-
-  async function serialized<Result>(workspaceId: string, operation: () => Promise<Result>): Promise<Result> {
-    const previous = workspaceQueues.get(workspaceId) ?? Promise.resolve();
-    const result = previous.then(operation);
-    const settled = result.then(() => undefined, () => undefined);
-    workspaceQueues.set(workspaceId, settled);
-    void settled.then(() => {
-      if (workspaceQueues.get(workspaceId) === settled) workspaceQueues.delete(workspaceId);
-    });
-    return await result;
   }
 
   async function requiredState(workspaceId: string): Promise<StoredPresentation> {

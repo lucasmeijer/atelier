@@ -6,6 +6,7 @@ import { platform } from "node:os";
 import { join, resolve } from "node:path";
 import {
   atelierDataPath,
+  createKeyedOperationQueue,
   AtelierCoreError,
   discoverHostGitHubToken,
   dockerHostAtelierDataPath,
@@ -48,7 +49,8 @@ const workspaceSourceMetadataSchema = Type.Object({
 });
 type WorkspaceSourceMetadata = Static<typeof workspaceSourceMetadataSchema>;
 
-const templateLocks = new Map<string, Promise<void>>();
+// Process-local: multiple server processes sharing a data directory would need a file lock.
+const withTemplateLock = createKeyedOperationQueue();
 const reflinkSupportByDir = new Map<string, Promise<boolean>>();
 const regularCopyWarnings = new Set<string>();
 const provisionLog = new AsyncLocalStorage<string>();
@@ -87,27 +89,6 @@ export async function projectPersistentMount(projectId: string): Promise<{ sourc
 
 function workspaceWorktreePath(workspaceId: string): string {
   return join(workspaceSourceDir(workspaceId), "work");
-}
-
-async function withTemplateLock<T>(key: string, fn: () => Promise<T>): Promise<T> {
-  // This is intentionally process-local. If Atelier is ever run as multiple
-  // server processes against the same Atelier data dir, replace this with a
-  // file lock around the same critical section.
-  const previous = templateLocks.get(key) ?? Promise.resolve();
-  let release!: () => void;
-  const current = new Promise<void>((resolveRelease) => {
-    release = resolveRelease;
-  });
-  const tail = previous.then(() => current, () => current);
-  templateLocks.set(key, tail);
-
-  await previous;
-  try {
-    return await fn();
-  } finally {
-    release();
-    if (templateLocks.get(key) === tail) templateLocks.delete(key);
-  }
 }
 
 async function command(name: string, args: string[], options: { env?: Record<string, string | undefined> } = {}): Promise<CommandResult> {

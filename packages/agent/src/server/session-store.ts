@@ -1,7 +1,7 @@
 import { mkdir, open, readFile, readdir, rename, writeFile } from "node:fs/promises";
 import { randomUUID } from "node:crypto";
 import { join } from "node:path";
-import { getAtelierRuntimeContext } from "@atelier/core";
+import { createKeyedOperationQueue, getAtelierRuntimeContext } from "@atelier/core";
 import type { GitProjectInitInstruction } from "@atelier/projects";
 import { isGitProjectInit } from "@atelier/projects";
 import type { WorkspaceInitInstruction } from "@atelier/workspace";
@@ -22,18 +22,7 @@ const sharedAgentFilePattern = /^([a-z0-9][a-z0-9-]*)--([a-zA-Z0-9][a-zA-Z0-9_.-
 export const projectlessSessionShareKey = "projectless";
 export const sessionShareMountPath = "/atelier/session-share";
 export const untitledAgentConversationTitle = "Untitled";
-const conversationOperationQueues = new Map<string, Promise<void>>();
-
-async function serializeConversationOperation<Result>(workspaceId: string, operation: () => Promise<Result>): Promise<Result> {
-  const previous = conversationOperationQueues.get(workspaceId) ?? Promise.resolve();
-  const result = previous.then(operation);
-  const settled = result.then(() => undefined, () => undefined);
-  conversationOperationQueues.set(workspaceId, settled);
-  void settled.then(() => {
-    if (conversationOperationQueues.get(workspaceId) === settled) conversationOperationQueues.delete(workspaceId);
-  });
-  return await result;
-}
+const serializeConversationOperation = createKeyedOperationQueue();
 
 function workspaceMetadataInitPath(workspaceId: string, dataDir = getAtelierRuntimeContext().atelierDataDir): string {
   return join(dataDir, "workspaces", workspaceId, "metadata", "init.json");
