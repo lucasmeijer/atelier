@@ -46,6 +46,7 @@ function normalizedPromiseError(error: unknown): Error {
 }
 
 export class RealAgentRuntime extends BaseAgentRuntime {
+  // Present from agent_start through agent_end, including mid-loop compaction.
   private turnTiming?: TurnTiming;
   private summarizing = false;
   private unsubscribeSession?: () => void;
@@ -285,7 +286,9 @@ export class RealAgentRuntime extends BaseAgentRuntime {
       case "compaction_end": {
         const entry = event.result && this.latestCompactionEntry();
         if (entry) this.postCompactionEstimate = { entryId: entry.id, tokens: event.result.estimatedTokensAfter };
-        if (!event.willRetry) this.setBusy(false);
+        // Mid-loop threshold compaction has willRetry=false, but inference
+        // continues without another agent_start. Only clear busy outside a loop.
+        if (!event.willRetry && !this.turnTiming) this.setBusy(false);
         if (event.reason === "manual" && !event.willRetry) await this.emitTurnFinished();
         await this.refreshTranscript();
         await this.refreshStats();

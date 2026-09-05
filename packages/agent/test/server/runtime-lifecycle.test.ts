@@ -395,6 +395,47 @@ test("retry boundaries remain continuously busy and only the terminal Agent end 
   }
 });
 
+test("threshold compaction inside an Agent loop stays busy until the loop ends", async () => {
+  const { session, emit } = fakeSession(deferred<{ editorText?: string }>());
+  const events = createAtelierEventBus();
+  const runtime = runtimeFor(session, events);
+  const busy: boolean[] = [];
+  let finished = 0;
+  const unsubscribe = subscribeWorkspaceViewBusy((event) => {
+    if (event.workspaceId === runtime.workspaceId && event.viewKey === `agent:${runtime.conversationId}`) busy.push(event.busy);
+  });
+  events.on("workspace_agent_turn_finished", () => { finished += 1; });
+
+  try {
+    session.isStreaming = true;
+    emit({ type: "agent_start" });
+    emit({ type: "compaction_start", reason: "threshold" });
+    emit({ type: "compaction_end", reason: "threshold", willRetry: false });
+    await Bun.sleep(0);
+    expect(runtime.isStreaming).toBe(true);
+    expect(busy).toEqual([true]);
+    expect(finished).toBe(0);
+
+    // Inference resumes in the existing loop, without another agent_start.
+    emit({ type: "turn_start" });
+    expect(busy).toEqual([true]);
+    emit({ type: "agent_end", willRetry: false });
+    await Bun.sleep(0);
+    expect(busy).toEqual([true, false]);
+    expect(finished).toBe(1);
+
+    // Post-loop compaction must still clear busy even while Pi's outer
+    // prompt operation reports isStreaming until agent_settled.
+    emit({ type: "compaction_start", reason: "threshold" });
+    emit({ type: "compaction_end", reason: "threshold", willRetry: false });
+    await Bun.sleep(0);
+    expect(busy).toEqual([true, false, true, false]);
+    expect(finished).toBe(1);
+  } finally {
+    unsubscribe();
+  }
+});
+
 test("a terminal Agent end becomes ready before stats and cannot clear a newer run", async () => {
   const navigation = deferred<{ editorText?: string }>();
   const { session, emit } = fakeSession(navigation);
