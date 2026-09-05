@@ -1,25 +1,8 @@
-.button[data-transcription-composer-target="button"] {
-  padding: 0;
-  border-radius: var(--radius-round);
-  overflow: hidden;
-}
-[data-transcription-composer-target="button"] .progress-button__content { width: 100%; height: 100%; }
 [data-transcription-composer-target="button"] .transcription-microphone { stroke-width: 1.65; }
 [data-transcription-composer-target="button"] canvas { display: none; width: 24px; height: 22px; color: var(--accent); }
-[data-transcription-composer-target="button"][data-state="recording"],
-[data-transcription-composer-target="button"][data-state="finishing"] {
-  --button-border: color-mix(in srgb, var(--accent) 50%, var(--line));
-  --button-background: var(--accent-soft);
-  --button-foreground: var(--accent);
-}
 [data-transcription-composer-target="button"][data-state="recording"] .transcription-microphone { display: none; }
 [data-transcription-composer-target="button"][data-state="recording"] canvas { display: block; }
 .composer-surface:has([data-transcription-composer-target="button"][data-state="error"]) { overflow: visible; }
-[data-transcription-composer-target="button"][data-state="error"] {
-  --button-border: var(--danger);
-  --button-foreground: var(--danger);
-  overflow: visible;
-}
 .transcription-status {
   position: absolute;
   width: 1px;

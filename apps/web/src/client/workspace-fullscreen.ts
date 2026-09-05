@@ -1,6 +1,7 @@
 import { Controller } from "@hotwired/stimulus";
 import { workspaceProxyUrl } from "@atelier/shared";
-import { createCloseButton } from "./design-system.ts";
+import { buttonElement } from "@atelier/design-system/button";
+import { Icons } from "@atelier/design-system/icons";
 import { registerWorkspaceControllers } from "./workspace-controller-registry.ts";
 
 type FullscreenMode = "view" | "template" | "media";
@@ -142,7 +143,7 @@ class AtelierFullscreenController extends Controller<HTMLElement> {
     const title = document.createElement("strong");
     title.className = "atelier-fullscreen-title";
     title.textContent = this.titleValue;
-    const close = createCloseButton("Exit full screen");
+    const close = buttonElement({ type: "button", variant: "secondary", content: { kind: "icon-only", iconHtml: Icons.Close, label: "Exit full screen" } });
     close.addEventListener("click", closeFullscreen);
     bar.append(title, close);
     return bar;

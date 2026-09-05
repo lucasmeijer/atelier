@@ -119,7 +119,7 @@ async function openSummary(option: HTMLElement, input: TextInput): Promise<void>
 
 function showCustomSummary(input: TextInput): void {
   const { menu } = elements(input);
-  for (const option of menu.querySelectorAll<HTMLElement>(".agent-tree-summary-option")) option.hidden = true;
+  for (const option of menu.querySelectorAll<HTMLElement>("[data-summary-mode]")) option.hidden = true;
   const custom = menu.querySelector<HTMLElement>(".agent-tree-custom")!;
   custom.hidden = false;
   custom.querySelector<HTMLTextAreaElement>("textarea")!.focus();
@@ -128,7 +128,7 @@ function showCustomSummary(input: TextInput): void {
 function hideCustomSummary(input: TextInput): void {
   const { menu } = elements(input);
   menu.querySelector<HTMLElement>(".agent-tree-custom")!.hidden = true;
-  for (const option of menu.querySelectorAll<HTMLElement>(".agent-tree-summary-option")) option.hidden = false;
+  for (const option of menu.querySelectorAll<HTMLElement>("[data-summary-mode]")) option.hidden = false;
   input.focus();
 }
 

@@ -49,3 +49,8 @@ export class ActionItemController extends Controller<HTMLElement> {
     if (item && !item.matches(":hover")) item.classList.remove(scrollingClass);
   };
 }
+
+/** Updates the plain label of an existing Action item without exposing its anatomy. */
+export function setActionItemLabel(element: HTMLElement, text: string): void {
+  element.querySelector<HTMLElement>(labelTextSelector)!.textContent = text;
+}

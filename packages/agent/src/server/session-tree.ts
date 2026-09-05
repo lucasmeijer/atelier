@@ -1,3 +1,4 @@
+import { Icons } from "@atelier/design-system/icons";
 import { AtelierCoreError } from "@atelier/core";
 import { actionItemHtml } from "@atelier/design-system/action-item";
 import { buttonHtml } from "@atelier/design-system/button";
@@ -169,19 +170,20 @@ export function renderAgentTreeMenu(tree: readonly SessionTreeNode[], leafId: st
     const { node, lane } = entry;
     const current = node.entry.id === leafId;
     const view = entryView(node.entry);
-    const label = parseTreeLabels(node.label).map((value) => `<span class="agent-tree-label"><span>${escapeHtml(value)}</span><span class="agent-tree-label-remove" role="button" aria-label="Remove label ${escapeHtml(value)}" title="Remove label" data-tree-action="label-remove" data-tree-label="${escapeHtml(value)}">×</span></span>`).join("");
+    const label = parseTreeLabels(node.label).map((value) => `<span class="agent-tree-label"><span>${escapeHtml(value)}</span>${buttonHtml({ type: "button", variant: "secondary", content: { kind: "icon-only", iconHtml: Icons.Close, label: `Remove label ${value}` }, attributesHtml: `data-tree-action="label-remove" data-tree-label="${escapeHtml(value)}"` })}</span>`).join("");
     const labelTimestamp = node.labelTimestamp && label ? `<span class="agent-tree-label-time">${escapeHtml(labelTime(node.labelTimestamp))}</span>` : "";
     const item = actionItemHtml({
       kind: "single",
-      contentHtml: `${renderTreeRibbon(entry)}<span class="agent-tree-copy"><span class="agent-tree-meta"><b>${escapeHtml(view.kind)}</b>${label}${labelTimestamp}${current ? `<span class="agent-tree-current">current</span>` : ""}</span><span class="agent-tree-text">${escapeHtml(view.text.trim().replace(/\s+/g, " ") || "(no text)")}</span></span>`,
+      label: { kind: "text", text: view.kind },
+      description: view.text.trim().replace(/\s+/g, " ") || "(no text)",
       element: {
         tag: "button",
-        className: `agent-completion-option agent-tree-option${current ? " active" : ""}${entry.onActivePath ? " on-active-path" : ""}`,
+
         attributesHtml: `type="button" role="option" aria-selected="${current}" data-completion-kind="tree-entry" data-tree-entry="${escapeHtml(node.entry.id)}"`,
       },
     });
     return `<div class="agent-tree-row" data-tree-entry="${escapeHtml(node.entry.id)}" style="--tree-lane:${lane}">
-      ${item}
+      ${renderTreeRibbon(entry)}${item}<div class="agent-tree-labels">${label}${labelTimestamp}${current ? "Current entry" : ""}</div>
       <span class="agent-tree-label-editor" hidden><input class="text-field" type="text" value="" placeholder="Add a label" aria-label="New node label">${cancelLabelButton}${addLabelButton}</span>
     </div>`;
   }).join("");
@@ -205,10 +207,11 @@ export function updateAgentSessionTreeLabel(manager: SessionManager, entryId: st
 function treeSummaryOptionHtml(mode: "none" | "summary" | "custom", title: string, description: string, active = false): string {
   return actionItemHtml({
     kind: "single",
-    contentHtml: `<b>${escapeHtml(title)}</b><span>${escapeHtml(description)}</span>`,
+    label: { kind: "text", text: title },
+    description,
     element: {
       tag: "button",
-      className: `agent-completion-option agent-tree-summary-option${active ? " active" : ""}`,
+
       attributesHtml: `type="button" role="option" aria-selected="${active}" data-completion-kind="tree-summary" data-summary-mode="${mode}"`,
     },
   });

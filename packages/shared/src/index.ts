@@ -96,7 +96,6 @@ export interface WorkspaceWorkViewPresentation {
   sourceKey: string;
   label: string;
   /** Trusted, server-rendered label content for Work views with cached dynamic summaries. */
-  labelHtml?: string;
   kind: "resource" | "contextual";
   /** Whether this view joins the initial presentation when the Workspace has no saved view layout. */
   initiallyOpen?: boolean;

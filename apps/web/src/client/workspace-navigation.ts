@@ -178,19 +178,19 @@ class WorkspaceNavigationController extends Controller<HTMLElement> {
 
   setActiveWorkspace(workspaceId: string): void {
     markActiveWorkspaceRow(this.element, workspaceId);
-    const row = this.element.querySelector<HTMLElement>(`.fixed-shell-workspace-row[data-workspace-entry-id="${CSS.escape(workspaceId)}"]`);
+    const row = this.element.querySelector<HTMLElement>(`[data-workspace-entry-id="${CSS.escape(workspaceId)}"]`);
     localStorage.setItem(recentWorkspaceProjectStorageKey, row?.dataset.projectId ?? "");
   }
 
   private expandWorkspaceGroupsContaining(workspaceId: string): void {
-    const row = this.element.querySelector<HTMLElement>(`.fixed-shell-workspace-row[data-workspace-entry-id="${CSS.escape(workspaceId)}"]`);
+    const row = this.element.querySelector<HTMLElement>(`[data-workspace-entry-id="${CSS.escape(workspaceId)}"]`);
     if (!row) return;
 
     const disclosures = this.projectDisclosures();
     let group = row.closest<HTMLElement>(".fixed-shell-project[data-project-id]");
     while (group) {
       group.classList.remove("is-collapsed");
-      group.querySelector<HTMLElement>(":scope > .fixed-shell-project-heading-row .fixed-shell-project-heading")?.setAttribute("aria-expanded", "true");
+      group.querySelector<HTMLElement>(":scope > .action-item [data-project-id][aria-expanded]")?.setAttribute("aria-expanded", "true");
       disclosures[group.dataset.projectId!] = true;
       group = group.parentElement?.closest<HTMLElement>(".fixed-shell-project[data-project-id]") ?? null;
     }
@@ -205,7 +205,7 @@ class WorkspaceNavigationController extends Controller<HTMLElement> {
       if (!(id in disclosures) && !onboardingTarget) return;
       const expanded = onboardingTarget ? true : disclosures[id]!;
       project.classList.toggle("is-collapsed", !expanded);
-      project.querySelector<HTMLElement>(".fixed-shell-project-heading")?.setAttribute("aria-expanded", String(expanded));
+      project.querySelector<HTMLElement>("[data-project-id][aria-expanded]")?.setAttribute("aria-expanded", String(expanded));
     });
   }
 

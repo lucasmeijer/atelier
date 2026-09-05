@@ -6,7 +6,7 @@ import { workspaceWorkHostPath } from "@atelier/workspace";
 import { Type, type Static } from "typebox";
 import { Value } from "typebox/value";
 import { collectReviewFile, collectReviewIndex, collectReviewStats, git, gitResult, type ReviewFileStats } from "./diff.ts";
-import { renderChangeCounts, renderFilePath, renderFileSummary, renderReadOnlyReviewFile } from "./render.ts";
+import { renderChangeCounts, renderFileSummary, renderReadOnlyReviewFile } from "./render.ts";
 
 const fileSchema = Type.Object({
   path: Type.String(),
@@ -74,7 +74,7 @@ function fileSummary(workspaceId: string, fingerprint: string, repository: Delet
   const frameId = domId("deletion_review", workspaceId, fingerprint, repository.relativePath || "root", "working", file.path);
   const query = new URLSearchParams({ fingerprint, repository: repository.relativePath, path: file.path });
   const summary = renderFileSummary(
-    { kind: "html", html: renderFilePath(file.path) },
+    { kind: "text", text: file.path },
     `<span class="review-git-stats">${renderChangeCounts(file)}</span>`,
     file.path,
   );

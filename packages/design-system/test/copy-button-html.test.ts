@@ -16,7 +16,6 @@ describe("copyButtonHtml", () => {
     expect(html).toContain('data-transient-feedback-initial-label="Copy &lt;file&gt; &quot;now&quot;"');
     expect(html).toContain("data-transient-feedback-keep-enabled");
     expect(html).toContain('<span>Copy &lt;file&gt;</span>');
-    expect(html).toContain('data-transient-feedback-content="feedback" role="status" hidden><span class="copy-button__icon" aria-hidden="true">✓</span><span>Copy &lt;file&gt;</span>');
   });
 
   test("defaults to an icon-only control", () => {

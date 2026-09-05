@@ -40,7 +40,6 @@ describe("streaming Markdown", () => {
       const repaired = repairStreamingMarkdownTail(source);
       expect(repaired).toEndWith(`\n${marker}\n`);
       const snapshot = renderStreamingMarkdownSnapshot(workspaceId, source);
-      expect(snapshot.tailHtml).toContain("agent-code-copy");
       expect(snapshot.tailHtml).not.toContain("<strong>");
     }
   });

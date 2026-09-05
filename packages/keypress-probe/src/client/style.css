@@ -3,8 +3,7 @@
 .keypress-probe-head { display: flex; align-items: center; gap: 6px; padding: 4px 6px; border-bottom: 1px solid var(--line); }
 .keypress-probe-head strong { font-size: var(--text-body); letter-spacing: .02em; text-transform: uppercase; }
 .keypress-probe-head span { min-width: 18px; padding: 1px 4px; border-radius: var(--radius-round); background: var(--bg); color: var(--text); text-align: center; font-weight: var(--weight-bold); }
-.keypress-probe-head button { margin-left: auto; border: 0; background: transparent; color: var(--text); font: inherit; font-weight: var(--weight-semibold); cursor: pointer; pointer-events: auto; }
-.keypress-probe-head button:hover { color: var(--accent); }
+.keypress-probe-head button { margin-left: auto; pointer-events: auto; }
 .keypress-probe ol { list-style: none; max-height: 138px; overflow: auto; padding: 4px 6px 6px; }
 .keypress-probe li { display: grid; grid-template-columns: minmax(88px, auto) auto 1fr; gap: 6px; align-items: baseline; padding: 2px 0; border-bottom: 1px solid color-mix(in srgb, var(--line) 65%, transparent); }
 .keypress-probe li.empty { display: block; color: var(--text); border: 0; }

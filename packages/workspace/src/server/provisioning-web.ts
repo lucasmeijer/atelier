@@ -1,3 +1,6 @@
+import { actionItemHtml } from "@atelier/design-system/action-item";
+import { Icons } from "@atelier/design-system/icons";
+import { buttonHtml } from "@atelier/design-system/button";
 import { observableTerminalStaticFiles } from "@atelier/observable-terminal/server";
 import { escapeHtml } from "@atelier/shared";
 import type { WorkspaceProvisionStepEvent, WorkspaceProvisionStepStatus } from "../provisioning.ts";
@@ -82,11 +85,11 @@ function renderProvisionStep(workspaceId: string, step: WorkspaceProvisionStep, 
     : step.status === "running" && step.terminal
       ? `<div class="provision-terminal observable-terminal-host" data-controller="provision-terminal" data-provision-terminal-session-value="${escapeHtml(step.terminal.session)}"></div>`
       : "";
-  const output = step.output && step.status !== "running" ? `<details class="provision-output-disclosure"${step.status === "failed" ? " open" : ""}><summary class="action-item action-item__primary"><svg class="disclosure-icon" aria-hidden="true" viewBox="0 0 24 24"><path d="m6 9 6 6 6-6"/></svg><span class="action-item__label"><span class="action-item__label-text">View output</span></span></summary><pre class="provision-output-log provision-output" data-controller="auto-scroll">${escapeHtml(step.output)}</pre></details>` : "";
+  const output = step.output && step.status !== "running" ? `<details class="provision-output-disclosure"${step.status === "failed" ? " open" : ""}>${actionItemHtml({ kind: "single", element: { tag: "summary" }, leadingHtml: Icons.Disclosure, label: { kind: "text", text: "View output" } })}<pre class="provision-output-log provision-output" data-controller="auto-scroll">${escapeHtml(step.output)}</pre></details>` : "";
   const error = step.error ? `<div class="provision-error">${escapeHtml(step.error)}</div>` : "";
   const detail = step.detail ? `<span class="r-sub provision-step-detail">${escapeHtml(step.detail)}</span>` : "";
   const continueAction = step.awaitingContinue
-    ? `<form class="provision-continue" method="post" action="/workspaces/${encodeURIComponent(workspaceId)}/provisioning/continue"><button class="button primary" type="submit"><span class="button__caption">Continue anyway</span></button></form>`
+    ? `<form class="provision-continue" method="post" action="/workspaces/${encodeURIComponent(workspaceId)}/provisioning/continue">${buttonHtml({ type: "submit", variant: "primary", content: { kind: "caption", caption: "Continue anyway" } })}</form>`
     : "";
   return `<li class="status-list__item provision-step"${stepStatusAttributes(step.status)}>${renderStatusMarker(step.status)}<div class="provision-step-content"><span class="provision-step-label">${escapeHtml(step.label)}</span>${detail}${activity}${output}${error}${continueAction}${childHtml ? `<ol class="status-list provision-children">${childHtml}</ol>` : ""}</div></li>`;
 }

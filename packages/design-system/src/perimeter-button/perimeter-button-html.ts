@@ -23,5 +23,5 @@ export function perimeterButtonHtml<State extends string>(options: PerimeterButt
   const perimeter = `<svg class="${options.component}__${perimeterPart}" aria-hidden="true"><rect pathLength="100"/></svg>`;
   const contents = options.states.map(({ name, content }) => `<span class="${options.component}__content" data-${stateName}-content="${escapeHtml(name)}">${htmlContent(content)}</span>`).join("");
 
-  return `<button${id} class="${className}" type="${options.type ?? "button"}" data-${stateName}-state="${escapeHtml(options.state)}"${disabled}${attributesHtml(options.ownedAttributesHtml)}${attributesHtml(options.attributesHtml)}>${perimeter}${contents}</button>`;
+  return `<button${id} class="${className}" type="${options.type ?? "button"}" data-${stateName}-state="${escapeHtml(options.state)}"${disabled}${options.ownedAttributesHtml ? ` ${options.ownedAttributesHtml}` : ""}${attributesHtml(options.attributesHtml)}>${perimeter}${contents}</button>`;
 }

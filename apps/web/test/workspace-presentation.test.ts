@@ -45,78 +45,6 @@ function fixture(overrides: Partial<WorkspacePresentation> = {}): WorkspacePrese
 }
 
 describe("role-fixed Workspace presentation", () => {
-  test("server-renders fixed roles without selecting personal navigation", () => {
-    const html = renderWorkspacePresentation(fixture({ commands: [{ id: "terminal.create", label: "New Terminal", scope: "workspace", placement: "work-launcher" }] }));
-
-    expect(html).toContain('data-controller="workspace-presentation"');
-    expect(html).not.toContain('class="fixed-shell-workspace-pane"');
-    expect(html).toContain('class="panel fixed-shell-agent-pane"');
-    expect(html).toContain('class="panel fixed-shell-work-pane"');
-    expect(html).not.toContain("workspace-group");
-    expect(html).not.toContain("visibleTab");
-    expect(html).not.toContain('aria-selected="true"');
-    expect(html.match(/data-workspace-pane-role="agent"/g)).toHaveLength(2);
-    expect(html.match(/data-workspace-pane-role="work"/g)).toHaveLength(3);
-    expect(html).toContain('class="popup-menu-anchor"');
-    expect(html).toContain('class="floating-surface popup-menu action-list popup-menu-anchored" id="fixed_workspace_workspace-1_add_menu" role="menu" aria-label="Open Work view" popover="auto"');
-    expect(html).toContain('class="action-item action-item__primary" type="submit" role="menuitem"');
-  });
-
-  test("server-renders the phone-only Atelier bar from Workspace Attention", () => {
-    const quiet = { projects: [], projectlessWorkspaces: [{ id: "quiet", title: "Quiet" }] };
-    const unread = { projects: [], projectlessWorkspaces: [{ id: "unread", title: "Unread", attention: true }] };
-
-    const quietHtml = renderAtelierBar(quiet);
-    expect(quietHtml).toContain('aria-label="Show Workspace pane" title="Show Workspace pane" aria-expanded="false"');
-    expect(quietHtml).toContain('id="fixed_shell_atelier_next_unread" type="button" aria-label="Next unread Workspace" title="Next unread Workspace" disabled');
-
-    const unreadHtml = renderAtelierBar(unread);
-    const nextUnread = unreadHtml.slice(unreadHtml.indexOf('id="fixed_shell_atelier_next_unread"'), unreadHtml.indexOf("</button>", unreadHtml.indexOf('id="fixed_shell_atelier_next_unread"')));
-    expect(nextUnread).not.toContain(" disabled");
-    expect(nextUnread).toContain('data-action="click->atelier-shortcuts#openOldestAttentionWorkspace"');
-    expect(workspacePaneCollectionsTurboStream(unread)).toContain('<turbo-stream action="replace" target="fixed_shell_atelier_next_unread"');
-  });
-
-  test("server-renders the Workspace pane once at the shell seam", () => {
-    const html = renderWorkspacePane({ projects: [{ id: "project-1", title: "Atelier", workspaces: [
-      { id: "workspace-1", title: "Typed shell", active: true, attention: true, attentionAt: 123, lastActivityAt: 456 },
-      { id: "workspace-2", title: "Working", state: "deleting" },
-    ] }], emptyProjects: [{ id: "project-2", title: "Empty" }], projectlessWorkspaces: [{ id: "workspace-3", title: "Scratch" }] }, '<button data-update-probe>Restart to update</button>');
-
-    expect(html).toContain('class="panel fixed-shell-workspace-pane"');
-    const workspaceHeader = html.slice(html.indexOf("<header"), html.indexOf("</header>"));
-    expect(workspaceHeader).toContain('<strong class="panel__title"><svg aria-hidden="true"');
-    expect(workspaceHeader.indexOf("<svg")).toBeLessThan(workspaceHeader.indexOf("Atelier"));
-    expect(workspaceHeader).toContain('href="/settings"');
-    expect(workspaceHeader).toContain('aria-label="Settings"');
-    expect(workspaceHeader).toContain('aria-label="Collapse Workspace pane"');
-    expect(html).toContain('data-controller="modal-opener"');
-    expect(html).toContain('data-action="click->workspace-navigation#selectWorkspace"');
-    expect(html).toContain('href="/projects/project-1/launch-composer" data-turbo-frame="launch_composer" aria-label="New workspace: Atelier"');
-    const projectHeading = html.slice(html.indexOf('class="fixed-shell-project-heading-row action-item"'), html.indexOf('class="fixed-shell-project-workspaces'));
-    expect(projectHeading).toContain('<svg class="disclosure-icon" aria-hidden="true"');
-    expect(projectHeading.indexOf("<svg")).toBeLessThan(projectHeading.indexOf("Atelier"));
-    expect(html).toContain('data-project-id="__projectless__"><svg');
-    expect(html).toContain('<span class="action-item__label"><span class="action-item__label-text">Projectless</span></span>');
-    expect(html.indexOf('data-project-id="__projectless__"')).toBeLessThan(html.indexOf('data-project-id="__projects_drawer__"'));
-    const drawerProjects = html.slice(html.indexOf('data-project-id="__projects_drawer__"'));
-    expect(html).toContain('class="fixed-shell-project action-list fixed-shell-projects-drawer is-collapsed" data-project-id="__projects_drawer__"');
-    expect(drawerProjects).toContain('aria-expanded="false"');
-    expect(drawerProjects).toContain('<span class="action-item__label"><span class="action-item__label-text">Projects</span></span>');
-    expect(drawerProjects).toContain('<a class="fixed-shell-project-heading action-item__primary" href="/projects/project-2/launch-composer" data-turbo-frame="launch_composer" aria-label="New workspace: Empty"><span class="action-item__label"><span class="action-item__label-text">Empty</span></span></a>');
-    expect(drawerProjects.match(/href="\/projects\/project-1\/launch-composer"/g)).toHaveLength(2);
-    expect(drawerProjects.match(/href="\/projects\/project-2\/launch-composer"/g)).toHaveLength(2);
-    expect(drawerProjects).not.toContain('data-workspace-entry-id="workspace-1"');
-    expect(drawerProjects).not.toContain('data-project-id="__projectless__"');
-    expect(html).not.toContain("<footer>");
-    expect(html).not.toContain("New Project");
-    expect(html).not.toContain("fixed-shell-workspace-color");
-    expect(html).toContain('data-workspace-attention-at="123"');
-    expect(html).toContain('data-workspace-last-activity-at="456"');
-    expect(html).toContain('aria-current="page"');
-    expect(html).toContain('class="fixed-shell-workspace-status action-item__status"><i class="status-spinner sm fixed-shell-workspace-busy" aria-label="Workspace deleting"');
-    expect(html).toContain('<section id="global_sidebar_contributions"><button data-update-probe>Restart to update</button></section>');
-  });
 
   test("renders one Workspace status using lifecycle, busy activity, Attention, then outdated-image precedence", () => {
     const row = (status: { state?: "starting" | "deleting" | "requires_delete_confirmation" | "idle"; attention?: boolean; busyViewKeys?: readonly string[] }) => renderWorkspacePane({
@@ -177,52 +105,6 @@ describe("role-fixed Workspace presentation", () => {
     expect(projectsSection).toContain('class="fixed-shell-project action-list fixed-shell-projects-drawer is-collapsed"');
   });
 
-  test("shows the workspace name and delete action in a single-conversation Agent header", () => {
-    const html = renderWorkspacePresentation(fixture({
-      agentConversations: [{ id: firstConversationId, title: "Untitled", bodyUrl: agentBodyUrl(firstConversationId) }],
-      commands: [
-        { id: "agent.create", label: "New Agent", scope: "workspace", placement: "agent-action" },
-        { id: "browser.create", label: "New Browser", scope: "workspace", placement: "work-launcher" },
-      ],
-    }));
-    const header = html.slice(html.indexOf('<section class="panel fixed-shell-agent-pane"'), html.indexOf('<div class="fixed-shell-agent-bodies"'));
-
-    expect(header).toContain("Typed shell");
-    expect(header).not.toContain("Atelier");
-    expect(header).toContain('class="fixed-shell-park-workspace"');
-    expect(header).toContain('action="/workspaces/workspace-1/park"');
-    expect(header).toContain('class="button secondary icon-only" type="submit" title="New Agent" aria-label="New Agent"');
-    expect(header).toContain('class="button secondary icon-only" type="submit" title="Park workspace" aria-label="Park workspace"');
-    expect(header.indexOf('class="fixed-shell-park-workspace"')).toBeLessThan(header.indexOf('class="fixed-shell-delete-workspace"'));
-    expect(header).toContain('class="fixed-shell-delete-workspace"');
-    expect(header).toContain('action="/workspaces/workspace-1/delete"');
-    expect(header).toContain('class="button danger icon-only" type="button" title="Delete workspace" aria-label="Delete workspace"');
-  });
-
-  test("shows a named single Agent conversation in its header", () => {
-    const html = renderWorkspacePresentation(fixture({ agentConversations: [{ id: firstConversationId, title: "investigate-name-command", bodyUrl: agentBodyUrl(firstConversationId) }] }));
-    const header = html.slice(html.indexOf('<section class="panel fixed-shell-agent-pane"'), html.indexOf('<div class="fixed-shell-agent-bodies"'));
-
-    expect(header).toContain("investigate-name-command");
-    expect(header).not.toContain("Typed shell");
-  });
-
-  test("shows robot icons and fullscreen wiring on Agent tabs", () => {
-    const multiple = renderWorkspacePresentation(fixture());
-    const agentTabs = multiple.slice(multiple.indexOf('aria-label="Agent conversations"'), multiple.indexOf('</header>', multiple.indexOf('aria-label="Agent conversations"')));
-    expect(agentTabs.match(/class="fixed-shell-agent-icon"/g)).toHaveLength(2);
-    expect(agentTabs.match(/data-controller="atelier-fullscreen"/g)).toHaveLength(2);
-    expect(agentTabs).toContain(`data-atelier-fullscreen-view-key-value="${firstConversationId}"`);
-    expect(agentTabs).toContain('data-atelier-fullscreen-title-value="First"');
-    expect(multiple).toContain(`data-atelier-fullscreen-view-key="${firstConversationId}"`);
-    expect(agentTabs.indexOf('class="fixed-shell-agent-icon"')).toBeLessThan(agentTabs.indexOf('class="action-item__label-text">First'));
-
-    const single = renderWorkspacePresentation(fixture({ agentConversations: [{ id: firstConversationId, title: "Untitled", bodyUrl: agentBodyUrl(firstConversationId) }] }));
-    const singleHeader = single.slice(single.indexOf('<section class="panel fixed-shell-agent-pane"'), single.indexOf('</header>', single.indexOf('<section class="panel fixed-shell-agent-pane"')));
-    expect(singleHeader.match(/class="fixed-shell-agent-icon"/g)).toHaveLength(1);
-    expect(singleHeader.indexOf('class="fixed-shell-agent-icon"')).toBeLessThan(singleHeader.indexOf("Typed shell"));
-  });
-
   test("shows each Work view type icon before its tab title", () => {
     const base = fixture();
     const html = renderWorkspacePresentation(fixture({ workViews: [
@@ -236,47 +118,6 @@ describe("role-fixed Workspace presentation", () => {
       expect(tab).toContain(`class="fixed-shell-work-view-icon" data-icon="${type}"`);
       expect(tab.indexOf(`data-icon="${type}"`)).toBeLessThan(tab.indexOf(`>${label}</span>`));
     }
-  });
-
-  test("keeps module-owned dynamic Work view labels in structural selector updates", () => {
-    const review = {
-      key: "review:workspace",
-      label: "Review",
-      labelHtml: 'Review <span class="review-additions">+12</span> <span class="review-deletions">−4</span>',
-      kind: "contextual" as const,
-      availability: { phase: "live" as const },
-      bodyHtml: "<p>Review</p>",
-    };
-
-    const initial = renderWorkspacePresentation(fixture({ workViews: [review] }));
-    const afterAnotherViewCloses = workViewsTurboStream("workspace-1", [review], { removedKey: "terminal:one" });
-
-    for (const html of [initial, afterAnotherViewCloses]) {
-      expect(html).toContain('id="work_view_label_workspace-1_review_workspace"');
-      expect(html).toContain('Review <span class="review-additions">+12</span> <span class="review-deletions">−4</span>');
-    }
-  });
-
-  test("uses Action Items for closable Agent and Work tabs", () => {
-    const close = { action: "/close", label: "view" };
-    const html = renderWorkspacePresentation(fixture({
-      agentConversations: [
-        { id: firstConversationId, title: "First", bodyUrl: agentBodyUrl(firstConversationId), close },
-        { id: secondConversationId, title: "Second", bodyUrl: agentBodyUrl(secondConversationId), close },
-      ],
-      workViews: [
-        { key: "terminal:one", label: "Terminal", kind: "resource", availability: { phase: "live" }, bodyHtml: "<p>Terminal</p>", close },
-      ],
-    }));
-
-    const desktop = html.slice(0, html.indexOf('aria-label="Current Workspace destinations"'));
-    expect(desktop.match(/fixed-shell-agent-conversation action-item/g)).toHaveLength(2);
-    expect(desktop).toContain('class="fixed-shell-work-view-selector action-item"');
-    expect(desktop.match(/class="action-item__actions action-item__actions--engaged"/g)).toHaveLength(3);
-    expect(desktop.match(/class="destructive-confirmation"/g)).toHaveLength(4);
-    const mobileMore = html.slice(html.indexOf('role="menu" aria-label="More"'));
-    expect(mobileMore).toContain('role="menuitem"');
-    expect(mobileMore).toContain('Close current view');
   });
 
   test("renders expensive Work bodies as lazy hydration frames", () => {

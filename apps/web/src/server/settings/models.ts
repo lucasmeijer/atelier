@@ -295,11 +295,13 @@ export async function renderModelSetup(surface: ModelSetupSurface = "settings", 
 
 export async function renderModelSetupDialog(): Promise<string> {
   const data = await modelSetupData();
-  return `<dialog id="model_setup_dialog" class="dialog model-setup-dialog" data-dialog-auto-show>
-    <header class="dialog__header"><h2 class="title">Configure models</h2></header>
-    <div class="dialog__body">${renderModelSetupData(data, "dialog")}</div>
-    <div class="dialog__actions"><form method="dialog">${modelSetupDialogButton(data.working)}</form></div>
-  </dialog>`;
+  return dialogHtml({
+    element: { id: "model_setup_dialog",  attributesHtml: "data-dialog-auto-show" },
+    iconHtml: Icons.Settings,
+    titleCaption: "Configure models",
+    bodyHtml: renderModelSetupData(data, "dialog"),
+    footerHtml: `<form method="dialog">${modelSetupDialogButton(data.working)}</form>`,
+  });
 }
 
 async function renderModelSetupSettings(): Promise<string> {
@@ -323,7 +325,7 @@ function apiKeyModal(id: string, label: string, surface: SettingsSurface, model?
   return dialogHtml({
     element: {
       id: "settings_flow_dialog",
-      className: "dialog--compact",
+
       attributesHtml: "data-dialog-auto-show",
     },
     iconHtml: providerIcon(id, label),
@@ -505,7 +507,7 @@ function oauthFlowModal(flow: PendingOAuthFlow): string {
   return dialogHtml({
     element: {
       id: "settings_flow_dialog",
-      className: "oauth-flow-dialog",
+
       attributesHtml: `data-controller="oauth-flow" data-dialog-auto-show data-oauth-flow-status-url-value="/settings/providers/${encodeURIComponent(flow.provider)}/oauth/${encodeURIComponent(flow.id)}/status" data-oauth-flow-active-value="${flow.status === "pending" ? "true" : "false"}" data-oauth-flow-poll-ms-value="${pollMs}"`,
     },
     iconHtml: providerIcon(flow.provider, flow.label),

@@ -1,3 +1,4 @@
+import { designSystemCatalogueHtml } from "@atelier/design-system/catalogue";
 import { join } from "node:path";
 import { timingSafeEqual as timingSafeEqualBytes } from "node:crypto";
 import { gzipSync } from "node:zlib";
@@ -277,6 +278,7 @@ function requestAcceptsGzip(request: Request): boolean {
 }
 
 async function serveStatic(pathname: string, request: Request): Promise<Response | undefined> {
+  if (pathname === "/design-system-catalogue.html") return new Response(await designSystemCatalogueHtml({ reloadUrl: devReloadFile ? "/__atelier_dev_reload" : undefined }), { headers: { "content-type": "text/html; charset=utf-8", "cache-control": "no-store" } });
   let assetCacheControl = "public, max-age=31536000, immutable";
   if (pathname === "/design-system.js") {
     const manifest = parseAssetManifest(await Bun.file(new URL("../../public/assets-manifest.json", import.meta.url)).text());

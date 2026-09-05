@@ -1,7 +1,7 @@
 import { activityButtonHtml } from "@atelier/design-system/activity-button";
 import { actionItemHtml } from "@atelier/design-system/action-item";
 import { buttonHtml } from "@atelier/design-system/button";
-import { popupMenuHtml } from "@atelier/design-system/popup";
+import { popupHtml } from "@atelier/design-system/popup";
 import { renderTranscriptionComposerControl, transcriptionComposerController } from "@atelier/transcription/server";
 import { providerBrandIconHtml } from "@atelier/shared";
 import { domId, escapeHtml, turboStream } from "./html.ts";
@@ -219,31 +219,26 @@ interface SharedComposerSelectionsOptions {
   autosubmitThinking?: boolean;
 }
 
-function modelLabelHtml(model: Pick<AgentModelOption, "provider" | "name">): string {
-  return `${providerBrandIconHtml(model.provider, model.name, "brand-icon agent-model-provider-icon")}<span>${escapeHtml(model.name)}</span>`;
-}
-
 function renderModelSelection(formId: string, models: AgentModelOption[]): string {
   const selected = models.find((model) => model.selected) ?? models[0];
   const hasAvailableModel = models.some((model) => model.available !== false);
   const menuId = `${formId}_popup`;
   const setupAction = 'data-controller="agent-model-setup" data-action="click->agent-model-setup#open"';
-  const triggerContent = hasAvailableModel && selected ? modelLabelHtml(selected) : "Configure models";
-  const directSetup = hasAvailableModel ? "" : ` ${setupAction}`;
-  const trigger = `<button class="composer-selection-button agent-model-button" type="button" data-popup-menu-trigger title="Model" aria-label="Model${selected ? `: ${escapeHtml(selected.name)}` : ""}" aria-haspopup="menu" aria-expanded="false" aria-controls="${escapeHtml(menuId)}" popovertarget="${escapeHtml(menuId)}"${directSetup}>${triggerContent}</button>`;
   const configure = actionItemHtml({ kind: "single", label: { kind: "text", text: "Configure models" }, element: { tag: "button", attributesHtml: `type="button" role="menuitem" ${setupAction}` } });
   const modelItems = models.map((model) => {
-    const description = model.unavailableReason && model.unavailableReason !== "Provider disconnected"
-      ? `<span class="popup-menu__description">${escapeHtml(model.unavailableReason)}</span>`
-      : "";
     return actionItemHtml({
       kind: "single",
-      label: { kind: "html", html: `${modelLabelHtml(model)}${description}`, className: "agent-model-option-label" },
+      label: { kind: "text", text: model.name },
+      description: model.unavailableReason,
+      leadingHtml: providerBrandIconHtml(model.provider, model.name),
       element: { tag: "button", attributesHtml: `type="submit" name="model" value="${escapeHtml(`${model.provider}::${model.id}`)}" form="${escapeHtml(formId)}" role="menuitemradio" aria-checked="${model.selected}"${model.available === false ? " disabled" : ""}` },
     });
   }).join("");
-  const menu = popupMenuHtml({ id: menuId, label: "Model", placement: "above", contentHtml: `${configure}<hr class="popup-menu__separator">${modelItems}` });
-  return `<span class="composer-selection-field popup-menu-anchor">${trigger}${menu}</span>`;
+  if (!hasAvailableModel) return buttonHtml({ type: "button", variant: "secondary", content: { kind: "caption", caption: "Configure models" }, attributesHtml: setupAction });
+  return popupHtml({ id: menuId, label: "Model", placement: "above",
+    trigger: { variant: "secondary", content: { kind: "caption", caption: selected?.name ?? "Model" } },
+    contentHtml: `${configure}<hr class="popup-menu__separator">${modelItems}`,
+  });
 }
 
 function renderSharedComposerSelections(options: SharedComposerSelectionsOptions): string {

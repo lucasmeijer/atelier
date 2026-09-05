@@ -6,7 +6,6 @@ interface AutocompleteResultsOptions {
   label: string;
   /** Trusted, already-escaped option markup. */
   contentHtml: string;
-  className?: string;
   /** Caller-owned attributes. Attribute values containing external input must be escaped. */
   attributesHtml?: string;
 }
@@ -15,7 +14,6 @@ interface AutocompleteMessageOptions {
   kind: "message";
   content: HtmlContent;
   role?: "status";
-  className?: string;
   /** Caller-owned attributes. Attribute values containing external input must be escaped. */
   attributesHtml?: string;
 }
@@ -25,7 +23,7 @@ export type AutocompleteOptions = AutocompleteResultsOptions | AutocompleteMessa
 /** Renders a full-width result list or status message for an autocomplete interaction. */
 export function autocompleteHtml(options: AutocompleteOptions): string {
   const results = options.kind === "results";
-  const className = classNames("floating-surface", "autocomplete", results ? "action-list" : "autocomplete-empty", options.className);
+  const className = classNames("floating-surface", "autocomplete", results ? "action-list" : "autocomplete-empty");
   const semantics = results
     ? ` role="listbox" aria-label="${escapeHtml(options.label)}"`
     : options.role ? ` role="${options.role}"` : "";

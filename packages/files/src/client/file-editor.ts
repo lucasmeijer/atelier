@@ -1,3 +1,4 @@
+import { setActionItemLabel } from "@atelier/design-system/action-item/client";
 /// <reference lib="dom" />
 
 import { closeBrackets, closeBracketsKeymap } from "@codemirror/autocomplete";
@@ -93,7 +94,7 @@ function createFileEditorController(Controller: WorkspaceClientControllerConstru
       const presentation = liveNode.closest<HTMLElement>(".fixed-workspace-presentation")!;
       const selector = presentation.querySelector<HTMLElement>(`[data-work-view-reorder-key="${CSS.escape(liveNode.dataset.workspacePaneId!)}"]`)!;
       const label = this.pathValue.split("/").pop()!;
-      selector.querySelector<HTMLElement>(".action-item__label-text")!.textContent = label;
+      setActionItemLabel(selector, label);
       selector.querySelector<HTMLElement>("[data-atelier-fullscreen-title-value]")!.dataset.atelierFullscreenTitleValue = label;
     }
 

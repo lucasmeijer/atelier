@@ -286,7 +286,8 @@ export abstract class BaseAgentRuntime implements WorkspaceAgentRuntime {
     const content = renderActiveToolContent(this.ctx, item.key, item.tool);
     const summary = turboStream("update", ids.itemSummaryContent(this.ctx, item.key), content.summary);
     const detail = content.detail === undefined ? "" : turboStream("update", ids.detailFrame(this.ctx, item.key), content.detail);
-    this.stream(summary + detail);
+    const metadata = turboStream("update", ids.itemSummaryMetadata(this.ctx, item.key), content.metadata);
+    this.stream(summary + metadata + detail);
   }
 
   private finishOpenText(final = false): void {

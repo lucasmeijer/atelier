@@ -59,6 +59,7 @@ export function atelierOpenApi(commands: WorkspaceModuleCommandHandler[]) {
       description: "JSON representations of Atelier's content-negotiated UI operations. Send Accept: application/json.",
     },
     paths: {
+      "/design-system-catalogue.html": { get: { summary: "Browse design-system components, usage and edge-case playgrounds", responses: { "200": { description: "Server-rendered package catalogue", content: { "text/html": { schema: { type: "string" } } } } } } },
       "/up": { get: { summary: "Health check", responses: { "200": { description: "Atelier is healthy", content: { "text/plain": { schema: { type: "string" } } } } } } },
       "/workspaces": {
         get: { summary: "List workspaces", responses: jsonResponse("Workspace summaries", { type: "object", required: ["workspaces"], properties: { workspaces: { type: "array", items: { $ref: "#/components/schemas/WorkspaceSummary" } } } }) },

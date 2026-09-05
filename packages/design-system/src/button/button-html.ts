@@ -4,7 +4,7 @@ import { buttonPresentation, type ButtonContent, type ButtonVariant } from "./bu
 export type { ButtonContent, ButtonVariant } from "./button-content.ts";
 
 export interface ButtonOptions {
-  type: "button" | "submit";
+  type: "button" | "submit" | "reset";
   variant: ButtonVariant;
   content: ButtonContent;
   disabled?: boolean;

@@ -238,7 +238,7 @@ class WorkspaceResidencyController extends Controller<HTMLElement> {
   }
 
   private busyViews(workspaceId: string): string[] {
-    const row = document.querySelector<HTMLElement>(`.fixed-shell-workspace-row[data-workspace-entry-id="${CSS.escape(workspaceId)}"]`);
+    const row = document.querySelector<HTMLElement>(`[data-workspace-entry-id="${CSS.escape(workspaceId)}"]`);
     return row?.dataset.workspaceBusyViews ? Value.Parse(workspaceBusyViewsSchema, JSON.parse(row.dataset.workspaceBusyViews)) : [];
   }
 
@@ -330,7 +330,7 @@ class WorkspaceResidencyController extends Controller<HTMLElement> {
   }
 
   private setWorkspacePreloading(workspaceId: string, preloading: boolean): void {
-    const entry = document.querySelector<HTMLElement>(`.fixed-shell-workspace-row[data-workspace-entry-id="${CSS.escape(workspaceId)}"]`);
+    const entry = document.querySelector<HTMLElement>(`[data-workspace-entry-id="${CSS.escape(workspaceId)}"]`);
     if (!entry) return;
     entry.toggleAttribute("data-workspace-preloading", preloading);
     const attention = entry.querySelector<HTMLElement>(":scope > .workspace-attention-status");
@@ -341,14 +341,14 @@ class WorkspaceResidencyController extends Controller<HTMLElement> {
   }
 
   private attentionWorkspaces(): AttentionWorkspace[] {
-    return oldestAttentionFirst([...document.querySelectorAll<HTMLElement>(".fixed-shell-workspace-row[data-workspace-attention-at]")].map((entry) => ({
+    return oldestAttentionFirst([...document.querySelectorAll<HTMLElement>("[data-workspace-attention-at]")].map((entry) => ({
       workspaceId: entry.dataset.workspaceEntryId!,
       attentionAt: Number(entry.dataset.workspaceAttentionAt),
     })));
   }
 
   private preparationCandidates(): Array<{ workspaceId: string }> {
-    const candidates = new Map<string, WorkspacePreloadCandidate>([...document.querySelectorAll<HTMLElement>(".fixed-shell-workspace-row[data-workspace-entry-id]")]
+    const candidates = new Map<string, WorkspacePreloadCandidate>([...document.querySelectorAll<HTMLElement>("[data-workspace-entry-id]")]
       .filter((entry) => !entry.closest(".fixed-shell-parked"))
       .map((entry) => [entry.dataset.workspaceEntryId!, {
         workspaceId: entry.dataset.workspaceEntryId!,
@@ -368,7 +368,7 @@ class WorkspaceResidencyController extends Controller<HTMLElement> {
   }
 
   private workspaceLastActivityAt(workspaceId: string): number {
-    const row = document.querySelector<HTMLElement>(`.fixed-shell-workspace-row[data-workspace-entry-id="${CSS.escape(workspaceId)}"]`);
+    const row = document.querySelector<HTMLElement>(`[data-workspace-entry-id="${CSS.escape(workspaceId)}"]`);
     return Number(row?.dataset.workspaceLastActivityAt ?? 0);
   }
 
@@ -447,8 +447,7 @@ class WorkspaceResidencyController extends Controller<HTMLElement> {
   private showEmpty(): void {
     this.setSwitchingWorkspace(false);
     this.hideResidents();
-    document.querySelectorAll<HTMLElement>(".fixed-shell-workspace-row.active").forEach((row) => {
-      row.classList.remove("active");
+    document.querySelectorAll<HTMLElement>("[data-workspace-entry-id][aria-current=\"page\"]").forEach((row) => {
       row.removeAttribute("aria-current");
     });
     this.loadingTargets.forEach((loading) => { loading.hidden = true; });
@@ -459,7 +458,7 @@ class WorkspaceResidencyController extends Controller<HTMLElement> {
     this.setSwitchingWorkspace(true);
     this.hideResidents();
     this.emptyTargets.forEach((empty) => { empty.hidden = true; });
-    const row = document.querySelector<HTMLElement>(`.fixed-shell-workspace-row[data-workspace-entry-id="${CSS.escape(workspaceId)}"]`);
+    const row = document.querySelector<HTMLElement>(`[data-workspace-entry-id="${CSS.escape(workspaceId)}"]`);
     const title = row?.getAttribute("title") ?? workspaceId;
     this.loadingTargets.forEach((loading) => {
       loading.hidden = false;
@@ -507,7 +506,7 @@ class WorkspaceResidencyController extends Controller<HTMLElement> {
     if (document.visibilityState !== "visible") return;
     const workspaceId = this.visibleWorkspaceId();
     if (!workspaceId || workspaceId !== this.intendedWorkspaceId) return;
-    const row = document.querySelector<HTMLElement>(`.fixed-shell-workspace-row[data-workspace-entry-id="${CSS.escape(workspaceId)}"]`);
+    const row = document.querySelector<HTMLElement>(`[data-workspace-entry-id="${CSS.escape(workspaceId)}"]`);
     let serializedTokens = row?.dataset.workspaceAttentionTokens;
     if (!serializedTokens) return;
     if (window.matchMedia(phoneLayoutMediaQuery).matches) {

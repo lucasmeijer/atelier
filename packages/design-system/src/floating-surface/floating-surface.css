@@ -4,9 +4,10 @@
   inset: auto;
   box-sizing: border-box;
   width: max-content;
-  max-width: min(340px, calc(100vw - 16px));
-  max-height: min(420px, calc(100vh - 16px));
+  max-width: min(340px, calc(100dvw - 16px));
+  max-height: min(420px, calc(100dvh - 16px));
   overflow-y: auto;
+  overscroll-behavior: contain;
   margin: 0;
   padding: 6px;
   border: 1px solid var(--line-strong);

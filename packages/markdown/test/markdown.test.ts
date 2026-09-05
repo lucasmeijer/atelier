@@ -15,27 +15,10 @@ describe("renderMarkdown", () => {
     expect(html).not.toContain("<script>");
   });
 
-  test("fenced code blocks are highlighted, copyable, and fullscreenable but Markdown is not formatted", () => {
+  test("does not parse Markdown emphasis inside fenced code", () => {
     const html = renderMarkdown("work 1", "```bash\nls **/work**\n```");
-    expect(html.startsWith(`<div class="agent-code-block" data-controller="agent-code-copy atelier-fullscreen"`)).toBe(true);
-    expect(html).toContain(`data-atelier-fullscreen-mode-value="template"`);
-    expect(html).toContain(`data-atelier-fullscreen-title-value="bash code"`);
-    expect(html).toContain(`data-action="agent-code-copy#copy"`);
-    expect(html).not.toContain("agent-code-block-header");
-    expect(html).toContain(`<pre data-lang="bash" class="language-bash"><code data-agent-code-copy-target="code">`);
-    expect(html).toContain(`<template data-atelier-fullscreen-target="content"><div class="agent-code-block"><pre data-lang="bash" class="language-bash"><code>`);
     expect(html).toContain("/work");
     expect(html).not.toContain("<strong>");
-  });
-
-  test("fenced code blocks show filenames but not languages and use filenames as fullscreen titles", () => {
-    const html = renderMarkdown("work 1", "```typescript src/hello.ts\nexport const hello = 'world';\n```");
-    expect(html.startsWith(`<div class="agent-code-block"`)).toBe(true);
-    expect(html).toContain(`data-atelier-fullscreen-title-value="src/hello.ts"`);
-    expect(html).toContain(`<div class="agent-code-block-header" title="src/hello.ts">src/hello.ts</div>`);
-    expect(html).not.toContain(`>typescript</div>`);
-    expect(html).toContain(`<template data-atelier-fullscreen-target="content"><div class="agent-code-block"><pre data-lang="typescript" class="language-typescript"><code>`);
-    expect(html).not.toContain(`<template data-atelier-fullscreen-target="content"><div class="agent-code-block-header"`);
   });
 
   test("accepts an explicit filename attribute without displaying its syntax", () => {

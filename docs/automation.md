@@ -60,6 +60,7 @@ Other browser-navigable surfaces are:
 /settings                               # Atelier settings
 /settings?section=models                # A specific settings section
 /settings/development                   # Development settings
+/design-system-catalogue.html           # Live component catalogue (HTML)
 ```
 
 The settings section is a registered settings contribution ID, such as `theme`, `git-identity`, `github`, `models`, `transcription`, or `update`.

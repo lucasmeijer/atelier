@@ -18,7 +18,7 @@ Both branches produce browser-openable HTML and both must directly use Atelier's
 
 ## Rules that apply to both
 
-1. **Use Atelier's design system directly.** Read `apps/web/public/design-system.css` and `apps/web/public/design-system-catalogue.html` first. Link the real stylesheet from the prototype; never copy or recreate it. Use existing classes and elements wherever applicable, and use its tokens for any prototype-specific layout CSS.
+1. **Use Atelier's design system directly.** Read `packages/design-system/README.md` and `packages/design-system/catalogue/entries.ts` first. Link the real stylesheet from the prototype; never copy or recreate it. Use existing classes and elements wherever applicable, and use its tokens for any prototype-specific layout CSS.
 2. **Build in context, not in isolation.** Inspect the nearby real UI and carry over Atelier's shell, terminology, realistic data, density, and theme. The prototype should feel like a possible Atelier feature, not a generic mini-app.
 3. **Make the design space easy to explore.** Produce one clearly marked HTML file with visible controls, meaningful states, and multiple variants or scenarios. Keep all alternatives together so the user can compare them quickly.
 4. **Keep it throwaway and obvious.** Put prototypes under `apps/web/public/prototypes/` by default, close to the real stylesheet and static server, with `prototype` in the filename. Do not add a production route or architecture for the artifact.

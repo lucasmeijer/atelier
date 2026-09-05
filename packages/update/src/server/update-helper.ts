@@ -1,3 +1,4 @@
+import { designSystemStaticFiles } from "@atelier/design-system/assets";
 import { escapeHtml } from "@atelier/shared";
 import { replacementCreateArgs, dockerExec, dockerContainerInspect, serverHealthUrlFromInspect } from "./docker.ts";
 import { updaterPort } from "./constants.ts";
@@ -102,12 +103,6 @@ async function run(): Promise<void> {
   }
 }
 
-const componentCssPaths = new Map([
-  "action-item", "autocomplete", "activity-button", "button", "button-group", "copy-button",
-  "destructive-confirmation", "dialog", "floating-surface", "icons", "panel", "popup",
-  "perimeter-button", "progress-button", "transient-feedback", "toggle",
-].map((name) => [`/${name}.css`, `/app/packages/design-system/src/${name}/${name}.css`]));
-
 Bun.serve({
   hostname: "127.0.0.1",
   port: updaterPort,
@@ -115,10 +110,8 @@ Bun.serve({
     const url = new URL(request.url);
     if (url.pathname === "/up") return new Response("ok", { headers: { "cache-control": "no-store" } });
     if (url.pathname === "/state") return Response.json({ failed, redirect: steps.find((s) => s.id === "redirect")?.status === "running" ? options.returnUrl : undefined, steps });
-    if (url.pathname === "/design-system.css") return new Response(Bun.file("/app/apps/web/public/design-system.css"), { headers: { "content-type": "text/css; charset=utf-8" } });
-    const componentCssPath = componentCssPaths.get(url.pathname);
-    if (componentCssPath) return new Response(Bun.file(componentCssPath), { headers: { "content-type": "text/css; charset=utf-8" } });
-    if (url.pathname === "/fonts/jetbrains-mono-latin-400-normal.woff2") return new Response(Bun.file("/app/node_modules/@fontsource/jetbrains-mono/files/jetbrains-mono-latin-400-normal.woff2"), { headers: { "content-type": "font/woff2" } });
+    const asset = Object.entries(designSystemStaticFiles).find(([path]) => path === url.pathname)?.[1];
+    if (asset) return new Response(Bun.file(asset.url), { headers: { "content-type": asset.contentType } });
     if (url.pathname === "/") startUpdate();
     return new Response(page(url.searchParams.get("theme") ?? ""), { headers: { "content-type": "text/html; charset=utf-8", "cache-control": "no-store" } });
   },

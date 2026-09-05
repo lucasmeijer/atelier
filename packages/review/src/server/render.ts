@@ -71,7 +71,7 @@ export function renderFileSummary(label: ActionItemLabel, metaHtml: string, titl
     leadingHtml: Icons.Disclosure,
     label: {
       ...label,
-      className: "review-file-path",
+
       attributesHtml: title ? `title="${escapeHtml(title)}"` : undefined,
     },
     trailingHtml: `<span class="action-item__status review-file-meta">${metaHtml}</span>`,
@@ -114,11 +114,11 @@ function renderGitStats(workspaceId: string, file: ReviewFileSummary, counts?: P
 
 export function renderReviewTitle(files: ReviewFileStats[]): string {
   const totals = files.reduce((sum, file) => ({ additions: sum.additions + file.additions, deletions: sum.deletions + file.deletions }), { additions: 0, deletions: 0 });
-  return `Review <span class="review-additions">+${totals.additions}</span> <span class="review-deletions">−${totals.deletions}</span>`;
+  return `Review +${totals.additions} −${totals.deletions}`;
 }
 
 export function renderReviewTitleStream(workspaceId: string, title: string): string {
-  return turboStream("update", workspaceWorkViewLabelDomId(workspaceId, reviewViewKey), title);
+  return turboStream("update", workspaceWorkViewLabelDomId(workspaceId, reviewViewKey), escapeHtml(title));
 }
 
 export function renderReviewStatsFrame(workspaceId: string, files: ReviewFileStats[]): string {
@@ -127,19 +127,12 @@ export function renderReviewStatsFrame(workspaceId: string, files: ReviewFileSta
   return `<turbo-frame id="${reviewStatsFrameId(workspaceId)}">${titleStream}${fileStreams}</turbo-frame>`;
 }
 
-export function renderFilePath(path: string): string {
-  const basenameStart = path.lastIndexOf("/") + 1;
-  const directory = path.slice(0, basenameStart);
-  const basename = path.slice(basenameStart);
-  return `<span class="review-file-location">${directory ? `<span class="review-file-directory">${escapeHtml(directory)}</span>` : ""}<span class="review-file-basename">${escapeHtml(basename)}</span></span>`;
-}
-
 function renderFile(workspaceId: string, file: ReviewFileSummary, comments: ReviewComment[]): string {
   const fileComments = anchoredCommentsFor(comments, file.path);
   const frameId = reviewFileFrameId(workspaceId, file.path);
   const detailUrl = `/workspaces/${encodeURIComponent(workspaceId)}/review/files/${encodeURIComponent(file.path)}`;
-  const label = `${file.previousPath ? `${renderFilePath(file.previousPath)}<b aria-label="renamed to">→</b>` : ""}${renderFilePath(file.path)}`;
-  const summary = renderFileSummary({ kind: "html", html: label }, `<span id="${reviewFileCommentCountId(workspaceId, file.path)}">${renderCommentCount(fileComments.length)}</span>${renderGitStats(workspaceId, file)}`, file.path);
+  const label = `${file.previousPath ? `${file.previousPath} → ` : ""}${file.path}`;
+  const summary = renderFileSummary({ kind: "text", text: label }, `<span id="${reviewFileCommentCountId(workspaceId, file.path)}">${renderCommentCount(fileComments.length)}</span>${renderGitStats(workspaceId, file)}`, file.path);
   return `<details class="review-file" data-review-target="file" data-review-path="${escapeHtml(file.path)}" data-review-change="${file.change}" data-review-comments="${fileComments.length}" data-action="pointerenter->review#requestFile pointerdown->review#requestFile focusin->review#requestFile focusin->review#selectFile focusout->review#deselectFile toggle->review#requestFile">
     ${summary}
     <turbo-frame id="${frameId}" data-src="${escapeHtml(detailUrl)}"><div class="review-file-loading" role="status"><span class="status-spinner" aria-hidden="true"></span> Loading changes…</div></turbo-frame>

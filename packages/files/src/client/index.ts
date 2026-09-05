@@ -90,9 +90,9 @@ function createFilesController(Controller: WorkspaceClientControllerConstructor)
     }
 
     keydown(event: KeyboardEvent): void {
-      const rows = [...this.element.querySelectorAll<HTMLElement>(".files-row")];
+      const rows = [...this.element.querySelectorAll<HTMLElement>('[role="treeitem"]')];
       if (rows.length === 0) return;
-      const current = document.activeElement instanceof HTMLElement ? rows.indexOf(document.activeElement.closest<HTMLElement>(".files-row")!) : -1;
+      const current = document.activeElement instanceof HTMLElement ? rows.indexOf(document.activeElement.closest<HTMLElement>('[role="treeitem"]')!) : -1;
       let next: number | undefined;
       if (event.key === "ArrowDown") next = Math.min(rows.length - 1, current + 1);
       else if (event.key === "ArrowUp") next = Math.max(0, current < 0 ? 0 : current - 1);

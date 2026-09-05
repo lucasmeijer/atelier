@@ -1,0 +1,22 @@
+/* A bounded collection of non-selectable records with optional metadata and actions. */
+.managed-list { overflow: hidden; border: 1px solid var(--line); border-radius: var(--radius-surface); background: var(--bg); }
+.managed-list__filter { padding: 8px; border-bottom: 1px solid var(--line); background: var(--panel); }
+.managed-list__items { max-height: min(360px, 48vh); overflow-y: auto; overflow-y: overlay; }
+.managed-list__item { min-width: 0; min-height: 52px; display: flex; align-items: center; gap: 8px; padding: 6px 12px; color: var(--text); }
+.managed-list__item + .managed-list__item { border-top: 1px solid var(--line); }
+.managed-list__item[hidden] { display: none; }
+.managed-list__empty { padding: 24px; color: var(--text); text-align: center; }
+.managed-list__item:focus-within { background: var(--accent-soft); }
+.managed-list__visual { flex: 0 0 auto; }
+.managed-list__content { min-width: 0; flex: 1; }
+.managed-list__label { display: flex; align-items: center; gap: 8px; overflow: hidden; color: var(--text-bright); font-weight: var(--weight-semibold); }
+.managed-list__label-text { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.managed-list__description { overflow: hidden; color: var(--text); font-weight: var(--weight-medium); text-overflow: ellipsis; white-space: nowrap; }
+.managed-list__meta { flex: 0 0 auto; color: var(--text); white-space: nowrap; }
+.managed-list__actions { flex: 0 0 auto; display: flex; align-items: center; gap: 8px; }
+.managed-list__actions > form { display: flex; margin: 0; }
+.managed-list__item[aria-disabled="true"] { opacity: .68; }
+@media (max-width: 700px), (pointer: coarse) {
+  .managed-list__item { min-height: 56px; padding-inline: 8px; }
+}
+

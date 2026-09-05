@@ -63,8 +63,12 @@ export class ToggleController extends Controller<HTMLElement> {
 
   private readonly positionIndicator = (selected = this.element.querySelector<HTMLButtonElement>('button[aria-pressed="true"]')): void => {
     if (!selected) return;
-    this.element.style.setProperty("--text-toggle-indicator-left", `${selected.offsetLeft}px`);
-    this.element.style.setProperty("--text-toggle-indicator-width", `${selected.offsetWidth}px`);
+    // Measure the plain label, not the larger touch target around it.
+    const range = document.createRange();
+    range.selectNodeContents(selected);
+    const label = range.getBoundingClientRect();
+    this.element.style.setProperty("--text-toggle-indicator-left", `${label.left - this.element.getBoundingClientRect().left}px`);
+    this.element.style.setProperty("--text-toggle-indicator-width", `${label.width}px`);
   };
 
   private readonly selectFromClick = (event: MouseEvent): void => {

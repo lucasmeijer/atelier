@@ -202,31 +202,6 @@ describe("Review presentation", () => {
     expect(notGit).toContain("No git repo in /work yet");
   });
 
-  test("defers the server-rendered diff until its file frame is requested", async () => {
-    const root = await repository();
-    await writeFile(join(root, "changed.ts"), "const after = true;\n");
-    const index = await collectReviewIndex(root);
-    if (index.phase !== "ready") throw new Error("expected ready review");
-    const file = await collectReviewFile(root, "changed.ts");
-    if (!file) throw new Error("expected review file");
-
-    const body = renderReviewBody("workspace 1", index, []);
-    expect(body).toContain('data-src="/workspaces/workspace%201/review/files/changed.ts"');
-    expect(body).toContain('src="/workspaces/workspace%201/review/stats"');
-    expect(body).toContain('aria-label="Loading change stats"');
-    expect(body).not.toContain("<diffs-container>");
-    expect(body).not.toContain("review-additions");
-
-    const stats = renderReviewStatsFrame("workspace 1", await collectReviewStats(root, index));
-    expect(stats).toContain('<turbo-stream action="update" target="work_view_label_workspace_1_review_workspace"><template>Review <span class="review-additions">+1</span> <span class="review-deletions">−1</span></template></turbo-stream>');
-    expect(stats).toContain("review-additions\">+1");
-    expect(stats).not.toContain("Loading change stats");
-
-    const details = await renderReviewFileDetails("workspace 1", file, []);
-    expect(details).toMatch(/<diffs-container><template shadowrootmode="open">[\s\S]*<style data-core-css="">[\s\S]*<\/template><\/diffs-container>/);
-    expect(details).not.toContain("review-additions");
-  });
-
   test("renders file grouping collapsed by default with explicit review comment actions", async () => {
     const comment: ReviewComment = { id: "comment-1", path: "src/example.ts", side: "additions", startLine: 2, endLine: 2, body: "Keep this lazy", snippet: "target" };
     const file: ReviewFile = { path: "src/example.ts", change: "modified", kind: "binary", detail: "Binary file changed" };

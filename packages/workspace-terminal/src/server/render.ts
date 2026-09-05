@@ -1,3 +1,4 @@
+import { buttonHtml } from "@atelier/design-system/button";
 import { domId, escapeHtml } from "@atelier/shared";
 import { terminalViewKey } from "../shared.ts";
 import type { WorkspaceTerminal } from "./workspace-terminals.ts";
@@ -13,7 +14,7 @@ const terminalAccessoryButtons = [
 
 function renderTerminalAccessoryBar(): string {
   const buttons = terminalAccessoryButtons.map(({ key, label, ariaLabel }) =>
-    `<button type="button" class="terminal-accessory-key" aria-label="${ariaLabel}"${key === "control" ? ' aria-pressed="false"' : ""} data-terminal-key="${key}" data-action="pointerdown->terminal-pane#preserveTerminalFocus click->terminal-pane#sendAccessoryKey">${label}</button>`
+    buttonHtml({ type: "button", variant: "secondary", content: { kind: "icon-only", iconHtml: escapeHtml(label), label: ariaLabel }, attributesHtml: `${key === "control" ? 'aria-pressed="false" ' : ""}data-terminal-key="${key}" data-action="pointerdown->terminal-pane#preserveTerminalFocus click->terminal-pane#sendAccessoryKey"` })
   ).join("");
   return `<div class="terminal-accessory-bar" role="toolbar" aria-label="Terminal keys">${buttons}</div>`;
 }

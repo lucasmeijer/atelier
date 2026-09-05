@@ -1,0 +1,649 @@
+/** Search by id. Each entry co-locates WHEN, contract, imports and executable examples.
+ * page.ts renders these functions AND displays their source: no parallel demo markup.
+ * Native CSS primitives intentionally do not have pass-through renderers. */
+import { buttonHtml } from "../src/button/button-html.ts";
+import { actionLinkHtml } from "../src/action-link/action-link-html.ts";
+import { buttonGroupHtml } from "../src/button-group/button-group-html.ts";
+import { actionItemHtml } from "../src/action-item/action-item-html.ts";
+import { activityButtonHtml } from "../src/activity-button/activity-button-html.ts";
+import { progressButtonHtml } from "../src/progress-button/progress-button-html.ts";
+import { copyButtonHtml } from "../src/copy-button/copy-button-html.ts";
+import { destructiveConfirmationHtml } from "../src/destructive-confirmation/destructive-confirmation-html.ts";
+import { dialogHtml } from "../src/dialog/dialog-html.ts";
+import { panelHtml } from "../src/panel/panel-html.ts";
+import { popupHtml } from "../src/popup/popup-html.ts";
+import { toggleHtml } from "../src/toggle/toggle-html.ts";
+import { autocompleteHtml } from "../src/autocomplete/autocomplete-html.ts";
+import { transientFeedbackHtml } from "../src/transient-feedback/transient-feedback-html.ts";
+import { Icons } from "../src/icons/icons-html.ts";
+
+export interface CatalogueEntry {
+  id: string;
+  title: string;
+  when: string;
+  contract: string;
+  imports?: Record<string, string>;
+  sources?: string[];
+  examples: { title: string; render: () => string }[];
+}
+export const entries: CatalogueEntry[] = [
+  {
+    id: "foundations",
+    title: "Foundations & composition",
+    when: "Role tokens and shared layout primitives, not a second set of component sizes.",
+    contract:
+      "Use --bg, --panel, --elev, --text, --text-bright, --text-muted, --accent, --success, --warning and --danger by semantic role. Theme is data-theme on the root. Typography uses --font-sans / --font-mono, --text-body / --text-title / --text-code. title supplies visual heading style, not heading semantics. form-stack, form-section, form-actions, action-list, work-view-toolbar and empty-state own composition spacing. viewport-overlay bounds browser-owned overlays.",
+    sources: ["design-system.css"],
+    examples: [
+      {
+        title: "Semantic colors · title · form spacing",
+        render: () =>
+          '<div class="form-stack"><h3 class="title">A consistent visual title</h3><div class="catalogue-swatches">' +
+          [
+            "accent",
+            "success",
+            "warning",
+            "danger",
+            "text-bright",
+            "text",
+            "text-muted",
+          ]
+            .map(
+              (role) =>
+                `<span style="color:var(--${role})"><span class="status-dot" style="color:inherit" aria-hidden="true"></span> ${role}</span>`,
+            )
+            .join("") +
+          '</div><div class="form-section"><span>Fields in a form section</span><span>Share a smaller gap than sections.</span></div></div>',
+      },
+    ],
+  },
+  {
+    id: "button",
+    title: "Button",
+    when: "An action, not navigation. Primary for the main action, secondary for supporting actions, danger for destructive actions.",
+    contract:
+      "Choose caption OR icon-only with a mandatory accessible label. Native type and disabled are explicit. Do not add classes or override component anatomy via attributesHtml.",
+    imports: { button: "buttonHtml", icons: "Icons" },
+    sources: ["button/button-content.ts"],
+    examples: [
+      {
+        title: "Variants · disabled · icon-only · long caption",
+        render: () =>
+          buttonHtml({
+            type: "button",
+            variant: "primary",
+            content: { kind: "caption", caption: "Primary" },
+          }) +
+          buttonHtml({
+            type: "button",
+            variant: "secondary",
+            content: { kind: "caption", caption: "Secondary" },
+          }) +
+          buttonHtml({
+            type: "button",
+            variant: "danger",
+            content: { kind: "caption", caption: "Danger" },
+          }) +
+          buttonHtml({
+            type: "button",
+            variant: "secondary",
+            disabled: true,
+            content: { kind: "caption", caption: "Unavailable" },
+          }) +
+          buttonHtml({
+            type: "button",
+            variant: "secondary",
+            content: {
+              kind: "icon-only",
+              iconHtml: Icons.Plus,
+              label: "Add item",
+            },
+          }) +
+          buttonHtml({
+            type: "button",
+            variant: "secondary",
+            content: {
+              kind: "caption",
+              caption: "A deliberately long translated action caption",
+            },
+          }),
+      },
+    ],
+  },
+  {
+    id: "action-link",
+    title: "Action link",
+    when: "Navigation that deserves button emphasis. Use normal links for prose.",
+    contract:
+      "A native anchor: href is navigation, never a click handler masquerading as navigation. No disabled links. Same content and variants as Button.",
+    imports: { "action-link": "actionLinkHtml" },
+    examples: [
+      {
+        title: "Navigate to popup examples",
+        render: () =>
+          actionLinkHtml({
+            href: "#popup",
+            variant: "secondary",
+            content: { kind: "caption", caption: "Explore Popup" },
+          }),
+      },
+    ],
+  },
+  {
+    id: "button-group",
+    title: "Button group",
+    when: "Related actions sharing horizontal or vertical spacing. For mutually exclusive values, use Toggle.",
+    contract:
+      "Use semantics: group with a label for a meaningful group; layout for spacing only. Wrapping forms are allowed in itemsHtml.",
+    imports: { "button-group": "buttonGroupHtml", button: "buttonHtml" },
+    examples: [
+      {
+        title: "Horizontal action group",
+        render: () =>
+          buttonGroupHtml({
+            orientation: "horizontal",
+            semantics: "group",
+            label: "Editing actions",
+            itemsHtml:
+              buttonHtml({
+                type: "button",
+                variant: "primary",
+                content: { kind: "caption", caption: "Save" },
+              }) +
+              buttonHtml({
+                type: "button",
+                variant: "secondary",
+                content: { kind: "caption", caption: "Cancel" },
+              }),
+          }),
+      },
+    ],
+  },
+  {
+    id: "action-item",
+    title: "Action item",
+    when: "Rows in menus, navigation, trees and action lists. Use compound when a row has separately actionable trailing controls.",
+    contract:
+      "Choose native buttons or anchors for actions. Caller owns roles, href/type, selection and integration attributes. Never nest buttons. Labels and descriptions are plain text. leadingHtml and trailingHtml fill bounded icon/status and metadata slots; neither can replace the label anatomy. tone: danger is the semantic destructive treatment. Long labels reveal on engagement.",
+    imports: {
+      "action-item": "actionItemHtml",
+      "copy-button": "copyButtonHtml",
+    },
+    examples: [
+      {
+        title: "Single · disabled · compound long label",
+        render: () =>
+          '<div class="action-list">' +
+          actionItemHtml({
+            kind: "single",
+            element: { tag: "button", attributesHtml: 'type="button"' },
+            label: { kind: "text", text: "Open workspace" },
+          }) +
+          actionItemHtml({
+            kind: "single",
+            element: {
+              tag: "button",
+              attributesHtml: 'type="button" disabled',
+            },
+            label: { kind: "text", text: "Unavailable action" },
+          }) +
+          actionItemHtml({
+            kind: "compound",
+            primary: { tag: "a", attributesHtml: 'href="#action-item"' },
+            label: {
+              kind: "text",
+              text: "A very long record name that needs to remain readable inside a narrow container",
+            },
+            engagedActionsHtml: copyButtonHtml({
+              label: "Copy record name",
+              copyText: "Long record name",
+            }),
+          }) +
+          "</div>",
+      },
+    ],
+  },
+  {
+    id: "activity-button",
+    title: "Activity button",
+    when: "A running operation that can still be stopped. For uninterruptible operations use Progress button.",
+    contract:
+      "Both captions participate in sizing. Active is busy but NOT disabled. Render state on the server or use activity-button/client for browser-owned operations.",
+    imports: { "activity-button": "activityButtonHtml" },
+    sources: ["activity-button/activity-button-client.ts"],
+    examples: [
+      {
+        title: "Initial and active",
+        render: () =>
+          activityButtonHtml({
+            variant: "primary",
+            state: "initial",
+            initialContent: { kind: "text", text: "Start" },
+            activeContent: { kind: "text", text: "Stop operation" },
+            attributesHtml: 'data-action="catalogue#activity"',
+          }) +
+          activityButtonHtml({
+            variant: "primary",
+            state: "active",
+            initialContent: { kind: "text", text: "Start" },
+            activeContent: { kind: "text", text: "Stop operation" },
+            attributesHtml: 'data-action="catalogue#activity"',
+          }),
+      },
+    ],
+  },
+  {
+    id: "progress-button",
+    title: "Progress button",
+    when: "An operation whose action must not be invoked again while running.",
+    contract:
+      "In-progress always disables the control. Omit progress for indeterminate; otherwise use a finite number from 0 to 100. Server-render new states with Turbo.",
+    imports: { "progress-button": "progressButtonHtml" },
+    examples: [
+      {
+        title: "Indeterminate · 0% · 50% · 100%",
+        render: () =>
+          [undefined, 0, 50, 100]
+            .map((progress) =>
+              progressButtonHtml({
+                variant: "primary",
+                state: "in-progress",
+                progress,
+                initialContent: { kind: "text", text: "Install" },
+                progressContent: {
+                  kind: "text",
+                  text:
+                    progress === undefined
+                      ? "Installing…"
+                      : `Installing ${progress}%`,
+                },
+              }),
+            )
+            .join(""),
+      },
+    ],
+  },
+  {
+    id: "copy-button",
+    title: "Copy button",
+    when: "Copy a known value, with automatic transient success feedback.",
+    contract:
+      "Provide label and copyText; caption is optional. Clipboard needs a secure context and permission. Errors are not presented as success. Try copying, then paste into Text entry.",
+    imports: { "copy-button": "copyButtonHtml" },
+    examples: [
+      {
+        title: "Icon-only and caption",
+        render: () =>
+          copyButtonHtml({
+            label: "Copy example",
+            copyText: "Copied from Atelier design system",
+          }) +
+          copyButtonHtml({
+            label: "Copy command",
+            caption: "Copy command",
+            copyText: "bun run web",
+          }),
+      },
+    ],
+  },
+  {
+    id: "destructive-confirmation",
+    title: "Destructive confirmation",
+    when: "An inline two-step destructive form action. Use Dialog for explanations or additional input.",
+    contract:
+      "Place inside a form. Initial button arms; confirm submits (optionally overriding the action); cancel disarms. This demo intercepts submission and announces the result.",
+    imports: { "destructive-confirmation": "destructiveConfirmationHtml" },
+    examples: [
+      {
+        title: "Arm · cancel · confirm (safe demo)",
+        render: () =>
+          '<form data-action="submit->catalogue#submit">' +
+          destructiveConfirmationHtml({
+            trigger: {
+              type: "button",
+              variant: "danger",
+              content: { kind: "caption", caption: "Delete record" },
+            },
+            confirmCaption: "Confirm deletion",
+            cancelCaption: "Keep record",
+          }) +
+          '<output aria-live="polite"></output></form>',
+      },
+    ],
+  },
+  {
+    id: "toggle",
+    title: "Toggle",
+    when: "Mutually exclusive values, all visible at once. For many options use a native select with popup enhancement.",
+    contract:
+      "Unique values; current value must exist. Element mode emits bubbling change with detail {name,value}. Form mode submits through Turbo. Labels are plain text; there are no per-option classes or HTML replacements. Arrow keys skip disabled options.",
+    imports: { toggle: "toggleHtml" },
+    sources: ["toggle/toggle-controller.ts"],
+    examples: [
+      {
+        title: "Button · disabled option",
+        render: () =>
+          toggleHtml({
+            variant: "button",
+            label: "View",
+            name: "view",
+            value: "list",
+            options: [
+              { value: "list", label: "List" },
+              { value: "grid", label: "Grid" },
+              { value: "map", label: "Map", disabled: true },
+            ],
+          }),
+      },
+      {
+        title: "Text",
+        render: () =>
+          toggleHtml({
+            variant: "text",
+            label: "View",
+            name: "view",
+            value: "list",
+            options: [
+              { value: "list", label: "List" },
+              { value: "grid", label: "Grid" },
+            ],
+          }),
+      },
+      {
+        title: "Subtle text",
+        render: () =>
+          toggleHtml({
+            variant: "text-subtle",
+            label: "View",
+            name: "view",
+            value: "list",
+            options: [
+              { value: "list", label: "List" },
+              { value: "grid", label: "Grid" },
+            ],
+          }),
+      },
+    ],
+  },
+  {
+    id: "popup",
+    title: "Popup",
+    when: "Compact choices anchored to a disclosure. Prefer popupHtml: one call owns trigger, anchor, ARIA and native popover behavior.",
+    contract:
+      "Unique id per instance. Items need menuitem or menuitemradio roles and native actions. Escape closes; arrows move through enabled items. Placement flips at viewport edges. The package owns trigger linkage and positioning; trigger.attributesHtml and menuAttributesHtml connect application behavior without supplying class or style. Try the REAL viewport corners in the edge laboratory.",
+    imports: { popup: "popupHtml", "action-item": "actionItemHtml" },
+    examples: [
+      {
+        title: "Anchored menu · disabled · long option",
+        render: () =>
+          popupHtml({
+            id: "catalogue-popup",
+            label: "Example actions",
+            trigger: {
+              variant: "secondary",
+              content: { kind: "caption", caption: "Open menu" },
+            },
+            contentHtml: [
+              "Open record",
+              "An unusually long translated menu item caption",
+              "Unavailable",
+            ]
+              .map((text, index) =>
+                actionItemHtml({
+                  kind: "single",
+                  label: { kind: "text", text },
+                  element: {
+                    tag: "button",
+                    attributesHtml: `type="button" role="menuitem"${index === 2 ? " disabled" : ""}`,
+                  },
+                }),
+              )
+              .join(""),
+          }),
+      },
+    ],
+  },
+  {
+    id: "popup-select",
+    title: "Popup select",
+    when: "A native form select enhanced into a consistent popover. Prefer Toggle for a few short options.",
+    contract:
+      "Native interface: select.popup-select, an accessible label, named options, selected and disabled. Wrap each select in its own span. data-popup-placement=above is optional. Native change and form value remain authoritative; never manipulate generated menu DOM.",
+    sources: ["popup/popup-controller.ts", "popup/popup-position.ts"],
+    examples: [
+      {
+        title: "Select with disabled option",
+        render: () =>
+          '<span><select class="popup-select" name="environment" aria-label="Environment"><option>Development</option><option>Staging</option><option disabled>Production (restricted)</option></select></span>',
+      },
+      {
+        title: "Long choices · native form reset · disabled select",
+        render: () =>
+          '<form class="form-stack" data-action="submit->catalogue#submit"><span><select class="popup-select" name="region" aria-label="Region"><option value="local">Local development</option><option value="remote">A remote development environment with a deliberately long regional name</option></select></span><span><select class="popup-select" aria-label="Unavailable environment" disabled><option>Unavailable environment</option></select></span>' +
+          buttonGroupHtml({ orientation: "horizontal", semantics: "layout", itemsHtml:
+            buttonHtml({ type: "reset", variant: "secondary", content: { kind: "caption", caption: "Reset selection" } }) +
+            buttonHtml({ type: "submit", variant: "primary", content: { kind: "caption", caption: "Submit selection" } })
+          }) + '<output aria-live="polite"></output></form>',
+      },
+    ],
+  },
+  {
+    id: "dialog",
+    title: "Dialog",
+    when: "A focused task temporarily blocking page interaction. Not for small menus or ordinary navigation.",
+    contract:
+      "Native dialog plus Panel. Open with showModal() in Stimulus or data-dialog-auto-show on server insertion. Escape and close dismiss; focus returns to opener. Provide titleCaption. Full-bleed is for regions owning layout, not a size variant.",
+    imports: { dialog: "dialogHtml", button: "buttonHtml", icons: "Icons" },
+    examples: [
+      {
+        title: "Modal · long body · nested popup",
+        render: () =>
+          buttonHtml({
+            type: "button",
+            variant: "secondary",
+            content: { kind: "caption", caption: "Open dialog" },
+            attributesHtml: 'data-action="catalogue#openDialog"',
+          }) +
+          dialogHtml({
+            element: { id: "catalogue-dialog" },
+            iconHtml: Icons.Plus,
+            titleCaption: "A focused task",
+            bodyHtml:
+              '<label>Record name<input class="text-field" autofocus placeholder="Enter a name"></label><p>Resize, tab through controls, and press Escape.</p><span><select class="popup-select" aria-label="Dialog environment"><option>Development</option><option>Staging</option></select></span>' +
+              "<p>Long content inside the modal.</p>".repeat(15),
+          }),
+      },
+    ],
+  },
+  {
+    id: "panel",
+    title: "Panel",
+    when: "A bounded surface with fixed chrome and flexible body. Dialog composes this; workspace panes use it directly.",
+    contract:
+      "Supply semantic element tag, trusted header/body and optional footer. Use an outer layout container for dimensions. bodyLayout: padded/full-bleed and bodyOverflow: scroll/contained are the supported body behaviors. No root or body classes.",
+    imports: { panel: "panelHtml" },
+    examples: [
+      {
+        title: "Header · body · footer",
+        render: () =>
+          panelHtml({
+            element: { tag: "section" },
+            headerHtml: '<h3 class="title">Panel title</h3>',
+            bodyHtml: "<p>A flexible content region.</p>",
+            bodyLayout: "padded",
+            footerHtml: "Optional footer",
+          }),
+      },
+    ],
+  },
+  {
+    id: "autocomplete",
+    title: "Autocomplete",
+    when: "Server-rendered search suggestions or search status. Not a floating action menu.",
+    contract:
+      "Results provide listbox semantics; caller supplies options, combobox linkage and keyboard selection. Return HTML in a Turbo Frame. Message is a separate variant, optionally role status. No search protocol is hidden here.",
+    imports: {
+      autocomplete: "autocompleteHtml",
+      "action-item": "actionItemHtml",
+    },
+    examples: [
+      {
+        title: "Results · empty · loading",
+        render: () =>
+          autocompleteHtml({
+            kind: "results",
+            label: "Repositories",
+            contentHtml: actionItemHtml({
+              kind: "single",
+              label: { kind: "text", text: "atelier/design-system" },
+              element: {
+                tag: "div",
+                attributesHtml: 'role="option" aria-selected="false"',
+              },
+              primary: false,
+            }),
+          }) +
+          autocompleteHtml({
+            kind: "message",
+            role: "status",
+            content: { kind: "text", text: "No matching repositories" },
+          }) +
+          autocompleteHtml({
+            kind: "message",
+            role: "status",
+            content: { kind: "text", text: "Searching…" },
+          }),
+      },
+    ],
+  },
+  {
+    id: "transient-feedback",
+    title: "Transient feedback",
+    when: "Brief acknowledgement of a completed action. Prefer Copy button for clipboard actions.",
+    contract:
+      "Only current content affects layout. Feedback resets automatically. Use transient-feedback/client helpers for browser operations; server renders initial or feedback. Buttons disable during feedback unless explicitly kept enabled.",
+    imports: { "transient-feedback": "transientFeedbackHtml" },
+    sources: ["transient-feedback/transient-feedback-controller.ts"],
+    examples: [
+      {
+        title: "Activate feedback",
+        render: () =>
+          transientFeedbackHtml({
+            element: {
+              tag: "button",
+
+              attributesHtml: 'type="button" data-action="catalogue#feedback"',
+            },
+            state: "initial",
+            initialContent: { kind: "text", text: "Acknowledge" },
+            feedbackContent: { kind: "text", text: "Done!" },
+          }),
+      },
+    ],
+  },
+  {
+    id: "text-entry",
+    title: "Text entry",
+    when: "Native single-line input or multiline textarea. CSS-first: preserve native form semantics without pass-through renderers.",
+    contract:
+      "input.text-field or textarea.textarea with associated label. Caller owns native type, name, value, required, disabled and validation. Explain errors with aria-describedby and aria-invalid. Do not fork height, border, radius or background per feature.",
+    sources: ["text-entry/text-entry.css"],
+    examples: [
+      {
+        title: "Normal · invalid · disabled · multiline",
+        render: () =>
+          '<div class="form-stack"><label>Name<input class="text-field" placeholder="Paste copied text"></label><label>Invalid value<input class="text-field" value="Not valid" aria-invalid="true" aria-describedby="catalogue-input-error"></label><span id="catalogue-input-error">Explain how to correct the value.</span><label>Unavailable<input class="text-field" value="Unavailable operation" disabled></label><label>Notes<textarea class="textarea" placeholder="Long multiline content"></textarea></label></div>',
+      },
+    ],
+  },
+  {
+    id: "managed-list",
+    title: "Managed list",
+    when: "Non-selectable records with metadata and actions. Use Action item when the row itself is actionable.",
+    contract:
+      "CSS anatomy: managed-list, __filter, __items, __item, __content, __label / __label-text, __description, __meta, __actions, __empty. Local filter uses data-search-text or row text. Server search sets data-managed-list-server-filter=true and uses Turbo. __label-text truncates.",
+    sources: [
+      "managed-list/managed-list-controller.ts",
+      "managed-list/managed-list.css",
+    ],
+    examples: [
+      {
+        title: "Filter · long label · empty result",
+        render: () =>
+          '<div class="managed-list"><div class="managed-list__filter"><input class="text-field" type="search" aria-label="Filter records" placeholder="Filter records…"></div><div class="managed-list__items"><div class="managed-list__item"><div class="managed-list__content"><div class="managed-list__label"><span class="managed-list__label-text">A deliberately long record label for checking narrow layouts</span></div><div class="managed-list__description">Development environment</div></div><span class="managed-list__meta">Ready</span></div><div class="managed-list__item"><div class="managed-list__content">Staging</div></div></div><div class="managed-list__empty" hidden>No matching records</div></div>',
+      },
+    ],
+  },
+  {
+    id: "status",
+    title: "Status & progress lists",
+    when: "Compact status markers and multi-step summaries. Pair color with visible text.",
+    contract:
+      "status-dot with success, warning, danger or running; decorative dots use aria-hidden. status-list has __item and __marker. aria-busy for running, data-status=failed for failure, aria-checked=true only with checkbox role. Reduced motion disables spinning.",
+    sources: ["status/status.css"],
+    examples: [
+      {
+        title: "Success · warning · danger · running",
+        render: () =>
+          '<div class="form-section">' +
+          ["success", "warning", "danger", "running"]
+            .map(
+              (state) =>
+                `<span><span class="status-dot ${state}" aria-hidden="true"></span> ${state}</span>`,
+            )
+            .join("") +
+          '<ul class="status-list"><li class="status-list__item" role="checkbox" aria-checked="true"><span class="status-list__marker">✓</span>Complete</li><li class="status-list__item" aria-busy="true"><span class="status-list__marker"></span>Running</li><li class="status-list__item" data-status="failed"><span class="status-list__marker">!</span>Failed</li></ul></div>',
+      },
+    ],
+  },
+  {
+    id: "icons",
+    title: "Icons",
+    when: "Shared decorative vocabulary. Use icon-only Button for standalone icon actions.",
+    contract:
+      "Icons exports trusted decorative SVG strings. Put the accessible name on the containing control. Never use an unlabeled icon as an action.",
+    imports: { icons: "Icons" },
+    examples: [
+      {
+        title: "Icon vocabulary",
+        render: () =>
+          Object.entries(Icons)
+            .map(
+              ([name, svg]) =>
+                `<span class="catalogue-icon">${svg}<span>${name}</span></span>`,
+            )
+            .join(""),
+      },
+    ],
+  },
+  {
+    id: "linear-navigation",
+    title: "Linear navigation",
+    when: "Keyboard behavior for a vertical sequence whose semantics and content are caller-owned.",
+    contract:
+      "data-controller=linear-navigation on the sequence; data-linear-navigation-target=item on focusable children. Up/Down move without wrapping; hidden, disabled and aria-disabled items are skipped. This does not implement selection or a tree protocol.",
+    sources: ["linear-navigation/linear-navigation-controller.ts"],
+    imports: { "action-item": "actionItemHtml" },
+    examples: [
+      {
+        title: "Focus, then Up / Down",
+        render: () =>
+          '<div class="action-list" data-controller="linear-navigation">' +
+          ["First", "Second", "Last"]
+            .map((text) =>
+              actionItemHtml({
+                kind: "single",
+                element: {
+                  tag: "button",
+                  attributesHtml:
+                    'type="button" data-linear-navigation-target="item"',
+                },
+                label: { kind: "text", text },
+              }),
+            )
+            .join("") +
+          "</div>",
+      },
+    ],
+  },
+];

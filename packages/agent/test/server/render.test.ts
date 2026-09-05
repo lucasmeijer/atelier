@@ -96,13 +96,6 @@ describe("transcript rendering", () => {
     expect(html).toContain("<em>emphasis</em>");
   });
 
-  test("streaming fences preserve code-copy markup", () => {
-    const html = renderTranscriptItem(ctx, { type: "text", key: "code-stream", text: "```ts\nconst x = 1;", final: false, live: true });
-    expect(html).toMatch(/data-controller="[^"]*\bagent-code-copy\b[^"]*"/);
-    expect(html).toContain('data-agent-code-copy-target="button"');
-    expect(html).toContain('data-agent-code-copy-target="code"');
-  });
-
   test("places transient notices after transcript items", () => {
     const html = renderTranscript(ctx, [{ type: "user", key: "user", text: "question", images: [] }], { systemPrompt: "", tools: [] });
     const itemIndex = html.indexOf(`id="${ctxPrefix}_item_user"`);

@@ -31,8 +31,8 @@ function renderModelContextCard(ctx: AgentRenderContext, modelContext: AgentMode
   const tools = modelContext.tools;
   if (!prompt && tools.length === 0) return "";
   const meta = [prompt ? "system-prompt.md" : undefined, tools.length ? `tools.json (${tools.length})` : undefined].filter(Boolean).join(" · ");
-  const label = `<span class="agent-tool-name">model_context</span><span class="agent-tool-args">${escapeHtml(meta)}</span>`;
-  return transcriptRow(`<details class="agent-tool tool-model-context" data-agent-historical-detail data-controller="agent-lazy-detail" data-action="toggle->agent-lazy-detail#load">${transcriptActionItemHtml({ kind: "html", html: label }, { disclosure: true, leadingHtml: statusHtml("ok") })}${lazyTranscriptItemFrame(ctx, "model-context", true)}</details>`);
+  const label = `model_context · ${meta}`;
+  return transcriptRow(`<details class="agent-tool tool-model-context" data-agent-historical-detail data-controller="agent-lazy-detail" data-action="toggle->agent-lazy-detail#load">${transcriptActionItemHtml({ kind: "text", text: label }, { disclosure: true, leadingHtml: statusHtml("ok") })}${lazyTranscriptItemFrame(ctx, "model-context", true)}</details>`);
 }
 
 export function renderModelContextDetailFrame(ctx: AgentRenderContext, modelContext: AgentModelContextView): string {
@@ -87,7 +87,7 @@ function renderWorkingSection(ctx: AgentRenderContext, section: WorkingTranscrip
     ? ` <span class="agent-working-timing" title="Wall-clock tool wait (parallel calls counted once). Output-token count and tokens per inference second, including reported thinking tokens.">(${escapeHtml(toolsLabel)}${formatTokens(timing.outputTokens)} tok @ ${escapeHtml(rate)})</span>`
     : "";
   const status = active ? '<i class="status-dot running action-item__status" aria-label="In progress"></i>' : "";
-  const summary = transcriptActionItemHtml({ kind: "html", html: `${escapeHtml(activityLabel)}${timingLabel}` }, { disclosure: true, leadingHtml: status });
+  const summary = transcriptActionItemHtml({ kind: "text", text: activityLabel }, { disclosure: true, leadingHtml: status, trailingHtml: timingLabel });
   const emptyClass = section.items.length === 0 ? " agent-working--empty" : "";
   const lazy = !active && !section.live;
   const attributes = lazy ? ' data-controller="agent-lazy-detail" data-action="toggle->agent-lazy-detail#load mouseenter->agent-lazy-detail#load"' : active ? " open" : "";

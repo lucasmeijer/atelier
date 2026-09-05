@@ -203,8 +203,8 @@ export function createProjectRoutes(deps: {
     return dialogHtml({
       element: {
         id: "project-editor-modal",
-        className: "dialog--sheet project-editor-modal",
-        attributesHtml: `aria-label="${title}"${options ? " data-dialog-auto-show" : ""}`,
+
+        attributesHtml: options ? "data-dialog-auto-show" : undefined,
       },
       iconHtml: Icons.Settings,
       titleCaption: title,
@@ -254,7 +254,7 @@ export function createProjectRoutes(deps: {
     });
     return dialogHtml({
       element: {
-        className: "dialog--compact",
+
         attributesHtml: "data-dialog-auto-show",
       },
       iconHtml: `<span class="settings-provider-icon" style="--provider-color:${providerBrandColor("github")}">${providerBrandIconHtml("github", "GitHub")}</span>`,

@@ -2,7 +2,7 @@
 
 Build one interactive HTML file that lets anyone drive a state model by clicking Atelier UI controls and watching the result. Use this when the question is about **business logic, state transitions, or data shape**—the kind of idea that only becomes clear when exercised through real cases.
 
-The model is the subject, but the artifact is still an Atelier prototype. Follow the shared design-system rules in [SKILL.md](SKILL.md): load `apps/web/public/design-system.css`, reuse its elements, and present the model in the visual and product context where it would eventually live.
+The model is the subject, but the artifact is still an Atelier prototype. Follow the shared design-system rules in [SKILL.md](SKILL.md): load `/design-system.css` (owned by `packages/design-system`), reuse its elements, and present the model in the visual and product context where it would eventually live.
 
 If the question is primarily “what should this look like or how should this interaction be organized?”, use [UI.md](UI.md).
 

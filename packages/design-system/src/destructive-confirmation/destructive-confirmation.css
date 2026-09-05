@@ -1,84 +1,9 @@
-/* An inline confirmation that overlays toward inline-start. */
-.destructive-confirmation {
-  --destructive-confirmation-control-size: 26px;
-  position: relative;
-  z-index: 1;
-  align-self: center;
-  width: var(--destructive-confirmation-trigger-width, var(--destructive-confirmation-control-size));
-  height: var(--destructive-confirmation-control-height, var(--destructive-confirmation-control-size));
-  flex: none;
-}
-.destructive-confirmation__trigger,
-.destructive-confirmation__decision {
-  position: absolute;
-  top: 0;
-  right: 0;
-}
-/* Keep server-rendered controls in normal flow until Stimulus has measured them. */
-.destructive-confirmation:not([data-destructive-confirmation-state]) {
-  width: max-content;
-  height: auto;
-}
-.destructive-confirmation:not([data-destructive-confirmation-state]) .destructive-confirmation__trigger {
-  position: relative;
-}
-.destructive-confirmation__trigger {
-  transition: opacity 100ms ease, transform 180ms cubic-bezier(.2, .8, .2, 1);
-}
-.destructive-confirmation__decision {
-  width: max-content;
-  height: var(--destructive-confirmation-control-height, var(--destructive-confirmation-control-size));
-  display: flex;
-  align-items: center;
-  gap: 8px;
-  border-radius: var(--radius-round);
-  background: var(--panel);
-  opacity: 0;
-  transform: translateX(8px);
-  pointer-events: none;
-  transition: opacity 130ms ease, transform 220ms cubic-bezier(.2, .8, .2, 1);
-}
-.destructive-confirmation[data-destructive-confirmation-state="confirming"] .destructive-confirmation__trigger {
-  opacity: 0;
-  transform: scale(.78);
-  pointer-events: none;
-}
-.destructive-confirmation[data-destructive-confirmation-state="confirming"] .destructive-confirmation__decision {
-  opacity: 1;
-  transform: none;
-  pointer-events: auto;
-}
-/* The primary content crossfades away so the Action Item becomes an opaque confirmation canvas. */
-.action-item .destructive-confirmation__decision {
-  background: transparent;
-}
-.action-item:has(.destructive-confirmation) > .action-item__primary {
-  transition: opacity 120ms ease;
-}
-.action-item:has(.destructive-confirmation[data-destructive-confirmation-state="confirming"]) > .action-item__primary {
-  opacity: 0;
-  pointer-events: none;
-}
-/* A containing Action Item grows toward inline-start without moving the trigger. */
-.action-item:has(.destructive-confirmation[data-destructive-confirmation-state="confirming"]) {
-  width: var(--destructive-confirmation-action-item-width);
-  max-width: none;
-  flex: 0 0 var(--destructive-confirmation-action-item-width);
-  margin-inline-start: calc(-1 * var(--destructive-confirmation-action-item-growth));
-  z-index: 2;
-  background: var(--accent-soft);
-  color: var(--text-bright);
-}
-/* Engaged Action Item controls stay latched while their confirmation is open. */
+/* Confirmation is an inline form composition, never a caller-sized overlay. */
+.destructive-confirmation { display: inline-flex; min-width: 0; max-width: 100%; align-items: center; }
+.destructive-confirmation__decision { display: flex; flex-wrap: wrap; align-items: center; gap: 8px; }
+.destructive-confirmation__trigger[inert],
+.destructive-confirmation__decision[inert] { display: none; }
 .action-item__actions--engaged:has(.destructive-confirmation[data-destructive-confirmation-state="confirming"]) {
   opacity: 1;
   pointer-events: auto;
-}
-@media (max-width: 700px) {
-  .destructive-confirmation { --destructive-confirmation-control-size: 44px; }
-}
-@media (prefers-reduced-motion: reduce) {
-  .action-item:has(.destructive-confirmation) > .action-item__primary,
-  .destructive-confirmation__trigger,
-  .destructive-confirmation__decision { transition-duration: 1ms; }
 }

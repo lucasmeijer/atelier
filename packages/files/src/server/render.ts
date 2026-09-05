@@ -113,11 +113,11 @@ function renderEntryRow(workspaceId: string, viewId: string, entry: FileEntry, e
     kind: "single",
     primary: Boolean(destination),
     leadingHtml: `<span class="files-row-icon" aria-hidden="true">${icon}</span>`,
-    label: { kind: "text", text: entry.name, className: "files-row-name" },
+    label: { kind: "text", text: entry.name },
     trailingHtml: size,
     element: {
       tag: destination ? "a" : "div",
-      className: "files-row",
+
       attributesHtml: `role="treeitem" tabindex="-1" data-kind="${entry.kind}"${destination ? ` ${destination}` : ""}${directoryAttributes}${selectedAttribute}`,
     },
   });
@@ -185,7 +185,7 @@ function fileConflictDialog(): string {
   });
   return dialogHtml({
     element: {
-      className: "dialog--compact",
+
       attributesHtml: 'data-controller="dialog" data-file-editor-target="conflict"',
     },
     iconHtml: Icons.Files,

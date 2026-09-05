@@ -1,3 +1,5 @@
+import { buttonHtml } from "@atelier/design-system/button";
+import { Icons } from "@atelier/design-system/icons";
 import { escapeHtml } from "./html.ts";
 import { ids } from "./render-context.ts";
 
@@ -8,7 +10,7 @@ export function renderAttachmentChip(attachment: { id: string; name: string; siz
     <span class="agent-chip-ico">${attachment.isImage ? "🖼" : "📄"}</span>
     <span class="agent-chip-name">${escapeHtml(attachment.name)}</span>
     <span class="agent-chip-size">${formatBytes(attachment.size)}</span>
-    <button type="button" class="agent-chip-x" data-action="agent-attachments#remove" data-attachment-id="${escapeHtml(attachment.id)}" data-chip-id="${chipId}">✕</button>
+    ${buttonHtml({ type: "button", variant: "secondary", content: { kind: "icon-only", iconHtml: Icons.Close, label: `Remove ${attachment.name}` }, attributesHtml: `data-action="agent-attachments#remove" data-attachment-id="${escapeHtml(attachment.id)}" data-chip-id="${chipId}"` })}
   </span>`;
 }
 

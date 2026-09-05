@@ -40,7 +40,7 @@
   vector-effect: non-scaling-stroke;
 }
 @keyframes perimeter-button-orbit { to { stroke-dashoffset: -100; } }
-@media (max-width: 700px) {
+@media (max-width: 700px), (pointer: coarse) {
   :is(.activity-button, .progress-button):not(.icon-only) :is(.activity-button__content, .progress-button__content) { padding-inline: 16px; }
   :is(.button.activity-button > .activity-button__indicator, .button.progress-button > .progress-button__perimeter) rect { rx: 22px; }
 }

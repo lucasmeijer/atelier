@@ -6,7 +6,6 @@ export type ToggleVariant = "button" | "text" | "text-subtle";
 export interface ToggleElement {
   tag?: "div" | "span";
   id?: string;
-  className?: string;
   dataAction?: string;
   data?: ToggleData;
 }
@@ -16,7 +15,6 @@ export interface ToggleForm {
   method?: "get" | "post";
   turbo?: boolean;
   id?: string;
-  className?: string;
   dataAction?: string;
   data?: ToggleData;
 }
@@ -25,15 +23,10 @@ interface ToggleOptionBase {
   value: string;
   disabled?: boolean;
   id?: string;
-  className?: string;
   data?: ToggleData;
 }
 
-export type ToggleOption = ToggleOptionBase & (
-  | { label: string; html?: never }
-  /** Trusted HTML rendered inside the option. */
-  | { label?: never; html: string }
-);
+export type ToggleOption = ToggleOptionBase & { label: string };
 
 interface ToggleOptionsBase {
   variant: ToggleVariant;
@@ -77,9 +70,9 @@ function validate(options: ToggleOptions): void {
 }
 
 function optionHtml(options: ToggleOptions, option: ToggleOption, kind: "button" | "text", type: "button" | "submit"): string {
-  const content = option.label === undefined ? option.html : escapeHtml(option.label);
+  const content = escapeHtml(option.label);
   const id = option.id ? ` id="${escapeHtml(option.id)}"` : "";
-  return `<button class="${escapeHtml(classes(`${kind}-toggle__option`, option.className))}"${id} type="${type}" name="${escapeHtml(options.name)}" value="${escapeHtml(option.value)}" aria-pressed="${option.value === options.value}"${option.disabled ? " disabled" : ""}${dataHtml(option.data)}>${content}</button>`;
+  return `<button class="${escapeHtml(`${kind}-toggle__option`)}"${id} type="${type}" name="${escapeHtml(options.name)}" value="${escapeHtml(option.value)}" aria-pressed="${option.value === options.value}"${option.disabled ? " disabled" : ""}${dataHtml(option.data)}>${content}</button>`;
 }
 
 /** Renders an interactive, mutually-exclusive button or text toggle. */
@@ -87,7 +80,7 @@ export function toggleHtml(options: ToggleOptions): string {
   validate(options);
   const kind = options.variant === "button" ? "button" : "text";
   const extension = options.form ?? options.element;
-  const className = classes(`${kind}-toggle`, options.variant === "text-subtle" ? "subtle" : undefined, extension?.className);
+  const className = classes(`${kind}-toggle`, options.variant === "text-subtle" ? "subtle" : undefined);
   const tag = options.form ? "form" : (options.element?.tag ?? "div");
   const formHtml = options.form
     ? ` method="${options.form.method ?? "post"}" action="${escapeHtml(options.form.action)}" data-turbo="${options.form.turbo ?? true}"`

@@ -56,3 +56,5 @@
   margin: 0;
 }
 
+.panel__body--padded { padding: 16px; }
+.panel__body--scroll { overflow: auto; }

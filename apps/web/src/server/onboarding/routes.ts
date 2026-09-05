@@ -62,8 +62,8 @@ export async function renderOnboardingDialog(options: { includeCompleted?: boole
   return dialogHtml({
     element: {
       id: "onboarding_dialog",
-      className: "onboarding-dialog",
-      attributesHtml: 'aria-label="Set up Atelier" data-controller="onboarding" data-dialog-auto-show',
+
+      attributesHtml: 'data-controller="onboarding" data-dialog-auto-show',
     },
     iconHtml: Icons.Atelier,
     titleCaption: "Set up Atelier",

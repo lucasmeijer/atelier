@@ -5,7 +5,6 @@ import { createAgentCompletionsController } from "./completions-controller.ts";
 import { createComposerSelectionAutosubmitController } from "./composer-selection-controller.ts";
 import { createAgentEditDiffController } from "./edit-diff-controller.ts";
 import { createAgentElapsedController } from "./elapsed-controller.ts";
-import { createAgentCodeCopyController } from "./code-copy-controller.ts";
 import { createAgentNoticeController } from "./notice-controller.ts";
 import { createAgentHtmlPreviewController } from "./html-preview-controller.ts";
 import { registerLaunchComposerCommand } from "./launch-composer-command.ts";
@@ -30,7 +29,6 @@ export const agentClientModule: WorkspaceClientModule = {
     application.register("agent-pane", createAgentPaneController(Controller));
     application.register("agent-attachments", createAgentAttachmentsController(Controller));
     application.register("composer-selection-autosubmit", createComposerSelectionAutosubmitController(Controller));
-    application.register("agent-code-copy", createAgentCodeCopyController(Controller));
     application.register("agent-elapsed", createAgentElapsedController(Controller));
     application.register("agent-edit-diff", createAgentEditDiffController(Controller));
     application.register("agent-html-preview", createAgentHtmlPreviewController(Controller));

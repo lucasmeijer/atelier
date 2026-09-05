@@ -1,3 +1,4 @@
+import { setActionItemLabel } from "@atelier/design-system/action-item/client";
 import { autocompleteHtml } from "@atelier/design-system/autocomplete";
 import { composerSubmitKey, focusLikelyOpensSoftwareKeyboard, setTextInputValue, type WorkspaceClientCommand, type WorkspaceClientControllerConstructor as StimulusControllerConstructor, type WorkspaceClientHooks } from "@atelier/shared";
 import { agentCompletionRequest, insertFileCompletion, insertSlashCommand } from "./completion-input.ts";
@@ -74,10 +75,10 @@ function filterSlashCompletionCatalog(html: string, query: string, compactAvaila
   if (compact && !compactAvailable) {
     compact.disabled = true;
     compact.setAttribute("aria-disabled", "true");
-    compact.querySelector<HTMLElement>(".action-item__label-text")!.textContent = "/compact [instructions] — Available after more conversation history.";
+    setActionItemLabel(compact, "/compact [instructions] — Available after more conversation history.");
   }
   const normalized = query.toLowerCase();
-  const options = [...menu.querySelectorAll<HTMLButtonElement>(":is(.agent-completion-option, [data-agent-completion-option])")]
+  const options = [...menu.querySelectorAll<HTMLButtonElement>("[role=\"option\"]")]
     .filter((option) => option.dataset.commandTrigger!.slice(1).toLowerCase().includes(normalized))
     .sort((a, b) => {
       const aName = a.dataset.commandTrigger!.slice(1).toLowerCase();
@@ -90,7 +91,6 @@ function filterSlashCompletionCatalog(html: string, query: string, compactAvaila
   menu.replaceChildren(...options);
   const active = options.find((option) => !option.disabled);
   for (const option of options) {
-    option.classList.toggle("active", option === active);
     option.setAttribute("aria-selected", option === active ? "true" : "false");
   }
   return menu.outerHTML;
@@ -119,7 +119,7 @@ function composerIsTranscribing(element: Element): boolean {
 
 export function createAgentCompletionsController(Controller: StimulusControllerConstructor, hooks: WorkspaceClientHooks) {
   const HtmlAutocompleteController = createHtmlAutocompleteController(Controller, {
-    optionSelector: ":is(.agent-completion-option, [data-agent-completion-option]):not([hidden]):not(:disabled)",
+    optionSelector: "[role=\"option\"]:not([hidden]):not(:disabled)",
     loadingHtml: autocompleteHtml({ kind: "message", role: "status", content: { kind: "html", html: '<span class="agent-completion-spinner" aria-hidden="true"></span>Loading completions…' } }),
     triggerKeysWhenClosed: ["/", "@"],
     fullscreenShortcut: (option) => option.dataset.completionKind === "prompt-template",

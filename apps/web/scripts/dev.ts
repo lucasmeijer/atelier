@@ -127,8 +127,9 @@ function packageRelativePath(path: string): string | undefined {
 function isPackageRuntimeChange(path: string): boolean {
   const rel = packageRelativePath(path);
   if (!rel) return false;
-  const [, firstPackagePathPart] = rel.split(sep);
-  return firstPackagePathPart === "package.json" || firstPackagePathPart === "src";
+  const [packageName, firstPackagePathPart] = rel.split(sep);
+  return firstPackagePathPart === "package.json" || firstPackagePathPart === "src"
+    || (packageName === "design-system" && firstPackagePathPart === "catalogue");
 }
 
 function isWorkspaceImageInputChange(path: string): boolean {

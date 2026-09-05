@@ -1,6 +1,7 @@
+import { Icons } from "../icons/icons-html.ts";
 import { escapeHtml } from "@atelier/shared";
 import { classNames } from "../html.ts";
-import { transientFeedbackHtml } from "../transient-feedback/transient-feedback-html.ts";
+import { transientFeedbackMarkup } from "../transient-feedback/transient-feedback-markup.ts";
 
 interface CopyButtonOptions {
   label: string;
@@ -25,15 +26,14 @@ export function copyButtonHtml(options: CopyButtonOptions): string {
   ].filter(Boolean).join(" ");
   const caption = options.caption === undefined ? "" : `<span>${escapeHtml(options.caption)}</span>`;
 
-  return transientFeedbackHtml({
+  return transientFeedbackMarkup({
     element: {
       tag: "button",
-      className: classNames("button secondary", options.caption === undefined && "icon-only", "copy-button"),
       attributesHtml: attributes,
     },
-    initialContent: { kind: "html", html: `<span class="copy-button__icon" aria-hidden="true">⧉</span>${caption}` },
-    feedbackContent: { kind: "html", html: `<span class="copy-button__icon" aria-hidden="true">✓</span>${caption}` },
+    initialContent: { kind: "html", html: `<span class="copy-button__icon" aria-hidden="true">${Icons.Copy}</span>${caption}` },
+    feedbackContent: { kind: "html", html: `<span class="copy-button__icon" aria-hidden="true">${Icons.Check}</span>${caption}` },
     state: "initial",
     keepEnabledDuringFeedback: true,
-  });
+  }, classNames("button secondary", options.caption === undefined && "icon-only", "copy-button transient-feedback"));
 }

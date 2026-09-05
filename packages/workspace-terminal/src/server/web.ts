@@ -72,10 +72,8 @@ async function renderAttachDialog(workspaceId: string): Promise<string> {
       tag: "button",
       attributesHtml: `type="button" role="option" aria-selected="${index === 0}" data-action="terminal-session-picker#select focus->terminal-session-picker#select" data-terminal-session-picker-target="item" data-linear-navigation-target="item" data-terminal-session="${escapeHtml(session.name)}"`,
     },
-    label: {
-      kind: "html",
-      html: `<span class="terminal-session-name">${escapeHtml(session.name)}</span><span class="terminal-session-separator">·</span><span class="terminal-session-process">${escapeHtml(session.command)}</span>`,
-    },
+    label: { kind: "text", text: session.name },
+    description: session.command,
     trailingHtml: `<span class="terminal-session-activity" title="Created ${relativeAge(session.createdAt)}">active ${relativeAge(session.lastActivityAt)}</span>`,
   })).join("");
 
@@ -100,7 +98,7 @@ async function renderAttachDialog(workspaceId: string): Promise<string> {
   return dialogHtml({
     element: {
       id: attachDialogId(workspaceId),
-      attributesHtml: 'aria-label="Attach terminal" data-dialog-auto-show',
+      attributesHtml: 'data-dialog-auto-show',
     },
     iconHtml: Icons.Terminal,
     titleCaption: "Attach terminal",

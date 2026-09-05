@@ -1,3 +1,6 @@
+@import "/text-entry.css";
+@import "/managed-list.css";
+@import "/status.css";
 @import "/icons.css";
 @import "/floating-surface.css";
 @import "/autocomplete.css";
@@ -57,6 +60,7 @@
   --radius-round: 999px;
 
   /* Daylight is the unthemed default. */
+  color-scheme: light;
   --bg: #f3f5f9;
   --panel: #ffffff;
   --elev: #ffffff;
@@ -111,6 +115,7 @@
 }
 
 [data-theme="cappuccino"] {
+  color-scheme: dark;
   --bg: #2b2018;
   --panel: #312619;
   --elev: #3a2e21;
@@ -142,6 +147,7 @@
 }
 
 [data-theme="tokyo-night"] {
+  color-scheme: dark;
   --bg: #1a1b26;
   --panel: #1e1f2e;
   --elev: #24283b;
@@ -173,6 +179,7 @@
 }
 
 [data-theme="midnight"] {
+  color-scheme: dark;
   --bg: #0d1117;
   --panel: #12171e;
   --elev: #1c2128;
@@ -204,6 +211,7 @@
 }
 
 [data-theme="nord"] {
+  color-scheme: dark;
   --bg: #2e3440;
   --panel: #333a47;
   --elev: #3b4252;
@@ -300,116 +308,12 @@
 .form-actions { display: flex; justify-content: flex-end; gap: 8px; }
 .empty-state { min-height: 100%; display: grid; place-content: center; padding: 24px; color: var(--text); text-align: center; }
 .viewport-overlay { max-width: calc(100vw - 32px); max-height: calc(100vh - 32px); }
-@media (max-width: 700px) {
+@media (max-width: 700px), (pointer: coarse) {
   .viewport-overlay { max-width: calc(100vw - 16px); max-height: calc(100vh - 16px); }
 }
 
-.activity-spinner {
-  width: 14px;
-  height: 14px;
-  flex: 0 0 auto;
-  border: 2px solid color-mix(in srgb, currentColor 22%, transparent);
-  border-top-color: currentColor;
-  border-radius: var(--radius-round);
-  animation: activity-spinner-spin 750ms linear infinite;
-}
-@keyframes activity-spinner-spin { to { transform: rotate(1turn); } }
-
-/* A compact semantic state marker for captions, controls, and standalone status. */
-.status-dot {
-  width: 8px;
-  height: 8px;
-  display: inline-block;
-  flex: 0 0 auto;
-  border-radius: var(--radius-round);
-  background: currentColor;
-  color: var(--text-muted);
-}
-.status-dot.attention { color: var(--warning); }
-.status-dot.warning { color: var(--warning); }
-.status-dot.success { color: var(--success); }
-.status-dot.danger { color: var(--danger); }
-.status-dot.attention.at-edge { margin-inline-start: auto; }
-.status-dot.running {
-  width: 12px;
-  height: 12px;
-  border: 1.5px solid currentColor;
-  border-top-color: transparent;
-  background: transparent;
-  animation: activity-spinner-spin 750ms linear infinite;
-}
-.status-dot:is(circle) { fill: currentColor; stroke: none; }
-
 /* Composition modules own the space between independently rendered items. */
 .action-list { display: grid; gap: 2px; }
-/* Text entry controls share one visual contract across single- and multi-line input. */
-.text-field,
-.textarea {
-  --text-entry-hover-border: color-mix(in srgb, var(--accent) 45%, var(--line-strong));
-  width: 100%;
-  min-width: 0;
-  box-sizing: border-box;
-  border: 1px solid var(--line-strong);
-  border-radius: var(--radius-control);
-  outline: none;
-  background: var(--panel);
-  color: var(--text-bright);
-  font: inherit;
-  font-size: var(--text-body);
-  transition: border-color 120ms ease;
-}
-.text-field { height: 34px; padding: 0 12px; }
-@media (max-width: 700px) {
-  .text-field { height: 44px; }
-}
-.textarea {
-  min-height: 104px;
-  padding: 8px 12px;
-  line-height: var(--leading-standard);
-  resize: vertical;
-}
-.text-field::placeholder,
-.textarea::placeholder { color: var(--text-muted); opacity: 1; }
-.text-field:not(:disabled):hover,
-.textarea:not(:disabled):hover,
-.text-field:not(:disabled):focus-visible,
-.textarea:not(:disabled):focus-visible { border-color: var(--text-entry-hover-border); }
-.text-field:disabled,
-.textarea:disabled { opacity: .45; cursor: default; }
-
-/* A concise result summary whose marker follows semantic completion state. */
-.status-list { display: grid; gap: 8px; margin: 16px 0 0; padding: 0; list-style: none; }
-.status-list__item { display: flex; align-items: center; gap: 8px; color: var(--text); font-size: var(--text-body); }
-.status-list__item[aria-checked="true"],
-.status-list__item[data-status="failed"] { color: var(--text-bright); }
-.status-list__marker { width: 20px; height: 20px; box-sizing: border-box; display: grid; place-items: center; border: 1px solid var(--line-strong); border-radius: var(--radius-round); background: transparent; color: var(--text-muted); font-weight: var(--weight-bold); }
-.status-list__item[aria-checked="true"] .status-list__marker { border-color: var(--accent); color: var(--accent); }
-.status-list__item[data-status="failed"] .status-list__marker { border-color: var(--danger); color: var(--danger); }
-.status-list__item[aria-busy="true"] .status-list__marker { border-color: var(--line-strong); border-top-color: var(--accent); color: transparent; animation: status-list-marker-spin 750ms linear infinite; }
-@keyframes status-list-marker-spin { to { transform: rotate(1turn); } }
-
-/* A bounded collection of non-selectable records with optional metadata and actions. */
-.managed-list { overflow: hidden; border: 1px solid var(--line); border-radius: var(--radius-surface); background: var(--bg); }
-.managed-list__filter { padding: 8px; border-bottom: 1px solid var(--line); background: var(--panel); }
-.managed-list__items { max-height: min(360px, 48vh); overflow-y: auto; overflow-y: overlay; }
-.managed-list__item { min-width: 0; min-height: 52px; display: flex; align-items: center; gap: 8px; padding: 6px 12px; color: var(--text); }
-.managed-list__item + .managed-list__item { border-top: 1px solid var(--line); }
-.managed-list__item[hidden] { display: none; }
-.managed-list__empty { padding: 24px; color: var(--text); text-align: center; }
-.managed-list__item:focus-within { background: var(--accent-soft); }
-.managed-list__visual { flex: 0 0 auto; }
-.managed-list__content { min-width: 0; flex: 1; }
-.managed-list__label { display: flex; align-items: center; gap: 8px; overflow: hidden; color: var(--text-bright); font-weight: var(--weight-semibold); }
-.managed-list__label-text { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
-.managed-list__description { overflow: hidden; color: var(--text); font-weight: var(--weight-medium); text-overflow: ellipsis; white-space: nowrap; }
-.managed-list__meta { flex: 0 0 auto; color: var(--text); white-space: nowrap; }
-.managed-list__actions { flex: 0 0 auto; display: flex; align-items: center; gap: 8px; }
-.managed-list__actions > form { display: flex; margin: 0; }
-.managed-list__item[aria-disabled="true"] { opacity: .68; }
-@media (max-width: 700px) {
-  .managed-list__item { min-height: 56px; padding-inline: 8px; }
-}
-
 @media (prefers-reduced-motion: reduce) {
   .button,
   .text-field,

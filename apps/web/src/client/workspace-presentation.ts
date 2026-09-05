@@ -145,12 +145,10 @@ function persistWorkViewSuccessor(workspaceId: string, closedKey: string, succes
 }
 
 export function markActiveWorkspaceRow(root: ParentNode, workspaceId: string): void {
-  root.querySelectorAll<HTMLElement>(".fixed-shell-workspace-row.active").forEach((row) => {
-    row.classList.remove("active");
+  root.querySelectorAll<HTMLElement>("[data-workspace-entry-id][aria-current=\"page\"]").forEach((row) => {
     row.removeAttribute("aria-current");
   });
-  const active = root.querySelector<HTMLElement>(`.fixed-shell-workspace-row[data-workspace-entry-id="${CSS.escape(workspaceId)}"]`);
-  active?.classList.add("active");
+  const active = root.querySelector<HTMLElement>(`[data-workspace-entry-id="${CSS.escape(workspaceId)}"]`);
   active?.setAttribute("aria-current", "page");
 }
 
@@ -522,7 +520,6 @@ export function createWorkspacePresentationController(
 
       this.element.querySelectorAll<HTMLElement>("[data-agent-conversation-id]").forEach((selector) => {
         const active = selector.dataset.agentConversationId === this.state.activeAgentId;
-        selector.closest(".action-item")!.classList.toggle("active", active);
         selector.setAttribute("aria-selected", String(active));
         selector.tabIndex = active ? 0 : -1;
       });
@@ -698,7 +695,7 @@ export function createWorkspacePresentationController(
 
     private focusActiveSurface(): void {
       if (this.isPhone && this.moreOpen) {
-        this.element.querySelector<HTMLElement>(".fixed-shell-more-menu [role='menuitem']:not([hidden]), .fixed-shell-more-menu [role='menuitemradio']:not([hidden])")?.focus();
+        this.element.querySelector<HTMLElement>("[data-workspace-presentation-target~=\"moreMenu\"] [role='menuitem']:not([hidden]), [data-workspace-presentation-target~=\"moreMenu\"] [role='menuitemradio']:not([hidden])")?.focus();
         return;
       }
       this.visiblePanes().at(-1)?.focus({ preventScroll: true });

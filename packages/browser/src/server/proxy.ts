@@ -1,3 +1,5 @@
+import { inlineDesignSystemCss } from "@atelier/design-system/styles/server";
+import { panelHtml } from "@atelier/design-system/panel";
 import { escapeHtml } from "@atelier/shared";
 import { isWorkspacePreviewPort, workspacePreviewPortUrl, workspacePreviewPorts } from "@atelier/workspace";
 import { nestedWorkspaceProxyRedirectHeader, publicWorkspaceAppOrigin, type WorkspaceAppHost } from "@atelier/proxy-ingress/server";
@@ -27,7 +29,7 @@ export async function patchBrowserWorkspaceAppResponse(app: WorkspaceAppHost, re
   const plainTextError = response.status >= 400
     && contentType.startsWith("text/plain")
     && isDocumentRequest(request);
-  const body = plainTextError ? renderPlainTextError(response.status, await response.text()) : response.body;
+  const body = plainTextError ? await renderPlainTextError(response.status, await response.text()) : response.body;
   if (plainTextError) {
     headers.set("content-type", "text/html; charset=utf-8");
     headers.delete("content-length");
@@ -49,73 +51,19 @@ function isDocumentRequest(request: Request): boolean {
   return destination === "iframe" || destination === "document";
 }
 
-function renderPlainTextError(status: number, message: string): string {
-  return `<!doctype html>
-<meta charset="utf-8">
-<meta name="viewport" content="width=device-width, initial-scale=1">
-<title>Server rejecting this preview browser</title>
-<style>
-  :root {
-    color-scheme: light;
-    --bg: #f3f5f9;
-    --panel: #fff;
-    --line: #e9edf3;
-    --line-strong: #dde3ec;
-    --text: #737e92;
-    --text-bright: #1b2433;
-    --accent: #2563eb;
-    --danger: #d23b3b;
-    --danger-soft: #fbeaea;
-    --success: #138a52;
-    font: 14px/1.5 -apple-system, "Inter", "Segoe UI", system-ui, sans-serif;
-  }
-  * { box-sizing: border-box; }
-  body { min-height: 100vh; margin: 0; padding: clamp(1rem, 5vw, 3rem); display: grid; place-items: center; background: var(--bg); color: var(--text); }
-  main { width: min(100%, 46rem); overflow: hidden; border: 1px solid var(--line); border-radius: 14px; background: var(--panel); }
-  header { min-height: 45px; display: flex; align-items: center; gap: 8px; padding-inline: 8px; border-bottom: 1px solid var(--line); }
-  .mark { width: 28px; height: 28px; display: grid; flex: 0 0 auto; place-items: center; border-radius: 6px; background: var(--danger-soft); color: var(--danger); font-weight: 600; }
-  h1 { flex: 1; margin: 0; color: var(--text-bright); font: inherit; font-weight: 600; }
-  .status { color: var(--text); }
-  .content { padding: 16px; }
-  p { margin: 0 0 24px; }
-  h2 { margin: 0 0 8px; color: var(--text-bright); font: inherit; font-weight: 600; }
-  .copy-region { position: relative; }
-  pre { max-height: 45vh; margin: 0; padding: 16px 48px 16px 16px; overflow: auto; overflow-wrap: anywhere; white-space: pre-wrap; border: 1px solid var(--line-strong); border-radius: 10px; background: var(--bg); color: var(--text-bright); font: inherit; }
-  .copy-button { position: absolute; z-index: 2; top: 6px; right: 6px; width: 26px; height: 26px; display: inline-grid; place-items: center; padding: 0; border: 1px solid color-mix(in srgb, var(--accent) 20%, var(--line)); border-radius: 999px; background: color-mix(in srgb, var(--panel) 72%, transparent); color: var(--text); font: inherit; cursor: pointer; transition: background-color 120ms ease, border-color 120ms ease, color 120ms ease, transform 80ms ease; }
-  .copy-button:hover, .copy-button:focus-visible { border-color: color-mix(in srgb, var(--accent) 65%, var(--text-bright)); outline: none; background: var(--panel); color: var(--text-bright); }
-  .copy-button:active { transform: translateY(1px); }
-  .copy-button[data-copied] { color: var(--success); }
-  @media (prefers-color-scheme: dark) {
-    :root { color-scheme: dark; --bg: #12171e; --panel: #181e26; --line: #2a333e; --line-strong: #394653; --text: #9aa7b5; --text-bright: #e6edf3; --accent: #58a6ff; --danger: #ff7b72; --danger-soft: #351d20; }
-  }
-</style>
-<main>
-  <header><span class="mark" aria-hidden="true">!</span><h1>Server rejecting this preview browser</h1><span class="status">HTTP ${status}</span></header>
-  <div class="content">
-    <p>The server you're trying to reach is rejecting your request, most likely because it didn't expect this embedded browser to come through the Atelier proxy. Give your agent this entire message, including the raw response from the server below, and it will know how to fix it.</p>
-    <h2>Raw server response:</h2>
-    <div class="copy-region">
-      <button class="copy-button" id="copy-response" type="button" title="Copy raw server response" aria-label="Copy raw server response"><span aria-hidden="true">⧉</span></button>
-      <pre id="raw-response">${escapeHtml(message)}</pre>
-    </div>
-  </div>
-</main>
-<script>
-  const button = document.getElementById("copy-response");
-  button.addEventListener("click", async () => {
-    await navigator.clipboard.writeText(document.getElementById("raw-response").textContent);
-    button.dataset.copied = "";
-    button.firstElementChild.textContent = "✓";
-    button.title = "Copied to clipboard";
-    button.setAttribute("aria-label", "Copied to clipboard");
-    setTimeout(() => {
-      delete button.dataset.copied;
-      button.firstElementChild.textContent = "⧉";
-      button.title = "Copy raw server response";
-      button.setAttribute("aria-label", "Copy raw server response");
-    }, 1500);
+async function renderPlainTextError(status: number, message: string): Promise<string> {
+  const panel = panelHtml({
+    element: { tag: "section" },
+    headerHtml: `<h1 class="panel__title">Server rejecting this preview browser</h1><span>HTTP ${status}</span>`,
+    bodyHtml: `<div class="error-content"><p>The server you're trying to reach is rejecting your request, most likely because it didn't expect this embedded browser to come through the Atelier proxy. Give your agent this entire message, including the raw response below.</p><h2 class="title">Raw server response</h2><p>Select and copy this response:</p><pre>${escapeHtml(message)}</pre></div>`,
   });
-</script>`;
+  return `<!doctype html><html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1"><title>Server rejecting this preview browser</title><style>${await inlineDesignSystemCss()}
+    * { box-sizing: border-box; }
+    body { min-height: 100vh; margin: 0; padding: 24px; display: grid; place-items: center; background: var(--bg); color: var(--text); font: var(--text-body)/var(--leading-standard) var(--font-sans); }
+    main { width: min(100%, 46rem); min-width: 0; }
+    .error-content { padding: 16px; }
+    pre { max-height: 45vh; overflow: auto; white-space: pre-wrap; overflow-wrap: anywhere; font: var(--text-code)/var(--leading-standard) var(--font-mono); color: var(--text-bright); }
+  </style></head><body><main>${panel}</main></body></html>`;
 }
 
 export async function resolveBrowserWorkspaceAppTarget(app: WorkspaceAppHost, requestUrl: URL): Promise<URL> {

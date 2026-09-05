@@ -394,7 +394,6 @@ export function createWebApp(deps: WebAppDeps): WebApp {
         close: workViewClose(workspaceId, stored.reference, contribution?.label ?? stored.reference.type),
       };
       if (contribution?.sourceKey !== undefined) view.sourceKey = contribution.sourceKey;
-      if (contribution?.labelHtml !== undefined) view.labelHtml = contribution.labelHtml;
       if (contribution) view.bodyUrl = `/workspaces/${encodeURIComponent(workspaceId)}/work-views/${encodeURIComponent(key)}/body`;
       if (contribution?.actionsHtml !== undefined) view.actionsHtml = contribution.actionsHtml;
       if (stored.attentionSequence !== undefined) view.attentionSequence = stored.attentionSequence;

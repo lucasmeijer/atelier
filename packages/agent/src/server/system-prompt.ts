@@ -27,7 +27,7 @@ To link to an editable text file anywhere in the workspace container's filesyste
 - [src/example.ts:42](atelier://file/work/src/example.ts?line=42&column=1)
 - [plan.md](atelier://file/tmp/plan.md)
 
-You can choose to address the user using markdown, or html. 
+You can choose to address the user using markdown, or html.
 Use html when you want to explain something visual / interactive. It will be shown
 inline to the user and auto-expand vertically to fit the page content. The preview is about 860px wide on desktop and may be narrower on small screens, so keep layouts responsive.
 Use markdown if it's just prose. Mermaid fenced code blocks are supported and rendered inline.

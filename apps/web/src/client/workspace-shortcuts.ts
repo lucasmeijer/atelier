@@ -1,6 +1,6 @@
 import { Controller } from "@hotwired/stimulus";
 import { actionItemElement, actionItemHtml } from "@atelier/design-system/action-item";
-import { buttonHtml } from "@atelier/design-system/button";
+import { dialogHtml } from "@atelier/design-system/dialog";
 import { Icons } from "@atelier/design-system/icons";
 import { escapeHtml, type WorkspaceClientCommand, type WorkspacePaletteItem } from "@atelier/shared";
 import { submitFormWithFirstButton } from "./form-submission.ts";
@@ -284,7 +284,7 @@ class AtelierShortcutsController extends Controller<HTMLElement> {
         kind: "single",
         label: { kind: "text", text: command.label },
         trailingHtml: `<kbd class="shortcut-overlay-binding">${escapeHtml(this.formatBinding(command.binding))}</kbd>`,
-        element: { tag: "button", className: "shortcut-overlay-item", attributesHtml: 'type="button"' },
+        element: { tag: "button",  attributesHtml: 'type="button"' },
       });
       button.addEventListener("click", () => {
         this.hideShortcutOverlay();
@@ -364,16 +364,17 @@ class AtelierShortcutsController extends Controller<HTMLElement> {
 
   private ensurePalette(): void {
     if (this.paletteDialog) return;
-    const dialog = document.createElement("dialog");
-    dialog.className = "dialog palette-dialog";
-    dialog.setAttribute("aria-label", "Command palette");
-    dialog.innerHTML = `<header class="palette-search">
-      <svg class="palette-search-icon" viewBox="0 0 24 24" aria-hidden="true"><circle cx="11" cy="11" r="7"></circle><path d="m16 16 4 4"></path></svg>
-      <input class="text-field palette-input" id="atelier-palette-input" type="search" role="combobox" spellcheck="false" autocomplete="off" placeholder="Search commands, workspaces, and destinations…" aria-label="Search command palette" aria-autocomplete="list" aria-controls="atelier-palette-results" aria-expanded="true">
-      <kbd class="palette-shortcut" aria-hidden="true">⌘⌥K</kbd>
-      <form class="contents" method="dialog">${buttonHtml({ type: "submit", variant: "secondary", content: { kind: "icon-only", iconHtml: Icons.Close, label: "Close command palette" }, attributesHtml: "data-palette-close" })}</form>
-    </header>
-    <div class="dialog__body palette-body"><div class="palette-results action-list" id="atelier-palette-results" role="listbox" aria-label="Command palette results"></div></div>`;
+    const template = document.createElement("template");
+    template.innerHTML = dialogHtml({
+      element: {  },
+      iconHtml: Icons.Search,
+      titleCaption: "Command palette",
+      bodyHtml: `<label>Search commands, workspaces, and destinations
+        <input class="text-field palette-input" id="atelier-palette-input" type="search" role="combobox" spellcheck="false" autocomplete="off" aria-label="Search command palette" aria-autocomplete="list" aria-controls="atelier-palette-results" aria-expanded="true">
+      </label><div class="palette-results action-list" id="atelier-palette-results" role="listbox" aria-label="Command palette results"></div>`,
+    });
+    // SAFETY: dialogHtml always renders a native dialog as its root.
+    const dialog = template.content.firstElementChild as HTMLDialogElement;
     dialog.addEventListener("close", () => this.paletteInput?.blur());
     dialog.addEventListener("click", (event) => { if (event.target === dialog) dialog.close(); });
     const input = dialog.querySelector<HTMLInputElement>(".palette-input")!;
@@ -511,7 +512,7 @@ class AtelierShortcutsController extends Controller<HTMLElement> {
   }
 
   private workspaceRows(): HTMLElement[] {
-    return [...document.querySelectorAll<HTMLElement>(".fixed-shell-workspace-row[data-workspace-entry-id]")];
+    return [...document.querySelectorAll<HTMLElement>("[data-workspace-entry-id]")];
   }
 
   private async openWorkspaceRow(row: HTMLElement): Promise<void> {
@@ -527,7 +528,7 @@ class AtelierShortcutsController extends Controller<HTMLElement> {
   }
 
   private visibleWorkspaceId(): string | undefined {
-    return document.querySelector<HTMLElement>(".fixed-shell-workspace-row.active[data-workspace-entry-id]")?.dataset.workspaceEntryId
+    return document.querySelector<HTMLElement>("[data-workspace-entry-id][aria-current=\"page\"][data-workspace-entry-id]")?.dataset.workspaceEntryId
       ?? residencyController()?.visibleWorkspaceId();
   }
 

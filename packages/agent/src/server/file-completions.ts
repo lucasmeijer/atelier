@@ -89,10 +89,10 @@ export function renderFileCompletionMenu(completions: readonly FileCompletion[])
     const path = completion.directory ? `${completion.path}/` : completion.path;
     return actionItemHtml({
       kind: "single",
-      label: { kind: "text", text: path, className: "agent-file-path" },
+      label: { kind: "text", text: path },
       element: {
         tag: "button",
-        className: `agent-completion-option${index === 0 ? " active" : ""}`,
+
         attributesHtml: `type="button" role="option" aria-selected="${index === 0 ? "true" : "false"}" data-completion-kind="file" data-file-path="${escapeHtml(path)}" data-file-directory="${completion.directory}"`,
       },
     });

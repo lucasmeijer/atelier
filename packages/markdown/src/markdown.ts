@@ -1,3 +1,5 @@
+import { copyButtonHtml } from "@atelier/design-system/copy-button";
+import { buttonHtml } from "@atelier/design-system/button";
 import MarkdownIt from "markdown-it";
 import { atelierFileHref, renderAtelierEmbed } from "./atelier-markdown.ts";
 import { escapeHtml, workspaceProxyUrl } from "@atelier/shared";
@@ -36,15 +38,15 @@ markdown.renderer.rules.fence = (tokens, index, _options, environment: MarkdownE
     rawLang ? `data-lang="${escapeHtml(rawLang)}"` : "",
     highlighted.language ? `class="language-${escapeHtml(highlighted.language)}"` : "",
   ].filter(Boolean).join(" ");
-  const label = rawLang ? `Copy ${escapeHtml(rawLang)} code to clipboard` : "Copy code to clipboard";
+  const label = rawLang ? `Copy ${rawLang} code to clipboard` : "Copy code to clipboard";
   const title = filename ?? (rawLang ? `${rawLang} code` : "Code");
   const header = filename
     ? `<div class="agent-code-block-header" title="${escapeHtml(filename)}">${escapeHtml(filename)}</div>`
     : "";
   const preOpen = `<pre${attrs ? ` ${attrs}` : ""}>`;
-  const inlineCode = `${preOpen}<code data-agent-code-copy-target="code">${highlighted.html}</code></pre>`;
+  const inlineCode = `${preOpen}<code data-copy-source>${highlighted.html}</code></pre>`;
   const fullscreenCode = `${preOpen}<code>${highlighted.html}</code></pre>`;
-  return `<div class="agent-code-block" data-controller="agent-code-copy atelier-fullscreen" data-atelier-fullscreen-mode-value="template" data-atelier-fullscreen-title-value="${escapeHtml(title)}"><button type="button" class="agent-code-copy" data-agent-code-copy-target="button" data-action="agent-code-copy#copy" aria-label="${label}" title="Copy code"><span class="agent-code-copy-icon" aria-hidden="true">⧉</span></button>${header}${inlineCode}<template data-atelier-fullscreen-target="content"><div class="agent-code-block">${fullscreenCode}</div></template></div>`;
+  return `<div class="agent-code-block copy-region" data-controller="atelier-fullscreen" data-atelier-fullscreen-mode-value="template" data-atelier-fullscreen-title-value="${escapeHtml(title)}">${copyButtonHtml({ label })}${header}${inlineCode}<template data-atelier-fullscreen-target="content"><div class="agent-code-block">${fullscreenCode}</div></template></div>`;
 };
 
 function mermaidDiagram(source: string, fullscreen = false): string {
@@ -53,7 +55,7 @@ function mermaidDiagram(source: string, fullscreen = false): string {
 
 function renderMermaid(source: string, filename?: string): string {
   const title = filename ?? "Mermaid diagram";
-  const header = filename ? `<div class="agent-media-frame-bar"><span>${escapeHtml(filename)}</span><button class="agent-media-frame-action" type="button" data-action="atelier-fullscreen#open"><span class="agent-shortcut">f</span>ullscreen</button></div>` : "";
+  const header = filename ? `<div class="agent-media-frame-bar"><span>${escapeHtml(filename)}</span>${buttonHtml({ type: "button", variant: "secondary", content: { kind: "caption", caption: "Fullscreen" }, attributesHtml: 'data-action="atelier-fullscreen#open"' })}</div>` : "";
   return `<div class="agent-media-frame agent-mermaid" data-controller="atelier-fullscreen" data-atelier-fullscreen-mode-value="template" data-atelier-fullscreen-title-value="${escapeHtml(title)}">${header}${mermaidDiagram(source)}<template data-atelier-fullscreen-target="content">${mermaidDiagram(source, true)}</template></div>`;
 }
 

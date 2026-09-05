@@ -1,22 +1,11 @@
 .popup-select-native { display: none; }
 [data-popup-select-trigger]::after { content: "▾"; color: var(--text-muted); font-size: var(--text-body); }
 
-/* Floating menus present compact choices near a disclosure control. Anchored menus choose
- * an alternate side when their preferred placement would cross the viewport edge. */
-.popup-menu-anchor { anchor-scope: --popup-menu-anchor; }
-[data-popup-menu-trigger] { anchor-name: --popup-menu-anchor; }
-.popup-menu.popup-menu-anchored {
-  position-anchor: --popup-menu-anchor;
-  position-area: block-end span-inline-end;
-  position-try-fallbacks: flip-block, flip-inline, flip-block flip-inline;
-  margin-block-start: 8px;
-}
-.popup-menu.popup-menu-anchored.opens-above {
-  position-area: block-start span-inline-end;
-  margin-block: 0 8px;
-}
+/* Positioning is shared by both Stimulus popup controllers. Do not use CSS anchor
+ * positioning: WebKit misplaces fixed triggers after the document has scrolled. */
+.popup-menu-anchor { display: inline-flex; min-width: 0; max-width: 100%; }
+.popup-menu { visibility: hidden; }
 
-.popup-menu .action-item { border-radius: var(--radius-round); font-weight: 400; }
 .popup-menu .action-item.is-danger { color: var(--danger); }
 .popup-menu .action-item.is-danger:not(:disabled):not([aria-disabled="true"]):hover,
 .popup-menu .action-item.is-danger:not(:disabled):not([aria-disabled="true"]):focus-visible { background: var(--danger-soft); color: var(--danger); }

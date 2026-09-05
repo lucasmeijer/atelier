@@ -1,3 +1,5 @@
+import { dialogHtml } from "@atelier/design-system/dialog";
+import { Icons } from "@atelier/design-system/icons";
 import { buttonHtml } from "@atelier/design-system/button";
 import { destructiveConfirmationHtml } from "@atelier/design-system/destructive-confirmation";
 import { progressButtonHtml } from "@atelier/design-system/progress-button";
@@ -250,7 +252,7 @@ function restartFormHtml(surface: UpdateControlSurface): string {
 
 function renderRestartFeedback(surface: UpdateControlSurface, message?: string): string {
   return transientFeedbackHtml({
-    element: { tag: "div", className: "update-restart-feedback", attributesHtml: `id="${restartFeedbackId(surface)}"` },
+    element: { tag: "div",  attributesHtml: `id="${restartFeedbackId(surface)}"` },
     initialContent: { kind: "html", html: restartFormHtml(surface) },
     feedbackContent: { kind: "html", html: `<span class="transient-feedback__status update-restart-error">Could not restart Atelier: ${escapeHtml(message ?? "")}</span>` },
     state: message === undefined ? "initial" : "feedback",
@@ -312,13 +314,15 @@ function renderInstallerRequiredModal(updateManager: UpdateManager): string {
     type: "button",
     variant: "primary",
     content: { kind: "caption", caption: "Got it" },
-    attributesHtml: 'data-action="modal#close"',
+    attributesHtml: 'data-action="dialog#close"',
   });
-  return `<dialog id="installer-required-modal" class="dialog dialog--compact update-restart-modal" data-controller="modal" data-modal-auto-show-value="true">
-  <header class="dialog__header"><h2 class="title">Run the installer to update Atelier</h2></header>
-  <div class="dialog__body"><p>This release changes how Atelier is hosted, so the smooth in-app restart cannot safely apply it.</p><p>SSH into the Atelier host and run:</p><pre><code>${escapeHtml(command)}</code></pre><p>Your projects, workspaces, and containers will remain in place.</p></div>
-  <footer class="dialog__actions">${closeButton}</footer>
-</dialog>`;
+  return dialogHtml({
+    element: { id: "installer-required-modal", attributesHtml: "data-dialog-auto-show" },
+    iconHtml: Icons.Settings,
+    titleCaption: "Run the installer to update Atelier",
+    bodyHtml: `<p>This release changes how Atelier is hosted, so the smooth in-app restart cannot safely apply it.</p><p>SSH into the Atelier host and run:</p><pre><code>${escapeHtml(command)}</code></pre><p>Your projects, workspaces, and containers will remain in place.</p>`,
+    footerHtml: closeButton,
+  });
 }
 
 function modalStream(html: string): Response {

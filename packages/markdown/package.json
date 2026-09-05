@@ -8,7 +8,8 @@
   "dependencies": {
     "@atelier/shared": "workspace:*",
     "@atelier/syntax": "workspace:*",
-    "markdown-it": "14.3.0"
+    "markdown-it": "14.3.0",
+    "@atelier/design-system": "workspace:*"
   },
   "devDependencies": {
     "@types/markdown-it": "14.1.2"

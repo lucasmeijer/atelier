@@ -11,7 +11,7 @@ import {
   type WorkspaceClientControllerConstructor,
 } from "@atelier/shared";
 import { workspaceClientModules } from "./workspace-client-modules.generated.ts";
-import { registerDesignSystemControllers } from "./design-system.ts";
+import { registerDesignSystemControllers } from "@atelier/design-system/client";
 import { clientHooks } from "./workspace-client-hooks.ts";
 import { installWorkspaceCable } from "./workspace-cable.ts";
 import { registerWorkspaceDevReloadController } from "./workspace-dev-reload.ts";

@@ -1,14 +1,13 @@
 import { escapeHtml } from "@atelier/shared";
 import { buttonHtml } from "../button/button-html.ts";
 import { Icons } from "../icons/icons-html.ts";
-import { attributesHtml, classNames } from "../html.ts";
+import { attributesHtml } from "../html.ts";
 import { panelHtml } from "../panel/panel-html.ts";
 
 export interface DialogOptions {
   element: {
     id?: string;
-    className?: string;
-    /** Caller-owned attributes. Attribute values containing external input must be escaped. */
+    /** Caller-owned attributes; aria-label is owned by titleCaption. Attribute values containing external input must be escaped. */
     attributesHtml?: string;
   };
   /** Trusted, already-escaped decorative icon. */
@@ -38,11 +37,12 @@ export function dialogHtml(options: DialogOptions): string {
     content: { kind: "icon-only", iconHtml: Icons.Close, label: closeLabel },
   })}</form>`;
   const panel = panelHtml({
-    element: { tag: "div", className: "dialog__panel" },
+    element: { tag: "div" },
     headerHtml: `<h2 class="panel__title dialog__title">${options.iconHtml}<span>${escapeHtml(options.titleCaption)}</span></h2>${cancelButton}`,
     bodyHtml: options.bodyHtml,
-    bodyClassName: classNames("dialog__body", options.bodyLayout === "full-bleed" && "dialog__body--full-bleed"),
+    bodyLayout: options.bodyLayout ?? "padded",
+    bodyOverflow: "scroll",
     footerHtml: options.footerHtml,
   });
-  return `<dialog${id} class="${escapeHtml(classNames("dialog", "dialog--panel", element.className))}"${attributesHtml(element.attributesHtml)}>${panel}</dialog>`;
+  return `<dialog${id} class="${escapeHtml("dialog")}" aria-label="${escapeHtml(options.titleCaption)}"${attributesHtml(element.attributesHtml)}>${panel}</dialog>`;
 }

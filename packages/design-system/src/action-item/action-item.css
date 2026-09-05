@@ -5,14 +5,13 @@
 .action-item.action-item__primary { width: 100%; max-width: 100%; }
 .action-item:not(:disabled):not([aria-disabled="true"]):focus-visible,
 .action-item:not([aria-disabled="true"]):has(:focus-visible),
-.action-item.active,
-.action-item:has(> .action-item__primary:is([aria-current="page"], [aria-selected="true"], [aria-checked="true"])),
-.action-item.action-item__primary:is([aria-current="page"], [aria-selected="true"], [aria-checked="true"]) { outline: none; background: var(--accent-soft); color: var(--text-bright); }
+.action-item:has(> .action-item__primary:is([aria-current]:not([aria-current="false"]), [aria-selected="true"], [aria-checked="true"])),
+.action-item.action-item__primary:is([aria-current]:not([aria-current="false"]), [aria-selected="true"], [aria-checked="true"]) { outline: none; background: var(--accent-soft); color: var(--text-bright); }
 @media (hover: hover) {
   .action-item:not(:disabled):not([aria-disabled="true"]):hover { background: var(--accent-soft); color: var(--text-bright); }
 }
 .action-item :is(.action-item__primary, .action-item__label-text):focus-visible { outline: none; }
-.action-item__label { min-width: 0; flex: 1; overflow: hidden; white-space: nowrap; }
+.action-item__label { display: block; min-width: 0; flex: 1; overflow: hidden; white-space: nowrap; }
 /* Attention follows its subject by default; at-edge preserves aligned list columns. */
 .action-item__primary:has(> .status-dot.attention:not(.at-edge)) > .action-item__label { flex: 0 1 auto; }
 .action-item__label-text { display: block; width: 100%; overflow: hidden; text-overflow: ellipsis; }
@@ -26,13 +25,13 @@
 .action-item__actions { flex: 0 0 auto; display: flex; align-items: center; gap: 6px; }
 .action-item__actions > form { display: flex; margin: 0; }
 .action-item__actions--engaged { opacity: 0; pointer-events: none; }
-.action-item:is(.active, :hover, :has(:focus-visible), :has(> .action-item__primary:is([aria-current="page"], [aria-selected="true"], [aria-checked="true"]))) .action-item__actions--engaged { opacity: 1; pointer-events: auto; }
+.action-item:is(:hover, :has(:focus-visible), :has(> .action-item__primary:is([aria-current]:not([aria-current="false"]), [aria-selected="true"], [aria-checked="true"]))) .action-item__actions--engaged { opacity: 1; pointer-events: auto; }
 @media (hover: none) {
   .action-item__actions--engaged { opacity: 1; pointer-events: auto; }
 }
 .action-item__primary:disabled,
 .action-item[aria-disabled="true"] { opacity: .45; cursor: default; }
-@media (max-width: 700px) {
+@media (max-width: 700px), (pointer: coarse) {
   .action-item,
   .action-item__primary { min-height: 50px; }
 }
@@ -40,3 +39,10 @@
   .action-item.is-label-scrolling .action-item__label { mask-image: none; }
   .action-item.is-label-scrolling .action-item__label-text { width: 100%; overflow: hidden; text-overflow: ellipsis; animation: none; }
 }
+/* Slots preserve canonical anatomy even when their contents come from another module. */
+.action-item__content { min-width: 0; flex: 1; }
+.action-item__icon { display: flex; align-items: center; justify-content: center; gap: 6px; flex: 0 0 auto; }
+.action-item__icon svg { width: 16px; height: 16px; }
+.action-item__description { display: block; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; color: var(--text-muted); }
+.action-item__metadata { display: flex; align-items: center; gap: 6px; flex: 0 0 auto; }
+.action-item.is-danger { color: var(--danger); }

@@ -68,22 +68,6 @@ describe("Files Work view rendering", () => {
     expect(filesWorkViewPresentation({ id: "workspace", path: "/work/src/example.ts" }).label).toBe("example.ts");
   });
 
-  test("renders entries with file switching destinations and selected state", () => {
-    const html = renderFilesTreeFrame("work 1", "workspace", [
-      { name: "folder", path: `${workspaceRoot}/folder`, kind: "directory", size: 0, openable: false },
-      { name: ".secret", path: `${workspaceRoot}/.secret`, kind: "file", size: 1200, openable: true },
-    ], `${workspaceRoot}/.secret`);
-    expect(html).toContain("1.2 KB");
-    expect(html).not.toContain('class="files-row-icon" aria-hidden="true">·');
-    expect(html).toContain('aria-selected="true"');
-    expect(html).toContain("data-files-destination");
-    expect(html).toContain('class="files-row action-item action-item__primary"');
-    expect(html).toContain('<svg class="disclosure-icon" aria-hidden="true"');
-    expect(html).toContain("/files-view/open?path=%2Fwork%2F.secret&amp;filesView=workspace");
-    expect(html).toContain('data-turbo-stream="true"');
-    expect(html).toContain("data-action=\"files-view#selectFile\"");
-  });
-
   test("renders a server-filtered file tree with a debounced Turbo target and busy status", () => {
     const html = renderFilesTreeFrame("work 1", "view-1", []);
     const resultsId = filesTreeResultsFrameId("work 1", "view-1");

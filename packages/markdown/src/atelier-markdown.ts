@@ -1,3 +1,4 @@
+import { buttonHtml } from "@atelier/design-system/button";
 import { posix } from "node:path";
 import { escapeHtml, workspaceFileOpenUrl } from "@atelier/shared";
 
@@ -30,7 +31,7 @@ function isLoopbackHost(hostname: string): boolean {
 }
 
 function renderFullscreenFrame(title: string, iframeHtml: string, newTabLinkHtml: string): string {
-  return `<span class="agent-media-frame" data-controller="atelier-fullscreen" data-atelier-fullscreen-mode-value="media" data-atelier-fullscreen-title-value="${escapeHtml(title)}"><span class="agent-media-frame-bar"><span>${escapeHtml(title)}</span><span class="agent-media-frame-actions"><button class="agent-media-frame-action" type="button" data-action="atelier-fullscreen#open"><span class="agent-shortcut">f</span>ullscreen</button><span class="agent-media-frame-sep" aria-hidden="true">–</span>${newTabLinkHtml}</span></span>${iframeHtml}</span>`;
+  return `<span class="agent-media-frame" data-controller="atelier-fullscreen" data-atelier-fullscreen-mode-value="media" data-atelier-fullscreen-title-value="${escapeHtml(title)}"><span class="agent-media-frame-bar"><span>${escapeHtml(title)}</span><span class="agent-media-frame-actions">${buttonHtml({ type: "button", variant: "secondary", content: { kind: "caption", caption: "Fullscreen" }, attributesHtml: 'data-action="atelier-fullscreen#open"' })}<span class="agent-media-frame-sep" aria-hidden="true">–</span>${newTabLinkHtml}</span></span>${iframeHtml}</span>`;
 }
 
 function embedLiteral(target: string): string {

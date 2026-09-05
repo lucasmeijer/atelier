@@ -1,3 +1,4 @@
+import { buttonHtml } from "@atelier/design-system/button";
 import { existsSync } from "node:fs";
 import { mkdir, readFile, rename, writeFile } from "node:fs/promises";
 import { dirname, join } from "node:path";
@@ -30,7 +31,7 @@ async function setKeypressProbeEnabled(enabled: boolean, file = keypressProbeSet
 
 function renderKeypressProbe(): string {
   return `<aside class="keypress-probe" data-controller="keypress-probe" aria-live="polite" title="Shows keyboard events Atelier can capture in this browser context; browser/OS/iframe-reserved shortcuts will not appear.">
-    <div class="keypress-probe-head"><strong>Keys</strong><span data-keypress-probe-target="count">0</span><button type="button" data-action="keypress-probe#clear" aria-label="Clear captured keys">clear</button></div>
+    <div class="keypress-probe-head"><strong>Keys</strong><span data-keypress-probe-target="count">0</span>${buttonHtml({ type: "button", variant: "secondary", content: { kind: "caption", caption: "Clear keys" }, attributesHtml: 'data-action="keypress-probe#clear"' })}</div>
     <ol data-keypress-probe-target="list"><li class="empty">Press keys… browser/iframe-reserved combos will not appear.</li></ol>
   </aside>`;
 }

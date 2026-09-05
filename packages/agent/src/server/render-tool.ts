@@ -26,11 +26,11 @@ export function statusHtml(status: ToolView["status"]): string {
 }
 
 function tokenSummary(tool: ToolView, direction: "up" | "down"): string {
-  return tool.tokenCount === undefined ? "" : `${formatTokens(tool.tokenCount)} tok <span class="agent-token-arrow">${direction === "up" ? "↑" : "↓"}</span>`;
+  return tool.tokenCount === undefined ? "" : `${formatTokens(tool.tokenCount)} tok ${direction === "up" ? "↑" : "↓"}`;
 }
 
 function summaryHtml(parts: Array<string | undefined>): string {
-  return parts.filter(Boolean).map((part) => escapeHtml(part!)).join(" · ");
+  return parts.filter(Boolean).join(" · ");
 }
 
 function bashSummary(tool: ToolView): string {
@@ -57,12 +57,7 @@ function toolSummaryHtml(tool: ToolView): string {
     const changes = operations.length ? `+${stats.added} −${stats.deleted}` : "";
     return [summaryHtml([pathSummary(tool), editCount, changes]), tokenSummary(tool, "down")].filter(Boolean).join(" · ");
   }
-  return escapeHtml(genericToolSummary(tool));
-}
-
-function runningElapsedHtml(tool: ToolView): string {
-  if (!tool.startedAt) return "";
-  return `<span class="agent-tool-elapsed agent-duration-slot" data-controller="agent-elapsed" data-agent-elapsed-since-value="${tool.startedAt}"${tool.timeoutSeconds ? ` data-agent-elapsed-max-value="${tool.timeoutSeconds}"` : ""}><span data-agent-elapsed-target="time">0s</span></span>`;
+  return genericToolSummary(tool);
 }
 
 function toolForRender(original: ToolView): ToolView {
@@ -71,13 +66,19 @@ function toolForRender(original: ToolView): ToolView {
     : original;
 }
 
-function toolSummaryContentHtml(tool: ToolView): string {
-  const summary = toolSummaryHtml(tool);
-  return `<span class="agent-tool-name">${escapeHtml(tool.name || "tool")}</span>${summary ? `<span class="agent-tool-args${tool.status === "error" ? " error" : ""}">${summary}</span>` : ""}${tool.status === "running" && tool.name === "bash" ? runningElapsedHtml(tool) : ""}`;
+function toolSummaryText(tool: ToolView): string {
+  return [tool.name || "tool", toolSummaryHtml(tool)].filter(Boolean).join(" · ");
+}
+
+function toolSummaryMetadataHtml(tool: ToolView): string {
+  if (tool.name !== "bash" || tool.status !== "running" || tool.startedAt === undefined) return "";
+  const timeout = tool.timeoutSeconds ?? numberArg(toolArgs(tool), "timeout") ?? 600;
+  return `<span class="agent-tool-elapsed agent-duration-slot" data-controller="agent-elapsed" data-agent-elapsed-since-value="${tool.startedAt}" data-agent-elapsed-max-value="${timeout}"><span data-agent-elapsed-target="time">${formatDuration(Date.now() - tool.startedAt)} / ${formatDuration(timeout * 1000)}</span></span>`;
 }
 
 export interface ActiveToolContent {
   summary: string;
+  metadata: string;
   detail?: string;
 }
 
@@ -96,7 +97,8 @@ export function renderActiveToolContent(ctx: AgentRenderContext, key: string, or
   const tool = toolForRender(original);
   const presentation = toolPresentation(tool);
   return {
-    summary: toolSummaryContentHtml(tool),
+    summary: escapeHtml(toolSummaryText(tool)),
+    metadata: toolSummaryMetadataHtml(tool),
     detail: presentation.showsDetail ? renderToolDetail(ctx, key, tool, 100) : undefined,
   };
 }
@@ -111,8 +113,12 @@ function lazyTranscriptItemFrame(ctx: AgentRenderContext, key: string): string {
 
 export function renderToolCard(ctx: AgentRenderContext, key: string, original: ToolView, options: { open?: boolean; live?: boolean } = {}): string {
   const tool = toolForRender(original);
-  const label = { kind: "html" as const, html: toolSummaryContentHtml(tool) };
-  const labelOptions = { leadingHtml: statusHtml(tool.status), labelId: ids.itemSummaryContent(ctx, key) };
+  const label = { kind: "text" as const, text: toolSummaryText(tool) };
+  const labelOptions = {
+    leadingHtml: statusHtml(tool.status),
+    labelId: ids.itemSummaryContent(ctx, key),
+    trailingHtml: `<span id="${ids.itemSummaryMetadata(ctx, key)}">${toolSummaryMetadataHtml(tool)}</span>`,
+  };
   const active = tool.status === "streaming" || tool.status === "running";
   if (!toolPresentation(tool).showsDetail) {
     return `<div class="agent-tool agent-tool-summary-only ${toolClass(tool.name)} active">${transcriptActionItemHtml(label, { ...labelOptions, disclosure: false })}</div>`;

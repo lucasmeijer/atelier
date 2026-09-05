@@ -221,13 +221,12 @@ export function createHtmlAutocompleteController(Controller: StimulusControllerC
     }
 
     private activeOption(): HTMLElement | undefined {
-      return this.options().find((option) => option.classList.contains("active")) ?? this.options()[0];
+      return this.options().find((option) => option.getAttribute("aria-selected") === "true") ?? this.options()[0];
     }
 
     private activate(option: HTMLElement, scroll = true): void {
       for (const candidate of this.options()) {
         const active = candidate === option;
-        candidate.classList.toggle("active", active);
         candidate.setAttribute("aria-selected", active ? "true" : "false");
       }
       option.id ||= `${this.element.id || "html-autocomplete"}-option-${++this.optionId}`;

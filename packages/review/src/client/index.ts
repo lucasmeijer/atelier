@@ -197,13 +197,13 @@ function createReviewController(Controller: StimulusControllerConstructor) {
 
     selectFile(event: FocusEvent): void {
       if (!(event.currentTarget instanceof HTMLDetailsElement)) throw new Error("Review file selection requires details");
-      event.currentTarget.querySelector<HTMLElement>(":scope > summary")!.classList.add("active");
+      event.currentTarget.querySelector<HTMLElement>(":scope > summary")!.setAttribute("aria-current", "true");
     }
 
     deselectFile(event: FocusEvent): void {
       if (!(event.currentTarget instanceof HTMLDetailsElement)) throw new Error("Review file selection requires details");
       if (event.relatedTarget instanceof Node && event.currentTarget.contains(event.relatedTarget)) return;
-      event.currentTarget.querySelector<HTMLElement>(":scope > summary")!.classList.remove("active");
+      event.currentTarget.querySelector<HTMLElement>(":scope > summary")!.removeAttribute("aria-current");
     }
 
     collapseAll(): void {

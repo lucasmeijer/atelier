@@ -10,11 +10,11 @@ A prototype for this repository is not a stand-alone microsite. It is an explora
 
 Before writing the prototype:
 
-1. Read `apps/web/public/design-system.css` and inspect `apps/web/public/design-system-catalogue.html` in the browser.
+1. Read `packages/design-system/README.md` and `packages/design-system/src/design-system.css`, then inspect `/design-system-catalogue.html` in the browser.
 2. Inspect the real Atelier page or nearby feature that will host the eventual design. Reuse its information density, shell, terminology, and representative data.
 3. Inventory the existing design-system elements that fit the prototype. Prefer those elements over custom equivalents.
 
-The HTML must load the repository's actual `apps/web/public/design-system.css` with a `<link>`; **never copy, inline, fork, or approximately recreate it**. Place prototypes under `apps/web/public/prototypes/` by default so they can use `../design-system.css` and be served by Atelier. Directly use the shipped classes (`button`, `button-group`, `toggle`, `text-field`, `textarea`, `action-item`, `popup-menu`, status elements, and others shown in the catalogue) wherever they match the intended semantics.
+The HTML must load the repository's actual `/design-system.css` (owned by `packages/design-system`) with a `<link>`; **never copy, inline, fork, or approximately recreate it**. Place prototypes under `apps/web/public/prototypes/` by default so they can use `../design-system.css` and be served by Atelier. Directly use the shipped classes (`button`, `button-group`, `toggle`, `text-field`, `textarea`, `action-item`, `popup-menu`, status elements, and others shown in the catalogue) wherever they match the intended semantics.
 
 Custom CSS is allowed only for prototype-specific composition and layout that the design system does not provide. It must use Atelier tokens for typography, spacing, radii, color, and elevation. Do not introduce arbitrary hex colors, shadow recipes, font stacks, button styles, form styles, or a second token layer. If an existing element is close but not perfect, use it unchanged and note the gap; discovering a missing design-system element is useful prototype output.
 

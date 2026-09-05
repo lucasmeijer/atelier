@@ -32,7 +32,6 @@
         "@atelier/vscode": "workspace:*",
         "@atelier/workspace": "workspace:*",
         "@atelier/workspace-terminal": "workspace:*",
-        "@fontsource/jetbrains-mono": "5.2.8",
         "@gespenst/core": "catalog:",
         "@hotwired/stimulus": "3.2.2",
         "@hotwired/turbo": "8.0.13",
@@ -66,6 +65,7 @@
       "dependencies": {
         "@atelier/agent": "workspace:*",
         "@atelier/core": "workspace:*",
+        "@atelier/design-system": "workspace:*",
         "@atelier/proxy-ingress": "workspace:*",
         "@atelier/shared": "workspace:*",
         "@atelier/workspace": "workspace:*",
@@ -83,6 +83,8 @@
       "name": "@atelier/design-system",
       "dependencies": {
         "@atelier/shared": "workspace:*",
+        "@atelier/syntax": "workspace:*",
+        "@fontsource/jetbrains-mono": "5.2.8",
         "@hotwired/stimulus": "3.2.2",
       },
     },
@@ -126,6 +128,7 @@
     "packages/markdown": {
       "name": "@atelier/markdown",
       "dependencies": {
+        "@atelier/design-system": "workspace:*",
         "@atelier/shared": "workspace:*",
         "@atelier/syntax": "workspace:*",
         "markdown-it": "14.3.0",
@@ -207,6 +210,7 @@
       "name": "@atelier/transcription",
       "dependencies": {
         "@atelier/core": "workspace:*",
+        "@atelier/design-system": "workspace:*",
         "@atelier/observable-terminal": "workspace:*",
         "@atelier/shared": "workspace:*",
         "typebox": "^1.0.57",
@@ -236,6 +240,7 @@
       "name": "@atelier/workspace",
       "dependencies": {
         "@atelier/core": "workspace:*",
+        "@atelier/design-system": "workspace:*",
         "@atelier/observable-terminal": "workspace:*",
         "@atelier/shared": "workspace:*",
         "@atelier/workspace-image": "workspace:*",

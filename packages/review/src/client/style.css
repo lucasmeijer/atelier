@@ -52,8 +52,6 @@
 .review-file[data-review-change="added"] > summary { background: var(--success-soft); }
 .review-file[data-review-change="removed"] > summary { background: var(--danger-soft); }
 .review-file > summary::-webkit-details-marker { display: none; }
-.review-file-path { font-family: var(--font-mono); font-size: var(--text-code); }
-.review-file-path .action-item__label-text { min-width: 0; display: flex; align-items: center; gap: 8px; }
 .review-file-location { min-width: 0; display: flex; overflow: hidden; color: var(--text-muted); font-weight: 400; white-space: nowrap; }
 .review-file-directory { min-width: 0; overflow: hidden; text-overflow: ellipsis; }
 .review-file-basename { max-width: 100%; flex: 0 0 auto; overflow: hidden; text-overflow: ellipsis; }
@@ -166,7 +164,6 @@ button.review-comment-content:focus-visible { background: color-mix(in srgb, var
 @media (max-width: 700px) {
   .review-files { padding: 8px; }
   .review-file > summary { flex-wrap: nowrap; }
-  .review-file-path { min-width: 0; }
   .review-file-meta { flex: 0 0 auto; }
   .review-special-file { align-items: flex-start; justify-content: flex-start; }
 }

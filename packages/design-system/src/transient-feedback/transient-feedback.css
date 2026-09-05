@@ -4,7 +4,7 @@
 .transient-feedback__content[hidden] { display: none; }
 .transient-feedback__status { min-height: 26px; display: inline-flex; align-items: center; color: var(--text); }
 
-@media (max-width: 700px) {
+@media (max-width: 700px), (pointer: coarse) {
   .transient-feedback__status { min-height: 44px; }
 }
 .button.transient-feedback > .transient-feedback__content:not([hidden]) { display: inline-flex; align-items: center; justify-content: center; gap: inherit; }

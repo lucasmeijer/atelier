@@ -1,21 +1,21 @@
+import { buttonHtml, type ButtonOptions } from "../button/button-html.ts";
 import { escapeHtml } from "@atelier/shared";
-import { attributesHtml, classNames } from "../html.ts";
+import { popupMenuHtml } from "./popup-surface.ts";
 
-export interface PopupMenuOptions {
+export interface PopupOptions {
   id: string;
-  /** Accessible name for the menu. */
   label: string;
-  /** Trusted, already-escaped menu contents, typically Action Items, forms, and separators. */
+  trigger: Pick<ButtonOptions, "variant" | "content" | "disabled" | "attributesHtml">;
   contentHtml: string;
-  className?: string;
-  /** Position relative to the caller's anchor. Omit for a caller-positioned surface. */
+  menuAttributesHtml?: string;
   placement?: "below" | "above";
-  /** Caller-owned menu attributes. Attribute values containing external input must be escaped. */
-  attributesHtml?: string;
 }
 
-/** Renders a native popover menu surface. Its caller owns the invoking control. */
-export function popupMenuHtml(options: PopupMenuOptions): string {
-  const className = classNames("floating-surface", "popup-menu", "action-list", options.placement && "popup-menu-anchored", options.placement === "above" && "opens-above", options.className);
-  return `<div class="${escapeHtml(className)}" id="${escapeHtml(options.id)}" role="menu" aria-label="${escapeHtml(options.label)}" popover="auto"${attributesHtml(options.attributesHtml)}>${options.contentHtml}</div>`;
+/** Preferred menu interface: owns the anchor, trigger, ARIA linkage and behavior. */
+export function popupHtml(options: PopupOptions): string {
+  return `<span class="popup-menu-anchor" data-controller="popup-menu">${buttonHtml({
+    type: "button",
+    ...options.trigger,
+    attributesHtml: `data-popup-menu-trigger aria-haspopup="menu" aria-expanded="false" aria-controls="${escapeHtml(options.id)}" popovertarget="${escapeHtml(options.id)}" ${options.trigger.attributesHtml ?? ""}`,
+  })}${popupMenuHtml({ id: options.id, label: options.label, contentHtml: options.contentHtml, placement: options.placement ?? "below", attributesHtml: options.menuAttributesHtml })}</span>`;
 }

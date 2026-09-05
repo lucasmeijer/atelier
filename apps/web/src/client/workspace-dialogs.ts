@@ -178,7 +178,7 @@ class ScrollIntoViewController extends Controller<HTMLElement> {
 }
 
 const ProjectGithubSearchController = createHtmlAutocompleteController(Controller, {
-  optionSelector: ":is(.agent-completion-option, [data-agent-completion-option])",
+  optionSelector: "[role=\"option\"]",
   loadingHtml: autocompleteHtml({ kind: "message", role: "status", content: { kind: "html", html: '<span class="agent-completion-spinner" aria-hidden="true"></span>Searching GitHub…' } }),
   request(input) {
     const query = input.value.trim();

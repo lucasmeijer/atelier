@@ -93,8 +93,8 @@ function settingsDialogHtml(titleCaption: string, bodyHtml: string, sectionId?: 
   return dialogHtml({
     element: {
       id: "settings_dialog",
-      className: "dialog--sheet settings-dialog",
-      attributesHtml: `aria-label="Settings" data-dialog-auto-show${sectionAttributes}`,
+
+      attributesHtml: `data-dialog-auto-show${sectionAttributes}`,
     },
     iconHtml: Icons.Settings,
     titleCaption,
@@ -118,7 +118,13 @@ export async function renderDevelopmentSettingsDialog(): Promise<string> {
     content: { kind: "caption", caption: "Back to settings" },
     attributesHtml: 'data-turbo-frame="_top" data-turbo-stream="true"',
   });
-  return settingsDialogHtml("Development settings", `<main class="settings-main settings-main-dev">${await renderDevelopmentSettings()}<nav class="settings-development-back" aria-label="Settings navigation">${backLink}</nav></main>`);
+  const catalogueLink = actionLinkHtml({
+    href: "/design-system-catalogue.html",
+    variant: "secondary",
+    content: { kind: "caption", caption: "Design system catalogue" },
+    attributesHtml: 'data-turbo="false"',
+  });
+  return settingsDialogHtml("Development settings", `<main class="settings-main settings-main-dev">${await renderDevelopmentSettings()}<nav class="settings-development-back" aria-label="Settings navigation">${backLink}${catalogueLink}</nav></main>`);
 }
 
 async function deleteAllStoredSettings(): Promise<void> {

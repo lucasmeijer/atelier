@@ -93,8 +93,9 @@
 .text-toggle.subtle .text-toggle__option:focus-visible { color: var(--text-muted); }
 .text-toggle__option:disabled { opacity: .45; cursor: default; }
 
-@media (max-width: 700px) {
+@media (max-width: 700px), (pointer: coarse) {
   .button-toggle__option { height: 44px; padding-inline: 16px; }
+  .text-toggle__option { min-width: 44px; min-height: 44px; }
 }
 @media (prefers-reduced-motion: reduce) {
   .button-toggle__option { transition-duration: 1ms; }

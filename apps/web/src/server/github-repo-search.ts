@@ -114,7 +114,7 @@ export function renderGitHubRepositorySearchMenu(repositories: readonly GitHubRe
       label: { kind: "text", text: `${repo.fullName} — ${description}${visibility}` },
       element: {
         tag: "button",
-        className: `agent-completion-option${index === 0 ? " active" : ""}`,
+
         attributesHtml: `type="button" role="option" aria-selected="${index === 0 ? "true" : "false"}" data-git-url="${escapeHtml(repo.cloneUrl)}" title="${escapeHtml(repo.htmlUrl)}"`,
       },
     });
