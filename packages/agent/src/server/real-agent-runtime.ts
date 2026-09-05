@@ -30,6 +30,8 @@ import {
   type TranscriptItem,
 } from "./transcript.ts";
 
+import { TurnTiming, turnTimingEntryType } from "./turn-timing.ts";
+
 interface AgentPromptPreflightOptions {
   images?: Array<{ type: "image"; data: string; mimeType: string }>;
   preflightResult(success: boolean): void;
@@ -43,6 +45,7 @@ function normalizedPromiseError(error: unknown): Error {
 }
 
 export class RealAgentRuntime extends BaseAgentRuntime {
+  private turnTiming?: TurnTiming;
   private summarizing = false;
   private unsubscribeSession?: () => void;
   private postCompactionEstimate?: { entryId: string; tokens: number };
@@ -200,12 +203,21 @@ export class RealAgentRuntime extends BaseAgentRuntime {
     this.streamActiveToolContent(item);
   }
 
+  private refreshLiveTiming(): void {
+    if (this.turnTiming) this.liveTiming(this.turnTiming.snapshot(performance.now()));
+  }
+
   private async handleEvent(event: any): Promise<void> {
     switch (event.type) {
       case "agent_start":
+        this.turnTiming = new TurnTiming(performance.now());
         this.liveBegin(this.pendingAcceptedPrompt);
         this.pendingAcceptedPrompt = undefined;
         this.setBusy(true);
+        break;
+      case "turn_start":
+        this.turnTiming?.inferenceStart(performance.now());
+        this.refreshLiveTiming();
         break;
       case "message_update": {
         const inner = event.assistantMessageEvent;
@@ -225,6 +237,7 @@ export class RealAgentRuntime extends BaseAgentRuntime {
         break;
       }
       case "tool_execution_start": {
+        this.turnTiming?.toolStart(event.toolCallId, performance.now());
         if (!isJsonObject(event.args)) throw new TypeError(`tool ${event.toolName} arguments must be a JSON object`);
         this.liveToolExecStart({ callId: event.toolCallId, name: event.toolName, args: event.args });
         break;
@@ -236,9 +249,11 @@ export class RealAgentRuntime extends BaseAgentRuntime {
         break;
       }
       case "tool_execution_end": {
+        this.turnTiming?.toolEnd(event.toolCallId, performance.now());
         const text = contentText(event.result?.content ?? []);
         const details = isToolViewDetails(event.result?.details) ? event.result.details : undefined;
         this.liveToolEnd(event.toolCallId, text, Boolean(event.isError), details);
+        this.refreshLiveTiming();
         break;
       }
       case "message_end": {
@@ -249,7 +264,7 @@ export class RealAgentRuntime extends BaseAgentRuntime {
         if (message?.role === "user") setTimeout(() => this.syncLiveUserEntry(), 0);
         if (message?.role === "toolResult") setTimeout(() => this.syncLiveToolResult(message.toolCallId), 0);
         if (message?.role === "assistant") {
-          this.liveContextUsage(message);
+          this.turnTiming?.inferenceEnd(performance.now(), message.usage?.output);
           if (isFinalAssistantMessage(message.content, message.stopReason)) {
             this.liveFinal(finalAssistantText(message.content));
           } else {
@@ -259,11 +274,18 @@ export class RealAgentRuntime extends BaseAgentRuntime {
             const miss = detectCacheMiss(this.session.sessionManager.getBranch(), message, this.session.modelRuntime);
             if (miss) this.liveCacheMiss(miss);
           }
+          this.refreshLiveTiming();
           void this.refreshStats();
         }
         break;
       }
       case "agent_end":
+        if (this.turnTiming) {
+          const timing = this.turnTiming.snapshot(performance.now());
+          this.session.sessionManager.appendCustomEntry(turnTimingEntryType, timing);
+          if (this.live) this.live.working.timing = timing;
+          this.turnTiming = undefined;
+        }
         // End state and readiness are one synchronous lifecycle boundary. Stats
         // are secondary presentation data and cannot delay, suppress, or race a
         // newer agent_start into being marked idle.

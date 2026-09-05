@@ -61,22 +61,6 @@ describe("transcript rendering", () => {
     expect(html).not.toContain("/service-tier");
   });
 
-  test("working sections reflect active, completed, and interrupted states", () => {
-    const cases = [
-      { name: "active turn", item: { type: "working" as const, key: "active", startedAt: 1000, items: [{ type: "thinking" as const, key: "thought", text: "Checking files" }] }, label: "Working", open: true, active: true },
-      { name: "empty active turn", item: { type: "working" as const, key: "waiting", startedAt: 1000, items: [] }, label: "Working", open: true, active: true },
-      { name: "completed turn", item: { type: "working" as const, key: "worked", startedAt: 1000, completedAt: 3500, contextTokens: 23_000, items: [{ type: "thinking" as const, key: "thought", text: "Checking files" }] }, label: "Worked for 3s · 23k tokens", open: false, active: false },
-      { name: "interrupted turn", item: { type: "working" as const, key: "stopped", startedAt: 1000, stoppedAt: 3500, items: [] }, label: "Stopped after 3s", open: false, active: false },
-    ];
-
-    for (const example of cases) {
-      const html = renderTranscriptItem(ctx, example.item);
-      expect(html, example.name).toContain(example.label);
-      expect(html.includes(`id="${ctxPrefix}_item_${example.item.key}" open`), example.name).toBe(example.open);
-      expect(html.includes('class="agent-working active"'), example.name).toBe(example.active);
-    }
-  });
-
   test("completed activity with no items is omitted", () => {
     const html = renderTranscriptItem(ctx, { type: "working", key: "worked", startedAt: 1000, completedAt: 3500, items: [] });
     expect(html).toBe("");

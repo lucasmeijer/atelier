@@ -21,18 +21,6 @@ describe("transcript", () => {
     expect(text?.type === "text" && text.final).toBe(true);
   });
 
-  test("attributes the context added by a completed working group", () => {
-    const items = buildTranscript([
-      { kind: "user", id: "u", text: "inspect", images: [], timestamp: 1000 },
-      { kind: "assistant", id: "a1", parts: [{ type: "toolCall", callId: "c", name: "read", args: {} }], stopReason: "toolUse", timestamp: 2000, usage: { promptTokens: 10_000, outputTokens: 500 } },
-      { kind: "toolResult", callId: "c", text: "large result", images: [], isError: false, timestamp: 3000 },
-      { kind: "assistant", id: "a2", parts: [{ type: "text", text: "Done" }], stopReason: "stop", timestamp: 4000, usage: { promptTokens: 32_000, outputTokens: 1_000 } },
-    ]);
-
-    const working = items.find((item) => item.type === "working");
-    expect(working?.type === "working" && working.contextTokens).toBe(23_000);
-  });
-
   test("only first rendered part carries an assistant rewind boundary", () => {
     const items = buildTranscript([{ kind: "assistant", id: "a", parts: [{ type: "thinking", text: "one" }, { type: "text", text: "two" }], stopReason: "stop", timestamp: 1 }]);
     expect(items[0]?.rewindEntryId).toBe("a");

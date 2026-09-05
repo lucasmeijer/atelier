@@ -28,8 +28,6 @@ import type { AgentServiceTier } from "./service-tier.ts";
 import type { WorkspaceAgentConversationInfo } from "./session-store.ts";
 import type { TreeFilterMode } from "./session-tree.ts";
 import {
-  addedContextTokens,
-  assistantContextUsage,
   findTranscriptItem,
   toolDetailsIndicateError,
   type SessionImageRef,
@@ -38,6 +36,7 @@ import {
   type ToolViewDetails,
   type ToolView,
 } from "./transcript.ts";
+import type { TurnTimingSummary } from "./turn-timing.ts";
 import { publishWorkspaceViewBusy } from "./workspace-view-busy.ts";
 
 interface LiveTextStream {
@@ -58,7 +57,6 @@ interface LiveState {
   textStream?: LiveTextStream;
   toolIndexByCallId: Map<string, number>;
   terminalTimers: Map<string, ReturnType<typeof setTimeout>>;
-  firstPromptTokens?: number;
 }
 
 interface LiveToolCall {
@@ -549,12 +547,10 @@ export abstract class BaseAgentRuntime implements WorkspaceAgentRuntime {
     this.appendLiveItem(item, { live: true });
   }
 
-  protected liveContextUsage(message: { usage?: { input?: number; cacheRead?: number; cacheWrite?: number; output?: number } }): void {
-    const live = this.live;
-    const usage = assistantContextUsage(message);
-    if (!live || !usage) return;
-    live.firstPromptTokens ??= usage.promptTokens;
-    live.working.contextTokens = addedContextTokens(live.firstPromptTokens, usage);
+  protected liveTiming(timing: TurnTimingSummary): void {
+    if (!this.live) return;
+    this.live.working.timing = timing;
+    this.stream(turboStream("replace", ids.item(this.ctx, this.live.working.key), renderTranscriptItem(this.ctx, this.liveWorkingSection(this.live))));
   }
 
   protected liveCacheMiss(miss: CacheMiss): void {
@@ -577,8 +573,8 @@ export abstract class BaseAgentRuntime implements WorkspaceAgentRuntime {
       for (const timer of this.live.terminalTimers.values()) clearTimeout(timer);
       if (this.live.working.completedAt === undefined) {
         this.live.working.stoppedAt = Date.now();
-        if (this.liveSubscriberCount > 0) this.stream(turboStream("replace", ids.item(this.ctx, this.live.working.key), renderTranscriptItem(this.ctx, this.liveWorkingSection(this.live))));
       }
+      if (this.liveSubscriberCount > 0) this.stream(turboStream("replace", ids.item(this.ctx, this.live.working.key), renderTranscriptItem(this.ctx, this.liveWorkingSection(this.live))));
     }
     this.live = undefined;
   }

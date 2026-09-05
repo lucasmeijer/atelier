@@ -2,7 +2,9 @@ import { contentText } from "@earendil-works/pi-ai";
 import { Type } from "typebox";
 import { Value } from "typebox/value";
 import { significantCacheMissNotice, type CacheMiss } from "./cache-miss.ts";
-import { assistantContextUsage, isToolViewDetails, type SessionImageRef, type TranscriptRecord } from "./transcript.ts";
+import { isToolViewDetails, type SessionImageRef, type TranscriptRecord } from "./transcript.ts";
+
+import { turnTimingEntryType, turnTimingSchema } from "./turn-timing.ts";
 
 interface ImageDimensions {
   width: number;
@@ -70,6 +72,10 @@ export function recordsFromSessionEntries(entries: any[], cacheMisses = new Map<
   let lastModelChangeRecord: TranscriptRecord | undefined;
   let cacheNoticeInsertIndex: number | undefined;
   for (const entry of entries) {
+    if (entry.type === "custom" && entry.customType === turnTimingEntryType && Value.Check(turnTimingSchema, entry.data)) {
+      records.push({ kind: "timing", timing: entry.data, timestamp: entryTimestamp(entry) });
+      continue;
+    }
     if (entry.type === "message") {
       const message = entry.message;
       if (!message) continue;
@@ -94,7 +100,6 @@ export function recordsFromSessionEntries(entries: any[], cacheMisses = new Map<
           stopReason: message.stopReason ?? "stop",
           errorMessage: message.errorMessage,
           timestamp: entryTimestamp(entry),
-          usage: assistantContextUsage(message),
         });
         const notice = significantCacheMissNotice(cacheMisses.get(message));
         if (notice && message.stopReason !== "aborted" && message.stopReason !== "error") {

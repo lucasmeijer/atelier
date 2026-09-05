@@ -51,6 +51,7 @@ function fakeSession(navigation: Deferred<{ editorText?: string; cancelled?: boo
     systemPrompt: "",
     modelRuntime: { getModel: () => undefined },
     sessionManager: {
+      appendCustomEntry: () => crypto.randomUUID(),
       getBranch: () => [],
       getEntry: (entryId: string) => entries.get(entryId),
     },

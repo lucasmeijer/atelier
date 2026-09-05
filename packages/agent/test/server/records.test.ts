@@ -15,7 +15,6 @@ describe("recordsFromSessionEntries", () => {
             { type: "toolCall", id: "c1", name: "bash", arguments: { command: "ls" } },
           ],
           stopReason: "toolUse",
-          usage: { input: 100, cacheRead: 2_000, cacheWrite: 300, output: 12, cost: { total: 0.001 } },
           timestamp: 1760000005000,
         },
       },
@@ -32,7 +31,7 @@ describe("recordsFromSessionEntries", () => {
     ]);
     expect(records[0]).toMatchObject({ kind: "user", text: "hello", rewindable: false });
     const assistant = records[1];
-    expect(assistant).toMatchObject({ kind: "assistant", stopReason: "toolUse", usage: { promptTokens: 2_400, outputTokens: 12 } });
+    expect(assistant).toMatchObject({ kind: "assistant", stopReason: "toolUse" });
     if (assistant.kind !== "assistant") throw new Error("expected an assistant transcript record");
     expect(assistant.parts).toHaveLength(2);
     expect(records[2]).toMatchObject({ kind: "toolResult", callId: "c1", text: "out", images: [{ entryId: "e3", contentIndex: 1 }], details: { displayAnsi: "\x1b[31mout\x1b[0m" } });

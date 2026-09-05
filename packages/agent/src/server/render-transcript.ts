@@ -72,21 +72,27 @@ function renderWorkingItems(ctx: AgentRenderContext, section: WorkingTranscriptI
 }
 
 function renderWorkingSection(ctx: AgentRenderContext, section: WorkingTranscriptItem): string {
-  if (section.completedAt !== undefined && section.items.length === 0) return "";
-  const activityLabel = section.completedAt !== undefined
-    ? `Worked for ${formatDuration(section.completedAt - section.startedAt)}`
-    : section.stoppedAt !== undefined
-      ? `Stopped after ${formatDuration(section.stoppedAt - section.startedAt)}`
-      : "Working";
-  const active = section.completedAt === undefined && section.stoppedAt === undefined;
-  const contextLabel = !active && section.contextTokens !== undefined ? ` · ${formatTokens(section.contextTokens)} tokens` : "";
-  const label = `${activityLabel}${contextLabel}`;
+  if (section.completedAt !== undefined && section.items.length === 0 && !section.timing) return "";
+  const endedAt = section.completedAt ?? section.stoppedAt;
+  const active = endedAt === undefined;
+  const activityLabel = active ? "Working"
+    : `${section.completedAt !== undefined ? "Worked for" : "Stopped after"} ${formatDuration(section.timing?.elapsedMs ?? (endedAt - section.startedAt))}`;
+  const timing = section.timing;
+  const rate = timing && timing.usageComplete && timing.inferenceMs > 0
+    ? `${(timing.outputTokens / (timing.inferenceMs / 1000)).toFixed(1)} tps`
+    : active ? "tps pending" : "tps unavailable";
+  const toolDuration = timing ? formatDuration(timing.toolMs) : "0s";
+  const toolsLabel = toolDuration === "0s" ? "" : `${toolDuration} tools, `;
+  const timingLabel = timing
+    ? ` <span class="agent-working-timing" title="Wall-clock tool wait (parallel calls counted once). Output-token count and tokens per inference second, including reported thinking tokens.">(${escapeHtml(toolsLabel)}${formatTokens(timing.outputTokens)} tok @ ${escapeHtml(rate)})</span>`
+    : "";
   const status = active ? '<i class="status-dot running action-item__status" aria-label="In progress"></i>' : "";
-  const summary = transcriptActionItemHtml({ kind: "text", text: label }, { disclosure: true, leadingHtml: status });
-  if (!active && !section.live) {
-    return `<details class="agent-working" id="${ids.item(ctx, section.key)}" data-controller="agent-lazy-detail" data-action="toggle->agent-lazy-detail#load mouseenter->agent-lazy-detail#load">${summary}${lazyTranscriptItemFrame(ctx, section.key)}</details>`;
-  }
-  return `<details class="agent-working${active ? " active" : ""}" id="${ids.item(ctx, section.key)}"${active ? " open" : ""}>${summary}${renderWorkingItems(ctx, section, { live: section.live, open: active })}</details>`;
+  const summary = transcriptActionItemHtml({ kind: "html", html: `${escapeHtml(activityLabel)}${timingLabel}` }, { disclosure: true, leadingHtml: status });
+  const emptyClass = section.items.length === 0 ? " agent-working--empty" : "";
+  const lazy = !active && !section.live;
+  const attributes = lazy ? ' data-controller="agent-lazy-detail" data-action="toggle->agent-lazy-detail#load mouseenter->agent-lazy-detail#load"' : active ? " open" : "";
+  const items = lazy ? lazyTranscriptItemFrame(ctx, section.key) : renderWorkingItems(ctx, section, { live: section.live, open: active });
+  return `<details class="agent-working${emptyClass}${active ? " active" : ""}" id="${ids.item(ctx, section.key)}"${attributes}>${summary}${items}</details>`;
 }
 
 function renderThinkingItem(ctx: AgentRenderContext, item: Extract<TranscriptItem, { type: "thinking" }>): string {
