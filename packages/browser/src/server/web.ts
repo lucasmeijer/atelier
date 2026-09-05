@@ -10,6 +10,7 @@ import { Type, type Static } from "typebox";
 import { Value } from "typebox/value";
 
 const browserCreateCommandId = "browser.create";
+const browserOpenCommandId = "browser.open";
 const browserCreateInputSchema = Type.Object({ url: Type.Optional(Type.String()) });
 const browserNavigateInputSchema = Type.Object({ url: Type.String() });
 
@@ -19,6 +20,14 @@ const browserCreateCommand: WorkspaceModuleCommandHandler<Static<typeof browserC
   execute({ workspaceId, input }) {
     const browser = createWorkspaceBrowserView(workspaceId);
     if (input.url) setWorkspaceBrowserTarget(workspaceId, browser.key, input.url);
+    return { createdWorkView: { type: "browser", browserId: browser.key } };
+  },
+};
+
+const browserOpenCommand: WorkspaceModuleCommandHandler = {
+  id: browserOpenCommandId,
+  execute({ workspaceId }) {
+    const browser = listWorkspaceBrowserViews(workspaceId)[0] ?? createWorkspaceBrowserView(workspaceId);
     return { createdWorkView: { type: "browser", browserId: browser.key } };
   },
 };
@@ -36,6 +45,13 @@ function parseBrowserReference(value: JsonValue): BrowserWorkViewReference {
 }
 
 const browserWorkspaceCommands: WorkspaceCommandContribution[] = [
+  {
+    id: browserOpenCommandId,
+    label: "Open Browser",
+    description: "Open the first existing Browser view, or create one if none exists.",
+    scope: "workspace",
+    surfaces: { shortcut: { defaultBinding: "Meta+Alt+KeyB" } },
+  },
   {
     id: browserCreateCommandId,
     label: "New Browser",
@@ -58,7 +74,7 @@ export const browserWorkspaceModule: WorkspaceModule = {
     close: ({ workspaceId, reference }: { workspaceId: string; reference: { type: "browser"; browserId: string } }) => deleteWorkspaceBrowserView(workspaceId, reference.browserId),
   }],
   staticFiles: browserStaticFiles,
-  commands: [browserCreateCommand],
+  commands: [browserCreateCommand, browserOpenCommand],
   routes: [{
     async handle(request, url) {
       const match = url.pathname.match(/^\/workspaces\/([^/]+)\/browser\/([^/]+)\/navigate$/);
