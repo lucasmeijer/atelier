@@ -4,7 +4,7 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { AtelierCoreError } from "@atelier/core";
 import { decryptProjectValue, encryptProjectValue } from "./secret-crypto.ts";
-import { findProjectRecord, projectsFile, readProjectStore, writeProjectStore, type ProjectSshKeySummary, type StoredProjectSshKey } from "./project.ts";
+import { findProjectRecord, projectsFile, readProjectStore, updateProjectStore, type ProjectSshKeySummary, type StoredProjectSshKey } from "./project.ts";
 
 async function keyIdentity(privateKey: string): Promise<Pick<ProjectSshKeySummary, "keyType" | "fingerprint">> {
   const directory = await mkdtemp(join(tmpdir(), "atelier-ssh-key-"));
@@ -36,31 +36,31 @@ export async function listProjectSshKeys(projectId: string, file = projectsFile(
 export async function createProjectSshKey(projectId: string, privateKey: string, file = projectsFile(), keyFile?: string): Promise<ProjectSshKeySummary> {
   if (!privateKey.trim()) throw new AtelierCoreError("invalid_arguments", "Private key is required");
   privateKey = privateKey.replace(/\r\n/g, "\n");
-  const store = await readProjectStore(file);
-  const project = findProjectRecord(store, projectId);
-  const id = randomUUID();
-  const key = {
-    id,
-    projectId,
-    ...await keyIdentity(privateKey),
-    createdAt: new Date().toISOString(),
-    encryptedPrivateKey: await encryptProjectValue(projectId, id, privateKey, keyFile),
-  };
-  project.sshKeys ??= [];
-  project.sshKeys.push(key);
-  await writeProjectStore(file, store);
-  return summary(key);
+  return await updateProjectStore(file, async (store) => {
+    const project = findProjectRecord(store, projectId);
+    const id = randomUUID();
+    const key = {
+      id,
+      projectId,
+      ...await keyIdentity(privateKey),
+      createdAt: new Date().toISOString(),
+      encryptedPrivateKey: await encryptProjectValue(projectId, id, privateKey, keyFile),
+    };
+    project.sshKeys ??= [];
+    project.sshKeys.push(key);
+    return summary(key);
+  });
 }
 
 export async function deleteProjectSshKey(projectId: string, keyId: string, file = projectsFile()): Promise<ProjectSshKeySummary> {
-  const store = await readProjectStore(file);
-  const project = findProjectRecord(store, projectId);
-  const keys = project.sshKeys ?? [];
-  const key = keys.find((candidate) => candidate.id === keyId);
-  if (!key) throw new AtelierCoreError("project_ssh_key_not_found", "project SSH key not found");
-  project.sshKeys = keys.filter((candidate) => candidate.id !== keyId);
-  await writeProjectStore(file, store);
-  return summary(key);
+  return await updateProjectStore(file, (store) => {
+    const project = findProjectRecord(store, projectId);
+    const keys = project.sshKeys ?? [];
+    const key = keys.find((candidate) => candidate.id === keyId);
+    if (!key) throw new AtelierCoreError("project_ssh_key_not_found", "project SSH key not found");
+    project.sshKeys = keys.filter((candidate) => candidate.id !== keyId);
+    return summary(key);
+  });
 }
 
 export async function revealProjectSshKeys(projectId: string, file = projectsFile(), keyFile?: string): Promise<string[]> {

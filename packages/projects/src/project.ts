@@ -1,7 +1,7 @@
 import { createHash, randomUUID } from "node:crypto";
 import { mkdir, readFile, rename, writeFile } from "node:fs/promises";
 import { basename, dirname, join } from "node:path";
-import { AtelierCoreError, getAtelierRuntimeContext } from "@atelier/core";
+import { acquireFileLock, AtelierCoreError, getAtelierRuntimeContext } from "@atelier/core";
 import type { WorkspaceInitInstruction } from "@atelier/workspace";
 import { Type, type Static } from "typebox";
 import { Value } from "typebox/value";
@@ -133,11 +133,24 @@ export async function readProjectStore(file: string): Promise<ProjectStore> {
   }
 }
 
-export async function writeProjectStore(file: string, store: ProjectStore): Promise<void> {
+async function writeProjectStore(file: string, store: ProjectStore): Promise<void> {
   await mkdir(dirname(file), { recursive: true });
   const tempFile = `${file}.${randomUUID()}.tmp`;
   await writeFile(tempFile, `${JSON.stringify(store, null, 2)}\n`, "utf8");
   await rename(tempFile, file);
+}
+
+/** Owns the complete read-modify-write operation so concurrent changes cannot overwrite one another. */
+export async function updateProjectStore<Result>(file: string, mutate: (store: ProjectStore) => Result | Promise<Result>): Promise<Result> {
+  const release = await acquireFileLock(`${file}.lock`, "projects");
+  try {
+    const store = await readProjectStore(file);
+    const result = await mutate(store);
+    await writeProjectStore(file, store);
+    return result;
+  } finally {
+    await release();
+  }
 }
 
 export function findProjectRecord(store: ProjectStore, projectId: string): ProjectRecord {
@@ -165,42 +178,42 @@ export async function listProjects(file = projectsFile()): Promise<ProjectListRe
 export async function addProject(spec: string, file = projectsFile()): Promise<AddProjectResult> {
   const { gitUrl, branch } = parseProjectSpec(spec);
   const id = projectId(gitUrl, branch);
-  const store = await readProjectStore(file);
-  if (store.projects.some((project) => project.id === id || (project.gitUrl === gitUrl && project.branch === branch))) {
-    throw new AtelierCoreError("project_exists", `project already exists: ${formatProjectSpec({ gitUrl, branch })}`);
-  }
-  const name = projectNameFromGitUrl(gitUrl);
-  const project = { id, name, gitUrl, branch, sessionShareKey: name };
-  store.projects.push(project);
-  await writeProjectStore(file, store);
-  return { project: projectSummary(project) };
+  return await updateProjectStore(file, (store) => {
+    if (store.projects.some((project) => project.id === id || (project.gitUrl === gitUrl && project.branch === branch))) {
+      throw new AtelierCoreError("project_exists", `project already exists: ${formatProjectSpec({ gitUrl, branch })}`);
+    }
+    const name = projectNameFromGitUrl(gitUrl);
+    const project = { id, name, gitUrl, branch, sessionShareKey: name };
+    store.projects.push(project);
+    return { project: projectSummary(project) };
+  });
 }
 
 export async function updateProject(id: string, values: { name: string; spec: string }, file = projectsFile()): Promise<UpdateProjectResult> {
-  const store = await readProjectStore(file);
-  const project = store.projects.find((candidate) => candidate.id === id);
-  if (!project) throw new AtelierCoreError("project_not_found", `project not found: ${id}`);
-  const name = values.name.trim();
-  if (!name) throw new AtelierCoreError("invalid_arguments", "project name is required");
-  const { gitUrl, branch } = parseProjectSpec(values.spec);
-  if (store.projects.some((candidate) => candidate.id !== id && candidate.gitUrl === gitUrl && candidate.branch === branch)) {
-    throw new AtelierCoreError("project_exists", `project already exists: ${formatProjectSpec({ gitUrl, branch })}`);
-  }
-  project.name = name;
-  project.gitUrl = gitUrl;
-  project.branch = branch;
-  project.sessionShareKey = name;
-  await writeProjectStore(file, store);
-  return { project: projectSummary(project) };
+  return await updateProjectStore(file, (store) => {
+    const project = store.projects.find((candidate) => candidate.id === id);
+    if (!project) throw new AtelierCoreError("project_not_found", `project not found: ${id}`);
+    const name = values.name.trim();
+    if (!name) throw new AtelierCoreError("invalid_arguments", "project name is required");
+    const { gitUrl, branch } = parseProjectSpec(values.spec);
+    if (store.projects.some((candidate) => candidate.id !== id && candidate.gitUrl === gitUrl && candidate.branch === branch)) {
+      throw new AtelierCoreError("project_exists", `project already exists: ${formatProjectSpec({ gitUrl, branch })}`);
+    }
+    project.name = name;
+    project.gitUrl = gitUrl;
+    project.branch = branch;
+    project.sessionShareKey = name;
+    return { project: projectSummary(project) };
+  });
 }
 
 export async function deleteProject(id: string, file = projectsFile()): Promise<DeleteProjectResult> {
-  const store = await readProjectStore(file);
-  const project = store.projects.find((candidate) => candidate.id === id);
-  if (!project) throw new AtelierCoreError("project_not_found", `project not found: ${id}`);
-  store.projects = store.projects.filter((candidate) => candidate.id !== id);
-  await writeProjectStore(file, store);
-  return { project: projectSummary(project) };
+  return await updateProjectStore(file, (store) => {
+    const project = store.projects.find((candidate) => candidate.id === id);
+    if (!project) throw new AtelierCoreError("project_not_found", `project not found: ${id}`);
+    store.projects = store.projects.filter((candidate) => candidate.id !== id);
+    return { project: projectSummary(project) };
+  });
 }
 
 export function projectWorkspaceInit(project: ProjectSummary): WorkspaceInitInstruction {

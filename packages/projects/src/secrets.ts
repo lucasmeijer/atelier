@@ -1,7 +1,7 @@
 import { randomUUID } from "node:crypto";
 import { AtelierCoreError } from "@atelier/core";
 import { decryptProjectValue, encryptProjectValue } from "./secret-crypto.ts";
-import { findProjectRecord, projectsFile, readProjectStore, writeProjectStore, type ProjectRecord, type ProjectSecretSummary, type StoredProjectSecret } from "./project.ts";
+import { findProjectRecord, projectsFile, readProjectStore, updateProjectStore, type ProjectRecord, type ProjectSecretSummary, type StoredProjectSecret } from "./project.ts";
 
 export interface ProjectSecretPlaintext extends ProjectSecretSummary {
   secretValue: string;
@@ -51,45 +51,45 @@ export async function createProjectSecret(projectId: string, values: { envName: 
   const placeholder = normalizePlaceholder(values.placeholder);
   const secretValue = values.secretValue;
   if (!secretValue) throw new AtelierCoreError("invalid_arguments", "SECRET is required");
-  const store = await readProjectStore(file);
-  const project = findProjectRecord(store, projectId);
-  project.secrets ??= [];
-  assertEnvNameAvailable(project, envName);
-  const now = new Date().toISOString();
-  const id = randomUUID();
-  const stored: StoredProjectSecret = { id, projectId, envName, hostPattern, placeholder, encryptedSecret: await encryptProjectValue(projectId, id, secretValue, keyFile), createdAt: now, updatedAt: now };
-  project.secrets!.push(stored);
-  await writeProjectStore(file, store);
-  return summary(stored);
+  return await updateProjectStore(file, async (store) => {
+    const project = findProjectRecord(store, projectId);
+    project.secrets ??= [];
+    assertEnvNameAvailable(project, envName);
+    const now = new Date().toISOString();
+    const id = randomUUID();
+    const stored: StoredProjectSecret = { id, projectId, envName, hostPattern, placeholder, encryptedSecret: await encryptProjectValue(projectId, id, secretValue, keyFile), createdAt: now, updatedAt: now };
+    project.secrets!.push(stored);
+    return summary(stored);
+  });
 }
 
 export async function updateProjectSecret(projectId: string, secretId: string, values: { envName: string; hostPattern: string; placeholder?: string; secretValue?: string }, file = projectsFile(), keyFile?: string): Promise<ProjectSecretSummary> {
   const envName = normalizeEnvName(values.envName);
   const hostPattern = normalizeHostPattern(values.hostPattern);
-  const store = await readProjectStore(file);
-  const project = findProjectRecord(store, projectId);
-  const secret = findProjectSecret(project, secretId);
-  assertEnvNameAvailable(project, envName, secretId);
-  secret.envName = envName;
-  secret.hostPattern = hostPattern;
-  if (values.placeholder !== undefined) {
-    const placeholder = normalizePlaceholder(values.placeholder);
-    if (placeholder) secret.placeholder = placeholder;
-    else delete secret.placeholder;
-  }
-  if (values.secretValue) secret.encryptedSecret = await encryptProjectValue(projectId, secretId, values.secretValue, keyFile);
-  secret.updatedAt = new Date().toISOString();
-  await writeProjectStore(file, store);
-  return summary(secret);
+  return await updateProjectStore(file, async (store) => {
+    const project = findProjectRecord(store, projectId);
+    const secret = findProjectSecret(project, secretId);
+    assertEnvNameAvailable(project, envName, secretId);
+    secret.envName = envName;
+    secret.hostPattern = hostPattern;
+    if (values.placeholder !== undefined) {
+      const placeholder = normalizePlaceholder(values.placeholder);
+      if (placeholder) secret.placeholder = placeholder;
+      else delete secret.placeholder;
+    }
+    if (values.secretValue) secret.encryptedSecret = await encryptProjectValue(projectId, secretId, values.secretValue, keyFile);
+    secret.updatedAt = new Date().toISOString();
+    return summary(secret);
+  });
 }
 
 export async function deleteProjectSecret(projectId: string, secretId: string, file = projectsFile()): Promise<ProjectSecretSummary> {
-  const store = await readProjectStore(file);
-  const project = findProjectRecord(store, projectId);
-  const secret = findProjectSecret(project, secretId);
-  project.secrets = project.secrets!.filter((candidate) => candidate !== secret);
-  await writeProjectStore(file, store);
-  return summary(secret);
+  return await updateProjectStore(file, (store) => {
+    const project = findProjectRecord(store, projectId);
+    const secret = findProjectSecret(project, secretId);
+    project.secrets = project.secrets!.filter((candidate) => candidate !== secret);
+    return summary(secret);
+  });
 }
 
 export async function revealProjectSecrets(projectId: string, file = projectsFile(), keyFile?: string): Promise<ProjectSecretPlaintext[]> {
