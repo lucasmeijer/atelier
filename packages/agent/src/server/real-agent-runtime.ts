@@ -6,7 +6,8 @@ import { collectCacheMisses, detectCacheMiss } from "./cache-miss.ts";
 import { turboStream } from "./html.ts";
 import { isFinalAssistantTextEvent } from "./live-presentation.ts";
 import { createPiSession } from "./pi-session.ts";
-import { getConfiguredAgentModels, getModelThinkingLevel } from "./pi-config-models.ts";
+import { configuredModelOptionViews } from "./model-state.ts";
+import { getModelThinkingLevel } from "./pi-config-models.ts";
 import type { AgentStatsView } from "./render-composer.ts";
 import { ids } from "./render-context.ts";
 import {
@@ -84,19 +85,6 @@ export class RealAgentRuntime extends BaseAgentRuntime {
     return Boolean(this.session.isStreaming || this.summarizing);
   }
 
-  private async configuredModelOptions(): Promise<{ provider: string; id: string; name: string; model: any; available: boolean }[]> {
-    // Resolve the configured picker list against Pi's live runtime snapshot.
-    const configuredModels = await getConfiguredAgentModels();
-    const available = new Set((await this.session.modelRuntime.getAvailable()).map((model: { provider: string; id: string }) => `${model.provider}::${model.id}`));
-    return configuredModels.map((configured) => ({
-      provider: configured.provider,
-      id: configured.id,
-      name: configured.label,
-      model: this.session.modelRuntime.getModel(configured.provider, configured.id),
-      available: available.has(`${configured.provider}::${configured.id}`),
-    }));
-  }
-
   protected modelContext(): AgentModelContextView {
     return { systemPrompt: this.session.systemPrompt ?? "", tools: this.toolsForModel };
   }
@@ -145,17 +133,9 @@ export class RealAgentRuntime extends BaseAgentRuntime {
     const latestCompactionEntryId = branch.findLast((entry: any) => entry.type === "compaction")?.id;
     const thinkingLevel = this.currentThinkingLevel();
     const thinkingLevels = this.availableThinkingLevels();
-    const configuredModels = await this.configuredModelOptions();
     const estimatedTokens = latestCompactionEntryId === estimate?.entryId ? estimate?.tokens : undefined;
     const contextPercent = contextUsagePercent(context?.percent, estimatedTokens, model?.contextWindow);
-    const models = configuredModels.map((option) => ({
-      provider: option.provider,
-      id: option.id,
-      name: option.name,
-      selected: model ? option.provider === model.provider && option.id === model.id : false,
-      available: option.available,
-      unavailableReason: option.available ? undefined : "Provider disconnected",
-    }));
+    const models = await configuredModelOptionViews(model ?? null, this.session.modelRuntime);
     // Current model outside the configured list: show it as a selected extra entry.
     if (model && !models.some((option) => option.selected)) {
       // Show the current session model for accuracy, but do not offer it as a

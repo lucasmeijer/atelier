@@ -52,20 +52,21 @@ export async function prepareNewWorkspaceAgentParameters(agent: AgentWorkspacePa
   return agent.model ? { ...agent, model: modelRefValue(model) } : agent;
 }
 
-export async function configuredModelOptionViews(current?: ModelRef): Promise<AgentModelOptionView[]> {
-  const runtime = await createPiModelRuntime();
+/** Omit current to select the saved default; null represents a session without a model. */
+export async function configuredModelOptionViews(current?: ModelRef | null, runtime?: Pick<Awaited<ReturnType<typeof createPiModelRuntime>>, "getAvailable">): Promise<AgentModelOptionView[]> {
+  runtime ??= await createPiModelRuntime();
   const available = new Set((await runtime.getAvailable()).map((model) => `${model.provider}::${model.id}`));
   return (await getConfiguredAgentModels()).map((model) => modelOptionView(model, available, current));
 }
 
-function modelOptionView(model: ConfiguredAgentModel, available: Set<string>, current?: ModelRef): AgentModelOptionView {
+function modelOptionView(model: ConfiguredAgentModel, available: Set<string>, current?: ModelRef | null): AgentModelOptionView {
   const key = `${model.provider}::${model.id}`;
   const isAvailable = available.has(key);
   return {
     provider: model.provider,
     id: model.id,
     name: model.label,
-    selected: current ? current.provider === model.provider && current.id === model.id : Boolean(model.active),
+    selected: current === undefined ? Boolean(model.active) : current !== null && current.provider === model.provider && current.id === model.id,
     available: isAvailable,
     unavailableReason: isAvailable ? undefined : "Provider disconnected",
   };
