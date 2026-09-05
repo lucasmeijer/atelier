@@ -1,5 +1,30 @@
 import { describe, expect, test } from "bun:test";
-import { createWorkspaceRegistry, type WorkspaceActivityStore, type WorkspaceEntry, type WorkspaceUnreadSnapshot, type WorkspaceUnreadStore } from "../src/server/workspace-registry.ts";
+import { mkdtemp, rm } from "node:fs/promises";
+import { tmpdir } from "node:os";
+import { join } from "node:path";
+import { createFileWorkspaceUnreadStore, createWorkspaceRegistry, type WorkspaceActivityStore, type WorkspaceEntry, type WorkspaceUnreadSnapshot, type WorkspaceUnreadStore } from "../src/server/workspace-registry.ts";
+
+test("file stores capture nested values when saved and preserve queued write order", async () => {
+  const directory = await mkdtemp(join(tmpdir(), "atelier-registry-"));
+  try {
+    const store = createFileWorkspaceUnreadStore(join(directory, "unread.json"));
+    const unread: WorkspaceUnreadSnapshot = { nextToken: 2, views: { workspace: { agent: { unreadAt: 100, token: 1 } } } };
+    const firstSave = store.save(unread);
+    unread.views.workspace!.agent!.token = 2;
+    await firstSave;
+    expect(await store.load()).toEqual({ nextToken: 2, views: { workspace: { agent: { unreadAt: 100, token: 1 } } } });
+
+    const secondSave = store.save(unread);
+    unread.nextToken = 4;
+    unread.views.workspace!.agent!.token = 3;
+    const thirdSave = store.save(unread);
+    delete unread.views.workspace;
+    await Promise.all([secondSave, thirdSave]);
+    expect(await store.load()).toEqual({ nextToken: 4, views: { workspace: { agent: { unreadAt: 100, token: 3 } } } });
+  } finally {
+    await rm(directory, { recursive: true, force: true });
+  }
+});
 
 interface Captured {
   rows: Array<{ entry: WorkspaceEntry; viewKey?: string }>;

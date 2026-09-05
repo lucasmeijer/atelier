@@ -76,6 +76,7 @@ const workspaceDeletionsSchema = Type.Record(Type.String(), workspaceDeletionSta
 
 interface FileValueStore<T> {
   load(): Promise<T>;
+  /** Captures the values at invocation; later mutations cannot change the queued write. */
   save(values: T): Promise<void>;
 }
 
@@ -92,10 +93,11 @@ function createFileValueStore<Schema extends TSchema>(path: string, schema: Sche
       }
     },
     save(values) {
+      const snapshot = `${JSON.stringify(values, null, 2)}\n`;
       const nextSave = saveChain.catch(() => undefined).then(async () => {
         await mkdir(dirname(path), { recursive: true });
         const tempPath = `${path}.${process.pid}.${++tempCounter}.tmp`;
-        await writeFile(tempPath, `${JSON.stringify(values, null, 2)}\n`);
+        await writeFile(tempPath, snapshot);
         await rename(tempPath, path);
       });
       saveChain = nextSave;
@@ -169,8 +171,7 @@ export function createWorkspaceRegistry(options: WorkspaceRegistryOptions = {}):
 
   function persistUnread(): void {
     if (!unreadStore) return;
-    const snapshot = structuredClone({ nextToken: nextUnreadToken, views: unreadViewsByWorkspace });
-    void unreadStore.save(snapshot).catch((error) => console.error("could not persist workspace unread state", error));
+    void unreadStore.save({ nextToken: nextUnreadToken, views: unreadViewsByWorkspace }).catch((error) => console.error("could not persist workspace unread state", error));
   }
 
   function persistDeletions(): void {
