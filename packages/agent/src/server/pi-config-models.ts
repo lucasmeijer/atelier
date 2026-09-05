@@ -1,6 +1,6 @@
 import { mkdir, readFile, rename, unlink, writeFile } from "node:fs/promises";
 import { dirname, join } from "node:path";
-import { atelierDataPath, getAtelierRuntimeContext, isJsonObject, type JsonObject, type JsonValue } from "@atelier/core";
+import { createKeyedOperationQueue, atelierDataPath, getAtelierRuntimeContext, isJsonObject, type JsonObject, type JsonValue } from "@atelier/core";
 import type { AgentServiceTier } from "@atelier/shared";
 import type { AuthInteraction, AuthPrompt } from "@earendil-works/pi-ai";
 import { InMemoryCredentialStore } from "@earendil-works/pi-ai";
@@ -38,7 +38,7 @@ function piAuthJsonPath(): string { return join(piConfigDir(), "auth.json"); }
 
 async function writeJsonFile(path: string, value: JsonObject): Promise<void> {
   await mkdir(dirname(path), { recursive: true });
-  const tmp = `${path}.tmp`;
+  const tmp = `${path}.tmp-${crypto.randomUUID()}`;
   await writeFile(tmp, `${JSON.stringify(value, null, 2)}\n`);
   await rename(tmp, path);
 }
@@ -96,13 +96,24 @@ async function getAgentModelsSettings(path = piModelsJsonPath()): Promise<AgentM
   }
 }
 
-async function setAgentModelsSettings(config: AgentModelsSettings): Promise<void> {
+const serializeSettingsUpdate = createKeyedOperationQueue();
+
+async function updateAgentModelsSettings(update: (config: AgentModelsSettings) => void | false): Promise<void> {
+  const path = piModelsJsonPath();
+  await serializeSettingsUpdate(path, async () => {
+    const config = await getAgentModelsSettings(path);
+    if (update(config) === false) return;
+    await writeAgentModelsSettings(path, config);
+  });
+}
+
+async function writeAgentModelsSettings(path: string, config: AgentModelsSettings): Promise<void> {
   const value: JsonObject = { providers: config.providers ?? {} };
   if (config.picker) value.picker = config.picker.map((model) => ({ provider: model.provider, id: model.id, label: model.label }));
   if (config.activeModel) value.activeModel = { provider: config.activeModel.provider, id: config.activeModel.id };
   if (config.modelPreferences) value.modelPreferences = Object.fromEntries(Object.entries(config.modelPreferences).map(([key, preference]) => [key, { ...preference }]));
   if (config.providerPreferences) value.providerPreferences = Object.fromEntries(Object.entries(config.providerPreferences).map(([key, preference]) => [key, { ...preference }]));
-  await writeJsonFile(piModelsJsonPath(), value);
+  await writeJsonFile(path, value);
 }
 
 function parseCustomModelsJson(source: string): JsonObject {
@@ -169,9 +180,7 @@ async function officialPiModelRuntime(): Promise<ModelRuntime> {
 
 async function materializeCustomModelProviders(providers: JsonObject): Promise<CustomModelsSaveResult> {
   const filtered = withoutOfficialModelDuplicates(providers, await officialPiModelRuntime());
-  const settings = await getAgentModelsSettings();
-  settings.providers = filtered.providers;
-  await setAgentModelsSettings(settings);
+  await updateAgentModelsSettings((settings) => { settings.providers = filtered.providers; });
   return { skippedOfficialModels: filtered.skippedOfficialModels };
 }
 
@@ -215,24 +224,24 @@ export async function hasAvailableConfiguredAgentModel(): Promise<boolean> {
 }
 
 export async function setActiveAgentModel(provider: string, id: string, thinkingLevel?: string): Promise<void> {
-  const config = await getAgentModelsSettings();
-  const current = configuredFromSettings(config);
-  config.picker = current.map((model) => ({ provider: model.provider, id: model.id, label: model.label }));
-  config.activeModel = { provider, id };
-  if (!current.some((model) => model.provider === provider && model.id === id)) config.picker.unshift({ provider, id, label: id });
-  if (thinkingLevel) {
-    config.modelPreferences = { ...(config.modelPreferences ?? {}) };
-    config.modelPreferences[modelSettingsKey(provider, id)] = { ...(config.modelPreferences[modelSettingsKey(provider, id)] ?? {}), thinkingLevel };
-  }
-  await setAgentModelsSettings(config);
+  await updateAgentModelsSettings((config) => {
+    const current = configuredFromSettings(config);
+    config.picker = current.map((model) => ({ provider: model.provider, id: model.id, label: model.label }));
+    config.activeModel = { provider, id };
+    if (!current.some((model) => model.provider === provider && model.id === id)) config.picker.unshift({ provider, id, label: id });
+    if (thinkingLevel) {
+      config.modelPreferences = { ...(config.modelPreferences ?? {}) };
+      config.modelPreferences[modelSettingsKey(provider, id)] = { ...(config.modelPreferences[modelSettingsKey(provider, id)] ?? {}), thinkingLevel };
+    }
+  });
 }
 
 export async function setPickerAgentModels(models: ConfiguredAgentModel[], active?: { provider: string; id: string }): Promise<void> {
-  const config = await getAgentModelsSettings();
-  config.picker = models.map(({ provider, id, label }) => ({ provider, id, label }));
-  const first = models[0];
-  config.activeModel = active ?? models.find((model) => model.active) ?? (first ? { provider: first.provider, id: first.id } : undefined);
-  await setAgentModelsSettings(config);
+  await updateAgentModelsSettings((config) => {
+    config.picker = models.map(({ provider, id, label }) => ({ provider, id, label }));
+    const first = models[0];
+    config.activeModel = active ?? models.find((model) => model.active) ?? (first ? { provider: first.provider, id: first.id } : undefined);
+  });
 }
 
 export async function getModelThinkingLevel(provider: string, id: string): Promise<string | undefined> {
@@ -240,10 +249,10 @@ export async function getModelThinkingLevel(provider: string, id: string): Promi
   return level || undefined;
 }
 export async function setModelThinkingLevel(provider: string, id: string, thinkingLevel: string): Promise<void> {
-  const config = await getAgentModelsSettings();
-  config.modelPreferences = { ...(config.modelPreferences ?? {}) };
-  config.modelPreferences[modelSettingsKey(provider, id)] = { ...(config.modelPreferences[modelSettingsKey(provider, id)] ?? {}), thinkingLevel };
-  await setAgentModelsSettings(config);
+  await updateAgentModelsSettings((config) => {
+    config.modelPreferences = { ...(config.modelPreferences ?? {}) };
+    config.modelPreferences[modelSettingsKey(provider, id)] = { ...(config.modelPreferences[modelSettingsKey(provider, id)] ?? {}), thinkingLevel };
+  });
 }
 
 export async function getLastProviderServiceTier(provider: string): Promise<AgentServiceTier | undefined> {
@@ -251,11 +260,11 @@ export async function getLastProviderServiceTier(provider: string): Promise<Agen
 }
 
 export async function setLastProviderServiceTier(provider: string, serviceTier: AgentServiceTier): Promise<void> {
-  const config = await getAgentModelsSettings();
-  if (config.providerPreferences?.[provider]?.serviceTier === serviceTier) return;
-  config.providerPreferences = { ...(config.providerPreferences ?? {}) };
-  config.providerPreferences[provider] = { ...(config.providerPreferences[provider] ?? {}), serviceTier };
-  await setAgentModelsSettings(config);
+  await updateAgentModelsSettings((config) => {
+    if (config.providerPreferences?.[provider]?.serviceTier === serviceTier) return false;
+    config.providerPreferences = { ...(config.providerPreferences ?? {}) };
+    config.providerPreferences[provider] = { ...(config.providerPreferences[provider] ?? {}), serviceTier };
+  });
 }
 
 let modelRuntime: Promise<ModelRuntime> | undefined;
