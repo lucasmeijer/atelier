@@ -72,13 +72,11 @@ export function createCableServer(options: CableServerOptions): CableServer {
   }
   const channelFor = (identifier: CableIdentifier) => channels.get(identifier.channel === "module" ? identifier.name : identifier.channel);
   const logError = options.logError ?? ((message: string) => console.error(message));
-  const sockets = new Set<CableSocket>();
-  const connectionIdsBySocket = new WeakMap<CableSocket, string>();
+  const connections = new Map<CableSocket, { id: string; attempts: Map<string, SocketSubscriptionAttempt> }>();
   const attemptsByIdentifier = new Map<string, Set<SocketSubscriptionAttempt>>();
-  const attemptsBySocket = new WeakMap<CableSocket, Map<string, SocketSubscriptionAttempt>>();
   const heartbeat = setInterval(() => {
     const time = Date.now();
-    for (const ws of sockets) send(ws, { type: "ping", time });
+    for (const ws of connections.keys()) send(ws, { type: "ping", time });
   }, 30_000);
   heartbeat.unref?.();
 
@@ -90,7 +88,7 @@ export function createCableServer(options: CableServerOptions): CableServer {
   }
 
   function attemptIsCurrent(attempt: SocketSubscriptionAttempt): boolean {
-    return sockets.has(attempt.ws) && attemptsBySocket.get(attempt.ws)?.get(attempt.key) === attempt;
+    return connections.get(attempt.ws)?.attempts.get(attempt.key) === attempt;
   }
 
   function releaseAttempt(attempt: SocketSubscriptionAttempt): void {
@@ -103,7 +101,7 @@ export function createCableServer(options: CableServerOptions): CableServer {
     attempts?.delete(attempt);
     if (attempts?.size === 0) attemptsByIdentifier.delete(attempt.key);
 
-    const socketAttempts = attemptsBySocket.get(attempt.ws);
+    const socketAttempts = connections.get(attempt.ws)?.attempts;
     if (socketAttempts?.get(attempt.key) === attempt) socketAttempts.delete(attempt.key);
   }
 
@@ -126,7 +124,7 @@ export function createCableServer(options: CableServerOptions): CableServer {
   function reject(attempt: SocketSubscriptionAttempt, reason: string): void {
     if (!attemptIsCurrent(attempt)) return;
     releaseAttempt(attempt);
-    if (!sockets.has(attempt.ws)) return;
+    if (!connections.has(attempt.ws)) return;
     send(attempt.ws, { type: "reject_subscription", identifier: attempt.identifier, subscriptionId: attempt.subscriptionId, reason });
     logError(`cable message failed: ${reason}`);
   }
@@ -159,10 +157,9 @@ export function createCableServer(options: CableServerOptions): CableServer {
   }
 
   function subscribe(ws: CableSocket, identifier: CableIdentifier, subscriptionId: string): void {
-    if (!sockets.has(ws)) return;
+    const socketAttempts = connections.get(ws)?.attempts;
+    if (!socketAttempts) return;
     const key = serializeCableIdentifier(identifier);
-    let socketAttempts = attemptsBySocket.get(ws);
-    if (!socketAttempts) attemptsBySocket.set(ws, socketAttempts = new Map());
     const previous = socketAttempts.get(key);
     if (previous) releaseAttempt(previous);
     const attempt: SocketSubscriptionAttempt = { ws, identifier, key, subscriptionId, confirmed: false, bufferedHtml: [] };
@@ -185,7 +182,7 @@ export function createCableServer(options: CableServerOptions): CableServer {
 
   function unsubscribe(ws: CableSocket, identifier: CableIdentifier, subscriptionId: string): void {
     const key = serializeCableIdentifier(identifier);
-    const attempt = attemptsBySocket.get(ws)?.get(key);
+    const attempt = connections.get(ws)?.attempts.get(key);
     if (attempt?.subscriptionId === subscriptionId) releaseAttempt(attempt);
   }
 
@@ -196,7 +193,7 @@ export function createCableServer(options: CableServerOptions): CableServer {
     const key = serializeCableIdentifier(identifier);
     for (const attempt of attemptsByIdentifier.get(key) ?? []) {
       if (!attemptIsCurrent(attempt)) continue;
-      const connectionId = connectionIdsBySocket.get(attempt.ws);
+      const connectionId = connections.get(attempt.ws)?.id;
       if (options.exceptConnectionId && connectionId === options.exceptConnectionId) continue;
       if (options.onlyConnectionId && connectionId !== options.onlyConnectionId) continue;
       if (attempt.confirmed) send(attempt.ws, { type: "turbo_stream", identifier, subscriptionId: attempt.subscriptionId, html });
@@ -205,19 +202,19 @@ export function createCableServer(options: CableServerOptions): CableServer {
   }
 
   function close(ws: CableSocket): void {
-    sockets.delete(ws);
-    for (const attempt of [...(attemptsBySocket.get(ws)?.values() ?? [])]) releaseAttempt(attempt);
-    attemptsBySocket.delete(ws);
+    const connection = connections.get(ws);
+    connections.delete(ws);
+    for (const attempt of connection?.attempts.values() ?? []) releaseAttempt(attempt);
   }
 
   function handleInboundCommand(ws: CableSocket, raw: string | Buffer): void {
-    if (!sockets.has(ws)) return;
+    if (!connections.has(ws)) return;
     try {
       const message: CableClientMessage = decodeCableClientMessage(textMessage(raw));
       if (message.command === "subscribe") subscribe(ws, message.identifier, message.subscriptionId);
       else if (message.command === "unsubscribe") unsubscribe(ws, message.identifier, message.subscriptionId);
     } catch (error) {
-      if (!sockets.has(ws)) return;
+      if (!connections.has(ws)) return;
       const reason = error instanceof Error ? error.message : String(error);
       send(ws, { type: "error", message: reason });
       logError(`cable message failed: ${reason}`);
@@ -230,8 +227,7 @@ export function createCableServer(options: CableServerOptions): CableServer {
       return { kind: "cable", connectionId: crypto.randomUUID() };
     },
     open(ws, data) {
-      sockets.add(ws);
-      connectionIdsBySocket.set(ws, data.connectionId);
+      connections.set(ws, { id: data.connectionId, attempts: new Map() });
       send(ws, { type: "welcome", connectionId: data.connectionId });
     },
     message(ws, raw) {
@@ -246,7 +242,7 @@ export function createCableServer(options: CableServerOptions): CableServer {
       for (const [key, attempts] of attemptsByIdentifier) {
         if (["agent", "module"].includes(attempts.values().next().value?.identifier.channel ?? "")) upstreams[key] = attempts.size;
       }
-      return { sockets: sockets.size, subscriptions, upstreams };
+      return { sockets: connections.size, subscriptions, upstreams };
     },
   };
 }
