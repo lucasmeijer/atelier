@@ -77,15 +77,7 @@ function renderWorkingSection(ctx: AgentRenderContext, section: WorkingTranscrip
   const active = endedAt === undefined;
   const activityLabel = active ? "Working"
     : `${section.completedAt !== undefined ? "Worked for" : "Stopped after"} ${formatDuration(section.timing?.elapsedMs ?? (endedAt - section.startedAt))}`;
-  const timing = section.timing;
-  const rate = timing && timing.usageComplete && timing.inferenceMs > 0
-    ? `${(timing.outputTokens / (timing.inferenceMs / 1000)).toFixed(1)} tps`
-    : active ? "tps pending" : "tps unavailable";
-  const toolDuration = timing ? formatDuration(timing.toolMs) : "0s";
-  const toolsLabel = toolDuration === "0s" ? "" : `${toolDuration} tools, `;
-  const timingLabel = timing
-    ? ` <span class="agent-working-timing" title="Wall-clock tool wait (parallel calls counted once). Output-token count and tokens per inference second, including reported thinking tokens.">(${escapeHtml(toolsLabel)}${formatTokens(timing.outputTokens)} tok @ ${escapeHtml(rate)})</span>`
-    : "";
+  const timingLabel = renderWorkingTiming(section);
   const status = active ? '<i class="status-dot running action-item__status" aria-label="In progress"></i>' : "";
   const summary = transcriptActionItemHtml({ kind: "text", text: activityLabel }, { disclosure: true, leadingHtml: status, trailingHtml: timingLabel });
   const emptyClass = section.items.length === 0 ? " agent-working--empty" : "";
@@ -93,6 +85,17 @@ function renderWorkingSection(ctx: AgentRenderContext, section: WorkingTranscrip
   const attributes = lazy ? ' data-controller="agent-lazy-detail" data-action="toggle->agent-lazy-detail#load mouseenter->agent-lazy-detail#load"' : active ? " open" : "";
   const items = lazy ? lazyTranscriptItemFrame(ctx, section.key) : renderWorkingItems(ctx, section, { live: section.live, open: active });
   return `<details class="agent-working${emptyClass}${active ? " active" : ""}" id="${ids.item(ctx, section.key)}"${attributes}>${summary}${items}</details>`;
+}
+
+function renderWorkingTiming(section: WorkingTranscriptItem): string {
+  if (section.completedAt === undefined || !section.timing) return "";
+  const timing = section.timing;
+  const rate = timing.usageComplete && timing.inferenceMs > 0
+    ? `${(timing.outputTokens / (timing.inferenceMs / 1000)).toFixed(1)} tps`
+    : "tps unavailable";
+  const toolDuration = formatDuration(timing.toolMs);
+  const toolsLabel = toolDuration === "0s" ? "" : `${toolDuration} tools, `;
+  return ` <span class="agent-working-timing" title="Wall-clock tool wait (parallel calls counted once). Output-token count and tokens per inference second, including reported thinking tokens.">(${escapeHtml(toolsLabel)}${formatTokens(timing.outputTokens)} tok @ ${escapeHtml(rate)})</span>`;
 }
 
 function renderThinkingItem(ctx: AgentRenderContext, item: Extract<TranscriptItem, { type: "thinking" }>): string {

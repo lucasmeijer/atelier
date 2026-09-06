@@ -184,10 +184,6 @@ export class RealAgentRuntime extends BaseAgentRuntime {
     this.streamActiveToolContent(item);
   }
 
-  private refreshLiveTiming(): void {
-    if (this.turnTiming) this.liveTiming(this.turnTiming.snapshot(performance.now()));
-  }
-
   private async handleEvent(event: any): Promise<void> {
     switch (event.type) {
       case "agent_start":
@@ -198,7 +194,6 @@ export class RealAgentRuntime extends BaseAgentRuntime {
         break;
       case "turn_start":
         this.turnTiming?.inferenceStart(performance.now());
-        this.refreshLiveTiming();
         break;
       case "message_update": {
         const inner = event.assistantMessageEvent;
@@ -234,7 +229,6 @@ export class RealAgentRuntime extends BaseAgentRuntime {
         const text = contentText(event.result?.content ?? []);
         const details = isToolViewDetails(event.result?.details) ? event.result.details : undefined;
         this.liveToolEnd(event.toolCallId, text, Boolean(event.isError), details);
-        this.refreshLiveTiming();
         break;
       }
       case "message_end": {
@@ -255,7 +249,6 @@ export class RealAgentRuntime extends BaseAgentRuntime {
             const miss = detectCacheMiss(this.session.sessionManager.getBranch(), message, this.session.modelRuntime);
             if (miss) this.liveCacheMiss(miss);
           }
-          this.refreshLiveTiming();
           void this.refreshStats();
         }
         break;

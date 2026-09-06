@@ -36,7 +36,6 @@ import {
   type ToolViewDetails,
   type ToolView,
 } from "./transcript.ts";
-import type { TurnTimingSummary } from "./turn-timing.ts";
 import { publishWorkspaceViewBusy } from "./workspace-view-busy.ts";
 
 interface LiveTextStream {
@@ -546,12 +545,6 @@ export abstract class BaseAgentRuntime implements WorkspaceAgentRuntime {
     live.finalIndex = index;
     live.items.push(item);
     this.appendLiveItem(item, { live: true });
-  }
-
-  protected liveTiming(timing: TurnTimingSummary): void {
-    if (!this.live) return;
-    this.live.working.timing = timing;
-    this.stream(turboStream("replace", ids.item(this.ctx, this.live.working.key), renderTranscriptItem(this.ctx, this.liveWorkingSection(this.live))));
   }
 
   protected liveCacheMiss(miss: CacheMiss): void {
