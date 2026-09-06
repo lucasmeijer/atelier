@@ -2,7 +2,7 @@ import { afterEach, beforeEach, describe, expect, test } from "bun:test";
 import { mkdtemp, mkdir, rm, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
-import { clearDeletionReview, reviewDeletionReview } from "../src/server/deletion.ts";
+import { clearDeletionReview, deletionReviewFileResponse, reviewDeletionReview } from "../src/server/deletion.ts";
 import { command } from "./support/repository.ts";
 
 const workspaceId = "de1e7e01";
@@ -58,5 +58,40 @@ describe("Workspace deletion review", () => {
         }],
       },
     });
+  });
+
+  test("only allows file requests belonging to the current assessment", async () => {
+    const root = await workspaceRepository();
+    await writeFile(join(root, "tracked.txt"), "changed\n");
+    const first = await reviewDeletionReview.inspect(workspaceId);
+    if (first.status !== "blocked") throw new Error("expected blocked assessment");
+    const url = new URL("http://test.local/review/deletion/file");
+    url.searchParams.set("fingerprint", first.fingerprint);
+    url.searchParams.set("path", "../outside.txt");
+    expect((await deletionReviewFileResponse(workspaceId, url)).status).toBe(404);
+    url.searchParams.set("path", "tracked.txt");
+    url.searchParams.set("repository", "../outside");
+    expect((await deletionReviewFileResponse(workspaceId, url)).status).toBe(404);
+
+    await writeFile(join(root, "tracked.txt"), "changed again\n");
+    const second = await reviewDeletionReview.inspect(workspaceId);
+    if (second.status !== "blocked") throw new Error("expected blocked assessment");
+    expect(second.fingerprint).not.toBe(first.fingerprint);
+    url.searchParams.delete("repository");
+    expect((await deletionReviewFileResponse(workspaceId, url)).status).toBe(409);
+    url.searchParams.set("fingerprint", second.fingerprint);
+    clearDeletionReview(workspaceId);
+    expect((await deletionReviewFileResponse(workspaceId, url)).status).toBe(409);
+  });
+
+  test("a clean assessment invalidates previous file requests", async () => {
+    const root = await workspaceRepository();
+    await writeFile(join(root, "tracked.txt"), "changed\n");
+    const assessment = await reviewDeletionReview.inspect(workspaceId);
+    if (assessment.status !== "blocked") throw new Error("expected blocked assessment");
+    await command(root, "git", "checkout", "--", "tracked.txt");
+    expect(await reviewDeletionReview.inspect(workspaceId)).toEqual({ status: "clear" });
+    const url = new URL(`http://test.local/review/deletion/file?${new URLSearchParams({ fingerprint: assessment.fingerprint, path: "tracked.txt" })}`);
+    expect((await deletionReviewFileResponse(workspaceId, url)).status).toBe(409);
   });
 });

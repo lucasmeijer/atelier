@@ -21,14 +21,14 @@ export interface ReviewFile {
   detail?: string;
 }
 
-export interface ReviewFileSummary {
+export type ReviewFileSummary = {
   path: string;
   previousPath?: string;
   change: ReviewFileChange;
   untracked?: true;
-}
+};
 
-export interface ReviewFileStats extends ReviewFileSummary, ChangeCounts {}
+export type ReviewFileStats = ReviewFileSummary & ChangeCounts;
 
 export type ReviewIndex =
   | { phase: "not-git" }
@@ -108,7 +108,7 @@ function lineCount(text: string | undefined): number {
   return text.split("\n").length;
 }
 
-interface ChangeCounts { additions: number; deletions: number }
+type ChangeCounts = { additions: number; deletions: number };
 
 async function modes(root: string, entry: StatusEntry): Promise<{ oldMode?: string; newMode?: string }> {
   const raw = (await git(root, ["diff", "--raw", "HEAD", "--", entry.path], true)).toString("utf8").trim();

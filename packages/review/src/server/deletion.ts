@@ -1,30 +1,21 @@
 import { createHash } from "node:crypto";
 import { join } from "node:path";
-import type { JsonValue } from "@atelier/core";
 import { domId, escapeHtml, type WorkspaceDeletionAssessment, type WorkspaceDeletionReview } from "@atelier/shared";
 import { workspaceWorkHostPath } from "@atelier/workspace";
-import { Type, type Static } from "typebox";
-import { Value } from "typebox/value";
 import { collectReviewFile, collectReviewIndex, collectReviewStats, git, gitResult, type ReviewFileStats } from "./diff.ts";
 import { renderChangeCounts, renderFileSummary, renderReadOnlyReviewFile } from "./render.ts";
 
-const fileSchema = Type.Object({
-  path: Type.String(),
-  previousPath: Type.Optional(Type.String()),
-  change: Type.Union([Type.Literal("added"), Type.Literal("modified"), Type.Literal("removed")]),
-  untracked: Type.Optional(Type.Literal(true)),
-  additions: Type.Number(),
-  deletions: Type.Number(),
-});
-const repositorySchema = Type.Object({
-  relativePath: Type.String(),
-  uncommitted: Type.Array(fileSchema),
-});
-const deletionDetailsSchema = Type.Object({ repositories: Type.Array(repositorySchema) });
-type DeletionDetails = Static<typeof deletionDetailsSchema>;
-type DeletionRepository = DeletionDetails["repositories"][number];
+type DeletionRepository = {
+  relativePath: string;
+  uncommitted: ReviewFileStats[];
+};
+type DeletionAssessment = {
+  status: "blocked";
+  fingerprint: string;
+  details: { repositories: DeletionRepository[] };
+};
 
-const assessments = new Map<string, Extract<WorkspaceDeletionAssessment, { status: "blocked" }>>();
+const assessments = new Map<string, DeletionAssessment>();
 
 async function repositoryPaths(root: string): Promise<string[]> {
   const inside = await gitResult(root, ["rev-parse", "--is-inside-work-tree"]);
@@ -59,9 +50,9 @@ async function inspect(workspaceId: string): Promise<WorkspaceDeletionAssessment
     assessments.delete(workspaceId);
     return { status: "clear" };
   }
-  const details: DeletionDetails = { repositories };
+  const details = { repositories };
   const fingerprint = createHash("sha256").update(JSON.stringify(details)).update(fingerprintMaterial.join("\0")).digest("hex");
-  const assessment: Extract<WorkspaceDeletionAssessment, { status: "blocked" }> = {
+  const assessment: DeletionAssessment = {
     status: "blocked",
     fingerprint,
     details,
@@ -81,11 +72,10 @@ function fileSummary(workspaceId: string, fingerprint: string, repository: Delet
   return `<details class="review-file" data-action="pointerenter->deletion-review#requestFile pointerdown->deletion-review#requestFile focusin->deletion-review#requestFile toggle->deletion-review#requestFile">${summary}<turbo-frame id="${frameId}" data-src="/workspaces/${encodeURIComponent(workspaceId)}/review/deletion/file?${escapeHtml(query.toString())}"><div class="review-file-loading" role="status"><span class="status-spinner" aria-hidden="true"></span> Loading changes…</div></turbo-frame></details>`;
 }
 
-function renderEvidence(workspaceId: string, value: JsonValue): string {
-  const details = Value.Parse(deletionDetailsSchema, value);
+function renderEvidence(workspaceId: string): string {
   const assessment = assessments.get(workspaceId);
   if (!assessment) throw new Error("Deletion review assessment is no longer current");
-  return `<div data-controller="deletion-review">${details.repositories.map((repository) => {
+  return `<div data-controller="deletion-review">${assessment.details.repositories.map((repository) => {
     const working = repository.uncommitted.length ? `<section class="workspace-deletion-change-group"><div class="review-files action-list">${repository.uncommitted.map((file) => fileSummary(workspaceId, assessment.fingerprint, repository, file)).join("")}</div></section>` : "";
     const repositoryHeading = repository.relativePath ? `<h2>${escapeHtml(repository.relativePath)}</h2>` : "";
     return `<section class="workspace-deletion-repository">${repositoryHeading}${working}</section>`;
@@ -98,10 +88,9 @@ export async function deletionReviewFileResponse(workspaceId: string, url: URL):
   const assessment = assessments.get(workspaceId);
   const fingerprint = url.searchParams.get("fingerprint") ?? "";
   if (!assessment || assessment.fingerprint !== fingerprint) return new Response("Deletion assessment is no longer current", { status: 409 });
-  const details = Value.Parse(deletionDetailsSchema, assessment.details);
   const relativePath = url.searchParams.get("repository") ?? "";
   const path = url.searchParams.get("path") ?? "";
-  const repository = details.repositories.find((candidate) => candidate.relativePath === relativePath);
+  const repository = assessment.details.repositories.find((candidate) => candidate.relativePath === relativePath);
   const listed = repository?.uncommitted.some((file) => file.path === path);
   if (!repository || !listed) return new Response("Review file is no longer available", { status: 404 });
   const root = join(workspaceWorkHostPath(workspaceId), repository.relativePath);
