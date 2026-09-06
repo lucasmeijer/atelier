@@ -31,13 +31,27 @@ function installDropGuard(): void {
 export function createAgentAttachmentsController(Controller: StimulusControllerConstructor) {
   return class AgentAttachmentsController extends Controller {
     static values = { uploadUrl: String };
-    static targets = ["row"];
+    static targets = ["row", "status"];
     declare readonly element: HTMLElement;
     declare readonly uploadUrlValue: string;
     declare readonly rowTarget: HTMLElement;
+    declare readonly statusTarget: HTMLElement;
 
     connect(): void {
       installDropGuard();
+    }
+
+    paste(event: ClipboardEvent): void {
+      const images = Array.from(event.clipboardData?.files ?? []).filter((file) => file.type.startsWith("image/"));
+      if (images.length === 0) return;
+      event.preventDefault();
+      this.showStatus("");
+      for (const image of images) this.upload(image);
+    }
+
+    private showStatus(message: string): void {
+      this.statusTarget.textContent = message;
+      this.statusTarget.hidden = !message;
     }
 
     dragOver(event: DragEvent): void {
@@ -94,8 +108,10 @@ export function createAgentAttachmentsController(Controller: StimulusControllerC
       xhr.onload = () => {
         temp.remove();
         if (xhr.status >= 200 && xhr.status < 300) window.Turbo?.renderStreamMessage(xhr.responseText);
+        else this.showStatus(`Could not attach ${file.name} (HTTP ${xhr.status}). Try again.`);
       };
       xhr.onerror = () => {
+        this.showStatus(`Could not attach ${file.name}. Check your connection and try again.`);
         temp.classList.add("error");
         temp.querySelector(".agent-chip-ico")!.textContent = "✕";
         setTimeout(() => temp.remove(), 4000);

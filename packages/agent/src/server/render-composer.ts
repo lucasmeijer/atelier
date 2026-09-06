@@ -86,7 +86,7 @@ async function renderAgentPaneFrame(ctx: AgentRenderContext, agent: WorkspaceAge
 
 export function renderAgentPanePromptInput(ctx: AgentRenderContext, initialText = ""): string {
   const placeholder = "Write your prompt here";
-  return `<textarea id="${ids.input(ctx)}" class="composer-input" name="text" rows="2" enterkeyhint="send" placeholder="${escapeHtml(placeholder)}" aria-label="${escapeHtml(placeholder)}" data-agent-pane-target="input" data-agent-completions-target="input" data-action="input->agent-completions#input input->agent-pane#promptChanged">${escapeHtml(initialText)}</textarea>`;
+  return `<textarea id="${ids.input(ctx)}" class="composer-input" name="text" rows="2" enterkeyhint="send" placeholder="${escapeHtml(placeholder)}" aria-label="${escapeHtml(placeholder)}" data-agent-pane-target="input" data-agent-completions-target="input" data-action="paste->agent-attachments#paste input->agent-completions#input input->agent-pane#promptChanged">${escapeHtml(initialText)}</textarea>`;
 }
 
 interface SharedComposerRenderOptions {
@@ -144,6 +144,7 @@ async function renderSharedComposer(options: SharedComposerRenderOptions): Promi
     completionsEnabled ? `data-agent-completions-target="input"` : "",
   ].filter(Boolean).join(" ");
   const inputActionsList = [
+    "paste->agent-attachments#paste",
     ...(completionsEnabled ? ["input->agent-completions#input"] : []),
     ...(options.formTarget ? ["input->agent-pane#promptChanged"] : []),
   ];
@@ -186,6 +187,7 @@ async function renderSharedComposer(options: SharedComposerRenderOptions): Promi
               <span class="spacer"></span>
               ${actions}
             </div>
+            <p role="status" data-agent-attachments-target="status" hidden></p>
           </form>
           ${completionMenu}
           ${completionCatalog}
