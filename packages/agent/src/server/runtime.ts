@@ -1,4 +1,4 @@
-import { unbindSubagentSession } from "./subagents.ts";
+import { agentDelegation } from "./delegation.ts";
 import { AtelierCoreError } from "@atelier/core";
 import { createRealRuntime } from "./real-agent-runtime.ts";
 import type { WorkspaceAgentRuntime, WorkspaceAgentRuntimeOptions } from "./runtime-types.ts";
@@ -15,14 +15,12 @@ function runtimeKey(workspaceId: string, conversationId: string): string {
   return `${workspaceId}\u0000${conversationId}`;
 }
 
-export async function removeWorkspaceAgentRuntime(workspaceId: string, conversationId: string): Promise<void> {
+export async function unloadWorkspaceAgentRuntime(workspaceId: string, conversationId: string): Promise<void> {
   const key = runtimeKey(workspaceId, conversationId);
-  closedConversationKeys.add(key);
   const runtime = runtimes.get(key);
   if (!runtime) return;
   runtimes.delete(key);
   await (await runtime).dispose();
-  unbindSubagentSession(workspaceId, conversationId);
 }
 
 /** Roll back a failed close after the durable session remained published. */
@@ -31,6 +29,7 @@ export function restoreWorkspaceAgentRuntime(workspaceId: string, conversationId
 }
 
 export async function removeWorkspaceAgentRuntimes(workspaceId: string): Promise<void> {
+  await agentDelegation?.removingWorkspace(workspaceId);
   removedWorkspaceIds.add(workspaceId);
   const matching = [...runtimes.entries()].filter(([key]) => key.startsWith(`${workspaceId}\u0000`));
   for (const [key] of matching) runtimes.delete(key);
@@ -51,4 +50,11 @@ export function getWorkspaceAgentRuntime(agent: WorkspaceAgentConversationInfo, 
     runtimes.set(key, runtime);
   }
   return runtime;
+}
+
+/** Explicit user close, distinct from unloading a runtime. */
+export async function closeWorkspaceAgentConversation(workspaceId: string, conversationId: string): Promise<void> {
+  closedConversationKeys.add(runtimeKey(workspaceId, conversationId));
+  await unloadWorkspaceAgentRuntime(workspaceId, conversationId);
+  await agentDelegation?.closingConversation(workspaceId, conversationId);
 }

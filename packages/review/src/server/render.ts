@@ -295,6 +295,6 @@ export const reviewWorkViewPresentation: WorkspaceWorkViewPresentation = {
   reference: reviewReference,
   sourceKey: reviewViewKey,
   label: "Review",
-  kind: "contextual",
+  kind: "contextual", iconHtml: Icons.Review,
   availability: { phase: "live" },
 };

@@ -1,0 +1,1 @@
+export const delegationPolicy = "Use subagents only when the user explicitly asks you to use subagents or delegate work to other agents.\nOtherwise, do the work yourself; do not spawn subagents or assign them follow-up tasks just because parallel execution could help.\nThis restriction also applies to further delegation by subagents.";

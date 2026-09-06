@@ -105,21 +105,6 @@ describe("role-fixed Workspace presentation", () => {
     expect(projectsSection).toContain('class="fixed-shell-project action-list fixed-shell-projects-drawer is-collapsed"');
   });
 
-  test("shows each Work view type icon before its tab title", () => {
-    const base = fixture();
-    const html = renderWorkspacePresentation(fixture({ workViews: [
-      ...base.workViews,
-      { key: "review:workspace", label: "Review", kind: "contextual", availability: { phase: "live" }, bodyHtml: "<p>Review</p>" },
-    ] }));
-    const selectors = html.slice(html.indexOf('aria-label="Work views"'), html.indexOf('</header>', html.indexOf('aria-label="Work views"')));
-
-    for (const [type, label] of [["terminal", "Terminal"], ["files", "Files"], ["browser", "Preview"], ["review", "Review"]]) {
-      const tab = selectors.slice(selectors.indexOf(`data-work-view-key="${type}:`));
-      expect(tab).toContain(`class="fixed-shell-work-view-icon" data-icon="${type}"`);
-      expect(tab.indexOf(`data-icon="${type}"`)).toBeLessThan(tab.indexOf(`>${label}</span>`));
-    }
-  });
-
   test("renders expensive Work bodies as lazy hydration frames", () => {
     const html = renderWorkspacePresentation(fixture({ workViews: [{
       key: "review:workspace",

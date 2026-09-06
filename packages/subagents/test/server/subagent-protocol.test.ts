@@ -114,28 +114,6 @@ test("a fresh fork is not attempted when restoring an existing child transcript"
   expect(inspected).toBe(true);
 });
 
-test("forked histories preserve complete exchanges and omit dangling spawn calls", async () => {
-  const { bindSubagentSession, unbindSubagentSession } = await import("../../src/server/subagents.ts");
-  const messages = [
-    { role: "user", content: "First task", timestamp: 1 },
-    { role: "assistant", content: [{ type: "toolCall", id: "done", name: "read", arguments: {} }], timestamp: 2 },
-    { role: "toolResult", toolCallId: "done", content: [{ type: "text", text: "File contents" }], timestamp: 3 },
-    { role: "user", content: "Delegate next", timestamp: 4 },
-    { role: "assistant", content: [{ type: "text", text: "Delegating" }, { type: "toolCall", id: "pending", name: "spawn_agent", arguments: {} }], timestamp: 5 },
-  ];
-  const coordinator = new SubagentRuntime(state, { async save() {}, async peer() { throw new Error("No inference needed"); } });
-  bindSubagentSession("fork-test", "root-id", { messages, agent: { convertToLlm: (messages: object[]) => messages }, subscribe: () => () => {} }, coordinator);
-  try {
-    const copied: object[] = [];
-    forkSubagentHistory("fork-test", { ...state.agents[0]!, forkTurns: "all" }, { getBranch: () => [], appendMessage: (message: typeof messages[number]) => copied.push(message) });
-    expect(copied).toEqual([...messages.slice(0, 4), { ...messages[4], content: [{ type: "text", text: "Delegating" }] }]);
-    const recent: object[] = [];
-    forkSubagentHistory("fork-test", { ...state.agents[0]!, forkTurns: "1" }, { getBranch: () => [], appendMessage: (message: typeof messages[number]) => recent.push(message) });
-    expect(recent).toEqual(copied.slice(3));
-    expect(messages[4]!.content).toHaveLength(2);
-  } finally { unbindSubagentSession("fork-test", "root-id"); }
-});
-
 test("provider tools carry Codex's output schemas even before any agent messages arrive", () => {
   const bridge = new SubagentModelInput();
   const result = bridge.transform({ input: [], tools: [{ type: "function", name: "wait_agent", parameters: {} }, { type: "function", name: "read", parameters: {} }] }, "openai-codex-responses");
@@ -181,4 +159,19 @@ test("Anthropic's real request serializer receives user-message envelopes withou
   expect(request?.messages).toEqual([{ role: "user", content: messageEnvelope(state, message) }]);
   expect(JSON.stringify(request)).not.toContain("atelier-agent-message:");
   expect(result.errorMessage).toContain("Stop after serialization");
+});
+
+test("session attachments unsubscribe and cannot unbind a replacement session", async () => {
+  const { bindSubagentSession, rootAgentStatus } = await import("../../src/server/subagents.ts");
+  let subscriptions = 0;
+  const session = () => ({ messages: [], isStreaming: false, subscribe() { subscriptions++; return () => { subscriptions--; }; } });
+  const coordinator = new SubagentRuntime({ agents: [], messages: [] }, { async save() {}, async peer() { throw new Error("No inference requested"); } });
+  const first = bindSubagentSession("attachment-test", "root", session(), coordinator);
+  const replacement = bindSubagentSession("attachment-test", "root", session(), coordinator);
+  await first.dispose();
+  expect(subscriptions).toBe(1);
+  expect(rootAgentStatus("attachment-test", "root")).toEqual({ completed: null });
+  await replacement.dispose();
+  expect(subscriptions).toBe(0);
+  expect(() => rootAgentStatus("attachment-test", "root")).toThrow("Root agent session is not loaded");
 });

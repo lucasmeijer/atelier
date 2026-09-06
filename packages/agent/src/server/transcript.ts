@@ -1,5 +1,4 @@
-import type { SubagentMessage } from "./subagent-runtime.ts";
-import type { SubagentDelivery } from "./subagent-delivery.ts";
+import type { AgentRenderContext } from "./render-context.ts";
 /** Renderer-friendly transcript model for the pi-backed runtime. */
 
 import type { TurnTimingSummary } from "./turn-timing.ts";
@@ -37,15 +36,6 @@ export function assistantTextPhase(textSignature?: string): AssistantTextPhase |
   } catch {
     return undefined;
   }
-}
-
-export interface SubagentTranscriptMessage {
-  dispatchMode?: SubagentMessage["dispatchMode"];
-  dispatchReason?: SubagentMessage["dispatchReason"];
-  deliveredEnvelope?: string;
-  deliveredFormat?: "agent_message" | "user";
-  id: string; rootId: string; agentId: string; path: string; kind: string;
-  delivery: "queued" | "delivered" | "failed";
 }
 
 export type TranscriptRecord =
@@ -96,7 +86,7 @@ export interface ToolView {
 
 interface TranscriptItemBase {
   timestamp?: number;
-  communicationId?: string;
+  anchor?: string;
   key: string;
   /** Rewind to immediately before this persisted session entry. */
   rewindEntryId?: string;
@@ -113,12 +103,13 @@ export type WorkingTranscriptItem = TranscriptItemBase & {
 };
 
 export type TranscriptItem =
+  | (TranscriptItemBase & { type: "extension"; render(ctx: AgentRenderContext): string })
   | (TranscriptItemBase & { type: "user"; text: string; images: SessionImageRef[] })
   | WorkingTranscriptItem
   | (TranscriptItemBase & { type: "thinking"; text: string; live?: boolean })
   | (TranscriptItemBase & { type: "text"; text: string; final: boolean; live?: boolean })
   | (TranscriptItemBase & { type: "tool"; tool: ToolView })
-  | (TranscriptItemBase & { type: "note"; text: string; tone: NoteTone; communication?: SubagentTranscriptMessage; modelDelivery?: SubagentDelivery })
+  | (TranscriptItemBase & { type: "note"; text: string; tone: NoteTone })
   | (TranscriptItemBase & { type: "error"; text: string });
 
 export function findTranscriptItem(items: TranscriptItem[], key: string): TranscriptItem | undefined {

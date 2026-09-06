@@ -1,3 +1,4 @@
+import { Icons } from "@atelier/design-system/icons";
 import { turboStream, type WorkspaceCommandContribution, type WorkspaceModule, type WorkspaceModuleCommandHandler } from "@atelier/shared";
 import { browserWorkViewPresentation, renderBrowserFrame, renderBrowserWorkViewBody } from "./render.ts";
 import { browserFrameId, createWorkspaceBrowserView, deleteWorkspaceBrowserState, deleteWorkspaceBrowserView, getWorkspaceBrowserView, listWorkspaceBrowserViews, setWorkspaceBrowserTarget } from "./state.ts";
@@ -56,7 +57,7 @@ const browserWorkspaceCommands: WorkspaceCommandContribution[] = [
     id: browserCreateCommandId,
     label: "New Browser",
     scope: "workspace",
-    surfaces: { ui: { placement: "work-launcher", label: "Browser" } },
+    surfaces: { ui: { placement: "work-launcher", iconHtml: Icons.Browser, label: "Browser" } },
   },
 ];
 

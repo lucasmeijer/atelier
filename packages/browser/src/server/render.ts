@@ -1,3 +1,4 @@
+import { Icons } from "@atelier/design-system/icons";
 import { actionLinkHtml } from "@atelier/design-system/action-link";
 import { buttonHtml } from "@atelier/design-system/button";
 import { buttonGroupHtml } from "@atelier/design-system/button-group";
@@ -10,7 +11,7 @@ export function browserWorkViewPresentation(view: WorkspaceBrowserView): Workspa
     sourceKey: view.key,
     label: view.label,
     reference: { type: "browser", browserId: view.key },
-    kind: "resource",
+    kind: "resource", iconHtml: Icons.Browser,
     availability: { phase: "live" },
   };
 }

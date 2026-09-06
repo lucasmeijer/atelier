@@ -1,6 +1,4 @@
-import { parseSubagentDelivery, queuedModelDelivery, subagentDeliveryType } from "./subagent-delivery.ts";
-import { subagentSnapshot, subscribeSubagentChanges, steerSubagents } from "./subagents.ts";
-import { agentPath } from "./subagent-protocol.ts";
+import { applyTranscriptContributions } from "./transcript-contributions.ts";
 import { isJsonObject } from "@atelier/core";
 import { contentText } from "@earendil-works/pi-ai";
 import type { CompactionEntry } from "@earendil-works/pi-coding-agent";
@@ -8,7 +6,7 @@ import { BaseAgentRuntime } from "./base-agent-runtime.ts";
 import { collectCacheMisses, detectCacheMiss } from "./cache-miss.ts";
 import { turboStream } from "./html.ts";
 import { isFinalAssistantTextEvent } from "./live-presentation.ts";
-import { createPiSession } from "./pi-session.ts";
+import { createPiSession, type AgentSessionDelegation } from "./pi-session.ts";
 import { configuredModelOptionViews } from "./model-state.ts";
 import { getModelThinkingLevel } from "./pi-config-models.ts";
 import type { AgentStatsView } from "./render-composer.ts";
@@ -57,83 +55,37 @@ export class RealAgentRuntime extends BaseAgentRuntime {
   private pendingAcceptedPrompt?: { text: string; images: SessionImageRef[] };
   private readonly terminalSessionOperations = new Set<Promise<void>>();
   private disposal?: Promise<void>;
-  private unsubscribeSubagents: () => void;
-  private lastModelDeliveryId?: string;
-  private readonly communicationVersions = new Map<string, string>();
+  private unsubscribeTranscript?: () => void;
 
-  constructor(agent: WorkspaceAgentConversationInfo, private session: any, private toolsForModel: AgentToolDefinitionView[], private serviceTiers: AgentServiceTierState, options: WorkspaceAgentRuntimeOptions = {}) {
+  constructor(agent: WorkspaceAgentConversationInfo, private session: any, private toolsForModel: AgentToolDefinitionView[], private serviceTiers: AgentServiceTierState, options: WorkspaceAgentRuntimeOptions = {}, private delegation: AgentSessionDelegation = { dispose: async () => {} }) {
     super(agent, options);
     this.ctx.model = this.currentModel();
-    this.subscribeToSession();
-    for (const item of this.communicationItems()) this.communicationVersions.set(item.key, JSON.stringify(item.communication));
-    this.lastModelDeliveryId = this.session.sessionManager.getBranch().findLast((entry: any) => entry.type === "custom" && entry.customType === subagentDeliveryType)?.id;
-    this.unsubscribeSubagents = subscribeSubagentChanges((workspaceId) => {
-      if (workspaceId !== this.workspaceId) return;
-      const latest = this.session.sessionManager.getBranch().findLast((entry: any) => entry.type === "custom" && entry.customType === subagentDeliveryType);
-      if (latest?.id !== this.lastModelDeliveryId) {
-        this.lastModelDeliveryId = latest?.id;
-        if (latest && this.live) {
-          const batch = queuedModelDelivery(parseSubagentDelivery(latest.data));
-          if (batch?.duringActivity) this.liveNote("", "summary", { key: latest.id, modelDelivery: batch });
-          else if (batch) this.stream(turboStream("before", ids.item(this.ctx, this.live.working.key), renderTranscriptItem(this.ctx, { type: "note", key: latest.id, text: "", tone: "summary", modelDelivery: batch })));
-        } else void this.refreshTranscript();
-      }
-      for (const item of this.communicationItems()) {
-        const previous = this.communicationVersions.get(item.key);
-        const version = JSON.stringify(item.communication);
-        if (previous === version) continue;
-        this.communicationVersions.set(item.key, version);
-        this.stream(turboStream(previous ? "replace" : "append", previous ? ids.item(this.ctx, item.key) : ids.transcript(this.ctx), renderTranscriptItem(this.ctx, item)));
-      }
-    });
+    try {
+      this.subscribeToSession();
+      this.attachTranscript();
+    } catch (error) {
+      this.unsubscribeSession?.();
+      this.detachTranscript();
+      throw error;
+    }
   }
 
-  private communicationItems(): Extract<TranscriptItem, { type: "note" }>[] {
-    const state = subagentSnapshot(this.workspaceId);
-    const own = state.agents.find((agent) => agent.id === this.conversationId);
-    const branch = this.session.sessionManager.getBranch();
-    const immediate = new Map<string, { envelope: string; format: "agent_message" | "user" }>();
-    for (const entry of branch.filter((entry: any) => entry.type === "custom" && entry.customType === subagentDeliveryType)) {
-      const batch = parseSubagentDelivery(entry.data);
-      for (const message of batch.messages) if (message.immediate) immediate.set(message.id, { envelope: message.envelope, format: batch.format ?? "agent_message" });
-    }
-    const inheritedIds = new Set(branch.filter((entry: any) => entry.type === "custom_message" && entry.customType === "subagent").map((entry: any) => entry.details?.subagentMessageId));
-    return state.messages.filter((message) => (message.to === this.conversationId || inheritedIds.has(message.id)) && ["task", "message", "completion"].includes(message.kind)).map((message) => ({
-      type: "note", key: `communication:${message.id}`, text: message.text, tone: "summary",
-      timestamp: Date.parse(message.timestamp),
-      communication: { id: message.id, rootId: own?.rootId ?? this.conversationId, agentId: message.from, path: agentPath(state, message.from), kind: message.kind, delivery: message.delivery, dispatchMode: message.dispatchMode, dispatchReason: message.dispatchReason, deliveredEnvelope: immediate.get(message.id)?.envelope, deliveredFormat: immediate.get(message.id)?.format },
-    }));
+  private attachTranscript(): void {
+    this.captureContributedRows();
+    this.unsubscribeTranscript = this.delegation.transcript?.subscribe(() => this.refreshContributedRows());
+  }
+
+  private detachTranscript(): void {
+    const unsubscribe = this.unsubscribeTranscript;
+    this.unsubscribeTranscript = undefined;
+    unsubscribe?.();
   }
 
   protected override decorateTranscript(items: TranscriptItem[]): TranscriptItem[] {
-    const state = subagentSnapshot(this.workspaceId);
-    const messages = this.communicationItems();
-    const markOutgoing = (items: TranscriptItem[]): void => {
-      for (const item of items) {
-        if (item.type === "working") markOutgoing(item.items);
-        if (item.type === "tool") item.communicationId = state.messages.find((message) => message.from === this.conversationId && message.toolCallId === item.tool.callId)?.id;
-        if (item.type === "text" && item.final) item.communicationId = state.messages.find((message) => message.from === this.conversationId && message.kind === "completion" && Date.parse(message.timestamp) >= (item.timestamp ?? 0) && (message.text === item.text || message.text === `[completed] ${item.text}`))?.id;
-      }
-    };
-    markOutgoing(items);
-    const result = [...items, ...messages].sort((a, b) => (a.timestamp ?? (a.type === "working" ? a.startedAt : 0)) - (b.timestamp ?? (b.type === "working" ? b.startedAt : 0)));
-    const branch = this.session.sessionManager.getBranch();
-    const latestTurn = branch.findLast((entry: any) => (entry.type === "message" && entry.message.role === "user") || (entry.type === "custom_message" && entry.customType === "subagent" && entry.details?.kind === "task"));
-    for (const entry of branch.filter((entry: any) => entry.type === "custom" && entry.customType === subagentDeliveryType)) {
-      const batch = queuedModelDelivery(parseSubagentDelivery(entry.data));
-      if (!batch) continue;
-      const item: TranscriptItem = { type: "note", key: entry.id, timestamp: Date.parse(entry.timestamp), text: "", tone: "summary", modelDelivery: batch };
-      const working = result.find((item) => item.type === "working" && (item.key === `${batch.turnEntryId}:working` || (item.live && batch.turnEntryId === latestTurn?.id)));
-      if (working?.type === "working" && batch.duringActivity) {
-        if (working.items.some((existing) => existing.key === item.key)) continue;
-        working.items = [...working.items, item].sort((a, b) => (a.timestamp ?? 0) - (b.timestamp ?? 0));
-      } else if (working) result.splice(result.indexOf(working), 0, item);
-      else {
-        const next = result.findIndex((candidate) => (candidate.timestamp ?? 0) > item.timestamp!);
-        result.splice(next < 0 ? result.length : next, 0, item);
-      }
-    }
-    return result;
+    const snapshot = this.delegation.transcript?.snapshot();
+    if (!snapshot) return items;
+    const turn = recordsFromSessionEntries(this.session.sessionManager.getBranch()).findLast((record) => record.kind === "user" || record.kind === "taskStart");
+    return applyTranscriptContributions(items, snapshot, { activeTurnEntryId: turn?.id });
   }
 
   private subscribeToSession(): void {
@@ -383,7 +335,7 @@ export class RealAgentRuntime extends BaseAgentRuntime {
 
     if (this.session.isStreaming) {
       await this.session.steer(fullText, images.length > 0 ? images : undefined);
-      steerSubagents(this.workspaceId, this.conversationId);
+      this.delegation.attachment?.steered?.();
       this.liveNote(`Steer: ${trimmed}`, "system");
       return;
     }
@@ -469,14 +421,14 @@ export class RealAgentRuntime extends BaseAgentRuntime {
   }
 
   private async finishDisposal(): Promise<void> {
-    this.unsubscribeSubagents();
+    this.detachTranscript();
     const unsubscribe = this.unsubscribeSession;
     this.unsubscribeSession = undefined;
     unsubscribe?.();
     try {
       await this.abort();
     } finally {
-      this.setBusy(false);
+      try { await this.delegation.dispose(); } finally { this.setBusy(false); }
     }
   }
 
@@ -523,15 +475,31 @@ export class RealAgentRuntime extends BaseAgentRuntime {
     try {
       this.assertActive();
     } catch (error) {
-      await created.session.abort();
+      try { await created.session.abort(); } finally { await created.delegation.dispose(); }
       throw error;
     }
     this.unsubscribeSession?.();
+    this.detachTranscript();
+    try {
+      await this.delegation.dispose();
+    } catch (error) {
+      try { await created.session.abort(); } finally { await created.delegation.dispose(); }
+      throw error;
+    }
+    this.delegation = created.delegation;
     this.session = created.session;
     this.toolsForModel = created.toolViews;
     this.serviceTiers = created.serviceTiers;
     this.sessionFile = agent.path;
-    this.subscribeToSession();
+    try {
+      this.subscribeToSession();
+      this.attachTranscript();
+    } catch (error) {
+      this.unsubscribeSession?.();
+      this.detachTranscript();
+      try { await created.session.abort(); } finally { await created.delegation.dispose(); }
+      throw error;
+    }
     await this.streamRendered(async () => await this.authoritativePresentationUpdate());
   }
 
@@ -658,5 +626,10 @@ export class RealAgentRuntime extends BaseAgentRuntime {
 
 export async function createRealRuntime(agent: WorkspaceAgentConversationInfo, options: WorkspaceAgentRuntimeOptions = {}): Promise<WorkspaceAgentRuntime> {
   const created = await createPiSession(agent, options);
-  return new RealAgentRuntime(agent, created.session, created.toolViews, created.serviceTiers, options);
+  try {
+    return new RealAgentRuntime(agent, created.session, created.toolViews, created.serviceTiers, options, created.delegation);
+  } catch (error) {
+    try { await created.session.abort(); } finally { await created.delegation.dispose(); }
+    throw error;
+  }
 }

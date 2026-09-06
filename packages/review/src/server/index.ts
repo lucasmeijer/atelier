@@ -1,3 +1,4 @@
+import { Icons } from "@atelier/design-system/icons";
 import type { JsonValue } from "@atelier/core";
 import { turboStream, turboStreamResponse, type WorkspaceModule } from "@atelier/shared";
 import { workspaceWorkHostPath } from "@atelier/workspace";
@@ -208,7 +209,7 @@ export const reviewWorkspaceModule: WorkspaceModule = {
     const workView = { ...reviewWorkViewPresentation, label: reviewTitles.get(workspaceId) ?? reviewWorkViewPresentation.label };
     return {
       workViews: [workView],
-      commands: [{ id: "review.open", label: "Review", description: "Show Review. New workspaces include it by default; use this command to reopen it after closing.", scope: "workspace", surfaces: { ui: { placement: "work-launcher", label: "Review" } } }],
+      commands: [{ id: "review.open", label: "Review", description: "Show Review. New workspaces include it by default; use this command to reopen it after closing.", scope: "workspace", surfaces: { ui: { placement: "work-launcher", iconHtml: Icons.Review, label: "Review" } } }],
     };
   },
 };

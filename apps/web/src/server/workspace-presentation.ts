@@ -51,6 +51,7 @@ export interface AgentPaneContribution {
 }
 
 export interface WorkPaneContribution {
+  iconHtml?: string;
   /** Stable, type-native serialized identity supplied by the resource adapter. */
   key: string;
   label: string;
@@ -86,11 +87,10 @@ export interface WorkspacePresentation {
   workspace: Pick<WorkspacePaneEntry, "id" | "title">;
   agentConversations: readonly AgentPaneContribution[];
   workViews: readonly WorkPaneContribution[];
-  commands?: readonly { id: string; label: string; description?: string; scope: string; placement?: "work-launcher" | "agent-action"; binding?: string }[];
+  commands?: readonly { id: string; label: string; description?: string; scope: string; iconHtml?: string; placement?: "work-launcher" | "agent-action"; binding?: string }[];
   overlayHtml?: readonly string[];
 }
 
-type WorkViewIconName = "Subagents" | "Browser" | "Code" | "Files" | "Plus" | "Review" | "Terminal";
 
 function barButton(label: string, action: string, iconHtml: string, attributes = ""): string {
   return buttonHtml({
@@ -400,12 +400,14 @@ function renderAvailability(view: WorkPaneContribution): string {
 }
 
 function renderWorkViewSelector(workspaceId: string, view: WorkPaneContribution): string {
-  const iconName = workViewIcon(view);
+
   const textAttributesHtml = `id="${workspaceWorkViewLabelDomId(workspaceId, view.key)}"`;
   return actionItemHtml({
     kind: "compound",
-    label: { kind: "text", text: view.label, textAttributesHtml },
-    leadingHtml: `<span class="fixed-shell-work-view-icon" data-icon="${iconName.toLowerCase()}">${Icons[iconName]}</span>`,
+    label: view.labelHtml === undefined
+      ? { kind: "text", text: view.label, textAttributesHtml }
+      : { kind: "html", html: view.labelHtml, textAttributesHtml },
+    leadingHtml: `<span class="fixed-shell-work-view-icon" >${view.iconHtml ?? Icons.Plus}</span>`,
     trailingHtml: view.attentionSequence === undefined ? "" : '<i class="status-dot attention action-item__status" aria-label="Attention"></i>',
     container: {
 
@@ -460,28 +462,8 @@ function workViewType(view: WorkPaneContribution): string {
   return view.key.slice(0, view.key.indexOf(":"));
 }
 
-function workViewIcon(view: WorkPaneContribution): WorkViewIconName {
-  return workViewTypeIcon(workViewType(view));
-}
-
-function workViewTypeIcon(type: string): WorkViewIconName {
-  switch (type) {
-    case "subagents": return "Subagents";
-    case "browser": return "Browser";
-    case "files": return "Files";
-    case "review": return "Review";
-    case "terminal": return "Terminal";
-    case "vscode": return "Code";
-    default: return "Plus";
-  }
-}
-
-function workLauncherIcon(commandId: string): WorkViewIconName {
-  return workViewTypeIcon(commandId.slice(0, commandId.indexOf(".")));
-}
-
 function renderWorkLauncherCommand(command: NonNullable<WorkspacePresentation["commands"]>[number], workspaceId: string, action = ""): string {
-  const item = actionItemHtml({ kind: "single", label: { kind: "text", text: command.label }, leadingHtml: `<span class="popup-menu__icon">${Icons[workLauncherIcon(command.id)]}</span>`, element: { tag: "button", attributesHtml: 'type="submit" role="menuitem"' } });
+  const item = actionItemHtml({ kind: "single", label: { kind: "text", text: command.label }, leadingHtml: `<span class="popup-menu__icon">${command.iconHtml ?? Icons.Plus}</span>`, element: { tag: "button", attributesHtml: 'type="submit" role="menuitem"' } });
   const actionAttribute = action ? ` data-action="${action}"` : "";
   return `<form data-turbo="true" method="post" action="/workspaces/${encodeURIComponent(workspaceId)}/commands/${encodeURIComponent(command.id)}"${actionAttribute}>${item}</form>`;
 }
@@ -524,14 +506,14 @@ function mobileNavigationPriority(view: WorkPaneContribution): number {
 function renderMobileWorkViews(views: readonly WorkPaneContribution[]) {
   const ordered = [...views].sort((left, right) => mobileNavigationPriority(left) - mobileNavigationPriority(right));
   return {
-    destinations: ordered.map((view) => renderMobileDestination(view.label, `work:${view.key}`, Icons[workViewIcon(view)], view.attentionSequence !== undefined, view.key)).join(""),
+    destinations: ordered.map((view) => renderMobileDestination(view.label, `work:${view.key}`, view.iconHtml ?? Icons.Plus, view.attentionSequence !== undefined, view.key)).join(""),
     overflowItems: ordered.map((view) => {
-      const iconName = workViewIcon(view);
+
       const attention = view.attentionSequence === undefined ? "" : '<i class="status-dot attention action-item__status" aria-label="Attention"></i>';
       return actionItemHtml({
         kind: "single",
         label: { kind: "text", text: view.label },
-        leadingHtml: `<span class="fixed-shell-work-view-icon" data-icon="${iconName.toLowerCase()}">${Icons[iconName]}</span>`,
+        leadingHtml: `<span class="fixed-shell-work-view-icon" >${view.iconHtml ?? Icons.Plus}</span>`,
         trailingHtml: attention,
         element: { tag: "button", attributesHtml: `type="button" role="menuitemradio" aria-checked="false" hidden data-more-work-key="${escapeHtml(view.key)}" data-more-work-kind="${view.kind}" data-action="click->workspace-presentation#selectMoreWorkView"` },
       });

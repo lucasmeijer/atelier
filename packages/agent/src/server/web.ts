@@ -1,12 +1,11 @@
-import { subagentsWorkView, subagentsWorkViewAdapter } from "./subagent-view.ts";
-import { getSubagents, shutdownSubagents } from "./subagents.ts";
+import { resolveAgentConversation } from "./delegation.ts";
 import type { WorkspaceAgentTabProvider, WorkspaceCommandContribution, WorkspaceModule } from "@atelier/shared";
 import {
   createDeleteCurrentWorkspaceTool,
   registerWorkspaceAgentTool,
 } from "./tools.ts";
 import { createAgentTermSocketSession } from "./bash-tmux.ts";
-import { getWorkspaceAgentRuntime, removeWorkspaceAgentRuntime, removeWorkspaceAgentRuntimes, restoreWorkspaceAgentRuntime, subscribeWorkspaceViewBusy } from "./runtime.ts";
+import { getWorkspaceAgentRuntime, closeWorkspaceAgentConversation, removeWorkspaceAgentRuntimes, restoreWorkspaceAgentRuntime, subscribeWorkspaceViewBusy } from "./runtime.ts";
 import { registerAgentEvents } from "./agent-events.ts";
 import { handleAgentRequest } from "./routes.ts";
 import { workspaceFileEndpoint } from "./workspace-files.ts";
@@ -87,11 +86,7 @@ export const workspaceAgentTabProvider = createWorkspaceAgentTabProvider({
       completionCatalog,
     );
   },
-  async dispose(workspaceId, conversationId) {
-    await removeWorkspaceAgentRuntime(workspaceId, conversationId);
-    const subagents = await getSubagents(workspaceId);
-    for (const child of subagents.state.agents.filter((agent) => agent.parentId === conversationId && agent.status !== "closed")) await subagents.control(conversationId, child.id, "close");
-  },
+  dispose: closeWorkspaceAgentConversation,
   restore: restoreWorkspaceAgentRuntime,
   archive: archiveWorkspaceAgentConversation,
 });
@@ -142,9 +137,24 @@ async function applyNewAgentSettings(agent: WorkspaceAgentConversationInfo, sour
 
 export const agentWorkspaceModule: WorkspaceModule = {
   id: "agent",
+  cableChannels: [{
+    name: "agent",
+    async subscribe(identifier, listener, events) {
+      if (identifier.channel !== "agent") throw new Error("Invalid Agent channel identifier");
+      const agent = await resolveAgentConversation(identifier.workspaceId, identifier.conversationId, events);
+      const runtime = await getWorkspaceAgentRuntime(agent, { events });
+      return runtime.subscribeLivePresentation(listener);
+    },
+  }],
   staticFiles: agentStaticFiles,
-  workViews: [subagentsWorkViewAdapter],
-  commands: [{ id: "subagents.open", execute: () => ({ createdWorkView: { type: "subagents" } }) }, {
+  openApiPaths: {
+    "/workspaces/{id}/agents/{conversationId}/reveal/{target}": { get: {
+      summary: "Reveal a transcript item by stable key or contributed anchor",
+      parameters: ["id", "conversationId", "target"].map((name) => ({ name, in: "path", required: true, schema: { type: "string" } })),
+      responses: { "200": { description: "Server-rendered transcript with the target's lazy ancestors expanded", content: { "text/vnd.turbo-stream.html": { schema: { type: "string" } } } } },
+    } },
+  },
+  commands: [{
     id: "agent.create",
     async execute({ workspaceId, events }) {
       const sourceConversation = (await listWorkspaceAgentConversations(workspaceId))[0];
@@ -159,25 +169,6 @@ export const agentWorkspaceModule: WorkspaceModule = {
   }],
   routes: [{
     async handle(request, url, context) {
-      const reveal = url.pathname.match(/^\/workspaces\/([^/]+)\/subagents\/reveal$/);
-      if (reveal && (request.method === "POST" || request.method === "GET")) {
-        const workspaceId = decodeURIComponent(reveal[1]!);
-        const form = request.method === "GET" ? url.searchParams : await request.formData();
-        const coordinator = await getSubagents(workspaceId);
-        const target = String(form.get("child"));
-        const child = coordinator.state.agents.find((agent) => agent.id === target);
-        const message = coordinator.state.messages.find((message) => message.id === String(form.get("message")));
-        if (!message || (message.from !== target && message.to !== target)) return new Response("Subagent message not found", { status: 404 });
-        if (!child) {
-          const roots = await listOrCreateWorkspaceAgentConversations(workspaceId);
-          if (!roots.some((root) => root.conversationId === target)) return new Response("Agent not found", { status: 404 });
-          const query = new URLSearchParams({ agent: target, agentMessage: message.id });
-          return new Response(null, { status: 303, headers: { location: `/workspaces/${encodeURIComponent(workspaceId)}?${query}` } });
-        }
-        await context.openWorkView(workspaceId, { type: "subagents" });
-        const query = new URLSearchParams({ agent: child.rootId, workView: "subagents:workspace", subagent: child.id, message: message.id });
-        return new Response(null, { status: 303, headers: { location: `/workspaces/${encodeURIComponent(workspaceId)}?${query}` } });
-      }
       // SAFETY: The module boundary validates or constructs this value with the asserted domain shape.
       return handleAgentRequest(request, url, { events: context.events as AtelierEventBus | undefined });
     },
@@ -216,14 +207,11 @@ export const agentWorkspaceModule: WorkspaceModule = {
       };
     });
     subscribeWorkspaceViewBusy(({ workspaceId, viewKey, busy }) => context.registry.setViewBusy(workspaceId, viewKey, busy));
-    context.onWorkspaceRemoved(async (workspaceId) => {
-      await shutdownSubagents(workspaceId);
-      await removeWorkspaceAgentRuntimes(workspaceId);
-    });
+    context.onWorkspaceRemoved(removeWorkspaceAgentRuntimes);
     context.onWorkspaceRemoved(removeWorkspaceInitialPromptDrafts);
     registerWorkspaceAgentTool("delete_current_workspace", (workspaceId) => createDeleteCurrentWorkspaceTool(workspaceId, async (force) => await context.deleteCurrentWorkspace(workspaceId, force)));
   },
   attachToWorkspace() {
-    return { workViews: [subagentsWorkView], commands: [...agentWorkspaceCommands, projectAgentWorkspaceCommand, { id: "subagents.open", label: "Subagents", scope: "workspace", surfaces: { ui: { placement: "work-launcher", label: "Subagents" } } }] };
+    return { commands: [...agentWorkspaceCommands, projectAgentWorkspaceCommand] };
   },
 };

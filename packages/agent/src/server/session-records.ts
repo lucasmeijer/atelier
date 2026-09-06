@@ -1,3 +1,4 @@
+import { agentDelegation } from "./delegation.ts";
 import { contentText } from "@earendil-works/pi-ai";
 import { Type } from "typebox";
 import { Value } from "typebox/value";
@@ -76,6 +77,8 @@ export function recordsFromSessionEntries(entries: any[], cacheMisses = new Map<
       records.push({ kind: "timing", timing: entry.data, timestamp: entryTimestamp(entry) });
       continue;
     }
+    const contributed = agentDelegation?.projectSessionEntry(entry);
+    if (contributed !== undefined) { records.push(...contributed); continue; }
     if (entry.type === "message") {
       const message = entry.message;
       if (!message) continue;
@@ -112,7 +115,7 @@ export function recordsFromSessionEntries(entries: any[], cacheMisses = new Map<
         records.push({ kind: "toolResult", callId: message.toolCallId, text: contentText(message.content), images: sessionContentImages(entry), isError: Boolean(message.isError), timestamp: entryTimestamp(entry), details });
       } else if (message.role === "bashExecution") {
         records.push({ kind: "note", id: entry.id, text: `\`$ ${message.command}\`\n\n\`\`\`\n${message.output ?? ""}\n\`\`\``, tone: "system", timestamp: entryTimestamp(entry) });
-      } else if (message.role === "custom" && message.display && message.customType !== "subagent") {
+      } else if (message.role === "custom" && message.display) {
         records.push({ kind: "note", id: entry.id, text: contentText(message.content), tone: "summary", timestamp: entryTimestamp(entry) });
       } else if (message.role === "branchSummary") {
         records.push({ kind: "note", id: entry.id, text: `**Rewound** — summary of the abandoned branch:\n\n${message.summary ?? ""}`, tone: "summary", timestamp: entryTimestamp(entry) });
@@ -127,11 +130,7 @@ export function recordsFromSessionEntries(entries: any[], cacheMisses = new Map<
       records.push({ kind: "note", id: entry.id, text: "Context compacted", tone: "system", timestamp: entryTimestamp(entry) });
       continue;
     }
-    if (entry.type === "custom_message" && entry.customType === "subagent" && (entry.details?.kind === "task" || contentText(entry.content).startsWith("Message Type: NEW_TASK\n"))) {
-      records.push({ kind: "taskStart", id: entry.id, timestamp: entryTimestamp(entry) });
-      continue;
-    }
-    if (entry.type === "custom_message" && entry.display && entry.customType !== "subagent") {
+    if (entry.type === "custom_message" && entry.display) {
       records.push({ kind: "note", id: entry.id, text: contentText(entry.content), tone: "summary", timestamp: entryTimestamp(entry) });
       continue;
     }

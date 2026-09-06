@@ -1,3 +1,4 @@
+import { Icons } from "@atelier/design-system/icons";
 import type { JsonValue } from "@atelier/core";
 import { renderMarkdown } from "@atelier/markdown";
 import { turboStream, turboStreamResponse, type WorkspaceModule, type WorkspaceWorkViewReference } from "@atelier/shared";
@@ -155,7 +156,7 @@ const filesWorkspaceModule: WorkspaceModule = {
     return {
       workViews: listFilesViews(workspaceId).map(filesWorkViewPresentation),
       commands: [
-        { id: "files.create", label: "New Files", scope: "workspace", surfaces: { ui: { placement: "work-launcher", label: "Files" } } },
+        { id: "files.create", label: "New Files", scope: "workspace", surfaces: { ui: { placement: "work-launcher", iconHtml: Icons.Files, label: "Files" } } },
         { id: "files.open", label: "Open Files", description: "Open the existing Files view, or create one if none exists.", scope: "workspace", surfaces: { shortcut: { defaultBinding: "Meta+Alt+KeyF" } } },
       ],
       overlayHtml: [renderFilesRefreshSignal(workspaceId)],

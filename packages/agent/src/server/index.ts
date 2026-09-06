@@ -5,6 +5,7 @@ export {
   listWorkspaceAgentConversations,
   parseWorkspaceAgentFilename,
   sessionShareDir,
+  workspaceSessionShareKey,
   sessionShareKeySlug,
   sessionShareMountPath,
   setWorkspaceAgentConversationTitle,
@@ -13,7 +14,8 @@ export {
 } from "./session-store.ts";
 export {
   getWorkspaceAgentRuntime,
-  removeWorkspaceAgentRuntime,
+  unloadWorkspaceAgentRuntime,
+  closeWorkspaceAgentConversation,
   removeWorkspaceAgentRuntimes,
   subscribeWorkspaceViewBusy,
   type AgentLivePresentationSubscription,
@@ -57,4 +59,12 @@ export {
 } from "./pi-config-models.ts";
 export { getPopularModelRank, getProviderApiKeyExample } from "./hardcoded-provider-knowledge.ts";
 
-export { subscribeSubagentTree, findSubagentConversation } from "./subagent-view.ts";
+
+export { configureAgentDelegation, resolveAgentConversation, type AgentDelegation, type AgentSessionPreparation, type AgentSessionAttachment, type AgentModelRequestTransform, type AgentDelegationTranscript, type AgentToolPresentation } from "./delegation.ts";
+export { ids, type AgentRenderContext } from "./render-context.ts";
+export { escapeHtml, turboStream, turboStreamResponse } from "./html.ts";
+export { transcriptRow, transcriptActionItemHtml } from "./render-markup.ts";
+export { statusHtml } from "./render-tool.ts";
+export { assistantTextPhase, isFinalAssistantMessage, finalAssistantText, type TranscriptItem, type TranscriptRecord } from "./transcript.ts";
+export { type AgentRouteHandler, requireAgentRuntime } from "./route-support.ts";
+export { type AgentTranscriptSnapshot, type AgentTranscriptAddition, type AgentTranscriptAnchor } from "./transcript-contributions.ts";

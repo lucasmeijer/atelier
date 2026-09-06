@@ -1,15 +1,9 @@
 import { AtelierCoreError, type AtelierEventBus } from "@atelier/core";
 import {
-  getWorkspaceAgentRuntime,
-  subscribeSubagentTree,
-  findSubagentConversation,
-  listWorkspaceAgentConversations,
-  type AgentLivePresentationSubscription,
-} from "@atelier/agent/server";
-import {
   decodeCableClientMessage,
   serializeCableIdentifier,
   type CableClientMessage,
+  type CableChannelAdapter,
   type CableIdentifier,
   type CableServerMessage,
 } from "@atelier/shared";
@@ -34,16 +28,11 @@ type SocketSubscriptionAttempt = {
   unsubscribe?: () => void;
 };
 
-interface CableAgentRuntime {
-  subscribeLivePresentation(listener: (html: string) => void): AgentLivePresentationSubscription;
-}
-
 export interface CableServerOptions {
   registry: WorkspaceRegistry;
   events: AtelierEventBus;
   shellSnapshot?: () => string | Promise<string>;
-  subscribeSubagentTree?: (workspaceId: string, rootId: string, listener: (html: string) => void) => Promise<AgentLivePresentationSubscription>;
-  resolveAgentRuntime?: (workspaceId: string, conversationId: string) => Promise<CableAgentRuntime>;
+  channels?: CableChannelAdapter[];
   logError?: (message: string) => void;
 }
 
@@ -75,13 +64,13 @@ function send(ws: CableSocket, message: CableServerMessage): void {
   ws.send(JSON.stringify(message));
 }
 
-async function requireAgentConversation(workspaceId: string, conversationId: string, events: AtelierEventBus) {
-  const conversation = (await listWorkspaceAgentConversations(workspaceId)).find((candidate) => candidate.conversationId === conversationId) ?? await findSubagentConversation(workspaceId, conversationId, events);
-  if (!conversation) throw new AtelierCoreError("agent_conversation_not_found", `Agent conversation not found: ${conversationId}`);
-  return conversation;
-}
-
 export function createCableServer(options: CableServerOptions): CableServer {
+  const channels = new Map<string, CableChannelAdapter>();
+  for (const channel of options.channels ?? []) {
+    if (channels.has(channel.name)) throw new Error(`Cable channel already registered: ${channel.name}`);
+    channels.set(channel.name, channel);
+  }
+  const channelFor = (identifier: CableIdentifier) => channels.get(identifier.channel === "module" ? identifier.name : identifier.channel);
   const logError = options.logError ?? ((message: string) => console.error(message));
   const sockets = new Set<CableSocket>();
   const connectionIdsBySocket = new WeakMap<CableSocket, string>();
@@ -95,7 +84,7 @@ export function createCableServer(options: CableServerOptions): CableServer {
 
   function authorize(identifier: CableIdentifier): void {
     if (identifier.channel === "shell") return;
-    if (identifier.channel === "workspace" || identifier.channel === "subagents") {
+    if (identifier.channel === "workspace" || identifier.channel === "module") {
       if (!options.registry.get(identifier.workspaceId)) throw new AtelierCoreError("workspace_not_found", `workspace not found: ${identifier.workspaceId}`);
     }
   }
@@ -151,50 +140,16 @@ export function createCableServer(options: CableServerOptions): CableServer {
     }
   }
 
-  async function initializeAgentAttempt(attempt: SocketSubscriptionAttempt): Promise<void> {
+  async function initializeChannelAttempt(attempt: SocketSubscriptionAttempt): Promise<void> {
     const identifier = attempt.identifier;
-    if (identifier.channel !== "agent") throw new Error("Agent subscription initializer requires an Agent identifier");
-
     try {
-      let runtime: CableAgentRuntime;
-      if (options.resolveAgentRuntime) {
-        runtime = await options.resolveAgentRuntime(identifier.workspaceId, identifier.conversationId);
-      } else {
-        const conversation = await requireAgentConversation(identifier.workspaceId, identifier.conversationId, options.events);
-        if (!attemptIsCurrent(attempt)) return;
-        // Cable can initialize the runtime first, so it must provide the events used by agent tools.
-        runtime = await getWorkspaceAgentRuntime(conversation, { events: options.events });
-      }
-      if (!attemptIsCurrent(attempt)) return;
-      const subscription = runtime.subscribeLivePresentation((html) => {
-        if (!attemptIsCurrent(attempt)) return;
-        if (!attempt.confirmed) {
-          confirm(attempt, html);
-        } else if (html) {
-          send(attempt.ws, { type: "turbo_stream", identifier, subscriptionId: attempt.subscriptionId, html });
-        }
-      });
-      attempt.unsubscribe = () => subscription.unsubscribe();
-      if (!attemptIsCurrent(attempt)) {
-        attempt.unsubscribe = undefined;
-        subscription.unsubscribe();
-        return;
-      }
-      await subscription.ready;
-    } catch (error) {
-      reject(attempt, error instanceof Error ? error.message : String(error));
-    }
-  }
-
-  async function initializeSubagentsAttempt(attempt: SocketSubscriptionAttempt): Promise<void> {
-    const identifier = attempt.identifier;
-    if (identifier.channel !== "subagents") throw new Error("Subagents initializer requires a Subagents identifier");
-    try {
-      const subscription = await (options.subscribeSubagentTree ?? ((workspaceId, rootId, listener) => subscribeSubagentTree(workspaceId, rootId, listener, options.events)))(identifier.workspaceId, identifier.conversationId, (html) => {
+      const channel = channelFor(identifier);
+      if (!channel) throw new Error("Unregistered Cable channel");
+      const subscription = await channel.subscribe(identifier, (html) => {
         if (!attemptIsCurrent(attempt)) return;
         if (!attempt.confirmed) confirm(attempt, html);
         else if (html) send(attempt.ws, { type: "turbo_stream", identifier, subscriptionId: attempt.subscriptionId, html });
-      });
+      }, options.events);
       if (!attemptIsCurrent(attempt)) { subscription.unsubscribe(); return; }
       attempt.unsubscribe = () => subscription.unsubscribe();
       await subscription.ready;
@@ -224,8 +179,7 @@ export function createCableServer(options: CableServerOptions): CableServer {
     let attempts = attemptsByIdentifier.get(key);
     if (!attempts) attemptsByIdentifier.set(key, attempts = new Set());
     attempts.add(attempt);
-    if (identifier.channel === "agent") void initializeAgentAttempt(attempt);
-    else if (identifier.channel === "subagents") void initializeSubagentsAttempt(attempt);
+    if (identifier.channel === "agent" || identifier.channel === "module") void initializeChannelAttempt(attempt);
     else void initializeNonAgentAttempt(attempt);
   }
 
@@ -238,8 +192,7 @@ export function createCableServer(options: CableServerOptions): CableServer {
   function broadcast(identifier: CableIdentifier, html: string, options: CableBroadcastOptions = {}): void {
     if (!html) return;
     if (options.exceptConnectionId && options.onlyConnectionId) throw new Error("Cable broadcast cannot combine exceptConnectionId and onlyConnectionId");
-    if (identifier.channel === "subagents") throw new Error("Subagent tree updates must be published through the tree subscription");
-    if (identifier.channel === "agent") throw new Error("Agent updates must be published through the runtime live-presentation interface");
+    if (identifier.channel === "module" || identifier.channel === "agent") throw new Error("Channel updates must be published through the live-presentation interface");
     const key = serializeCableIdentifier(identifier);
     for (const attempt of attemptsByIdentifier.get(key) ?? []) {
       if (!attemptIsCurrent(attempt)) continue;
@@ -291,7 +244,7 @@ export function createCableServer(options: CableServerOptions): CableServer {
       for (const [key, set] of attemptsByIdentifier) subscriptions[key] = set.size;
       const upstreams: Record<string, number> = {};
       for (const [key, attempts] of attemptsByIdentifier) {
-        if (["agent", "subagents"].includes(attempts.values().next().value?.identifier.channel ?? "")) upstreams[key] = attempts.size;
+        if (["agent", "module"].includes(attempts.values().next().value?.identifier.channel ?? "")) upstreams[key] = attempts.size;
       }
       return { sockets: sockets.size, subscriptions, upstreams };
     },

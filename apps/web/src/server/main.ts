@@ -1,4 +1,6 @@
 import { designSystemCatalogueHtml } from "@atelier/design-system/catalogue";
+import { configureAgentDelegation } from "@atelier/agent/server";
+import { subagentsDelegation } from "@atelier/subagents/server";
 import { join } from "node:path";
 import { timingSafeEqual as timingSafeEqualBytes } from "node:crypto";
 import { gzipSync } from "node:zlib";
@@ -23,6 +25,9 @@ import { createCableServer, type CableSocketData } from "./cable.ts";
 import { legacyStaticFiles } from "./static-files.ts";
 import { createFileWorkspaceActivityStore, createFileWorkspaceDeletionStore, createFileWorkspaceUnreadStore, createWorkspaceRegistry } from "./workspace-registry.ts";
 import { workspaceModules } from "./workspace-modules.ts";
+
+// Explicit feature assembly; workspace-module discovery still owns routes, views and assets.
+configureAgentDelegation(workspaceModules.some((module) => module.id === "subagents") ? subagentsDelegation : undefined);
 
 const requestedPort = Number(process.env.PORT ?? 3000);
 const hostname = process.env.HOST ?? "0.0.0.0";
@@ -215,7 +220,7 @@ const registry = createWorkspaceRegistry({
   deletionStore: createFileWorkspaceDeletionStore(join(runtimeContext.atelierDataDir, "view-state", "workspace-deletions.json")),
 });
 let app: WebApp;
-const cableServer = createCableServer({ registry, events: atelierEvents, shellSnapshot: () => app.shellSnapshot() });
+const cableServer = createCableServer({ registry, channels: workspaceModules.flatMap((module) => module.cableChannels ?? []), events: atelierEvents, shellSnapshot: () => app.shellSnapshot() });
 
 app = createWebApp({
   registry,

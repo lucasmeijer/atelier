@@ -1,6 +1,8 @@
 # Codex-compatible, observable subagents
 
-Atelier’s shared system prompt instructs root agents and subagents to delegate only
+Implementation: `@atelier/subagents`. See [Agent delegation integration](agent-delegation.md) for assembly, lifecycle, and disabling the module.
+
+The Subagents module contributes system-prompt instructions for root agents and subagents to delegate only
 when the user explicitly requests subagents or delegation to other agents. This
 includes spawning and assigning follow-up tasks; possible speed or parallelism
 is not authorization. This is a model instruction, not a runtime permission gate,
@@ -25,7 +27,7 @@ Descriptions are copied from the pinned `multi_agents_spec.rs`. Input property d
 
 Canonical names are `/root`, `/root/review`, `/root/review/check`, etc. Relative references resolve beneath the caller. The same leaf name can exist under different parents. IDs remain internal correlation data rather than part of the message text. A non-root agent can receive follow-up tasks or interruption from another agent in the same tree. Other root trees/workspaces remain isolated.
 
-`fork_turns` defaults to `all`; `none` starts from the explicit task, and a positive integer string selects recent user turns. The fork preserves complete exchanges and removes unresolved tool calls (notably the spawning call, whose result has not arrived yet) so the child never submits orphaned tool calls to a provider. Existing sessions are not re-forked on reload. Children inherit model/thinking settings, tools, skills and workspace instructions. They share the workspace filesystem—not separate worktrees.
+`fork_turns` defaults to `all`; `none` starts from the explicit task, and a positive integer string selects recent user turns. Selection happens before filtering, matching the pinned Codex fork policy: user messages and turn-triggering tasks count as turns, but inherited agent traffic is then removed. The child retains user messages and assistant final-answer text, not reasoning, intermediate commentary, tool calls or tool results (including completed exchanges). A numeric mode with no turn boundaries inherits nothing; an oversized count starts at the first boundary, not an earlier summary preamble. Pi supplies the effective post-navigation, compaction-aware context. Its opaque compaction/branch summaries are retained when selected and seeded as child-local summary entries. Host instructions are rebuilt for the child. For providers without Codex phase metadata, final answers use Atelier's existing terminal-stop/no-tool-call classification. This matches the filtering policy over Pi's representation; it does not implement Codex-specific rollout metadata or guardian authorization state. Existing sessions are not re-forked on reload. Children inherit model/thinking settings, tools, skills and workspace instructions. They share the workspace filesystem—not separate worktrees.
 
 `followup_task` starts an idle child directly from its attributed task message; while running, it steers at message boundaries rather than waiting behind the entire run. There is no fabricated “Carry out the task above” user prompt. `send_message` and automatic completions do not start idle recipients. Wait defaults to 30 seconds, clamps short requests to 10 seconds, and permits up to one hour. It wakes for incoming traffic or steered user input; abort cancels it.
 
@@ -71,8 +73,8 @@ All HTML is server-rendered. The selected root has a Cable tree subscription: an
 ## Persistence and lifecycle
 
 ```text
-workspaces/<workspace-id>/subagents/state.json       # tree, plaintext messages, delivery, wait read positions
-workspaces/<workspace-id>/subagents/<agent-id>.jsonl # native Pi session
+session-shares/<share-key>/subagents/<workspace-id>/state.json       # tree, plaintext messages, delivery, wait read positions
+session-shares/<share-key>/subagents/<workspace-id>/<agent-id>.jsonl # native Pi session
 ```
 
 Ledger writes are serialized and atomically renamed. Task/message IDs connect the sender's tool call, routing event, recipient context and visualization. They remain accessible in the JSON representation for debugging. No application-layer encryption is used; ordinary provider transport security remains unchanged. Do not send secrets in inter-agent messages.
@@ -153,3 +155,31 @@ reason. Old records without a reason say it was not recorded rather than guessin
 from the recipient's current state. Receipt remains visible before dispatch is
 decided, and immediate delivery is only described as completed once its prepared
 model-request envelope is recorded.
+
+## Discovering historical delegated sessions
+
+Root and child transcripts remain separate, but both are inside the same durable
+read-only session share. From a workspace:
+
+```text
+/atelier/session-share/
+  <topic>--<workspace-id>--agent-<number>--<root-id>.jsonl
+  SUBAGENTS.md
+  subagents/<workspace-id>/
+    state.json
+    <child-id>.jsonl
+    <grandchild-id>.jsonl
+```
+
+The root's `subagent_history` custom entry supplies the relative directory and root
+ID. Older files without it use the workspace ID and final conversation UUID in their
+filename (including `.archived.jsonl`). In `state.json`, select all `agents` with that
+`rootId`; each `id` names a JSONL file and `parentId` links immediate parents. The
+ledger's `messages` provide timestamps and originating tool-call IDs for correlation.
+The lookup includes closed agents and nested descendants, not unrelated root trees.
+
+These histories survive workspace deletion. Startup preserves older saved Subagents
+directories from workspace-private storage before any workspace is deleted. It does
+not recreate files already lost to earlier deletion. A child interrupted before session
+creation can have a ledger record without a transcript. Session replacement keeps the
+same root/tree identity, so use message timestamps/tool-call IDs to identify its run.

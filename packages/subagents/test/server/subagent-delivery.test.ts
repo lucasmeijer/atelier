@@ -55,3 +55,9 @@ test("older delivery metadata retains separate receipt and queue events", () => 
   const old = parseSubagentDelivery({ turnEntryId: "turn", duringActivity: false, remaining: 0, messages: [{ id: "old", recipient: "root", envelope: "Old envelope" }] });
   expect(queuedModelDelivery(old)!.messages).toHaveLength(1);
 });
+
+test("older delivery records recover their recipient from the durable routing ledger", () => {
+  const legacy = { turnEntryId: "turn", duringActivity: false, remaining: 0, messages: [{ id: "old", envelope: "Old envelope" }] };
+  expect(parseSubagentDelivery(legacy, [{ id: "old", from: "child", to: "root", kind: "completion", text: "Done", timestamp: "2026-09-05T00:00:00Z", delivery: "delivered" }]).messages[0]!.recipient).toBe("root");
+  expect(() => parseSubagentDelivery(legacy)).toThrow("Missing recipient");
+});

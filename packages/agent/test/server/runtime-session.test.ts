@@ -3,7 +3,7 @@ import { join } from "node:path";
 import { tmpdir } from "node:os";
 import { afterEach, describe, expect, test } from "bun:test";
 import { discardBootstrapOnlySession } from "../../src/server/pi-session.ts";
-import { getWorkspaceAgentRuntime, removeWorkspaceAgentRuntime, removeWorkspaceAgentRuntimes } from "../../src/server/runtime.ts";
+import { getWorkspaceAgentRuntime, closeWorkspaceAgentConversation, removeWorkspaceAgentRuntimes } from "../../src/server/runtime.ts";
 import { contextUsagePercent, manualCompactionAvailable, terminalCompactionNotice } from "../../src/server/runtime-status.ts";
 
 let dir: string | undefined;
@@ -48,7 +48,7 @@ test("removed Workspace runtimes cannot be recreated by stale Agent requests", a
 test("closed conversation runtimes cannot be recreated during the dispose-to-archive gap", async () => {
   const agent = { workspaceId: "closed-runtime-test", conversationId: "53fc77b7-dc19-42d5-b200-2e134ec67529", label: "Agent 1", title: "Agent", path: "/tmp/closed-session.jsonl" };
 
-  await removeWorkspaceAgentRuntime(agent.workspaceId, agent.conversationId);
+  await closeWorkspaceAgentConversation(agent.workspaceId, agent.conversationId);
 
   expect(() => getWorkspaceAgentRuntime(agent)).toThrow("Agent conversation not found");
 });

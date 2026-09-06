@@ -11,6 +11,8 @@
       "@atelier/browser/server": ["./packages/browser/src/server/index.ts"],
       "@atelier/browser/client": ["./packages/browser/src/client/index.ts"],
       "@atelier/browser": ["./packages/browser/src/server/index.ts"],
+      "@atelier/subagents/server": ["./packages/subagents/src/server/index.ts"],
+      "@atelier/subagents/client": ["./packages/subagents/src/client/index.ts"],
       "@atelier/agent/server": ["./packages/agent/src/server/index.ts"],
       "@atelier/agent/client": ["./packages/agent/src/client/index.ts"],
       "@atelier/agent": ["./packages/agent/src/server/index.ts"],

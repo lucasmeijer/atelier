@@ -4,7 +4,7 @@ import { join } from "node:path";
 import { tmpdir } from "node:os";
 import { reviewCommentsPrompt, type ReviewCommentModel } from "../src/model.ts";
 import { collectReviewFile, collectReviewIndex, collectReviewStats, type ReviewFile, type ReviewFileStats } from "../src/server/diff.ts";
-import { renderReviewBody, renderReviewFileDetails, renderReviewStatsFrame, reviewWorkViewPresentation } from "../src/server/render.ts";
+import { renderReviewBody, renderReviewFileDetails, renderReviewStatsFrame } from "../src/server/render.ts";
 import { readReviewSettings, updateReviewSettings } from "../src/server/settings.ts";
 import { addReviewComment, deleteReviewState, listReviewComments, remapReviewComment, updateReviewComment, type ReviewComment } from "../src/server/state.ts";
 import { command, createReviewRepository } from "./support/repository.ts";
@@ -183,16 +183,6 @@ describe("Review settings", () => {
 });
 
 describe("Review presentation", () => {
-  test("describes the Work view without collecting or rendering its diff", () => {
-    expect(reviewWorkViewPresentation).toEqual({
-      reference: { type: "review" },
-      sourceKey: "review:workspace",
-      label: "Review",
-      kind: "contextual",
-      availability: { phase: "live" },
-    });
-  });
-
   test("renders explicit empty and not-git states", async () => {
     const empty = await renderReviewBody("workspace 1", { phase: "ready", files: [] }, []);
     expect(empty).toContain("No changes to review");

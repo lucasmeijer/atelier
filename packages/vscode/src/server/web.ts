@@ -1,3 +1,4 @@
+import { Icons } from "@atelier/design-system/icons";
 import type { JsonValue } from "@atelier/core";
 import type { WorkspaceCommandContribution, WorkspaceModule, WorkspaceWorkViewPresentation, WorkspaceWorkViewReference } from "@atelier/shared";
 import { renderVSCodePane, vscodeViewKey } from "./render.ts";
@@ -12,7 +13,7 @@ function vscodeWorkViewPresentation(view: WorkspaceVSCodeView): WorkspaceWorkVie
     sourceKey: vscodeViewKey(view.title),
     label: view.title,
     reference: { type: "vscode", title: view.title },
-    kind: "resource",
+    kind: "resource", iconHtml: Icons.Code,
     availability: { phase: "live" },
   };
 }
@@ -35,7 +36,7 @@ export const vscodeWorkspaceCommands: WorkspaceCommandContribution[] = [
     label: "Open VS Code",
     scope: "workspace",
     surfaces: {
-      ui: { placement: "work-launcher", label: "VS Code" },
+      ui: { placement: "work-launcher", iconHtml: Icons.Code, label: "VS Code" },
       shortcut: { defaultBinding: "Meta+Alt+KeyV" },
     },
   },

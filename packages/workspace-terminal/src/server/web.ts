@@ -19,7 +19,7 @@ function terminalWorkViewPresentation(terminal: WorkspaceTerminal): WorkspaceWor
     sourceKey: terminalViewKey(terminal.id),
     label: terminal.title,
     reference: { type: "terminal", terminalId: terminal.id },
-    kind: "resource",
+    kind: "resource", iconHtml: Icons.Terminal,
     availability: { phase: "live" },
   };
 }
@@ -41,14 +41,14 @@ const terminalWorkspaceCommands: WorkspaceCommandContribution[] = [
     id: "terminal.create",
     label: "New Terminal",
     scope: "workspace",
-    surfaces: { ui: { placement: "work-launcher", label: "New Terminal" }, shortcut: { defaultBinding: "Meta+Alt+KeyT" } },
+    surfaces: { ui: { placement: "work-launcher", iconHtml: Icons.Terminal, label: "New Terminal" }, shortcut: { defaultBinding: "Meta+Alt+KeyT" } },
   },
   {
     id: "terminal.attach",
     label: "Attach Terminal",
     description: "Open a Terminal view attached to an existing tmux session",
     scope: "workspace",
-    surfaces: { ui: { placement: "work-launcher" } },
+    surfaces: { ui: { placement: "work-launcher", iconHtml: Icons.Terminal } },
   },
 ];
 

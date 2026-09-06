@@ -91,6 +91,8 @@ export interface WorkspaceAgentTabProvider {
 }
 
 export interface WorkspaceWorkViewPresentation {
+  /** Trusted decorative markup from the contributing module. */
+  iconHtml?: string;
   /** Cheap, side-effect-free metadata used to render the Workspace shell. */
   reference: WorkspaceWorkViewReference;
   sourceKey: string;
@@ -127,6 +129,7 @@ export interface WorkspaceModuleWorkViewAdapter<Reference extends WorkspaceWorkV
 }
 
 export interface WorkspaceCommandUiSurface {
+  iconHtml?: string;
   /** Where the server-rendered web UI should place this command. */
   placement: "work-launcher" | "agent-action";
   label?: string;
@@ -312,6 +315,8 @@ export interface WorkspaceServerModuleContext {
 }
 
 export interface WorkspaceModule {
+  cableChannels?: import("./cable.ts").CableChannelAdapter[];
+  openApiPaths?: Record<string, import("@atelier/core").JsonObject>;
   id: string;
   staticFiles?: Record<string, StaticFileContribution>;
   settingsContributions?: SettingsContribution[];
@@ -453,3 +458,11 @@ export {
 } from "./text-input.ts";
 
 export { focusLikelyOpensSoftwareKeyboard, installSoftwareKeyboardTracking } from "./software-keyboard.ts";
+
+export type { CableChannelAdapter, CableChannelSubscription } from "./cable.ts";
+
+/** Public context for contextual Work views. The shell owns the backing attribute and event. */
+export function selectedWorkspaceAgent(element: Element): string | undefined {
+  return element.closest<HTMLElement>("[data-workspace-selected-agent]")?.dataset.workspaceSelectedAgent || undefined;
+}
+export const workspaceAgentSelectionEvent = "atelier:workspace-agent-selected";

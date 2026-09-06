@@ -196,7 +196,7 @@ export abstract class BaseAgentRuntime implements WorkspaceAgentRuntime {
       live.items.push(item);
       this.stream(turboStream("append", ids.transcript(this.ctx), renderTranscriptItem(this.ctx, item, { live: true })));
     }
-    this.stream(turboStream("append", ids.transcript(this.ctx), renderTranscriptItem(this.ctx, this.liveWorkingSection(live))));
+    this.stream(turboStream("append", ids.transcript(this.ctx), this.renderLiveWorkingSection(live)));
   }
 
   protected liveEnsure(): LiveState {
@@ -208,6 +208,11 @@ export abstract class BaseAgentRuntime implements WorkspaceAgentRuntime {
     const userIndex = live.items[0]?.type === "user" ? 1 : 0;
     const end = live.finalIndex ?? live.items.length;
     return { ...live.working, items: [...live.cacheMissNotices, ...live.items.slice(userIndex, end)] };
+  }
+
+  private renderLiveWorkingSection(live: LiveState): string {
+    const item = findTranscriptItem(this.itemsForDisplay(), live.working.key)!;
+    return renderTranscriptItem(this.ctx, item);
   }
 
   protected liveItemsForDisplay(live: LiveState): TranscriptItem[] {
@@ -338,7 +343,7 @@ export abstract class BaseAgentRuntime implements WorkspaceAgentRuntime {
       live.open = undefined;
     }
     live.working.completedAt = live.lastActivityAt;
-    const working = turboStream("replace", ids.item(this.ctx, live.working.key), renderTranscriptItem(this.ctx, this.liveWorkingSection(live)));
+    const working = turboStream("replace", ids.item(this.ctx, live.working.key), this.renderLiveWorkingSection(live));
     const final = live.finalIndex === undefined ? "" : turboStream("append", ids.transcript(this.ctx), renderTranscriptItem(this.ctx, live.items[live.finalIndex]!));
     this.stream(working + final);
   }
@@ -514,10 +519,10 @@ export abstract class BaseAgentRuntime implements WorkspaceAgentRuntime {
     }
   }
 
-  protected liveNote(text: string, tone: "system" | "summary" | "error", metadata?: Pick<Extract<TranscriptItem, { type: "note" }>, "key" | "modelDelivery">): void {
+  protected liveNote(text: string, tone: "system" | "summary" | "error"): void {
     const live = this.liveEnsure();
     this.closeOpenItem();
-    const item: TranscriptItem = { type: "note", key: this.liveKey(live, live.items.length, "note"), text, tone, ...metadata };
+    const item: TranscriptItem = { type: "note", key: this.liveKey(live, live.items.length, "note"), text, tone };
     live.items.push(item);
     live.lastActivityAt = Date.now();
     this.appendLiveItem(item, { live: true });
@@ -569,12 +574,54 @@ export abstract class BaseAgentRuntime implements WorkspaceAgentRuntime {
       if (this.live.working.completedAt === undefined) {
         this.live.working.stoppedAt = Date.now();
       }
-      if (this.liveSubscriberCount > 0) this.stream(turboStream("replace", ids.item(this.ctx, this.live.working.key), renderTranscriptItem(this.ctx, this.liveWorkingSection(this.live))));
+      if (this.liveSubscriberCount > 0) this.stream(turboStream("replace", ids.item(this.ctx, this.live.working.key), this.renderLiveWorkingSection(this.live)));
     }
     this.live = undefined;
   }
 
   protected decorateTranscript(items: TranscriptItem[]): TranscriptItem[] { return items; }
+
+  private contributedRows = new Map<string, { html: string; parent: string; next?: string }>();
+
+  private contributedRowsForDisplay(): Map<string, { html: string; parent: string; next?: string }> {
+    const result = new Map<string, { html: string; parent: string; next?: string }>();
+    const visit = (items: TranscriptItem[], parent: string) => {
+      for (const [index, item] of items.entries()) {
+        if (item.type === "working") visit(item.items, ids.workingItems(this.ctx, item.key));
+        if (item.type !== "extension") continue;
+        result.set(ids.item(this.ctx, item.key), {
+          html: renderTranscriptItem(this.ctx, item), parent,
+          next: items[index + 1] ? ids.item(this.ctx, items[index + 1]!.key) : undefined,
+        });
+      }
+    };
+    visit(this.itemsForDisplay(), ids.transcript(this.ctx));
+    return result;
+  }
+
+  protected captureContributedRows(): void {
+    this.contributedRows = this.contributedRowsForDisplay();
+  }
+
+  /** Reconcile only contributed rows. Host text/tool streaming remains authoritative. */
+  protected refreshContributedRows(): void {
+    const current = this.contributedRowsForDisplay();
+    let html = "";
+    for (const id of this.contributedRows.keys()) if (!current.has(id)) html += turboStream("remove", id);
+    // Insert backwards so the next sibling already exists, even for a batch of new rows.
+    for (const [id, item] of [...current].reverse()) {
+      const previous = this.contributedRows.get(id);
+      const moved = previous !== undefined && (previous.parent !== item.parent || previous.next !== item.next);
+      if (previous?.html === item.html && !moved) continue;
+      // A Working-section render may already have inserted a newly observed row.
+      if (moved || previous === undefined) html += turboStream("remove", id);
+      html += previous !== undefined && !moved
+        ? turboStream("replace", id, item.html)
+        : item.next ? turboStream("before", item.next, item.html) : turboStream("append", item.parent, item.html);
+    }
+    this.contributedRows = current;
+    if (html) this.stream(html);
+  }
 
   private itemsForDisplay(): TranscriptItem[] {
     let items = this.canonicalItems();
@@ -589,6 +636,7 @@ export abstract class BaseAgentRuntime implements WorkspaceAgentRuntime {
   }
 
   protected async refreshTranscript(): Promise<void> {
+    this.captureContributedRows();
     await this.streamRendered(async () => turboStream("update", ids.transcript(this.ctx), renderTranscript(this.ctx, this.itemsForDisplay(), this.modelContext())));
   }
 
@@ -596,10 +644,11 @@ export abstract class BaseAgentRuntime implements WorkspaceAgentRuntime {
     await this.streamRendered(async () => turboStream("update", ids.stats(this.ctx), renderAgentPaneComposerFooter(this.ctx, await this.statsView())));
   }
 
-  private capturePaneState(revealCommunicationId?: string): () => Promise<AgentPaneState> {
+  private capturePaneState(revealTarget?: string): () => Promise<AgentPaneState> {
     // The transcript and busy flag are the mutable live boundary. Capture both
     // synchronously before stats performs any configuration or provider I/O.
-    const transcriptHtml = renderTranscript({ ...this.ctx, revealCommunicationId }, this.itemsForDisplay(), this.modelContext());
+    this.captureContributedRows();
+    const transcriptHtml = renderTranscript({ ...this.ctx, revealTarget }, this.itemsForDisplay(), this.modelContext());
     const busy = this.isStreaming;
     const stats = this.statsView();
     return async () => ({ transcriptHtml, busy, stats: await stats });
@@ -619,9 +668,9 @@ export abstract class BaseAgentRuntime implements WorkspaceAgentRuntime {
     return await this.captureAuthoritativePresentationUpdate()();
   }
 
-  async paneState(revealCommunicationId?: string): Promise<AgentPaneState> {
+  async paneState(revealTarget?: string): Promise<AgentPaneState> {
     this.assertActive();
-    return await this.capturePaneState(revealCommunicationId)();
+    return await this.capturePaneState(revealTarget)();
   }
 
   async detailHtml(key: string, count = 100): Promise<string> {

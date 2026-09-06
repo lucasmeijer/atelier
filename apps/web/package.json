@@ -29,6 +29,7 @@
     "@atelier/workspace": "workspace:*",
     "@atelier/workspace-terminal": "workspace:*",
     "@atelier/vscode": "workspace:*",
-    "typebox": "^1.0.57"
+    "typebox": "^1.0.57",
+    "@atelier/subagents": "workspace:*"
   }
 }

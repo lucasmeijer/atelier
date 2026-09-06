@@ -1,6 +1,6 @@
-import { ids } from "./render-context.ts";
+import { ids } from "@atelier/agent/server";
 import type { SubagentRecord } from "./subagent-runtime.ts";
-import type { AgentLivePresentationSubscription } from "./runtime-types.ts";
+import type { AgentLivePresentationSubscription } from "@atelier/agent/server";
 import type { AtelierEventBus } from "@atelier/core";
 import { Icons } from "@atelier/design-system/icons";
 import { Type } from "typebox";
@@ -8,15 +8,15 @@ import { Value } from "typebox/value";
 import { requestAcceptsJson, type JsonValue } from "@atelier/core";
 import { actionItemHtml } from "@atelier/design-system/action-item";
 import type { WorkspaceModuleWorkViewAdapter, WorkspaceWorkViewPresentation } from "@atelier/shared";
-import { escapeHtml as h, turboStream } from "./html.ts";
+import { escapeHtml as h, turboStream } from "@atelier/agent/server";
 import { getSubagents, subagentConversation, subscribeSubagentChanges } from "./subagents.ts";
 import { agentPath } from "./subagent-protocol.ts";
-import { getWorkspaceAgentRuntime } from "./runtime.ts";
-import { listWorkspaceAgentConversations } from "./session-store.ts";
-import type { AgentRouteHandler } from "./route-support.ts";
+import { getWorkspaceAgentRuntime } from "@atelier/agent/server";
+import { listWorkspaceAgentConversations } from "@atelier/agent/server";
+import type { AgentRouteHandler } from "@atelier/agent/server";
 
 export const subagentsWorkView: WorkspaceWorkViewPresentation = {
-  reference: { type: "subagents" }, sourceKey: "subagents", label: "Subagents", kind: "contextual", availability: { phase: "live" },
+  reference: { type: "subagents" }, sourceKey: "subagents", label: "Subagents", kind: "contextual", iconHtml: Icons.Subagents, availability: { phase: "live" },
 };
 export const subagentsWorkViewAdapter: WorkspaceModuleWorkViewAdapter = {
   type: "subagents",
@@ -26,7 +26,7 @@ export const subagentsWorkViewAdapter: WorkspaceModuleWorkViewAdapter = {
   },
   identity: () => "workspace",
   render({ workspaceId }) {
-    return `<section class="subagents-view" data-controller="subagents" data-subagents-workspace-id-value="${h(workspaceId)}" data-subagents-url-value="/workspaces/${h(workspaceId)}/subagents" data-action="atelier:workspace-pane-visible@document->subagents#sync atelier:workspace-pane-hidden@document->subagents#sync visibilitychange@document->subagents#sync turbo:frame-load->subagents#loaded toggle->subagents#toggle:capture">
+    return `<section class="subagents-view" data-controller="subagents" data-subagents-workspace-id-value="${h(workspaceId)}" data-subagents-url-value="/workspaces/${h(workspaceId)}/subagents" data-action="atelier:workspace-agent-selected@document->subagents#sync atelier:workspace-pane-visible@document->subagents#sync atelier:workspace-pane-hidden@document->subagents#sync visibilitychange@document->subagents#sync turbo:frame-load->subagents#loaded toggle->subagents#toggle:capture">
       <div class="subagents-scroll"><turbo-frame id="subagents-content-${h(workspaceId)}" data-subagents-target="frame" refresh="morph"></turbo-frame></div>
     </section>`;
   },
@@ -45,7 +45,7 @@ export const handleSubagentRequest: AgentRouteHandler = async (request, url, opt
   if (match[2]) {
     const child = agents.find((agent) => agent.id === decodeURIComponent(match[2]!));
     if (!child) return new Response("Subagent not found in selected tree", { status: 404 });
-    const runtime = await getWorkspaceAgentRuntime(subagentConversation(workspaceId, child), { events: options.events });
+    const runtime = await getWorkspaceAgentRuntime(await subagentConversation(workspaceId, child), { events: options.events });
     return new Response(`<turbo-frame id="subagent-transcript-${h(child.id)}" refresh="morph"><div id="${ids.transcript({ workspaceId, conversationId: child.id })}" class="agent-transcript">${(await runtime.paneState(url.searchParams.get("message") ?? undefined)).transcriptHtml}</div></turbo-frame>`, { headers: { "content-type": "text/html; charset=utf-8" } });
   }
   if (requestAcceptsJson(request)) return Response.json({ parent: { id: parentId, title: parent.title }, agents, messages: coordinator.state.messages.filter((message) => message.to === parentId || message.from === parentId || agents.some((agent) => agent.id === message.to || agent.id === message.from)) });
@@ -101,10 +101,4 @@ export async function subscribeSubagentTree(workspaceId: string, rootId: string,
   });
   listener(turboStream("update", `subagents-content-${workspaceId}`, renderSubagentTree(workspaceId, rootId, previous)));
   return { ready: Promise.resolve(), unsubscribe };
-}
-
-export async function findSubagentConversation(workspaceId: string, conversationId: string, events?: AtelierEventBus) {
-  const coordinator = await getSubagents(workspaceId, events);
-  const child = coordinator.state.agents.find((agent) => agent.id === conversationId);
-  return child ? subagentConversation(workspaceId, child) : undefined;
 }

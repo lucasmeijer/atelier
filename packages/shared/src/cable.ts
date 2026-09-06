@@ -12,7 +12,7 @@ export interface CableSubscriptionOptions {
 const cableIdentifierSchema = Type.Union([
   Type.Object({ channel: Type.Literal("shell") }),
   Type.Object({ channel: Type.Literal("workspace"), workspaceId: Type.String({ minLength: 1 }) }),
-  Type.Object({ channel: Type.Literal("subagents"), workspaceId: Type.String({ minLength: 1 }), conversationId: Type.String({ minLength: 1 }) }),
+  Type.Object({ channel: Type.Literal("module"), name: Type.String({ minLength: 1 }), workspaceId: Type.String({ minLength: 1 }), params: Type.Record(Type.String(), Type.String()) }),
   Type.Object({ channel: Type.Literal("agent"), workspaceId: Type.String({ minLength: 1 }), conversationId: Type.String({ minLength: 1 }) }),
 ]);
 
@@ -87,8 +87,8 @@ export const CableTopics = {
   workspace(workspaceId: string): CableIdentifier {
     return { channel: "workspace", workspaceId: requireNonEmpty(workspaceId, "workspace identifier must not be empty") };
   },
-  subagents(workspaceId: string, conversationId: string): CableIdentifier {
-    return { channel: "subagents", workspaceId: requireNonEmpty(workspaceId, "workspace identifier must not be empty"), conversationId: requireNonEmpty(conversationId, "root agent identifier must not be empty") };
+  module(name: string, workspaceId: string, params: Record<string, string> = {}): CableIdentifier {
+    return { channel: "module", name: requireNonEmpty(name, "channel name must not be empty"), workspaceId: requireNonEmpty(workspaceId, "workspace identifier must not be empty"), params };
   },
   agent(workspaceId: string, conversationId: string): CableIdentifier {
     return {
@@ -103,7 +103,7 @@ export function serializeCableIdentifier(identifier: CableIdentifier): string {
   switch (identifier.channel) {
     case "shell": return JSON.stringify(["shell"]);
     case "workspace": return JSON.stringify(["workspace", requireNonEmpty(identifier.workspaceId, "workspace identifier must not be empty")]);
-    case "subagents":
+    case "module": return JSON.stringify(["module", identifier.name, identifier.workspaceId, Object.entries(identifier.params).sort(([a], [b]) => a.localeCompare(b))]);
     case "agent": return JSON.stringify([
       identifier.channel,
       requireNonEmpty(identifier.workspaceId, "workspace identifier must not be empty"),
@@ -111,4 +111,16 @@ export function serializeCableIdentifier(identifier: CableIdentifier): string {
     ]);
     default: throw new Error("unsupported cable identifier");
   }
+}
+
+export interface CableChannelSubscription {
+  readonly ready: Promise<void>;
+  unsubscribe(): void;
+}
+
+/** The adapter validates its parameters and access before publishing its first snapshot.
+ * Cable owns confirmation, cancellation races, incremental delivery and error reporting. */
+export interface CableChannelAdapter {
+  name: string;
+  subscribe(identifier: CableIdentifier, listener: (html: string) => void, events: import("@atelier/core").AtelierEventBus): CableChannelSubscription | Promise<CableChannelSubscription>;
 }

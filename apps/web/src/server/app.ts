@@ -388,6 +388,7 @@ export function createWebApp(deps: WebAppDeps): WebApp {
       const contribution = currentByKey.get(key);
       const view: WorkPaneContribution = {
         key,
+        iconHtml: contribution?.iconHtml,
         label: contribution?.label ?? `${stored.reference.type} unavailable`,
         kind: contribution?.kind ?? "resource",
         availability: contribution?.availability ?? { phase: "unavailable", detail: "The referenced resource is not currently available." },
@@ -413,7 +414,7 @@ export function createWebApp(deps: WebAppDeps): WebApp {
     await presentationStore.initialize(workspaceId, currentWorkViews.filter((view) => view.initiallyOpen !== false).map((view) => view.reference));
     const storedWorkViews = await presentationStore.listWorkViews(workspaceId);
     const commands = attachments.flatMap((attachment) => attachment.commands ?? []).map((command) => ({
-      id: command.id, label: command.surfaces?.ui?.label ?? command.label, description: command.description, scope: command.scope, placement: command.surfaces?.ui?.placement, binding: command.surfaces?.shortcut?.defaultBinding,
+      id: command.id, label: command.surfaces?.ui?.label ?? command.label, description: command.description, scope: command.scope, placement: command.surfaces?.ui?.placement, iconHtml: command.surfaces?.ui?.iconHtml, binding: command.surfaces?.shortcut?.defaultBinding,
     }));
     const presentation: FixedWorkspacePresentation = {
       workspace: { id: entry.id, title: workspaceTitle(entry) },
@@ -1119,7 +1120,7 @@ export function createWebApp(deps: WebAppDeps): WebApp {
       const page = await homePage();
       return request.method === "HEAD" ? new Response(null, { status: page.status, statusText: page.statusText, headers: page.headers }) : page;
     }
-    if (url.pathname === "/openapi.json" && request.method === "GET") return jsonResponse(atelierOpenApi(workspaceModuleCommands()));
+    if (url.pathname === "/openapi.json" && request.method === "GET") return jsonResponse(atelierOpenApi(workspaceModuleCommands(), Object.assign({}, ...workspaceModules.map((module) => module.openApiPaths ?? {}))));
     if (url.pathname === "/launch-composer" && request.method === "GET") return response(await renderProjectlessLaunchComposerFrame());
     if (url.pathname === "/launch-composer/settings" && request.method === "GET") return response(await launchComposerSettingsFrame(url.searchParams.get("model") ?? undefined));
     const projectSettingsMatch = url.pathname.match(/^\/projects\/([^/]+)\/settings$/);

@@ -232,7 +232,7 @@ export function filesWorkViewPresentation(view: FilesView): WorkspaceWorkViewPre
     sourceKey: `files:${view.id}`,
     label: view.path ? posix.basename(view.path) : "Files",
     reference: { type: "files", id: view.id },
-    kind: "contextual",
+    kind: "contextual", iconHtml: Icons.Files,
     initiallyOpen: view.id !== defaultFilesViewId,
     availability: { phase: "live" },
   };

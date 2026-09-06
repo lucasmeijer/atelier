@@ -1,3 +1,4 @@
+import { workspaceAgentSelectionEvent } from "@atelier/shared";
 /// <reference lib="dom" />
 
 import { atelierCableConnectionHeader, phoneLayoutMediaQuery, type WorkspaceClientApplication, type WorkspaceClientControllerConstructor, type WorkspaceClientSurfaceVisibilityContext } from "@atelier/shared";
@@ -517,6 +518,8 @@ export function createWorkspacePresentationController(
       this.element.classList.toggle("is-work-pane-open", this.state.workPaneVisible);
       this.element.dataset.phoneDestination = this.state.phoneDestination;
       this.element.dataset.navigationReady = "true";
+      const selectedAgentChanged = this.element.dataset.workspaceSelectedAgent !== this.state.activeAgentId;
+      this.element.dataset.workspaceSelectedAgent = this.state.activeAgentId ?? "";
 
       this.element.querySelectorAll<HTMLElement>("[data-agent-conversation-id]").forEach((selector) => {
         const active = selector.dataset.agentConversationId === this.state.activeAgentId;
@@ -524,6 +527,7 @@ export function createWorkspacePresentationController(
         selector.tabIndex = active ? 0 : -1;
       });
       this.element.querySelectorAll<PresentationPane>("[data-workspace-pane-role='agent']").forEach((pane) => pane.classList.toggle("is-active", pane.dataset.workspacePaneId === this.state.activeAgentId));
+      if (selectedAgentChanged) this.element.dispatchEvent(new CustomEvent(workspaceAgentSelectionEvent, { bubbles: true, detail: { workspaceId: this.workspaceIdValue, conversationId: this.state.activeAgentId } }));
 
       this.element.querySelectorAll<HTMLElement>("[data-work-view-key]").forEach((selector) => {
         const active = selector.dataset.workViewKey === this.state.activeWorkViewKey;

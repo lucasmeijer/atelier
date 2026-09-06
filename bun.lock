@@ -27,6 +27,7 @@
         "@atelier/proxy-egress": "workspace:*",
         "@atelier/proxy-ingress": "workspace:*",
         "@atelier/shared": "workspace:*",
+        "@atelier/subagents": "workspace:*",
         "@atelier/transcription": "workspace:*",
         "@atelier/update": "workspace:*",
         "@atelier/vscode": "workspace:*",
@@ -190,6 +191,18 @@
         "typebox": "^1.0.57",
       },
     },
+    "packages/subagents": {
+      "name": "@atelier/subagents",
+      "dependencies": {
+        "@atelier/agent": "workspace:*",
+        "@atelier/core": "workspace:*",
+        "@atelier/design-system": "workspace:*",
+        "@atelier/shared": "workspace:*",
+        "@earendil-works/pi-ai": "catalog:",
+        "@earendil-works/pi-coding-agent": "catalog:",
+        "typebox": "^1.0.57",
+      },
+    },
     "packages/syntax": {
       "name": "@atelier/syntax",
       "dependencies": {
@@ -302,6 +315,8 @@
     "@atelier/review": ["@atelier/review@workspace:packages/review"],
 
     "@atelier/shared": ["@atelier/shared@workspace:packages/shared"],
+
+    "@atelier/subagents": ["@atelier/subagents@workspace:packages/subagents"],
 
     "@atelier/syntax": ["@atelier/syntax@workspace:packages/syntax"],
 

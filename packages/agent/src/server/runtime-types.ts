@@ -34,7 +34,7 @@ export interface WorkspaceAgentRuntime {
   /** First delivers one complete authoritative update, then every incremental update in order. */
   subscribeLivePresentation(listener: AgentLivePresentationListener): AgentLivePresentationSubscription;
   /** Server-rendered state for initial pane HTML. */
-  paneState(revealCommunicationId?: string): Promise<AgentPaneState>;
+  paneState(revealTarget?: string): Promise<AgentPaneState>;
   userMessages(): string[];
   submit(text: string, options?: SubmitOptions): Promise<void>;
   compact(customInstructions?: string): Promise<void>;

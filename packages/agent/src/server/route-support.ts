@@ -1,9 +1,9 @@
-import { getSubagents, subagentConversation } from "./subagents.ts";
-import { AtelierCoreError, type AtelierEventBus } from "@atelier/core";
+import { resolveAgentConversation } from "./delegation.ts";
+import { type AtelierEventBus } from "@atelier/core";
 import type { WorkspaceAgentViewInvalidatedEvent } from "@atelier/workspace";
 import type { maybeNameAgentFromPrompt } from "./agent-title-suggestion.ts";
 import { getWorkspaceAgentRuntime } from "./runtime.ts";
-import { listWorkspaceAgentConversations, type WorkspaceAgentConversationInfo } from "./session-store.ts";
+import { type WorkspaceAgentConversationInfo } from "./session-store.ts";
 
 export interface AgentRouteOptions {
   events?: AtelierEventBus;
@@ -29,14 +29,8 @@ export async function resolveAgentRuntime(agent: WorkspaceAgentConversationInfo,
   return await (options.getRuntime ?? getWorkspaceAgentRuntime)(agent, { events: options.events });
 }
 
-export async function requireAgentConversation(workspaceId: string, conversationId: string, includeSubagents = false): Promise<WorkspaceAgentConversationInfo> {
-  const conversations = await listWorkspaceAgentConversations(workspaceId);
-  const child = includeSubagents ? (await getSubagents(workspaceId)).state.agents.find((agent) => agent.id === conversationId) : undefined;
-  const conversation = conversations.find((candidate) => candidate.conversationId === conversationId) ?? (child ? subagentConversation(workspaceId, child) : undefined);
-  if (!conversation) throw new AtelierCoreError("agent_conversation_not_found", `Agent conversation not found: ${conversationId}`);
-  return conversation;
-}
+export const requireAgentConversation = resolveAgentConversation;
 
 export async function requireAgentRuntime(workspaceId: string, conversationId: string, options: AgentRouteOptions): ReturnType<typeof getWorkspaceAgentRuntime> {
-  return await resolveAgentRuntime(await requireAgentConversation(workspaceId, conversationId), options);
+  return await resolveAgentRuntime(await requireAgentConversation(workspaceId, conversationId, options.events), options);
 }

@@ -1,6 +1,6 @@
 import { Type } from "typebox";
 import { Value } from "typebox/value";
-import { CableTopics, type CableSubscription, type WorkspaceClientControllerConstructor } from "@atelier/shared";
+import { CableTopics, selectedWorkspaceAgent, type CableSubscription, type WorkspaceClientControllerConstructor } from "@atelier/shared";
 type Frame = HTMLElement & { src: string };
 
 export function createSubagentsController(Controller: WorkspaceClientControllerConstructor) {
@@ -29,8 +29,7 @@ export function createSubagentsController(Controller: WorkspaceClientControllerC
       this.children.clear();
     }
     sync(): void {
-      const workspace = this.element.closest("[data-controller~='workspace-presentation']")!;
-      const id = workspace.querySelector<HTMLElement>("[data-workspace-pane-role='agent'].is-active")?.dataset.workspacePaneId;
+      const id = selectedWorkspaceAgent(this.element);
       if (id !== this.parentId) {
         this.stop();
         this.parentId = id;
@@ -42,7 +41,7 @@ export function createSubagentsController(Controller: WorkspaceClientControllerC
       }
       if (!id || document.hidden || !this.element.checkVisibility()) { this.stop(); return; }
       if (!this.tree) {
-        this.tree = window.AtelierCable!.subscribe(CableTopics.subagents(this.workspaceIdValue, id), {
+        this.tree = window.AtelierCable!.subscribe(CableTopics.module("subagents", this.workspaceIdValue, { conversationId: id }), {
           onReady: () => this.restore(),
           onDisconnected: () => {
             for (const child of this.children.values()) child.subscription.unsubscribe();
@@ -99,7 +98,7 @@ export function createSubagentsController(Controller: WorkspaceClientControllerC
       if (!this.reveal) return;
       const branch = this.branchTargets.find((branch) => branch.dataset.subagentId === this.reveal);
       if (!branch) return;
-      const target = this.message ? branch.querySelector<HTMLElement>(`[data-communication-id="${CSS.escape(this.message)}"]`) : branch;
+      const target = this.message ? branch.querySelector<HTMLElement>(`[data-transcript-anchor="${CSS.escape(this.message)}"]`) : branch;
       if (target) {
         if (target instanceof HTMLDetailsElement) target.open = true;
         target.scrollIntoView({ block: "center" });
