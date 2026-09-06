@@ -5,7 +5,7 @@ import { dirname, join } from "node:path";
 import { fileURLToPath } from "node:url";
 import { requireDocker, runDocker, shellQuote, type AtelierEventBus } from "@atelier/core";
 import { runHostObservableCommand, tailTerminalText } from "@atelier/observable-terminal/server";
-import { buildWorkspaceImageCarrier, defaultAtelierWorkspaceImageSpecifier, findWorkspaceImageCarrier, nativeLinuxDockerPlatform, nestedDockerDaemonInitScript, type ResolvedDockerImagePreload } from "./carrier.ts";
+import { buildWorkspaceImageCarrier, defaultAtelierWorkspaceImageSpecifier, findWorkspaceImageCarrier, nativeLinuxDockerPlatform, type ResolvedDockerImagePreload } from "./carrier.ts";
 import { parseWorkspaceImageMetadata, type WorkspaceImageMetadata } from "./metadata.ts";
 import { pruneSupersededWorkspaceImages, workspaceImageKindLabel, type WorkspaceImageKind } from "./prune.ts";
 import { dockerImageStoreQueue, workspaceImageStoreWaitReporter } from "./image-store-queue.ts";
@@ -394,13 +394,9 @@ export function dockerImagePreloadVerificationInitScript(refs: string[]): string
   return `for ref in ${quoted}; do docker image inspect "$ref" >/dev/null || { echo "preloaded Docker image is missing: $ref" >&2; exit 1; }; done`;
 }
 
-function carrierInitScripts(preload: ResolvedDockerImagePreload): string[] {
-  return [nestedDockerDaemonInitScript(), dockerImagePreloadVerificationInitScript(preload.refs)];
-}
-
 export async function prepareWorkspaceImageCarrier(options: { resolution: WorkspaceImageResolution; platform: string; preload: ResolvedDockerImagePreload; events?: AtelierEventBus; workspaceId?: string; onProgress?: (message: string) => void | Promise<void> }): Promise<WorkspaceImageCarrierResolution> {
   const carrier = await buildWorkspaceImageCarrier({ baseImage: options.resolution.image, baseIdentity: await dockerImageId(options.resolution.image), platform: options.platform, preload: options.preload, events: options.events, workspaceId: options.workspaceId, onProgress: options.onProgress });
-  return { image: carrier.image, key: carrier.key, path: carrier.kind, initScripts: carrierInitScripts(options.preload) };
+  return { image: carrier.image, key: carrier.key, path: carrier.kind, initScripts: [dockerImagePreloadVerificationInitScript(options.preload.refs)] };
 }
 
 async function inspectWorkspaceImageResolution(options: Pick<ResolveWorkspaceImageOptions, "sourcePath"> = {}): Promise<WorkspaceImageResolution | undefined> {

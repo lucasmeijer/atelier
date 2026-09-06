@@ -133,6 +133,14 @@ Use the Work pane `+` menu or mobile More sheet to open Work views:
 
 Work views can be selected, reordered, and closed inside the single contextual Work pane.
 
+### Docker and Compose
+
+Every workspace includes Docker, Docker Compose, Buildx, and a running private Docker daemon. You can use `docker build`, `docker run`, and `docker compose up --build` directly, without an Atelier configuration file or installing a daemon. Build from your local checkout to preview changes rather than running only a published application image.
+
+For a Compose app, publish its web service on a workspace port from `3000` through `3010`, then open that port in a Browser view. The inner daemon uses `fuse-overlayfs` to support building images inside the workspace container.
+
+Each workspace has its own Docker images, build cache, containers, and named volumes. Parking stops the workspace and its Docker daemon; unpark to restart the daemon, then use `docker compose up -d` to start services that do not restart automatically. The Docker store survives parking but is removed when the workspace is deleted; it is not shared with other workspaces.
+
 ## 6. Previewing Apps and Outputs
 
 Atelier exposes workspace web servers on ports `3000` through `3010`. Start dev servers on one of those ports, bind them to all interfaces (`0.0.0.0`), then open a Browser view to preview them.

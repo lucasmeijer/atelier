@@ -4,7 +4,7 @@ import { dirname, join } from "node:path";
 import { AtelierCoreError, atelierDataPath, createProcessFileLock, dockerHostAtelierDataPath, getAtelierRuntimeContext, gitHubCredentialHelperShellBody, invalidArguments, isJsonObject, requireDocker, runDocker, runDockerBuffer, shellQuote, type AtelierEventBus, type CommandInput, type JsonObject } from "@atelier/core";
 import { runHostObservableCommand, stripTerminalControls, tailTerminalText } from "@atelier/observable-terminal/server";
 import type { WorkspaceServerProvisioningHook } from "@atelier/shared";
-import { ensureDefaultWorkspaceImage, inspectWorkspaceImage, nativeLinuxDockerPlatform, prepareWorkspaceImageCarrier, resolveDockerImagePreload, resolveWorkspaceImageResolution, type WorkspaceImageResolution } from "@atelier/workspace-image";
+import { ensureDefaultWorkspaceImage, inspectWorkspaceImage, nativeLinuxDockerPlatform, nestedDockerDaemonInitScript, prepareWorkspaceImageCarrier, resolveDockerImagePreload, resolveWorkspaceImageResolution, type WorkspaceImageResolution } from "@atelier/workspace-image";
 import { Type } from "typebox";
 import { Value } from "typebox/value";
 import { seedConfigInstallScript } from "./startup-scripts.ts";
@@ -551,6 +551,7 @@ export async function createWorkspace(options: CreateWorkspaceOptions = {}): Pro
       activePlan.image ??= forkImage;
       if (forkImage && carrierPlatform) imageResolution = { image: forkImage, defaultImage: await ensureDefaultWorkspaceImage() };
     }
+    activePlan.initScripts.push(nestedDockerDaemonInitScript());
     if (activePlan.preloadDockerImages?.length && imageResolution && carrierPlatform) {
       const preload = await provisionStep(options.events, id, "workspace.docker-images", "Resolve nested Docker images", () => resolveDockerImagePreload({ specs: activePlan.preloadDockerImages!, workspaceResolution: imageResolution, events: options.events, workspaceId: id }), { output: (result) => result.images.map((image) => `${image.sourceRef} ${image.imageId}${image.aliases.length ? `\n  aliases: ${image.aliases.join(", ")}` : ""}`).join("\n") });
       let carrierProgress = "";

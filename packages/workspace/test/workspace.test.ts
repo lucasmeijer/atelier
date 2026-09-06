@@ -38,6 +38,7 @@ declare module "@atelier/workspace" {
 setDefaultTimeout(300_000);
 
 const testNamespace = createTestNamespace("test-workspace");
+const nativeDockerTest = await nativeLinuxDockerPlatform() ? test : test.skip;
 let reusableWorkspaceId: string | undefined;
 
 async function getReusableWorkspaceId(): Promise<string> {
@@ -85,6 +86,61 @@ describe("core workspaces", () => {
 
     expect(created.id).toMatch(/^[0-9a-f]{8}$/);
     expect((await listWorkspaces()).workspaces).toContainEqual({ id: created.id, title: null });
+  });
+
+  test("default workspaces include Compose and start a private Docker daemon", async () => {
+    const id = await getReusableWorkspaceId();
+    const info = await execWorkspaceCommand(id, ["docker", "info", "--format", "{{.Driver}}"]);
+    expect(info.exitCode).toBe(0);
+    expect(info.stdout.trim()).toBe("fuse-overlayfs");
+    const compose = await execWorkspaceCommand(id, ["docker", "compose", "version"]);
+    expect(compose.exitCode, compose.stderr).toBe(0);
+    expect(compose.stdout).toContain("Docker Compose version");
+  });
+
+  // LinuxKit can reject security.capability reads on FUSE executables before
+  // fuse-overlayfs receives the request. Verify builds on a native Linux host.
+  nativeDockerTest("default workspaces build and run Compose services and retain Docker data across parking", async () => {
+    const { id } = await createDisposableWorkspace();
+    const build = await execWorkspaceShell(id, `set -eu
+mkdir -p /tmp/compose-test
+cd /tmp/compose-test
+cat > Dockerfile <<'DOCKERFILE'
+FROM alpine:3.22
+RUN printf 'nested build works' > /message
+DOCKERFILE
+cat > compose.yaml <<'COMPOSE'
+services:
+  app:
+    build: .
+    image: atelier-default-docker-test
+    volumes:
+      - data:/data
+volumes:
+  data:
+COMPOSE
+docker compose build`);
+    expect(build.exitCode, build.stdout + build.stderr).toBe(0);
+    const run = await execWorkspaceShell(id, "cd /tmp/compose-test && docker compose run --rm app sh -c 'cat /message; echo persisted > /data/message'");
+    expect(run.exitCode, run.stderr).toBe(0);
+    expect(run.stdout.trim()).toBe("nested build works");
+
+    const otherId = await getReusableWorkspaceId();
+    const isolated = await execWorkspaceCommand(otherId, ["docker", "image", "inspect", "atelier-default-docker-test"]);
+    expect(isolated.exitCode).not.toBe(0);
+
+    // Force a stale PID that is guaranteed to name an unrelated process on resume.
+    const stalePid = await docker(["exec", "--user", "root", workspaceContainerName(id), "sh", "-c", "echo 1 > /var/run/docker/containerd/containerd.pid"]);
+    expect(stalePid.exitCode, stalePid.stderr).toBe(0);
+    await setWorkspaceParked(id, true);
+    expect((await docker(["inspect", "--format", "{{.State.Running}}", workspaceContainerName(id)])).stdout.trim()).toBe("false");
+    await setWorkspaceParked(id, false);
+    const resumed = await execWorkspaceShell(id, `set -eu
+for i in $(seq 1 300); do docker info >/dev/null 2>&1 && break; sleep .1; done
+cd /tmp/compose-test
+docker compose run --rm app cat /data/message`);
+    expect(resumed.exitCode, resumed.stderr).toBe(0);
+    expect(resumed.stdout.trim()).toBe("persisted");
   });
 
   test("listWorkspaces marks a workspace when its project now resolves to a different image", async () => {
