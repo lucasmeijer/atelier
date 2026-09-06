@@ -370,9 +370,18 @@ export const entries: CatalogueEntry[] = [
     title: "Popup",
     when: "Compact choices anchored to a disclosure. Prefer popupHtml: one call owns trigger, anchor, ARIA and native popover behavior.",
     contract:
-      "Unique id per instance. Items need menuitem or menuitemradio roles and native actions. Escape closes; arrows move through enabled items. Placement flips at viewport edges. The package owns trigger linkage and positioning; trigger.attributesHtml and menuAttributesHtml connect application behavior without supplying class or style. Try the REAL viewport corners in the edge laboratory.",
+      "Unique id per instance. Items need menuitem or menuitemradio roles and native actions. Escape closes; arrows move through enabled items. Placement flips at viewport edges. Trigger captions stay on one line and truncate in constrained containers; menus expose the full choices. The package owns trigger linkage and positioning; trigger.attributesHtml and menuAttributesHtml connect application behavior without supplying class or style. Try the REAL viewport corners in the edge laboratory.",
     imports: { popup: "popupHtml", "action-item": "actionItemHtml" },
     examples: [
+      {
+        title: "Constrained trigger · single-line caption",
+        render: () => `<div style="width: 180px">${popupHtml({
+          id: "catalogue-popup-constrained",
+          label: "Model",
+          trigger: { variant: "secondary", content: { kind: "caption", caption: "An unusually long model name" } },
+          contentHtml: actionItemHtml({ kind: "single", label: { kind: "text", text: "An unusually long model name" }, element: { tag: "button", attributesHtml: 'type="button" role="menuitemradio" aria-checked="true"' } }),
+        })}</div>`,
+      },
       {
         title: "Anchored menu · disabled · long option",
         render: () =>

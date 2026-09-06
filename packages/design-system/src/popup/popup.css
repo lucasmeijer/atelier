@@ -4,6 +4,9 @@
 /* Positioning is shared by both Stimulus popup controllers. Do not use CSS anchor
  * positioning: WebKit misplaces fixed triggers after the document has scrolled. */
 .popup-menu-anchor { display: inline-flex; min-width: 0; max-width: 100%; }
+/* Compact popup triggers stay on one line; the menu exposes the full choices. */
+.popup-menu-anchor > .button { min-width: 0; max-width: 100%; }
+.popup-menu-anchor > .button > .button__caption { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .popup-menu { visibility: hidden; }
 
 .popup-menu .action-item.is-danger { color: var(--danger); }

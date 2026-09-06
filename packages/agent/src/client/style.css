@@ -167,9 +167,6 @@
 }
 .composer-input::placeholder { color: var(--text-muted); }
 
-.composer-actions { position: absolute; right: 8px; bottom: 8px; display: flex; align-items: center; gap: 8px; padding: 0; z-index: 1; }
-.composer-actions .spacer { display: none; }
-
 .composer-selection { max-width: 170px; padding: 1px 2px; border: 1px solid transparent; border-radius: var(--radius-control); background: transparent; cursor: pointer; }
 .composer-selection:hover { border-color: var(--line-strong); background: var(--panel); color: var(--text-bright); }
 
@@ -197,6 +194,8 @@
 
 .composer {
   --composer-control-inset: 10px;
+  --composer-control-size: 26px;
+  --composer-controls-min-height: calc(2 * var(--composer-control-size) + 3 * var(--composer-control-inset));
   position: relative; z-index: 2;
   padding: 0 var(--agent-inline-gutter) calc(1.375rem + env(safe-area-inset-bottom, 0));
   pointer-events: none;
@@ -223,29 +222,26 @@
 .agent-transcript-navigation[hidden] { display: none; }
 .composer-surface form { min-height: calc(1.5em * 2 + 21px); }
 .composer-input-area { position: relative; }
-.composer-input { font: 400 var(--text-body)/var(--leading-copy) var(--font-sans); padding: 12px 58px 6px 16px; min-height: calc(1.5em * 2 + 21px); max-height: var(--composer-input-max-height); }
+.composer-input { font: 400 var(--text-body)/var(--leading-copy) var(--font-sans); padding: 12px calc(var(--composer-control-size) + 2 * var(--composer-control-inset)) 6px 16px; min-height: max(var(--composer-controls-min-height), calc(1.5em * 2 + 21px)); max-height: var(--composer-input-max-height); }
 .composer-input-area [data-transcription-composer-target="button"] { position: absolute; top: var(--composer-control-inset); right: var(--composer-control-inset); }
 .composer-input::placeholder { color: var(--text-muted); font: inherit; }
 .agent-pane .composer-input {
-  min-height: calc(1.5em * 4 + 21px);
+  min-height: max(var(--composer-controls-min-height), calc(1.5em * 4 + 21px));
   padding-bottom: 12px;
 }
-.composer-actions { position: absolute; left: 10px; right: 10px; bottom: 38px; display: flex; align-items: center; gap: 6px; padding: 0; pointer-events: none; }
+/* The form ends above the footer: anchor actions inside it, without a footer offset. */
+.composer-actions { position: absolute; z-index: 1; left: var(--composer-control-inset); right: var(--composer-control-inset); bottom: var(--composer-control-inset); display: flex; align-items: center; gap: 6px; padding: 0; pointer-events: none; }
 @media (max-width: 700px) {
   .composer-input { font-size: 16px; }
-  .agent-pane .composer-input { min-height: calc(1.5em * 4 + 30px); }
-  .composer-actions { bottom: 44px; }
+  .agent-pane .composer-input { min-height: max(var(--composer-controls-min-height), calc(1.5em * 4 + 30px)); }
   [data-agent-quick-launch]::after { display: none; }
 }
 .composer-actions > * { pointer-events: auto; }
 .composer-actions .spacer { display: block; flex: 1; }
-/* Reserve the stop control's horizontal hit area instead of letting the spacer
- * occupy the same flex-space underneath its absolutely positioned button. */
-.composer-primary-action { position: relative; z-index: 1; flex: 0 0 26px; }
-.composer-actions .activity-button { position: absolute; z-index: 1; right: 0; top: 0; translate: 0 calc(-50% + 9px); padding: 0; border-radius: var(--radius-round); overflow: visible; pointer-events: auto; }
-.composer-actions .activity-button__content { padding: 0; }
-@media (max-width: 700px) {
-  .composer-primary-action { flex-basis: 50px; }
+/* Keep the control in flow so its shared button dimensions size the action row. */
+.composer-primary-action { display: inline-flex; flex: 0 0 auto; }
+@media (max-width: 700px), (pointer: coarse) {
+  .composer { --composer-control-size: 50px; }
 }
 
 .agent-completion-menu-host { position: absolute; z-index: 20; }
@@ -257,7 +253,7 @@
  * are visible; keep the transparent remainder click-through so it does not
  * cover the send/stop button sharing the same row. */
 .composer-surface > .agent-completion-menu-host:has(> .agent-quick-launches) {
-  right: var(--composer-control-inset); bottom: calc(var(--composer-footer-height) + 8px); left: var(--composer-control-inset);
+  right: var(--composer-control-inset); bottom: calc(var(--composer-footer-height) + var(--composer-control-inset)); left: var(--composer-control-inset);
   pointer-events: none;
 }
 .composer-surface > .agent-completion-menu-host:has(> .agent-quick-launches) [data-agent-quick-launch] { pointer-events: auto; }
@@ -273,7 +269,10 @@
 .agent-template-preview { margin: 0; padding: 12px; white-space: pre-wrap; font-family: var(--font-mono); line-height: var(--leading-standard); color: var(--text-bright); background: var(--panel); }
 .atelier-fullscreen-html .agent-template-preview { max-width: 980px; margin: 0 auto; background: var(--panel); border: 1px solid var(--line); border-radius: var(--radius-surface); }
 .agent-file-path { font-family: var(--font-mono); font-weight: var(--weight-semibold); }
-/* Composer footer */
+/* Composer footer: preserve shared touch targets and room around their borders. */
+@media (max-width: 700px), (pointer: coarse) {
+  .composer-surface { --composer-footer-height: 52px; }
+}
 .composer-footer { position: absolute; left: 0; right: 0; bottom: 0; z-index: 3; height: var(--composer-footer-height); display: flex; align-items: center; gap: 8px; overflow: hidden; padding: 0 12px; border-top: 1px solid var(--line); background: color-mix(in srgb, var(--bg) 72%, transparent); font: inherit; }
 .agent-stat { height: 24px; display: inline-flex; align-items: center; gap: 4px; line-height: 24px; white-space: nowrap; }
 .agent-stat b { color: inherit; font: inherit; }
@@ -282,7 +281,7 @@
 .agent-ctx-meter { width: 46px; height: 4px; overflow: hidden; border-radius: var(--radius-indicator); background: var(--line); }
 .agent-ctx-meter i { display: block; height: 100%; border-radius: var(--radius-indicator); background: var(--text-muted); }
 .composer-selections { min-width: 0; flex: 1 1 0; display: inline-flex; align-items: center; justify-content: flex-end; gap: 4px; margin-left: auto; }
-.composer-selection-field { min-width: 0; display: inline-flex; align-items: center; }
+.composer-selection-field { flex-shrink: 0; min-width: 0; display: inline-flex; align-items: center; }
 /* Keep shared Composer selections available before secondary AgentPaneComposer statistics. */
 @container (max-width: 500px) {
   .agent-stat[title="Session cost"] { display: none; }
