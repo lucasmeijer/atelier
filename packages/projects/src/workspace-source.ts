@@ -1,4 +1,3 @@
-import { AsyncLocalStorage } from "node:async_hooks";
 import { createHash } from "node:crypto";
 import { existsSync } from "node:fs";
 import { appendFile, mkdir, readFile, readdir, realpath, rename, rm, stat, writeFile } from "node:fs/promises";
@@ -53,7 +52,6 @@ type WorkspaceSourceMetadata = Static<typeof workspaceSourceMetadataSchema>;
 const withTemplateLock = createKeyedOperationQueue();
 const reflinkSupportByDir = new Map<string, Promise<boolean>>();
 const regularCopyWarnings = new Set<string>();
-const provisionLog = new AsyncLocalStorage<string>();
 const cloneProvisionStep = { id: "project.git", label: "Clone project", parentId: "workspace.source" } as const;
 
 function sourceRoot(): string {
@@ -92,8 +90,6 @@ function workspaceWorktreePath(workspaceId: string): string {
 }
 
 async function command(name: string, args: string[], options: { env?: Record<string, string | undefined> } = {}): Promise<CommandResult> {
-  const logPath = provisionLog.getStore();
-  if (logPath) await appendFile(logPath, `\n$ ${[name, ...args].map(shellQuote).join(" ")}\n`).catch(() => undefined);
   let proc: Bun.Subprocess<"ignore", "pipe", "pipe">;
   try {
     proc = Bun.spawn([name, ...args], {
@@ -113,7 +109,6 @@ async function command(name: string, args: string[], options: { env?: Record<str
     new Response(proc.stderr).text(),
     proc.exited,
   ]);
-  if (logPath) await appendFile(logPath, `${stdout}${stderr}`).catch(() => undefined);
   return { exitCode, stdout, stderr };
 }
 
@@ -330,7 +325,7 @@ export async function prepareWorkspaceSource(options: { workspaceId: string; git
 
     try {
       await writeFile(logPath, `Preparing project ${gitUrl}${branch ? `#${branch}` : ""}\n`);
-      const template = await provisionLog.run(logPath, () => ensureTemplate(gitUrl, branch, key, { workspaceId: options.workspaceId, events: options.events, logPath }));
+      const template = await ensureTemplate(gitUrl, branch, key, { workspaceId: options.workspaceId, events: options.events, logPath });
       await copyWorkspaceTemplate(template.repoPath, tmpWorkPath, sourceRoot());
       await verifyStandaloneWorktree(tmpWorkPath);
       await rm(worktreePath, { recursive: true, force: true });
