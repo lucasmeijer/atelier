@@ -49,7 +49,7 @@ import { atelierOpenApi } from "./openapi.ts";
 import { parseCloseWorkViewRequest, parseReorderWorkViewRequest } from "./work-view-api.ts";
 import { Type } from "typebox";
 import { Value } from "typebox/value";
-import { agentTabsTurboStream, openWorkViewTurboStream, presentWorkViewTurboStream, removeWorkspaceResidentTurboStream, renderAgentBodyFrame, renderAtelierBar, renderWorkViewBodyFrame, renderWorkspaceDeletionPresentation, renderWorkspacePane, renderWorkspacePresentation, selectAgentTurboStream, workspacePaneCollectionsTurboStream, workspacePaneOnboardingState, workspacePreparationInvalidatedTurboStream, workspacePresentationDomId, workViewsTurboStream, type AgentPaneContribution, type WorkPaneContribution, type WorkspacePaneEntry, type WorkspacePanePresentation, type WorkspacePresentation as FixedWorkspacePresentation } from "./workspace-presentation.ts";
+import { agentTabsTurboStream, openWorkViewTurboStream, presentWorkViewTurboStream, removeWorkspaceResidentTurboStream, renderAgentBodyFrame, renderAtelierBar, renderMobileWorkspaceBar, renderWorkViewBodyFrame, renderWorkspaceDeletionPresentation, renderWorkspacePane, renderWorkspacePresentation, selectAgentTurboStream, workspacePaneCollectionsTurboStream, workspacePaneOnboardingState, workspacePreparationInvalidatedTurboStream, workspacePresentationDomId, workViewsTurboStream, type AgentPaneContribution, type WorkPaneContribution, type WorkspacePaneEntry, type WorkspacePanePresentation, type WorkspacePresentation as FixedWorkspacePresentation } from "./workspace-presentation.ts";
 import type { CableBroadcastOptions } from "./cable.ts";
 import { jsonResponse, problemJsonResponse, response, turboReplaceStream, turboUpdateStream, wantsTurboStream } from "./http-responses.ts";
 import { createPageLayout } from "./page-layout.ts";
@@ -449,7 +449,7 @@ export function createWebApp(deps: WebAppDeps): WebApp {
     const deleteAction = entry.phase === "failed" ? `<form class="fixed-shell-delete-workspace" method="post" action="/workspaces/${encodeURIComponent(entry.id)}/delete">${deleteButton}</form>` : "";
     const inner = `${provisioning.render(entry.id, { failed: entry.phase === "failed", error: entry.error })}${deleteAction}`;
     const projectAttr = isGitProjectInit(entry.init) ? ` data-project-id="${escapeHtml(entry.init.projectId)}"` : "";
-    return `<div class="workspace-detail-resident workspace-boot ${options.visible ? "visible" : ""}" id="${workspaceBootId(entry.id)}" data-workspace-residency-target="resident" data-workspace-id="${escapeHtml(entry.id)}"${projectAttr}><div class="main"><div class="body"><div class="workspace-boot-content">${inner}</div></div></div></div>`;
+    return `<div class="workspace-detail-resident workspace-boot ${options.visible ? "visible" : ""}" id="${workspaceBootId(entry.id)}" data-workspace-residency-target="resident" data-workspace-id="${escapeHtml(entry.id)}"${projectAttr}><div class="main"><div class="body"><div class="workspace-boot-content">${inner}</div></div></div>${renderMobileWorkspaceBar()}</div>`;
   }
 
   function broadcastWorkspaceBoot(id: string): void {

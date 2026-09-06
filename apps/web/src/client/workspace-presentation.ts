@@ -575,6 +575,10 @@ export function createWorkspacePresentationController(
       destinations.forEach((destination) => { destination.hidden = false; });
       overflowItems.forEach((item) => { item.hidden = true; });
 
+      // Try roomy spacing first, then compact before moving views into More.
+      container.classList.remove("is-compact");
+      container.classList.toggle("is-compact", container.scrollWidth > container.clientWidth);
+
       const overflowed: HTMLElement[] = [];
       for (let index = destinations.length - 1; container.scrollWidth > container.clientWidth && index >= 0; index -= 1) {
         const destination = destinations[index]!;

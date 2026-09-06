@@ -92,7 +92,7 @@ export interface WorkspacePresentation {
 
 type WorkViewIconName = "Browser" | "Code" | "Files" | "Plus" | "Review" | "Terminal";
 
-function topBarButton(label: string, action: string, iconHtml: string, attributes = ""): string {
+function barButton(label: string, action: string, iconHtml: string, attributes = ""): string {
   return buttonHtml({
     type: "button",
     variant: "secondary",
@@ -271,7 +271,7 @@ export function renderWorkspacePane(presentation: WorkspacePanePresentation, sid
   });
   return `<div class="fixed-shell-workspace-pane">${panelHtml({
     element: { tag: "aside",  attributesHtml: 'aria-label="Workspaces"' },
-    headerHtml: `<strong class="panel__title">${Icons.Atelier}Atelier</strong>${buttonGroupHtml({ orientation: "horizontal", semantics: "layout", itemsHtml: `${settings}${topBarButton("Collapse Workspace pane", "click->workspace-navigation#toggleWorkspacePaneCollapsed", Icons.Panel, "data-collapse-workspace-pane")}` })}`,
+    headerHtml: `<strong class="panel__title">${Icons.Atelier}Atelier</strong>${buttonGroupHtml({ orientation: "horizontal", semantics: "layout", itemsHtml: `${settings}${barButton("Collapse Workspace pane", "click->workspace-navigation#toggleWorkspacePaneCollapsed", Icons.Panel, "data-collapse-workspace-pane")}` })}`,
     bodyHtml: renderWorkspacePaneCollections(presentation, sidebarContributionsHtml),
   })}</div>`;
 }
@@ -285,16 +285,13 @@ function workspacePaneHasAttention(presentation: WorkspacePanePresentation): boo
 
 function renderAtelierNextUnreadButton(presentation: WorkspacePanePresentation): string {
   const disabled = workspacePaneHasAttention(presentation) ? "" : " disabled";
-  return buttonHtml({ type: "button", variant: "secondary", content: { kind: "icon-only", iconHtml: Icons.Next, label: "Next unread Workspace" }, attributesHtml: `id="${atelierNextUnreadDomId}" ${disabled} data-action="click->atelier-shortcuts#openOldestAttentionWorkspace"` });
-}
-
-function renderAtelierNewWorkspaceButton(): string {
-  return buttonHtml({ type: "button", variant: "secondary", content: { kind: "icon-only", iconHtml: Icons.Plus, label: "New Workspace With Same Project" }, attributesHtml: ' data-command-id="agent.open-launch-composer" data-action="click->atelier-shortcuts#runCommand"' });
+  return barButton("Next unread Workspace", "click->atelier-shortcuts#openOldestAttentionWorkspace", Icons.Next, `id="${atelierNextUnreadDomId}"${disabled}`);
 }
 
 export function renderAtelierBar(presentation: WorkspacePanePresentation): string {
-  const workspace = buttonHtml({ type: "button", variant: "secondary", content: { kind: "icon-only", iconHtml: Icons.Workspace, label: "Show Workspace pane" }, attributesHtml: ' aria-expanded="false" data-mobile-workspace-destination data-action="click->workspace-navigation#toggleWorkspacePane"' });
-  return `<nav class="fixed-shell-mobile-nav fixed-shell-atelier-bar" aria-label="Atelier">${workspace}<span class="fixed-shell-atelier-actions">${renderAtelierNextUnreadButton(presentation)}${renderAtelierNewWorkspaceButton()}</span></nav>`;
+  const close = barButton("Close workspace list", "click->workspace-navigation#closeWorkspacePane", Icons.Close, "data-close-workspace-pane");
+  const newWorkspace = barButton("New Workspace With Same Project", "click->atelier-shortcuts#runCommand", Icons.Plus, 'data-command-id="agent.open-launch-composer"');
+  return `<nav class="fixed-shell-mobile-nav fixed-shell-atelier-bar" aria-label="Atelier">${close}${renderAtelierNextUnreadButton(presentation)}${newWorkspace}</nav>`;
 }
 
 export function workspacePresentationDomId(workspaceId: string): string {
@@ -379,7 +376,7 @@ function renderAgentActions(presentation: WorkspacePresentation): string {
     cancelCaption: "Oops",
   });
   const deleteWorkspace = `<form class="fixed-shell-delete-workspace" data-turbo="true" method="post" action="/workspaces/${encodeURIComponent(presentation.workspace.id)}/delete">${deleteConfirmation}</form>`;
-  const itemsHtml = `${parkWorkspace}${deleteWorkspace}${topBarButton("Show Work pane", "click->workspace-presentation#toggleWorkPane", Icons.Panel, "data-show-work-pane")}`;
+  const itemsHtml = `${parkWorkspace}${deleteWorkspace}${barButton("Show Work pane", "click->workspace-presentation#toggleWorkPane", Icons.Panel, "data-show-work-pane")}`;
   return buttonGroupHtml({ orientation: "horizontal", semantics: "layout", itemsHtml });
 }
 
@@ -387,7 +384,7 @@ function renderAgentPane(presentation: WorkspacePresentation): string {
   const panes = presentation.agentConversations.map((agent) => renderAgentPaneSlot(presentation.workspace.id, agent)).join("");
   return `<div class="fixed-shell-agent-pane">${panelHtml({
     element: { tag: "section",  attributesHtml: 'data-workspace-role-region="agent" data-workspace-presentation-target="agentPane" aria-label="Agent"' },
-    headerHtml: `${topBarButton("Show Workspace pane", "click->workspace-navigation#toggleWorkspacePaneCollapsed", Icons.Panel, "data-show-workspace-pane")}<div id="${agentNavigationDomId(presentation.workspace.id)}" class="fixed-shell-agent-navigation">${renderAgentNavigation(presentation)}</div><div id="${agentActionsDomId(presentation.workspace.id)}" class="fixed-shell-agent-actions">${renderAgentActions(presentation)}</div>`,
+    headerHtml: `${barButton("Show Workspace pane", "click->workspace-navigation#toggleWorkspacePaneCollapsed", Icons.Panel, "data-show-workspace-pane")}<div id="${agentNavigationDomId(presentation.workspace.id)}" class="fixed-shell-agent-navigation">${renderAgentNavigation(presentation)}</div><div id="${agentActionsDomId(presentation.workspace.id)}" class="fixed-shell-agent-actions">${renderAgentActions(presentation)}</div>`,
     bodyHtml: `<div id="${agentBodiesDomId(presentation.workspace.id)}" class="fixed-shell-agent-bodies">${panes}</div>`,
   })}</div>`;
 }
@@ -501,7 +498,7 @@ function renderWorkPane(presentation: WorkspacePresentation): string {
   }) : "";
   return `<div class="fixed-shell-work-pane">${panelHtml({
     element: { tag: "section",  attributesHtml: 'data-workspace-role-region="work" data-workspace-presentation-target="workPane" aria-label="Work"' },
-    headerHtml: `<div id="${workViewDomId(presentation.workspace.id, "selectors")}" class="fixed-shell-work-view-selectors" role="tablist" aria-label="Work views">${selectors}</div><span id="${workViewDomId(presentation.workspace.id, "launchers")}">${addMenu}</span>${topBarButton("Collapse Work pane", "click->workspace-presentation#toggleWorkPane", Icons.Panel, "data-collapse-work-pane")}`,
+    headerHtml: `<div id="${workViewDomId(presentation.workspace.id, "selectors")}" class="fixed-shell-work-view-selectors" role="tablist" aria-label="Work views">${selectors}</div><span id="${workViewDomId(presentation.workspace.id, "launchers")}">${addMenu}</span>${barButton("Collapse Work pane", "click->workspace-presentation#toggleWorkPane", Icons.Panel, "data-collapse-work-pane")}`,
     bodyHtml: `<div id="${workViewDomId(presentation.workspace.id, "bodies")}" class="fixed-shell-work-bodies">${panes || `<div id="${workViewDomId(presentation.workspace.id, "empty")}" class="fixed-shell-empty-work empty-state">Open Files, a file, terminal, or browser to work alongside the Agent.</div>`}</div><div class="fixed-shell-work-resizer" role="separator" aria-label="Resize Work pane" aria-orientation="vertical" tabindex="0" data-action="pointerdown->workspace-presentation#beginWorkResize keydown->workspace-presentation#resizeWorkWithKeyboard"></div>`,
   })}</div>`;
 }
@@ -553,6 +550,14 @@ function renderMobileWorkViewCloser(view: WorkPaneContribution): string {
 const mobileLauncherCommandIds = new Set(["files.create", "terminal.create", "terminal.attach", "browser.create", "vscode.open"]);
 const mobileMoreAttentionHtml = '<i class="status-dot attention" aria-label="Hidden Attention" data-mobile-overflow-attention hidden></i>';
 
+export function renderMobileWorkspaceBar(destinationsHtml = "", moreMenuHtml = ""): string {
+  const workspace = barButton("Show workspaces", "click->workspace-navigation#showWorkspacePane", Icons.Workspace, "data-show-workspace-list");
+  return `<nav class="fixed-shell-mobile-nav fixed-shell-workspace-bar" aria-label="Current Workspace destinations">
+    <div class="fixed-shell-mobile-scroll" data-mobile-overflow-container>${workspace}${destinationsHtml}</div>
+    ${moreMenuHtml}
+  </nav>`;
+}
+
 function renderWorkspaceBar(presentation: WorkspacePresentation): string {
   const agentsDestination = renderMobileDestination("Agents", "agents", Icons.Agent);
   const workViews = renderMobileWorkViews(presentation.workViews);
@@ -563,14 +568,11 @@ function renderWorkspaceBar(presentation: WorkspacePresentation): string {
     id: moreMenuId, label: "More", placement: "above",
     trigger: { variant: "secondary", content: { kind: "icon-only", iconHtml: `${Icons.More}<span id="${workViewDomId(presentation.workspace.id, "mobile_more_attention")}">${mobileMoreAttentionHtml}</span>`, label: "More" }, attributesHtml: "data-mobile-more" },
     menuAttributesHtml: 'data-workspace-presentation-target="moreMenu" data-action="toggle->workspace-presentation#syncMore"',
-    contentHtml: `<span id="${workViewDomId(presentation.workspace.id, "mobile_overflow")}" class="fixed-shell-mobile-work-items action-list">${workViews.overflowItems}</span>
+    contentHtml: `<span id="${workViewDomId(presentation.workspace.id, "mobile_overflow")}" class="contents action-list">${workViews.overflowItems}</span>
       ${launchers ? `<hr class="popup-menu__separator" data-mobile-overflow-separator hidden>${launchers}` : ""}
       <div id="${workViewDomId(presentation.workspace.id, "mobile_closers")}" class="fixed-shell-more-close-section">${closers}</div>`,
   });
-  return `<nav class="fixed-shell-mobile-nav fixed-shell-workspace-bar" aria-label="Current Workspace destinations">
-    <div class="fixed-shell-mobile-scroll" data-mobile-overflow-container>${agentsDestination}<span id="${workViewDomId(presentation.workspace.id, "mobile_destinations")}" class="fixed-shell-mobile-work-items">${workViews.destinations}</span></div>
-    ${moreMenu}
-  </nav>`;
+  return renderMobileWorkspaceBar(`${agentsDestination}<span id="${workViewDomId(presentation.workspace.id, "mobile_destinations")}" class="contents">${workViews.destinations}</span>`, moreMenu);
 }
 
 export function renderWorkspaceDeletionPresentation(workspaceId: string, deletion: WorkspaceDeletionState, evidenceHtml = ""): string {
@@ -594,7 +596,7 @@ export function renderWorkspaceDeletionPresentation(workspaceId: string, deletio
     content = `<div class="workspace-deletion-heading"><h1>${deletion.operation === "checking" ? "Deletion review failed" : "Workspace deletion failed"}</h1><p class="workspace-deletion-error">${escapeHtml(deletion.error)}</p></div><footer class="workspace-deletion-actions"><form method="post" action="/workspaces/${id}/delete/cancel" data-turbo="true">${deletionButton("Cancel deletion")}</form><form method="post" action="/workspaces/${id}/delete/retry" data-turbo="true">${deletionButton("Retry review")}</form>${bypass}</footer>`;
   }
   const role = deletion.status === "failed" ? ' role="alert"' : deletion.status === "blocked" ? "" : ' role="status"';
-  return `<div id="${domId("fixed_workspace", workspaceId)}" class="fixed-workspace-presentation workspace-deletion-presentation" data-workspace-id="${escapeHtml(workspaceId)}" data-workspace-commands="[]"><main class="workspace-deletion-state" data-deletion-status="${deletion.status}"${role}>${content}</main></div>`;
+  return `<div id="${domId("fixed_workspace", workspaceId)}" class="fixed-workspace-presentation workspace-deletion-presentation" data-workspace-id="${escapeHtml(workspaceId)}" data-workspace-commands="[]"><main class="workspace-deletion-state" data-deletion-status="${deletion.status}"${role}>${content}</main>${renderMobileWorkspaceBar()}</div>`;
 }
 
 export function renderWorkspacePresentation(presentation: WorkspacePresentation): string {

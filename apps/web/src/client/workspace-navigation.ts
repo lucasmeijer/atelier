@@ -1,5 +1,5 @@
 import { Controller } from "@hotwired/stimulus";
-import { phoneLayoutMediaQuery, recentWorkspaceProjectStorageKey } from "@atelier/shared";
+import { recentWorkspaceProjectStorageKey } from "@atelier/shared";
 import { Type } from "typebox";
 import { Value } from "typebox/value";
 import { cableRequestHeaders } from "./workspace-cable.ts";
@@ -37,15 +37,8 @@ class EmptyWorkspaceOnboardingController extends Controller<HTMLElement> {
     const origin = this.originTarget.getBoundingClientRect();
     if (origin.width === 0) return;
     const start = { x: origin.left + origin.width / 2, y: origin.bottom + 12 };
-    const app = this.element.closest(".fixed-shell-app")!;
-    const isPhone = window.matchMedia(phoneLayoutMediaQuery).matches;
-    const workspacePaneOpen = app.classList.contains("is-mobile-workspace-pane-open");
-    const pointToMobileNavigation = isPhone && !workspacePaneOpen;
-    const destinationSelector = pointToMobileNavigation
-      ? "[data-mobile-workspace-destination]"
-      : `[data-empty-workspace-onboarding-destination="${this.destinationValue}"]`;
-    const destination = document.querySelector<HTMLElement>(destinationSelector)!.getBoundingClientRect();
-    const end = { x: isPhone && workspacePaneOpen ? destination.left - 5 : destination.right + 5, y: destination.top + destination.height / 2 };
+    const destination = document.querySelector<HTMLElement>(`[data-empty-workspace-onboarding-destination="${this.destinationValue}"]`)!.getBoundingClientRect();
+    const end = { x: destination.right + 5, y: destination.top + destination.height / 2 };
     const horizontalDirection = end.x >= start.x ? 1 : -1;
     const horizontalBend = Math.min(180, Math.max(40, Math.abs(end.x - start.x) * 0.7));
     const verticalBend = Math.min(150, Math.max(70, Math.abs(end.y - start.y) * 0.45));
@@ -77,8 +70,9 @@ class WorkspaceNavigationController extends Controller<HTMLElement> {
     if (this.scrollTimer) clearTimeout(this.scrollTimer);
   }
 
-  toggleWorkspacePane(): void {
-    this.setWorkspacePaneOpen(!this.element.classList.contains("is-mobile-workspace-pane-open"));
+  closeWorkspacePane(): void {
+    this.setWorkspacePaneOpen(false);
+    this.element.querySelector<HTMLElement>(".workspace-detail-resident.visible [data-show-workspace-list]")!.focus();
   }
 
   showWorkspacePane(): void {
@@ -106,12 +100,6 @@ class WorkspaceNavigationController extends Controller<HTMLElement> {
 
   private setWorkspacePaneOpen(open: boolean): void {
     this.element.classList.toggle("is-mobile-workspace-pane-open", open);
-    const destination = this.element.querySelector<HTMLElement>("[data-mobile-workspace-destination]")!;
-    const label = open ? "Hide Workspace pane" : "Show Workspace pane";
-    destination.setAttribute("aria-label", label);
-    destination.setAttribute("title", label);
-    destination.setAttribute("aria-expanded", String(open));
-    destination.setAttribute("aria-current", open ? "page" : "false");
   }
 
   private readonly mobileResidentDestinationSelected = (): void => this.setWorkspacePaneOpen(false);
