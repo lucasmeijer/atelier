@@ -132,7 +132,7 @@ describe("registry helpers", () => {
       }
       if (url.startsWith("https://ghcr.io/token")) return Response.json({ token: "token" });
       if (url.endsWith("/manifests/stable")) return Response.json({ config: { digest: "sha256:config" } }, { headers: { "docker-content-digest": "sha256:manifest" } });
-      if (url.endsWith("/blobs/sha256:config")) return Response.json({ config: { Labels: { "org.opencontainers.image.revision": "new", "com.atelier.self-update-compatibility": "contract-v1" } } });
+      if (url.endsWith("/blobs/sha256:config")) return Response.json({ os: "linux", architecture: process.arch === "arm64" ? "arm64" : "amd64", config: { Labels: { "org.opencontainers.image.revision": "new", "com.atelier.self-update-compatibility": "contract-v1" } } });
       throw new Error(`unexpected fetch ${url}`);
     };
     await expect(fetchChannelImageMetadata("stable", fetcher)).resolves.toEqual({ digest: "sha256:manifest", platformDigest: undefined, revision: "new", selfUpdateCompatibility: "contract-v1" });
@@ -143,7 +143,7 @@ describe("registry helpers", () => {
       const fetcher = async (input: URL | RequestInfo) => {
         const url = String(input);
         if (url.endsWith("/manifests/stable")) return Response.json({ config: { digest: "sha256:config" } }, { headers: { "docker-content-digest": "sha256:manifest" } });
-        if (url.endsWith("/blobs/sha256:config")) return Response.json({ config });
+        if (url.endsWith("/blobs/sha256:config")) return Response.json({ os: "linux", architecture: process.arch === "arm64" ? "arm64" : "amd64", config });
         throw new Error(`unexpected fetch ${url}`);
       };
       await expect(fetchChannelImageMetadata("stable", fetcher)).resolves.toEqual({
@@ -161,7 +161,7 @@ describe("registry helpers", () => {
       const url = String(input);
       if (url.endsWith("/manifests/stable")) return Response.json({ manifests: [{ digest: "sha256:platform", platform: { os: "linux", architecture } }] });
       if (url.endsWith("/manifests/sha256:platform")) return Response.json({ config: { digest: "sha256:config" } });
-      if (url.endsWith("/blobs/sha256:config")) return Response.json({ config: { Labels: { "org.opencontainers.image.revision": "indexed" } } });
+      if (url.endsWith("/blobs/sha256:config")) return Response.json({ os: "linux", architecture: process.arch === "arm64" ? "arm64" : "amd64", config: { Labels: { "org.opencontainers.image.revision": "indexed" } } });
       throw new Error(`unexpected fetch ${url}`);
     };
 
@@ -196,7 +196,7 @@ describe("registry helpers", () => {
     const malformedConfig = async (input: URL | RequestInfo) => {
       const url = String(input);
       if (url.endsWith("/manifests/stable")) return Response.json({ config: { digest: "sha256:config" } });
-      if (url.endsWith("/blobs/sha256:config")) return Response.json({ config: { Labels: { revision: 42 } } });
+      if (url.endsWith("/blobs/sha256:config")) return Response.json({ os: "linux", architecture: process.arch === "arm64" ? "arm64" : "amd64", config: { Labels: { revision: 42 } } });
       throw new Error(`unexpected fetch ${url}`);
     };
     await expect(fetchChannelImageMetadata("stable", malformedConfig)).rejects.toThrow();

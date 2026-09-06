@@ -9,6 +9,7 @@ import { buildWorkspaceImageCarrier, defaultAtelierWorkspaceImageSpecifier, find
 import { parseWorkspaceImageMetadata, type WorkspaceImageMetadata } from "./metadata.ts";
 import { pruneSupersededWorkspaceImages, workspaceImageKindLabel, type WorkspaceImageKind } from "./prune.ts";
 import { dockerImageStoreQueue, workspaceImageStoreWaitReporter } from "./image-store-queue.ts";
+import { dockerServerPlatform, nativeImageExists as imageExists } from "./local-images.ts";
 
 export * from "./carrier.ts";
 
@@ -71,17 +72,13 @@ async function contextMetadata(contextDir: string): Promise<WorkspaceImageMetada
   return parseWorkspaceImageMetadata(JSON.parse(await readFile(path, "utf8")));
 }
 
-async function imageExists(tag: string): Promise<boolean> {
-  const result = await runDocker(["image", "inspect", tag]);
-  return result.exitCode === 0;
-}
-
 async function pullImage(tag: string, options: ResolveWorkspaceImageOptions): Promise<void> {
   if (await imageExists(tag)) return;
+  const platform = await dockerServerPlatform();
   const result = await dockerImageStoreQueue.run({
     label: `Pulling workspace image ${tag}`,
     onWait: workspaceImageStoreWaitReporter({ events: options.events, workspaceId: options.workspaceId, parentId: "workspace.image" }),
-  }, () => runDocker(["pull", tag]));
+  }, () => runDocker(["pull", "--platform", platform, tag]));
   if (result.exitCode !== 0) throw new Error(result.stderr.trim() || `docker pull ${tag} failed`);
 }
 
@@ -352,10 +349,11 @@ export function defaultWorkspaceImageLocalAlias(defaultImage: string): string | 
 
 async function ensureOuterImage(ref: string, options: Pick<ResolveWorkspaceImageOptions, "events" | "workspaceId">): Promise<void> {
   if (await imageExists(ref)) return;
+  const platform = await dockerServerPlatform();
   const pulled = await dockerImageStoreQueue.run({
     label: `Pulling nested Docker image ${ref}`,
     onWait: workspaceImageStoreWaitReporter({ events: options.events, workspaceId: options.workspaceId, parentId: "workspace.docker-images" }),
-  }, () => runDocker(["pull", ref]));
+  }, () => runDocker(["pull", "--platform", platform, ref]));
   if (pulled.exitCode !== 0) throw new Error(pulled.stderr.trim() || `docker pull ${ref} failed`);
 }
 

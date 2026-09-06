@@ -1,6 +1,6 @@
 import { designSystemStaticFiles } from "@atelier/design-system/assets";
 import { escapeHtml } from "@atelier/shared";
-import { replacementCreateArgs, dockerExec, dockerContainerInspect, serverHealthUrlFromInspect } from "./docker.ts";
+import { replacementImageId, replacementCreateArgs, dockerExec, dockerContainerInspect, serverHealthUrlFromInspect } from "./docker.ts";
 import { updaterPort } from "./constants.ts";
 import { isReleaseChannel, type ReleaseChannel } from "./channels.ts";
 
@@ -70,8 +70,7 @@ async function run(): Promise<void> {
   try {
     setStep("prepare", "running");
     const inspect = await dockerContainerInspect(options.serverContainer);
-    const image = await dockerExec(["image", "inspect", options.targetImage]);
-    if (image.code !== 0) throw new Error(`${options.targetImage} is not present locally`);
+    const imageId = await replacementImageId(options.targetImage);
     setStep("prepare", "done");
 
     setStep("stop", "running");
@@ -82,7 +81,7 @@ async function run(): Promise<void> {
     setStep("stop", "done");
 
     setStep("start", "running");
-    const createArgs = replacementCreateArgs({ ...inspect, Config: { ...inspect.Config, Image: options.targetImage } }, options.targetImage, options.releaseChannel);
+    const createArgs = replacementCreateArgs({ ...inspect, Config: { ...inspect.Config, Image: options.targetImage } }, imageId, options.releaseChannel);
     const create = await dockerExec(createArgs);
     if (create.code !== 0) throw new Error(create.stderr || "docker create failed");
     const start = await dockerExec(["start", (inspect.Name ?? "atelier").replace(/^\//, "")]);

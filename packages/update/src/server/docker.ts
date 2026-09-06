@@ -291,3 +291,16 @@ export function replacementCreateArgs(inspect: DockerInspect, targetImage = insp
   if (Array.isArray(cmd)) args.push(...cmd);
   return args;
 }
+
+// Return the verified immutable image ID so a tag change cannot swap in another
+// image between validation and replacement of the running server.
+export async function replacementImageId(ref: string, exec: DockerExec = dockerExec): Promise<string> {
+  const host = await exec(["version", "--format", "{{.Server.Os}}/{{.Server.Arch}}"]);
+  if (host.code !== 0) throw new Error(host.stderr.trim() || "could not determine Docker server platform");
+  const image = await exec(["image", "inspect", "--format", "{{.Os}}/{{.Architecture}} {{.Id}}", ref]);
+  if (image.code !== 0) throw new Error(image.stderr.trim() || `${ref} is not present locally`);
+  const [platform, id] = image.stdout.trim().split(/\s+/);
+  if (platform !== host.stdout.trim()) throw new Error(`update image is ${platform}, expected ${host.stdout.trim()}`);
+  if (!id) throw new Error(`Docker did not return an image ID for ${ref}`);
+  return id;
+}

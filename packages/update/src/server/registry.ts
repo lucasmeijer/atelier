@@ -30,6 +30,8 @@ const registryImageManifestSchema = Type.Object({
 const registryManifestSchema = Type.Union([registryIndexSchema, registryImageManifestSchema]);
 
 const registryConfigSchema = Type.Object({
+  os: Type.String(),
+  architecture: Type.String(),
   config: Type.Optional(Type.Union([
     Type.Object({
       Labels: Type.Optional(Type.Union([Type.Record(Type.String(), Type.String()), Type.Null()])),
@@ -78,7 +80,7 @@ export function selectManifestFromIndex(index: Static<typeof registryIndexSchema
   return manifest.digest;
 }
 
-export async function fetchChannelImageMetadata(channel: ReleaseChannel, fetcher: HttpFetcher = fetch): Promise<ImageMetadata> {
+export async function fetchChannelImageMetadata(channel: ReleaseChannel, fetcher: HttpFetcher = fetch, platform = { os: "linux", architecture: currentArch() }): Promise<ImageMetadata> {
   const manifestUrl = `https://ghcr.io/v2/${repository}/manifests/${channel}`;
   const accept = [
     "application/vnd.oci.image.index.v1+json",
@@ -93,14 +95,18 @@ export async function fetchChannelImageMetadata(channel: ReleaseChannel, fetcher
   let platformDigest: string | undefined;
   let imageManifest: Static<typeof registryImageManifestSchema>;
   if ("manifests" in rootManifest) {
-    platformDigest = selectManifestFromIndex(rootManifest);
+    platformDigest = selectManifestFromIndex(rootManifest, platform);
     response = await authFetch(`https://ghcr.io/v2/${repository}/manifests/${platformDigest}`, { headers: { accept } }, fetcher);
     if (!response.ok) throw new Error(`registry platform manifest request failed: ${response.status}`);
     imageManifest = Value.Parse(registryImageManifestSchema, await response.json());
   } else imageManifest = rootManifest;
   const configResponse = await authFetch(`https://ghcr.io/v2/${repository}/blobs/${imageManifest.config.digest}`, { headers: { accept: "application/vnd.oci.image.config.v1+json, application/vnd.docker.container.image.v1+json" } }, fetcher);
   if (!configResponse.ok) throw new Error(`registry config request failed: ${configResponse.status}`);
-  const labels = Value.Parse(registryConfigSchema, await configResponse.json()).config?.Labels ?? {};
+  const config = Value.Parse(registryConfigSchema, await configResponse.json());
+  if (config.os !== platform.os || config.architecture !== platform.architecture) {
+    throw new Error(`update image is ${config.os}/${config.architecture}, expected ${platform.os}/${platform.architecture}`);
+  }
+  const labels = config.config?.Labels ?? {};
   return {
     digest: platformDigest ?? rootDigest,
     platformDigest,

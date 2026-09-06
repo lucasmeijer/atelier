@@ -3,6 +3,7 @@
 import { mkdtempSync, rmSync } from "node:fs";
 import { arch, tmpdir } from "node:os";
 import { join } from "node:path";
+import { registryImageHasPlatforms } from "./image-platforms.ts";
 import { parseWorkspaceImageMetadata } from "@atelier/workspace-image/metadata";
 
 const usage = `Build the Atelier Docker image.
@@ -164,17 +165,9 @@ function localImageHasPlatforms(ref: string, platforms: string[]): boolean {
   return platforms.every((platform) => platform === localPlatform);
 }
 
-function registryImageHasPlatforms(ref: string, platforms: string[]): boolean {
-  const text = maybeRun(["docker", "buildx", "imagetools", "inspect", ref]);
-  if (!text) return false;
-  const available = new Set([...text.matchAll(/^\s*Platform:\s*(\S+)/gm)].map((match) => match[1]!));
-  if (available.size > 0) return platforms.every((platform) => available.has(platform));
-  return platforms.length === 1 && /^MediaType:\s+application\/vnd\..*\.manifest\.v\d\+json$/m.test(text);
-}
-
 function workspaceImageExists(ref: string, options: Options): boolean {
   const platforms = requestedPlatforms(options);
-  return options.push ? registryImageHasPlatforms(ref, platforms) : localImageHasPlatforms(ref, platforms);
+  return options.push ? registryImageHasPlatforms(ref, platforms, maybeRun) : localImageHasPlatforms(ref, platforms);
 }
 
 function sanitizeTag(tag: string): string {
