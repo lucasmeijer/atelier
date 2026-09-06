@@ -404,9 +404,7 @@ function renderWorkViewSelector(workspaceId: string, view: WorkPaneContribution)
   const textAttributesHtml = `id="${workspaceWorkViewLabelDomId(workspaceId, view.key)}"`;
   return actionItemHtml({
     kind: "compound",
-    label: view.labelHtml === undefined
-      ? { kind: "text", text: view.label, textAttributesHtml }
-      : { kind: "html", html: view.labelHtml, textAttributesHtml },
+    label: { kind: "text", text: view.label, textAttributesHtml },
     leadingHtml: `<span class="fixed-shell-work-view-icon" >${view.iconHtml ?? Icons.Plus}</span>`,
     trailingHtml: view.attentionSequence === undefined ? "" : '<i class="status-dot attention action-item__status" aria-label="Attention"></i>',
     container: {

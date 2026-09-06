@@ -9,9 +9,10 @@
   },
   "dependencies": {
     "@atelier/core": "workspace:*",
+    "@atelier/design-system": "workspace:*",
     "@atelier/observable-terminal": "workspace:*",
-    "@atelier/shared": "workspace:*",
     "@atelier/proxy-ingress": "workspace:*",
+    "@atelier/shared": "workspace:*",
     "@atelier/workspace": "workspace:*",
     "typebox": "^1.0.57"
   }
