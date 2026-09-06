@@ -103,6 +103,7 @@ export function createAgentPaneController(Controller: StimulusControllerConstruc
     private readonly cableReady = (): void => {
       const positionForSelection = this.selectionAwaitingReady;
       this.hasBeenReady = true;
+      void this.revealCommunication();
       this.selectionAwaitingReady = false;
       this.setReconnecting(false);
       this.startAgentTerminals();
@@ -214,6 +215,23 @@ export function createAgentPaneController(Controller: StimulusControllerConstruc
       }
       this.startAgentTerminals();
       if (!this.cableSubscription) this.subscribe();
+    }
+
+    private revealedCommunication?: string;
+    private async revealCommunication(): Promise<void> {
+      const params = new URL(location.href).searchParams;
+      const message = params.get("agentMessage");
+      if (params.get("agent") !== this.conversationIdValue || !message || message === this.revealedCommunication) return;
+      this.revealedCommunication = message;
+      const response = await fetch(`/workspaces/${encodeURIComponent(this.workspaceIdValue)}/agents/${encodeURIComponent(this.conversationIdValue)}/communications/${encodeURIComponent(message)}`, { headers: { Accept: "text/vnd.turbo-stream.html" } });
+      if (!response.ok) throw new Error(`Could not reveal communication: ${response.status}`);
+      window.Turbo!.renderStreamMessage(await response.text());
+      requestAnimationFrame(() => {
+        const target = this.transcriptTarget.querySelector<HTMLElement>(`[data-communication-id="${CSS.escape(message)}"]`);
+        if (!target) return;
+        this.stuck = false;
+        target.scrollIntoView({ block: "center" });
+      });
     }
 
     private subscribe(): void {

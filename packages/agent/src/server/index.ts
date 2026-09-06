@@ -56,3 +56,5 @@ export {
   type CustomModelsSaveResult,
 } from "./pi-config-models.ts";
 export { getPopularModelRank, getProviderApiKeyExample } from "./hardcoded-provider-knowledge.ts";
+
+export { subscribeSubagentTree, findSubagentConversation } from "./subagent-view.ts";

@@ -1,3 +1,4 @@
+import { getSubagents, subagentConversation } from "./subagents.ts";
 import { AtelierCoreError, type AtelierEventBus } from "@atelier/core";
 import type { WorkspaceAgentViewInvalidatedEvent } from "@atelier/workspace";
 import type { maybeNameAgentFromPrompt } from "./agent-title-suggestion.ts";
@@ -28,9 +29,10 @@ export async function resolveAgentRuntime(agent: WorkspaceAgentConversationInfo,
   return await (options.getRuntime ?? getWorkspaceAgentRuntime)(agent, { events: options.events });
 }
 
-export async function requireAgentConversation(workspaceId: string, conversationId: string): Promise<WorkspaceAgentConversationInfo> {
+export async function requireAgentConversation(workspaceId: string, conversationId: string, includeSubagents = false): Promise<WorkspaceAgentConversationInfo> {
   const conversations = await listWorkspaceAgentConversations(workspaceId);
-  const conversation = conversations.find((candidate) => candidate.conversationId === conversationId);
+  const child = includeSubagents ? (await getSubagents(workspaceId)).state.agents.find((agent) => agent.id === conversationId) : undefined;
+  const conversation = conversations.find((candidate) => candidate.conversationId === conversationId) ?? (child ? subagentConversation(workspaceId, child) : undefined);
   if (!conversation) throw new AtelierCoreError("agent_conversation_not_found", `Agent conversation not found: ${conversationId}`);
   return conversation;
 }

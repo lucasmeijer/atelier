@@ -549,3 +549,65 @@ test("cable leases share topics and reject stale generations across reconnects",
     }
   }
 });
+
+
+test("subagent tree Cable topic has a distinct root-scoped identity", () => {
+  expect(serializeCableIdentifier(CableTopics.subagents("workspace", "root"))).toBe('["subagents","workspace","root"]');
+  expect(() => CableTopics.subagents("workspace", "")).toThrow("root agent identifier must not be empty");
+});
+
+test("subagent tree subscriptions deliver a snapshot then changes and release their upstream", async () => {
+  const registry = createWorkspaceRegistry({ activityStore: { load: async () => ({}), save: async () => {} } });
+  await registry.seed([{ id: "workspace", title: "Workspace" }]);
+  let publish!: (value: string) => void;
+  let released = 0;
+  const cable = createCableServer({
+    registry, events: createAtelierEventBus(),
+    async subscribeSubagentTree(workspaceId, rootId, listener) {
+      expect([workspaceId, rootId]).toEqual(["workspace", "root"]);
+      publish = listener;
+      listener("snapshot-payload");
+      return { ready: Promise.resolve(), unsubscribe() { released++; } };
+    },
+  });
+  const ws = fakeSocket({ kind: "cable", connectionId: "tree" });
+  cable.open(ws, ws.data);
+  const identifier = CableTopics.subagents("workspace", "root");
+  cable.message(ws, JSON.stringify({ command: "subscribe", identifier, subscriptionId: "tree-1" }));
+  await Bun.sleep(0);
+  expect(ws.sent.at(-1)).toEqual({ type: "confirm_subscription", identifier, subscriptionId: "tree-1", html: "snapshot-payload" });
+  publish("change-payload");
+  expect(ws.sent.at(-1)).toEqual({ type: "turbo_stream", identifier, subscriptionId: "tree-1", html: "change-payload" });
+  cable.message(ws, JSON.stringify({ command: "unsubscribe", identifier, subscriptionId: "tree-1" }));
+  const count = ws.sent.length;
+  publish("obsolete-payload");
+  expect(ws.sent.length).toBe(count);
+  expect(released).toBe(1);
+  expect(cable.stats().upstreams).toEqual({});
+  cable.close(ws);
+});
+
+test("closing during subagent subscription setup releases the late upstream", async () => {
+  const registry = createWorkspaceRegistry({ activityStore: { load: async () => ({}), save: async () => {} } });
+  await registry.seed([{ id: "workspace", title: "Workspace" }]);
+  const setup = deferredSignal();
+  let released = 0;
+  const cable = createCableServer({
+    registry, events: createAtelierEventBus(),
+    async subscribeSubagentTree(_workspaceId, _rootId, listener) {
+      await setup.promise;
+      listener("late-snapshot");
+      return { ready: Promise.resolve(), unsubscribe() { released++; } };
+    },
+  });
+  const ws = fakeSocket({ kind: "cable", connectionId: "late-tree" });
+  cable.open(ws, ws.data);
+  cable.message(ws, JSON.stringify({ command: "subscribe", identifier: CableTopics.subagents("workspace", "root"), subscriptionId: "tree-1" }));
+  cable.close(ws);
+  const count = ws.sent.length;
+  setup.resolve();
+  await Bun.sleep(0);
+  expect(released).toBe(1);
+  expect(ws.sent.length).toBe(count);
+  expect(cable.stats().subscriptions).toEqual({});
+});

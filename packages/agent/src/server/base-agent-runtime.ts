@@ -185,14 +185,14 @@ export abstract class BaseAgentRuntime implements WorkspaceAgentRuntime {
       id,
       items: [],
       cacheMissNotices: [],
-      working: { type: "working", key: `${id}:working`, startedAt: now, live: true },
+      working: { type: "working", timestamp: now, key: `${id}:working`, startedAt: now, live: true },
       lastActivityAt: now,
       toolIndexByCallId: new Map(),
       terminalTimers: new Map(),
     };
     this.live = live;
     if (user) {
-      const item: TranscriptItem = { type: "user", key: `${live.id}:user`, text: user.text, images: user.images };
+      const item: TranscriptItem = { type: "user", timestamp: now, key: `${live.id}:user`, text: user.text, images: user.images };
       live.items.push(item);
       this.stream(turboStream("append", ids.transcript(this.ctx), renderTranscriptItem(this.ctx, item, { live: true })));
     }
@@ -217,6 +217,7 @@ export abstract class BaseAgentRuntime implements WorkspaceAgentRuntime {
   }
 
   private appendLiveItem(item: TranscriptItem, options: { live?: boolean; open?: boolean } = {}): void {
+    item.timestamp ??= Date.now();
     const live = this.live!;
     const target = live.finalIndex === undefined ? ids.workingItems(this.ctx, live.working.key) : ids.transcript(this.ctx);
     this.stream(turboStream("append", target, renderTranscriptItem(this.ctx, item, options)));
@@ -513,10 +514,10 @@ export abstract class BaseAgentRuntime implements WorkspaceAgentRuntime {
     }
   }
 
-  protected liveNote(text: string, tone: "system" | "summary" | "error"): void {
+  protected liveNote(text: string, tone: "system" | "summary" | "error", metadata?: Pick<Extract<TranscriptItem, { type: "note" }>, "key" | "modelDelivery">): void {
     const live = this.liveEnsure();
     this.closeOpenItem();
-    const item: TranscriptItem = { type: "note", key: this.liveKey(live, live.items.length, "note"), text, tone };
+    const item: TranscriptItem = { type: "note", key: this.liveKey(live, live.items.length, "note"), text, tone, ...metadata };
     live.items.push(item);
     live.lastActivityAt = Date.now();
     this.appendLiveItem(item, { live: true });
@@ -573,15 +574,18 @@ export abstract class BaseAgentRuntime implements WorkspaceAgentRuntime {
     this.live = undefined;
   }
 
+  protected decorateTranscript(items: TranscriptItem[]): TranscriptItem[] { return items; }
+
   private itemsForDisplay(): TranscriptItem[] {
     let items = this.canonicalItems();
     const live = this.live;
-    if (!live) return items;
+    if (!live) return this.decorateTranscript(items);
     if (live.userEntryId) {
       const index = items.findIndex((item) => item.rewindEntryId === live.userEntryId || item.key === live.userEntryId);
       if (index >= 0) items = items.slice(0, index);
     }
-    return [...items, ...this.liveItemsForDisplay(live)];
+    if (!live.userEntryId) items = items.filter((item) => (item.timestamp ?? 0) < live.working.startedAt);
+    return this.decorateTranscript([...items, ...this.liveItemsForDisplay(live)]);
   }
 
   protected async refreshTranscript(): Promise<void> {
@@ -592,10 +596,10 @@ export abstract class BaseAgentRuntime implements WorkspaceAgentRuntime {
     await this.streamRendered(async () => turboStream("update", ids.stats(this.ctx), renderAgentPaneComposerFooter(this.ctx, await this.statsView())));
   }
 
-  private capturePaneState(): () => Promise<AgentPaneState> {
+  private capturePaneState(revealCommunicationId?: string): () => Promise<AgentPaneState> {
     // The transcript and busy flag are the mutable live boundary. Capture both
     // synchronously before stats performs any configuration or provider I/O.
-    const transcriptHtml = renderTranscript(this.ctx, this.itemsForDisplay(), this.modelContext());
+    const transcriptHtml = renderTranscript({ ...this.ctx, revealCommunicationId }, this.itemsForDisplay(), this.modelContext());
     const busy = this.isStreaming;
     const stats = this.statsView();
     return async () => ({ transcriptHtml, busy, stats: await stats });
@@ -615,9 +619,9 @@ export abstract class BaseAgentRuntime implements WorkspaceAgentRuntime {
     return await this.captureAuthoritativePresentationUpdate()();
   }
 
-  async paneState(): Promise<AgentPaneState> {
+  async paneState(revealCommunicationId?: string): Promise<AgentPaneState> {
     this.assertActive();
-    return await this.capturePaneState()();
+    return await this.capturePaneState(revealCommunicationId)();
   }
 
   async detailHtml(key: string, count = 100): Promise<string> {

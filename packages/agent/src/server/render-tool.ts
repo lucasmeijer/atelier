@@ -1,3 +1,5 @@
+import { subagentSnapshot } from "./subagents.ts";
+import { agentPath } from "./subagent-protocol.ts";
 import { copyButtonHtml } from "@atelier/design-system/copy-button";
 import { toggleHtml } from "@atelier/design-system/toggle";
 import { isJsonObject, type JsonObject, type JsonValue } from "@atelier/core";
@@ -9,9 +11,9 @@ import { embeddedBashCommand, formatBashCommandForDisplay, highlightedBashComman
 import { escapeHtml } from "./html.ts";
 import { formatDuration, formatTokens, type ToolView, type ToolViewDetails } from "./transcript.ts";
 import { ids, sessionImageUrl, transcriptItemPath, type AgentRenderContext } from "./render-context.ts";
-import { codeBlockHtml, detailFullscreen, fullscreenAttributes, transcriptActionItemHtml } from "./render-markup.ts";
+import { codeBlockHtml, communicationCardHtml, communicationTraceHtml, detailFullscreen, fullscreenAttributes, transcriptActionItemHtml } from "./render-markup.ts";
 
-type ToolArgumentKey = "command" | "path" | "file_path" | "content" | "offset" | "limit" | "timeout" | "edits" | "oldText" | "newText";
+type ToolArgumentKey = "task_name" | "target" | "message" | "command" | "path" | "file_path" | "content" | "offset" | "limit" | "timeout" | "edits" | "oldText" | "newText";
 
 const toolStringArgumentSchema = Type.String();
 const toolNumberArgumentSchema = Type.Number();
@@ -125,7 +127,7 @@ export function renderToolCard(ctx: AgentRenderContext, key: string, original: T
   }
   const summaryHtml = transcriptActionItemHtml(label, { ...labelOptions, disclosure: true });
   const open = Boolean(options.open || active);
-  if (!options.live && !active) {
+  if (!options.live && !active && !options.open) {
     return `<details class="agent-tool ${toolClass(tool.name)}${tool.status === "error" ? " error" : ""}" data-agent-historical-detail data-controller="agent-lazy-detail" data-action="toggle->agent-lazy-detail#load">${summaryHtml}${lazyTranscriptItemFrame(ctx, key)}</details>`;
   }
   return `<details class="agent-tool ${toolClass(tool.name)}${active ? " active" : ""}${tool.status === "error" ? " error" : ""}"${open ? " open" : ""}>${summaryHtml}<turbo-frame ${tailFrameAttributes(ctx, key)} class="agent-tool-detail-host">${renderToolDetail(ctx, key, tool, 100)}</turbo-frame></details>`;
@@ -296,6 +298,18 @@ function renderGenericDetail(ctx: AgentRenderContext, tool: ToolView): string {
 }
 
 export function renderToolDetail(ctx: AgentRenderContext, key: string, tool: ToolView, count: number): string {
+  if (["spawn_agent", "send_message", "followup_task"].includes(tool.name)) {
+    const state = subagentSnapshot(ctx.workspaceId);
+    const message = state.messages.find((message) => message.from === ctx.conversationId && message.toolCallId === tool.callId);
+    const args = toolArgs(tool);
+    const target = message ? agentPath(state, message.to) : stringArg(args, "target") ?? stringArg(args, "task_name") ?? "";
+    const text = stringArg(args, "message") ?? "";
+    return communicationCardHtml([
+      { label: "Body", html: `<div class="agent-communication-body">${escapeHtml(text)}</div>` },
+      { label: "Recipient", html: message ? communicationTraceHtml(ctx, message.to, message.id, "Find message recipient", target) : escapeHtml(target) },
+      ...(tool.status === "error" ? [{ label: "Error", html: `<div class="agent-error">${escapeHtml(tool.resultText ?? "")}</div>` }] : []),
+    ]);
+  }
   if (tool.name === "bash") return renderBashDetail(ctx, key, tool, count);
   if (tool.name === "read") return renderReadDetail(ctx, key, tool, count);
   if (tool.name === "write") return renderWriteDetail(ctx, key, tool, count);
@@ -543,6 +557,9 @@ function getEditOperations(args: JsonObject | undefined): DiffOperation[] {
 function genericToolSummary(tool: ToolView): string {
   const args = toolArgs(tool);
   if (!args) return "";
+  const peer = stringArg(args, "task_name", "target");
+  if (peer && ["spawn_agent", "send_message", "followup_task"].includes(tool.name)) return peer;
+  if (peer) return truncateOneLine([peer, stringArg(args, "message")].filter(Boolean).join(" → "), 120);
   const direct = stringArg(args, "command", "path", "file_path");
   if (direct) return truncateOneLine(direct, 120);
   const json = JSON.stringify(args);

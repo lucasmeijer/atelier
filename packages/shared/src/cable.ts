@@ -12,6 +12,7 @@ export interface CableSubscriptionOptions {
 const cableIdentifierSchema = Type.Union([
   Type.Object({ channel: Type.Literal("shell") }),
   Type.Object({ channel: Type.Literal("workspace"), workspaceId: Type.String({ minLength: 1 }) }),
+  Type.Object({ channel: Type.Literal("subagents"), workspaceId: Type.String({ minLength: 1 }), conversationId: Type.String({ minLength: 1 }) }),
   Type.Object({ channel: Type.Literal("agent"), workspaceId: Type.String({ minLength: 1 }), conversationId: Type.String({ minLength: 1 }) }),
 ]);
 
@@ -86,6 +87,9 @@ export const CableTopics = {
   workspace(workspaceId: string): CableIdentifier {
     return { channel: "workspace", workspaceId: requireNonEmpty(workspaceId, "workspace identifier must not be empty") };
   },
+  subagents(workspaceId: string, conversationId: string): CableIdentifier {
+    return { channel: "subagents", workspaceId: requireNonEmpty(workspaceId, "workspace identifier must not be empty"), conversationId: requireNonEmpty(conversationId, "root agent identifier must not be empty") };
+  },
   agent(workspaceId: string, conversationId: string): CableIdentifier {
     return {
       channel: "agent",
@@ -99,8 +103,9 @@ export function serializeCableIdentifier(identifier: CableIdentifier): string {
   switch (identifier.channel) {
     case "shell": return JSON.stringify(["shell"]);
     case "workspace": return JSON.stringify(["workspace", requireNonEmpty(identifier.workspaceId, "workspace identifier must not be empty")]);
+    case "subagents":
     case "agent": return JSON.stringify([
-      "agent",
+      identifier.channel,
       requireNonEmpty(identifier.workspaceId, "workspace identifier must not be empty"),
       requireNonEmpty(identifier.conversationId, "agent conversation identifier must not be empty"),
     ]);

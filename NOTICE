@@ -5,3 +5,8 @@ License: Apache License 2.0
 
 Adapted components include HTTP secret placeholder substitution, host pattern matching,
 and internal IP detection helpers.
+
+Atelier's Codex-compatible subagent tool descriptions and message envelopes are adapted
+from OpenAI Codex (https://github.com/openai/codex), commit
+574a36ff99f0807a24f5b043f593122bf151908d, licensed under Apache License 2.0.
+Copyright OpenAI. The license is included in docs/licenses/codex-LICENSE.

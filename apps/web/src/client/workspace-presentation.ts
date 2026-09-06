@@ -494,7 +494,7 @@ export function createWorkspacePresentationController(
       const agentId = url.searchParams.get("agent");
       const workViewKey = url.searchParams.get("workView");
       if (agentId) {
-        const agent = this.element.querySelector<HTMLElement>(`[data-agent-conversation-id="${CSS.escape(agentId)}"]`);
+        const agent = this.element.querySelector<HTMLElement>(`[data-workspace-pane-role="agent"][data-workspace-pane-id="${CSS.escape(agentId)}"]`);
         if (!agent) return;
         this.state.activeAgentId = agentId;
         this.state.phoneDestination = "agents";

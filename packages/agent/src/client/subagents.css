@@ -1,0 +1,22 @@
+.subagents-view { height: 100%; min-height: 0; color: var(--text); }
+.subagents-scroll { height: 100%; overflow: auto; padding: 12px; }
+.subagent-branch > summary { font-size: var(--text-body); font-weight: 400; line-height: var(--leading-standard); }
+.subagent-state { display: inline-flex; align-items: center; gap: 6px; flex-shrink: 0; font-size: var(--text-code); color: var(--text-muted); }
+.subagent-branch-body { padding: 0 8px 12px 18px; }
+.subagent-branch-body > .subagent-list:empty { display: none; }
+.subagent-branch .agent-transcript { height: auto; overflow: visible; }
+.subagents-empty { padding: 24px; color: var(--text-muted); }
+.agent-communication > summary { font: inherit; }
+.agent-trace-link { text-decoration: none; appearance: none; background: none; border: 0; padding: 4px 0; color: var(--text-muted); font: inherit; cursor: pointer; text-align: left; }
+.agent-communication:not(.agent-model-delivery) .agent-trace-link { color: var(--text); }
+.agent-trace-link:hover { color: var(--text); text-decoration: underline; }
+/* Standard tool-card shell; cells remain ordinary, wrapping body text. */
+.agent-communication-table { width: 100%; table-layout: fixed; border-collapse: collapse; font-size: var(--text-body); }
+.agent-communication-table th, .agent-communication-table td { padding: 8px; vertical-align: top; text-align: left; overflow-wrap: anywhere; }
+.agent-communication-table th { width: 110px; white-space: nowrap; font-weight: 400; color: var(--text-muted); background: color-mix(in srgb, var(--bg) 82%, #000 6%); }
+.agent-communication-table tr + tr { border-top: 1px solid var(--line); }
+.agent-communication-table form { margin: 0; }
+.agent-communication-table .agent-trace-link { padding: 0; }
+.agent-communication-body { white-space: pre-wrap; }
+
+.agent-delivery-boundary { padding: 4px 8px; margin: 0; color: var(--text-muted); font-size: var(--text-code); }

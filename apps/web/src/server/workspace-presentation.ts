@@ -90,7 +90,7 @@ export interface WorkspacePresentation {
   overlayHtml?: readonly string[];
 }
 
-type WorkViewIconName = "Browser" | "Code" | "Files" | "Plus" | "Review" | "Terminal";
+type WorkViewIconName = "Subagents" | "Browser" | "Code" | "Files" | "Plus" | "Review" | "Terminal";
 
 function barButton(label: string, action: string, iconHtml: string, attributes = ""): string {
   return buttonHtml({
@@ -466,6 +466,7 @@ function workViewIcon(view: WorkPaneContribution): WorkViewIconName {
 
 function workViewTypeIcon(type: string): WorkViewIconName {
   switch (type) {
+    case "subagents": return "Subagents";
     case "browser": return "Browser";
     case "files": return "Files";
     case "review": return "Review";

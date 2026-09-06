@@ -6,6 +6,7 @@ export interface AgentRenderContext {
   workspaceId: string;
   conversationId: string;
   model?: ModelRef;
+  revealCommunicationId?: string;
 }
 
 export function agentConversationKey(conversationId: string): string {

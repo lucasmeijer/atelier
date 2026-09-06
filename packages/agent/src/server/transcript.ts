@@ -1,3 +1,5 @@
+import type { SubagentMessage } from "./subagent-runtime.ts";
+import type { SubagentDelivery } from "./subagent-delivery.ts";
 /** Renderer-friendly transcript model for the pi-backed runtime. */
 
 import type { TurnTimingSummary } from "./turn-timing.ts";
@@ -37,8 +39,18 @@ export function assistantTextPhase(textSignature?: string): AssistantTextPhase |
   }
 }
 
+export interface SubagentTranscriptMessage {
+  dispatchMode?: SubagentMessage["dispatchMode"];
+  dispatchReason?: SubagentMessage["dispatchReason"];
+  deliveredEnvelope?: string;
+  deliveredFormat?: "agent_message" | "user";
+  id: string; rootId: string; agentId: string; path: string; kind: string;
+  delivery: "queued" | "delivered" | "failed";
+}
+
 export type TranscriptRecord =
   | { kind: "timing"; timing: TurnTimingSummary; timestamp: number }
+  | { kind: "taskStart"; id: string; timestamp: number }
   | { kind: "user"; id: string; text: string; images: SessionImageRef[]; timestamp: number; rewindable?: boolean }
   | { kind: "assistant"; id: string; parts: AssistantPart[]; stopReason: StopReason; errorMessage?: string; timestamp: number }
   | { kind: "toolResult"; callId: string; text: string; images: SessionImageRef[]; isError: boolean; timestamp: number; details?: ToolViewDetails }
@@ -83,6 +95,8 @@ export interface ToolView {
 }
 
 interface TranscriptItemBase {
+  timestamp?: number;
+  communicationId?: string;
   key: string;
   /** Rewind to immediately before this persisted session entry. */
   rewindEntryId?: string;
@@ -104,7 +118,7 @@ export type TranscriptItem =
   | (TranscriptItemBase & { type: "thinking"; text: string; live?: boolean })
   | (TranscriptItemBase & { type: "text"; text: string; final: boolean; live?: boolean })
   | (TranscriptItemBase & { type: "tool"; tool: ToolView })
-  | (TranscriptItemBase & { type: "note"; text: string; tone: NoteTone })
+  | (TranscriptItemBase & { type: "note"; text: string; tone: NoteTone; communication?: SubagentTranscriptMessage; modelDelivery?: SubagentDelivery })
   | (TranscriptItemBase & { type: "error"; text: string });
 
 export function findTranscriptItem(items: TranscriptItem[], key: string): TranscriptItem | undefined {
@@ -153,6 +167,7 @@ export function buildTranscript(records: TranscriptRecord[]): TranscriptItem[] {
     if (working) lastWorkingActivityAt = Math.max(working.startedAt, timestamp);
   };
   const appendActivity = (item: TranscriptItem, timestamp: number): void => {
+    item.timestamp = timestamp;
     (working?.items ?? items).push(item);
     recordWorkingActivity(timestamp);
   };
@@ -168,16 +183,17 @@ export function buildTranscript(records: TranscriptRecord[]): TranscriptItem[] {
       if (latestWorking) latestWorking.timing = record.timing;
       continue;
     }
-    if (record.kind === "user") {
+    if (record.kind === "user" || record.kind === "taskStart") {
       stopWorking(record.timestamp);
-      items.push({
+      if (record.kind === "user") items.push({
         type: "user",
+        timestamp: record.timestamp,
         key: record.id,
         rewindEntryId: record.rewindable === false ? undefined : record.id,
         text: record.text,
         images: record.images,
       });
-      working = { type: "working", key: `${record.id}:working`, startedAt: record.timestamp, items: [] };
+      working = { type: "working", timestamp: record.timestamp, key: `${record.id}:working`, startedAt: record.timestamp, items: [] };
       lastWorkingActivityAt = record.timestamp;
       items.push(working);
       continue;
@@ -194,7 +210,7 @@ export function buildTranscript(records: TranscriptRecord[]): TranscriptItem[] {
           first = false;
         } else if (part.type === "text" && part.text.trim()) {
           const finalPart = final && (!hasPhasedText || assistantTextPhase(part.textSignature) === "final_answer");
-          const item: TranscriptItem = { type: "text", key: `${record.id}:text:${index}`, rewindEntryId, text: part.text, final: finalPart };
+          const item: TranscriptItem = { type: "text", timestamp: record.timestamp, key: `${record.id}:text:${index}`, rewindEntryId, text: part.text, final: finalPart };
           if (finalPart) items.push(item);
           else appendActivity(item, record.timestamp);
           first = false;

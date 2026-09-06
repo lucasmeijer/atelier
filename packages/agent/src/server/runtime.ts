@@ -1,3 +1,4 @@
+import { unbindSubagentSession } from "./subagents.ts";
 import { AtelierCoreError } from "@atelier/core";
 import { createRealRuntime } from "./real-agent-runtime.ts";
 import type { WorkspaceAgentRuntime, WorkspaceAgentRuntimeOptions } from "./runtime-types.ts";
@@ -21,6 +22,7 @@ export async function removeWorkspaceAgentRuntime(workspaceId: string, conversat
   if (!runtime) return;
   runtimes.delete(key);
   await (await runtime).dispose();
+  unbindSubagentSession(workspaceId, conversationId);
 }
 
 /** Roll back a failed close after the durable session remained published. */

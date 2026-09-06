@@ -55,7 +55,7 @@ export function looksLikeProjectSpec(value: string): boolean {
   return /^(https?:\/\/|git@|ssh:\/\/|\/|\.\/|\.\.\/|[A-Za-z]:\\)/.test(value.trim());
 }
 
-export type TurboStreamAction = "append" | "prepend" | "replace" | "update" | "remove";
+export type TurboStreamAction = "append" | "prepend" | "before" | "replace" | "update" | "remove";
 
 export function turboStream(action: TurboStreamAction, target: string, html = "", options: { targets?: boolean; method?: "morph" } = {}): string {
   const targetAttribute = options.targets ? "targets" : "target";
