@@ -354,7 +354,7 @@
 
 .agent-detail-fullscreen { margin: 0; padding: 0; }
 .agent-thinking-text {
-  position: relative; max-height: 3.3em; overflow: hidden; color: var(--text-bright); opacity: .5;
+  position: relative; color: var(--text-bright); opacity: .5;
   white-space: pre-wrap;
 }
 .agent-thinking-text.truncated { cursor: pointer; }
