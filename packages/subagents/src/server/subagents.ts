@@ -19,7 +19,7 @@ const recordSchema = Type.Object({
   status: Type.Union([Type.Literal("starting"), Type.Literal("running"), Type.Literal("completed"), Type.Literal("interrupted"), Type.Literal("failed"), Type.Literal("closed")]),
   result: Type.Optional(Type.String()), model: Type.Optional(Type.Object({ provider: Type.String(), id: Type.String() })), thinkingLevel: Type.String(), forkTurns: Type.Optional(Type.String()),
 });
-const stateSchema = Type.Object({ readPositions: Type.Optional(Type.Record(Type.String(), Type.Integer({ minimum: 0 }))), agents: Type.Array(recordSchema), messages: Type.Array(Type.Object({
+const stateSchema = Type.Object({ agents: Type.Array(recordSchema), messages: Type.Array(Type.Object({
   id: Type.String(), from: Type.String(), to: Type.String(), text: Type.String(), timestamp: Type.String(),
   kind: Type.Union([Type.Literal("task"), Type.Literal("message"), Type.Literal("completion"), Type.Literal("interrupt"), Type.Literal("close"), Type.Literal("resume")]),
   delivery: Type.Union([Type.Literal("queued"), Type.Literal("delivered"), Type.Literal("failed")]), error: Type.Optional(Type.String()), toolCallId: Type.Optional(Type.String()), dispatchMode: Type.Optional(Type.Union([Type.Literal("immediate"), Type.Literal("queued")])), dispatchReason: Type.Optional(Type.Union([Type.Literal("idle-task"), Type.Literal("idle-message"), Type.Literal("working"), Type.Literal("waiting")])),
@@ -30,7 +30,6 @@ const sessions = new Map<string, any>();
 const loaded = new Map<string, SubagentRuntime>();
 const listeners = new Set<(workspaceId: string) => void>();
 export function subagentSnapshot(workspaceId: string): SubagentState { return loaded.get(workspaceId)?.state ?? { agents: [], messages: [] }; }
-export function steerSubagents(workspaceId: string, caller: string): void { loaded.get(workspaceId)?.steer(caller); }
 export function rootAgentStatus(workspaceId: string, rootId: string) {
   const session = sessions.get(`${workspaceId}:${rootId}`);
   if (!session) throw new Error("Root agent session is not loaded.");
@@ -112,37 +111,55 @@ export function getSubagents(workspaceId: string, events?: AtelierEventBus): Pro
 export function bindSubagentSession(workspaceId: string, id: string, session: any, coordinator: SubagentRuntime): AgentSessionAttachment {
   sessions.set(`${workspaceId}:${id}`, session);
   let requestsThisTurn = 0;
+  // Pi has no public custom-message queue accessor. Track only live submissions,
+  // removing them when Pi adds them to context (never reconstruct from receipts).
+  const pendingMail = new Set<string>();
   peers.set(`${workspaceId}:${id}`, {
     model: () => {
       return { provider: session.model.provider, id: session.model.id };
     },
     thinkingLevel: () => session.thinkingLevel ?? "off",
+    pendingInput: () => session.getSteeringMessages().length ? "steer" : pendingMail.size ? "mailbox" : undefined,
     async send(message, triggerTurn) {
       const streaming = session.isStreaming;
       const immediate = triggerTurn && !streaming;
-      await Promise.all([coordinator.dispatching(message.id, triggerTurn, streaming), (async () => {
-        const custom = { customType: "subagent", content: messageEnvelope(coordinator.state, message), display: true, details: { subagentMessageId: message.id, kind: message.kind } };
-        if (!immediate) {
-          await session.sendCustomMessage(custom, { triggerTurn: streaming ? undefined : false, deliverAs: "steer" });
-        } else {
-          // Start directly from the task, without a fabricated user prompt. Return on agent_start.
-          await new Promise<void>((resolve, reject) => {
-            const unsubscribe = session.subscribe((event: any) => { if (event.type === "agent_start") { unsubscribe(); resolve(); } });
-            void session.sendCustomMessage(custom, { triggerTurn: true }).then(() => { unsubscribe(); resolve(); }, (error: Error) => { unsubscribe(); reject(error); });
-          });
-        }
-      })()]);
+      pendingMail.add(message.id);
+      try {
+        await Promise.all([coordinator.dispatching(message.id, triggerTurn, streaming), (async () => {
+          const custom = { customType: "subagent", content: messageEnvelope(coordinator.state, message), display: true, details: { subagentMessageId: message.id, kind: message.kind } };
+          if (!immediate) {
+            await session.sendCustomMessage(custom, { triggerTurn: streaming ? undefined : false, deliverAs: "steer" });
+          } else {
+            // Start directly from the task, without a fabricated user prompt. Return on agent_start.
+            await new Promise<void>((resolve, reject) => {
+              const unsubscribe = session.subscribe((event: any) => { if (event.type === "agent_start") { unsubscribe(); resolve(); } });
+              void session.sendCustomMessage(custom, { triggerTurn: true }).then(() => { unsubscribe(); resolve(); }, (error: Error) => { unsubscribe(); reject(error); });
+            });
+          }
+        })()]);
+      } catch (error) {
+        pendingMail.delete(message.id);
+        throw error;
+      }
+      coordinator.inputChanged(id);
     },
     async abort() {
       session.clearQueue();
+      pendingMail.clear();
       if (session.isCompacting) session.abortCompaction();
       await session.abort();
     },
   });
   const unsubscribe = session.subscribe((event: any) => {
     let operation: Promise<void> | undefined;
+    if (event.type === "queue_update") {
+      // clearQueue also emits this event, including when only custom mail was queued.
+      if (!session.agent.hasQueuedMessages()) pendingMail.clear();
+      coordinator.inputChanged(id);
+    }
     if (event.type === "agent_start") { requestsThisTurn = 0; operation = coordinator.started(id); }
     if (event.type === "message_end" && event.message?.role === "custom" && event.message.customType === "subagent") {
+      pendingMail.delete(event.message.details.subagentMessageId);
       operation = coordinator.delivered(event.message.details.subagentMessageId);
     }
     if (event.type === "agent_settled") {
@@ -182,7 +199,6 @@ export function bindSubagentSession(workspaceId: string, id: string, session: an
         },
       };
     },
-    steered: () => coordinator.steer(id),
     dispose() {
       unsubscribe();
       // Replacing a session may have already attached its successor.

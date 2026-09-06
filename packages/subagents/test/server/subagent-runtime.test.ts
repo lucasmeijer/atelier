@@ -6,21 +6,25 @@ function harness() {
   const aborted: string[] = [];
   const snapshots: SubagentState[] = [];
   let failure = false;
+  const pending = new Map<string, "steer" | "mailbox">();
   const runtime = new SubagentRuntime({ agents: [], messages: [] }, {
     async save(state) { snapshots.push(state); },
     async peer(id) {
       return {
         model: () => ({ provider: "test", id: "inherited" }), thinkingLevel: () => "high",
+        pendingInput: () => pending.get(id),
         async send(message, triggerTurn) {
           if (failure) throw new Error("provider unavailable");
           deliveries.push({ id, message, triggerTurn });
           await runtime.delivered(message.id);
+          if (!triggerTurn) pending.set(id, "mailbox");
+          runtime.inputChanged(id);
         },
-        async abort() { aborted.push(id); },
+        async abort() { pending.delete(id); aborted.push(id); },
       };
     },
   });
-  return { runtime, deliveries, aborted, snapshots, fail: () => { failure = true; } };
+  return { runtime, deliveries, aborted, snapshots, drain: (id: string) => { pending.delete(id); }, steer: (id: string) => { pending.set(id, "steer"); runtime.inputChanged(id); }, fail: () => { failure = true; } };
 }
 
 describe("subagent delegation protocol", () => {
@@ -53,24 +57,27 @@ describe("subagent delegation protocol", () => {
   });
 
   test("completion automatically flows to parent and wakes a waiting tool", async () => {
-    const { runtime, deliveries } = harness();
+    const { runtime, deliveries, drain } = harness();
     const child = await runtime.spawn("parent", "review", "Review");
     await runtime.started(child.id);
     const waiting = runtime.wait("parent", 1000);
     await runtime.finished(child.id, "Found two bugs", "completed");
     const result = await waiting;
     expect(result.timed_out).toBe(false);
-    expect(result.messages).toMatchObject([{ from: child.id, to: "parent", kind: "completion", text: "Found two bugs" }]);
+    expect(deliveries.at(-1)!.message).toMatchObject({ from: child.id, to: "parent", kind: "completion", text: "Found two bugs" });
     expect(deliveries.at(-1)!.triggerTurn).toBe(false);
-    expect(result.agents[0]).toMatchObject({ status: "completed", result: "Found two bugs" });
+    expect(runtime.list("parent")[0]).toMatchObject({ status: "completed", result: "Found two bugs" });
+    drain("parent");
     expect((await runtime.wait("parent", 1)).timed_out).toBe(true);
   });
 
   test("wait returns already queued messages, times out without stopping children, and cancels", async () => {
-    const { runtime, aborted } = harness();
+    const { runtime, aborted, drain } = harness();
     const child = await runtime.spawn("parent", "review", "Review");
     await runtime.send(child.id, "/root", "Progress");
-    expect((await runtime.wait("parent", 1)).messages[0].text).toBe("Progress");
+    expect((await runtime.wait("parent", 1)).timed_out).toBe(false);
+    expect((await runtime.wait("parent", 1)).timed_out).toBe(false); // waiting does not drain
+    drain("parent");
     expect((await runtime.wait("parent", 1)).timed_out).toBe(true);
     const controller = new AbortController();
     const waiting = runtime.wait("parent", 1000, controller.signal);
@@ -158,16 +165,16 @@ describe("subagent delegation protocol", () => {
   });
 });
 
-test("wait consumption is persisted and does not replay after reconstruction", async () => {
+test("old receipts and legacy wait positions do not become pending input after reconstruction", async () => {
   const { runtime, snapshots } = harness();
   const child = await runtime.spawn("root", "review", "Review");
   await runtime.send(child.id, "/root", "Done");
-  await runtime.wait("root", 1);
-  const restored = new SubagentRuntime(snapshots.at(-1)!, {
-    async save() {},
-    async peer() { throw new Error("Waiting must not start a peer"); },
+  const historical = { ...snapshots.at(-1)!, readPositions: { root: 0 } };
+  const restored = new SubagentRuntime(historical, {
+    async save() { throw new Error("Waiting must not persist receipt positions"); },
+    async peer() { return { model: () => undefined, thinkingLevel: () => "off", pendingInput: () => undefined, async send() {}, async abort() {} }; },
   });
-  expect((await restored.wait("root", 1)).messages).toEqual([]);
+  expect(await restored.wait("root", 1)).toEqual({ timed_out: true, interrupted: false });
 });
 
 test("aborted startup records failure evidence and closes its reserved child", async () => {
@@ -179,7 +186,7 @@ test("aborted startup records failure evidence and closes its reserved child", a
     async peer(id) {
       if (id !== "root") controller.abort(new Error("cancel startup"));
       return {
-        model: () => ({ provider: "test", id: "test" }), thinkingLevel: () => "off",
+        model: () => ({ provider: "test", id: "test" }), thinkingLevel: () => "off", pendingInput: () => undefined,
         async send(message) { deliveries.push(message.id); },
         async abort() { aborted.push(id); },
       };
@@ -201,7 +208,7 @@ test("close joins an in-flight spawn before aborting the resulting child", async
     async peer(id) {
       if (id === "root") await gate;
       return {
-        model: () => undefined, thinkingLevel: () => "off",
+        model: () => undefined, thinkingLevel: () => "off", pendingInput: () => undefined,
         async send() { lifecycle.push("task accepted"); },
         async abort() { lifecycle.push("aborted"); },
       };
@@ -236,7 +243,7 @@ describe("persisted incoming dispatch decisions", () => {
   });
 
   test("distinguishes a recipient waiting in wait_agent from other active work", async () => {
-    const { runtime } = harness();
+    const { runtime, drain, steer } = harness();
     const child = await runtime.spawn("parent", "explain", "Task");
     const waiting = runtime.wait("parent", 1000);
     const message = await runtime.send(child.id, "/root", "Update");
@@ -246,11 +253,78 @@ describe("persisted incoming dispatch decisions", () => {
     await runtime.dispatching(message.id, false, true);
     expect(runtime.state.messages.find((entry) => entry.id === message.id)!.dispatchReason).toBe("working");
 
+    drain("parent");
     const nextWait = runtime.wait("parent", 1000);
+    await Promise.resolve();
     await runtime.dispatching(message.id, false, true);
     expect(runtime.state.messages.find((entry) => entry.id === message.id)!.dispatchReason).toBe("waiting");
-    runtime.steer("parent");
+    steer("parent");
     await nextWait;
     expect(runtime.state.messages.find((entry) => entry.id === message.id)!.dispatchReason).toBe("waiting");
+  });
+});
+
+
+describe("wait observes pending input, not wait history", () => {
+  test("a consumed initial task does not satisfy the child's first wait", async () => {
+    const { runtime } = harness();
+    const child = await runtime.spawn("root", "child", "Task already in context");
+    expect(await runtime.wait(child.id, 1)).toEqual({ timed_out: true, interrupted: false });
+  });
+
+  test("mail consumed before any wait no longer satisfies it", async () => {
+    const { runtime, drain } = harness();
+    const child = await runtime.spawn("root", "child", "Task");
+    await runtime.send(child.id, "/root", "Already read");
+    drain("root");
+    expect(await runtime.wait("root", 1)).toEqual({ timed_out: true, interrupted: false });
+  });
+
+  test("pending steering wins over mailbox activity and is not consumed by waiting", async () => {
+    const { runtime, steer, drain } = harness();
+    const child = await runtime.spawn("root", "child", "Task");
+    await runtime.send(child.id, "/root", "Update");
+    steer("root");
+    expect(await runtime.wait("root", 1)).toEqual({ timed_out: false, interrupted: true });
+    expect(await runtime.wait("root", 1)).toEqual({ timed_out: false, interrupted: true });
+    drain("root");
+    expect(await runtime.wait("root", 1)).toEqual({ timed_out: true, interrupted: false });
+  });
+
+  test("steering during an active wait wakes it; stale notifications do not", async () => {
+    const { runtime, steer, drain } = harness();
+    const waiting = runtime.wait("root", 1000);
+    await Promise.resolve();
+    steer("root");
+    expect(await waiting).toEqual({ timed_out: false, interrupted: true });
+    drain("root");
+    const empty = runtime.wait("root", 1);
+    await Promise.resolve();
+    runtime.inputChanged("root");
+    expect(await empty).toEqual({ timed_out: true, interrupted: false });
+  });
+
+  test("controlling a child is not mailbox activity for the parent", async () => {
+    const { runtime } = harness();
+    const child = await runtime.spawn("root", "child", "Task");
+    const waiting = runtime.wait("root", 10);
+    await runtime.control("root", child.id, "interrupt");
+    expect(await waiting).toEqual({ timed_out: true, interrupted: false });
+    expect(await runtime.wait(child.id, 1)).toEqual({ timed_out: true, interrupted: false });
+  });
+
+  test("aborting one of two waits neither consumes mail nor cancels the other", async () => {
+    const { runtime } = harness();
+    const child = await runtime.spawn("root", "child", "Task");
+    const controller = new AbortController();
+    const cancelled = runtime.wait("root", 1000, controller.signal);
+    const rejection = cancelled.catch((error) => error);
+    const waiting = runtime.wait("root", 1000);
+    await Promise.resolve();
+    controller.abort(new Error("cancelled"));
+    expect((await rejection).message).toBe("cancelled");
+    await runtime.send(child.id, "/root", "New input");
+    expect(await waiting).toEqual({ timed_out: false, interrupted: false });
+    expect(await runtime.wait("root", 1)).toEqual({ timed_out: false, interrupted: false });
   });
 });

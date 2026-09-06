@@ -20,7 +20,6 @@ export interface AgentModelRequestTransform {
 
 export interface AgentSessionAttachment {
   createModelRequest?(): AgentModelRequestTransform;
-  steered?(): void;
   dispose(): void | Promise<void>;
 }
 

@@ -29,10 +29,13 @@ export interface SubagentMessage {
   dispatchMode?: "immediate" | "queued";
   dispatchReason?: SubagentDispatchReason;
 }
-export interface SubagentState { agents: SubagentRecord[]; messages: SubagentMessage[]; readPositions?: Record<string, number> }
+export interface SubagentState { agents: SubagentRecord[]; messages: SubagentMessage[] }
+export type SubagentInputActivity = "steer" | "mailbox";
 export interface SubagentPeer {
   model(): { provider: string; id: string } | undefined;
   thinkingLevel(): string;
+  /** Current undrained input, not transcript history. Steering takes priority. */
+  pendingInput(): SubagentInputActivity | undefined;
   send(message: SubagentMessage, triggerTurn: boolean): Promise<void>;
   abort(): Promise<void>;
 }
@@ -45,7 +48,6 @@ export interface SubagentDependencies {
  * Peers own inference and transcripts; messages never start turns unless explicitly tasks. */
 export class SubagentRuntime {
   private writes: Promise<void> = Promise.resolve();
-  private readonly steered = new Set<string>();
   private readonly waiters = new Map<string, Set<() => void>>();
   private readonly operations = new Map<string, Promise<void>>();
   private stopping = false;
@@ -127,7 +129,7 @@ export class SubagentRuntime {
     });
   }
 
-  private wake(id: string): void { for (const wake of this.waiters.get(id) ?? []) wake(); }
+  inputChanged(id: string): void { for (const check of this.waiters.get(id) ?? []) check(); }
 
   private async deliver(from: string, to: string, kind: SubagentMessage["kind"], text: string, triggerTurn: boolean, signal?: AbortSignal, toolCallId?: string): Promise<SubagentMessage> {
     if (this.stopping) throw new Error("Workspace is shutting down.");
@@ -142,7 +144,6 @@ export class SubagentRuntime {
       if (this.state.agents.some((agent) => (agent.id === from || agent.id === to) && agent.status === "closed")) throw new Error("Cannot deliver messages from or to a closed agent.");
       await peer.send(structuredClone(message), triggerTurn);
       // The peer acknowledges actual transcript delivery separately. Queued is not read.
-      this.wake(to);
       return structuredClone(message);
     } catch (error) {
       message.delivery = "failed";
@@ -210,7 +211,6 @@ export class SubagentRuntime {
       }
       this.state.messages.push({ id: randomUUID(), from: caller, to: agent.id, kind: action, text: action === "resume" ? "Session reopened. Use followup_task to start work." : `Agent ${action === "close" ? "closed" : "interrupted"}; transcript retained.`, timestamp: new Date().toISOString(), delivery: "delivered" });
       await this.persist();
-      this.wake(caller);
       return structuredClone(agent);
     });
   }
@@ -232,39 +232,34 @@ export class SubagentRuntime {
     if (outcome !== "interrupted") await this.deliver(id, agent.parentId, "completion", outcome === "failed" ? `Agent errored: ${result}\n\nThis agent's turn failed. If you still need this agent, use the available collaboration tools to give it another task.` : result, false);
   }
 
-  steer(caller: string): void {
-    if (!this.waiters.has(caller)) return;
-    this.steered.add(caller);
-    this.wake(caller);
-  }
-
-  async wait(caller: string, timeoutMs = 30_000, signal?: AbortSignal): Promise<{ timed_out: boolean; interrupted: boolean; messages: SubagentMessage[]; agents: SubagentRecord[] }> {
+  async wait(caller: string, timeoutMs = 30_000, signal?: AbortSignal): Promise<{ timed_out: boolean; interrupted: boolean }> {
     if (!Number.isInteger(timeoutMs) || timeoutMs < 1 || timeoutMs > 3_600_000) throw new Error("timeout_ms must be between 1 and 3600000.");
-    const incoming = () => this.state.messages.slice(this.state.readPositions?.[caller] ?? 0).filter((message) => message.to === caller && message.delivery !== "failed");
     signal?.throwIfAborted();
-    let timedOut = false;
-    if (!incoming().length) {
-      await new Promise<void>((resolve, reject) => {
-        const listeners = this.waiters.get(caller) ?? new Set();
-        this.waiters.set(caller, listeners);
-        const cleanup = () => { clearTimeout(timer); listeners.delete(wake); if (!listeners.size) this.waiters.delete(caller); signal?.removeEventListener("abort", abort); };
-        const wake = () => { cleanup(); resolve(); };
-        const abort = () => { cleanup(); reject(signal!.reason); };
-        const timer = setTimeout(() => { timedOut = true; wake(); }, timeoutMs);
-        listeners.add(wake);
-        signal?.addEventListener("abort", abort, { once: true });
-      });
-    }
-    const messages = structuredClone(incoming());
-    (this.state.readPositions ??= {})[caller] = this.state.messages.length;
-    await this.persist();
-    const interrupted = this.steered.delete(caller);
-    return { timed_out: timedOut, interrupted, messages, agents: this.list(caller) };
+    const peer = await this.dependencies.peer(caller);
+    signal?.throwIfAborted();
+    // Subscribe and inspect without an await between them. Input queued while resolving
+    // the peer is still pending; a completed wait never consumes that input itself.
+    return await new Promise((resolve, reject) => {
+      const listeners = this.waiters.get(caller) ?? new Set();
+      this.waiters.set(caller, listeners);
+      const cleanup = () => { clearTimeout(timer); listeners.delete(check); if (!listeners.size) this.waiters.delete(caller); signal?.removeEventListener("abort", abort); };
+      const check = () => {
+        const activity = peer.pendingInput();
+        if (!this.stopping && !activity) return;
+        cleanup();
+        resolve({ timed_out: false, interrupted: this.stopping || activity === "steer" });
+      };
+      const abort = () => { cleanup(); reject(signal!.reason); };
+      const timer = setTimeout(() => { cleanup(); resolve({ timed_out: true, interrupted: false }); }, timeoutMs);
+      listeners.add(check);
+      signal?.addEventListener("abort", abort, { once: true });
+      check();
+    });
   }
 
   async shutdown(): Promise<void> {
     this.stopping = true;
-    for (const id of this.waiters.keys()) this.wake(id);
+    for (const id of this.waiters.keys()) this.inputChanged(id);
     await Promise.all(this.state.agents.filter((agent) => agent.status === "running" || agent.status === "starting").map(async (agent) => {
       await (await this.dependencies.peer(agent.id)).abort();
     }));

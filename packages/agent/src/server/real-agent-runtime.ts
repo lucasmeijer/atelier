@@ -335,7 +335,6 @@ export class RealAgentRuntime extends BaseAgentRuntime {
 
     if (this.session.isStreaming) {
       await this.session.steer(fullText, images.length > 0 ? images : undefined);
-      this.delegation.attachment?.steered?.();
       this.liveNote(`Steer: ${trimmed}`, "system");
       return;
     }

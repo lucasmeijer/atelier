@@ -85,7 +85,7 @@ describe("pinned Codex V2 plaintext protocol", () => {
 test("paths resolve relative to the caller, allowing equal leaf names in different branches", async () => {
   const runtime = new SubagentRuntime({ agents: [], messages: [] }, {
     async save() {},
-    async peer() { return { model: () => undefined, thinkingLevel: () => "off", async send() {}, async abort() {} }; },
+    async peer() { return { model: () => undefined, thinkingLevel: () => "off", pendingInput: () => undefined, async send() {}, async abort() {} }; },
   });
   const a = await runtime.spawn("root", "a", "A");
   const b = await runtime.spawn("root", "b", "B");
@@ -96,16 +96,6 @@ test("paths resolve relative to the caller, allowing equal leaf names in differe
   expect(runtime.target(b.id, "review").id).toBe(bb.id);
   await runtime.followup(a.id, "/root/b/review", "Cross-branch task");
   expect(runtime.state.messages.at(-1)!.to).toBe(bb.id);
-});
-
-test("steered user input wakes wait without fabricating message contents", async () => {
-  const runtime = new SubagentRuntime({ agents: [], messages: [] }, { async save() {}, async peer() { throw new Error("No peer needed"); } });
-  const waiting = runtime.wait("root", 1000);
-  runtime.steer("root");
-  const result = await waiting;
-  expect(result.interrupted).toBe(true);
-  expect(result.messages).toEqual([]);
-  expect(result.timed_out).toBe(false);
 });
 
 test("a fresh fork is not attempted when restoring an existing child transcript", () => {
@@ -126,7 +116,7 @@ test("receipt is durable before a busy recipient adds the message to context", a
   const persisted: SubagentState[] = [];
   const runtime = new SubagentRuntime(structuredClone(state), {
     async save(snapshot) { persisted.push(snapshot); },
-    async peer() { return { model: () => undefined, thinkingLevel: () => "off", async send(message) { await gate; await runtime.delivered(message.id); }, async abort() {} }; },
+    async peer() { return { model: () => undefined, thinkingLevel: () => "off", pendingInput: () => undefined, async send(message) { await gate; await runtime.delivered(message.id); }, async abort() {} }; },
   });
   const sending = runtime.send("worker-id", "/root", "Arrived while the parent was busy");
   await Bun.sleep(0);

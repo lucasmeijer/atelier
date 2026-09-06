@@ -29,7 +29,7 @@ Canonical names are `/root`, `/root/review`, `/root/review/check`, etc. Relative
 
 `fork_turns` defaults to `all`; `none` starts from the explicit task, and a positive integer string selects recent user turns. Selection happens before filtering, matching the pinned Codex fork policy: user messages and turn-triggering tasks count as turns, but inherited agent traffic is then removed. The child retains user messages and assistant final-answer text, not reasoning, intermediate commentary, tool calls or tool results (including completed exchanges). A numeric mode with no turn boundaries inherits nothing; an oversized count starts at the first boundary, not an earlier summary preamble. Pi supplies the effective post-navigation, compaction-aware context. Its opaque compaction/branch summaries are retained when selected and seeded as child-local summary entries. Host instructions are rebuilt for the child. For providers without Codex phase metadata, final answers use Atelier's existing terminal-stop/no-tool-call classification. This matches the filtering policy over Pi's representation; it does not implement Codex-specific rollout metadata or guardian authorization state. Existing sessions are not re-forked on reload. Children inherit model/thinking settings, tools, skills and workspace instructions. They share the workspace filesystem—not separate worktrees.
 
-`followup_task` starts an idle child directly from its attributed task message; while running, it steers at message boundaries rather than waiting behind the entire run. There is no fabricated “Carry out the task above” user prompt. `send_message` and automatic completions do not start idle recipients. Wait defaults to 30 seconds, clamps short requests to 10 seconds, and permits up to one hour. It wakes for incoming traffic or steered user input; abort cancels it.
+`followup_task` starts an idle child directly from its attributed task message; while running, it steers at message boundaries rather than waiting behind the entire run. There is no fabricated “Carry out the task above” user prompt. `send_message` and automatic completions do not start idle recipients. Wait defaults to 30 seconds, clamps short requests to 10 seconds, and permits up to one hour. It observes undrained session input: pending user steering takes priority over agent mail, including input queued before the wait starts. Waiting never drains input. Pi adding mail to context removes it from wait activity; historical receipts, initial tasks already in context, and child-control operations cannot satisfy a later wait. Clearing the Pi queue removes pending activity; abort cancels the wait. No wait read position is persisted or reconstructed from history.
 
 ## Native model delivery—not user-role text
 
@@ -73,7 +73,7 @@ All HTML is server-rendered. The selected root has a Cable tree subscription: an
 ## Persistence and lifecycle
 
 ```text
-session-shares/<share-key>/subagents/<workspace-id>/state.json       # tree, plaintext messages, delivery, wait read positions
+session-shares/<share-key>/subagents/<workspace-id>/state.json       # tree, plaintext messages, delivery
 session-shares/<share-key>/subagents/<workspace-id>/<agent-id>.jsonl # native Pi session
 ```
 
@@ -118,8 +118,10 @@ automatic final responses and incoming receipts stay outside it.
 
 ### Model-input delivery batches
 
-The pending-message queue means messages routed to this recipient which have not
-been recorded in a prepared model request. At the Codex payload hook, new messages
+For delivery accounting, the pending-message queue means messages routed to this
+recipient which have not been recorded in a prepared model request. This is distinct
+from the live input queue observed by `wait_agent`, which drains when Pi adds input
+to context, before provider request preparation. At the Codex payload hook, new messages
 are recorded together in a `subagent_model_delivery` session metadata entry. It
 contains the plaintext envelopes and a point-in-time remaining count. Metadata is
 not itself sent to the model. Normal history replay and request retries do not
