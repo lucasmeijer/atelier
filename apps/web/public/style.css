@@ -324,8 +324,7 @@ html.software-keyboard-visible .fixed-shell-mobile-nav { display: none; }
   .fixed-shell-workspace-bar { z-index: 31; left: calc(var(--fixed-shell-mobile-destination-width) + 8px); }
   .fixed-shell-app.is-mobile-workspace-pane-open > .fixed-shell-atelier-bar { right: 0; width: auto; box-shadow: none; }
   .fixed-shell-app.is-mobile-workspace-pane-open .fixed-shell-workspace-bar { visibility: hidden; pointer-events: none; }
-  .fixed-shell-app .workspace-empty-onboarding-arrow { z-index: 33; }
-  .fixed-shell-app.is-mobile-workspace-pane-open .workspace-empty-welcome[data-empty-workspace-state="workspaces"] { visibility: hidden; }
+  #workspace_empty_onboarding { display: none; }
   .fixed-shell-mobile-scroll { min-width: 0; display: flex; align-items: center; gap: 8px; flex: 1; overflow: hidden; }
   .fixed-shell-mobile-work-items { display: contents; }
   .fixed-shell-mobile-nav [hidden] { display: none; }
