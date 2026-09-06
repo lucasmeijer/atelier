@@ -179,14 +179,15 @@ turbo-frame { display: contents; }
   width: 100%;
   height: 100%;
   min-height: 0;
-  overflow: hidden;
+  /* Shell boundaries must not become focus-driven scroll containers. */
+  overflow: clip;
   color: var(--text);
   background: var(--fixed-shell-bg);
   font-size: var(--text-body);
 }
-.fixed-shell-app { --fixed-workspace-width: 275px; --fixed-agent-width: 520px; --fixed-shell-gap: 8px; --fixed-shell-bg: var(--bg); --fixed-shell-raised: var(--panel); --fixed-shell-hover: var(--accent-soft); --fixed-shell-border: var(--line); position: relative; width: 100%; height: 100dvh; min-width: 0; min-height: 0; display: flex; gap: var(--fixed-shell-gap); overflow: hidden; padding: var(--fixed-shell-gap); box-sizing: border-box; }
-.fixed-shell-app-main, .workspace-detail-host, .workspace-detail-resident { width: 100%; height: 100%; min-width: 0; min-height: 0; overflow: hidden; }
-.fixed-shell-app-main { min-width: 0; flex: 1; display: block; }
+.fixed-shell-app { --fixed-workspace-width: 275px; --fixed-agent-width: 520px; --fixed-shell-gap: 8px; --fixed-shell-bg: var(--bg); --fixed-shell-raised: var(--panel); --fixed-shell-hover: var(--accent-soft); --fixed-shell-border: var(--line); position: relative; width: 100%; height: 100dvh; min-width: 0; min-height: 0; display: flex; gap: var(--fixed-shell-gap); overflow: clip; padding: var(--fixed-shell-gap); box-sizing: border-box; }
+.fixed-shell-app-main, .workspace-detail-host, .workspace-detail-resident { width: 100%; height: 100%; min-width: 0; min-height: 0; overflow: clip; }
+.fixed-shell-app-main { min-width: 0; flex: 1; display: block; container: workspace-content / inline-size; }
 .workspace-detail-loading:not([hidden]) { width: 100%; height: 100%; display: grid; place-items: center; }
 .workspace-detail-loading-status { display: flex; align-items: center; gap: 8px; color: var(--text); }
 .workspace-detail-empty:not([hidden]) { width: 100%; height: 100%; display: grid; place-items: center; }
@@ -284,6 +285,17 @@ turbo-frame { display: contents; }
 @media (min-width: 701px) and (hover: hover) and (pointer: fine) {
   .fixed-shell-app.is-workspace-pane-collapsed > .fixed-shell-workspace-pane,
   .fixed-workspace-presentation:not(.is-work-pane-open) .fixed-shell-work-pane { display: none; }
+}
+
+/* Below the combined pane minimum (380 + 360 + 8), keep both surfaces
+ * reachable by stacking them. Query the space beside the sidebar, not the
+ * viewport, so collapsing the sidebar can restore the horizontal split. */
+@media (min-width: 701px) and (hover: hover) and (pointer: fine) {
+  @container workspace-content (width < 748px) {
+    .fixed-shell-main { flex-direction: column; }
+    .fixed-shell-agent-pane, .fixed-shell-work-pane { min-width: 0; flex: 1; }
+    .fixed-shell-work-resizer { display: none; }
+  }
 }
 
 .fixed-shell-work-resizer { position: absolute; z-index: 3; top: 0; bottom: 0; left: -4px; width: 8px; cursor: col-resize; touch-action: none; }
