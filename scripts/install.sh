@@ -543,23 +543,26 @@ prepare_tailscale_https() {
 }
 
 pull_required_workspace_images() {
-  local default_workspace_image
+  local platform="$1" default_workspace_image
 
   info "Reading default workspace image from $atelier_image..."
-  default_workspace_image="$(docker run --rm --entrypoint cat "$atelier_image" /app/.atelier-default-workspace-image | tr -d '\r' | head -n 1)"
+  default_workspace_image="$(docker run --rm --platform "$platform" --entrypoint cat "$atelier_image" /app/.atelier-default-workspace-image | tr -d '\r' | head -n 1)"
   [ -n "$default_workspace_image" ] || fail "could not determine Atelier's default workspace image"
 
   info "Pulling required workspace image $default_workspace_image..."
-  docker pull "$default_workspace_image"
+  docker pull --platform "$platform" "$default_workspace_image" || fail "could not pull workspace image $default_workspace_image for $platform"
   success "Workspace image is ready"
 }
 
 pull_atelier_images() {
+  local platform
+
+  platform="$(docker version --format '{{.Server.Os}}/{{.Server.Arch}}')"
   info "Pulling $atelier_image..."
-  docker pull "$atelier_image"
+  docker pull --platform "$platform" "$atelier_image" || fail "could not pull Atelier image $atelier_image for $platform; this release must include an image for your Docker host architecture"
   success "Atelier image is ready"
 
-  pull_required_workspace_images
+  pull_required_workspace_images "$platform"
 }
 
 prepare_installation_assets() {
@@ -578,6 +581,18 @@ prepare_installation_assets() {
 
   [ "$images_status" -eq 0 ] || return "$images_status"
   [ "$certificate_status" -eq 0 ] || return "$certificate_status"
+}
+
+verify_workspace_swap_limit() {
+  local slice_cgroup="$1" swap_total_kib
+
+  if [ -e "$slice_cgroup/memory.swap.max" ]; then
+    [ "$(cat "$slice_cgroup/memory.swap.max")" = 0 ] || fail "could not disable workspace swap"
+  else
+    swap_total_kib="$(awk '/^SwapTotal:/ { print $2 }' /proc/meminfo)"
+    [ "$swap_total_kib" = 0 ] || fail "cgroup swap limits are unavailable but the host has swap; disable host swap or enable kernel cgroup swap accounting"
+    warning "cgroup swap limits are unavailable; continuing because the host has no swap. Keep host swap disabled."
+  fi
 }
 
 configure_workspace_resource_controls() {
@@ -605,7 +620,7 @@ EOF
   slice_cgroup="/sys/fs/cgroup$(systemctl show -p ControlGroup --value "$atelier_workspace_slice")"
 
   [ "$(cat "$slice_cgroup/memory.max")" = "$workspace_memory_bytes" ] || fail "could not apply the workspace memory limit"
-  [ "$(cat "$slice_cgroup/memory.swap.max")" = 0 ] || fail "could not disable workspace swap"
+  verify_workspace_swap_limit "$slice_cgroup"
   [ "$(cat "$slice_cgroup/pids.max")" = 32768 ] || fail "could not apply the workspace task limit"
   read -r cpu_quota cpu_period < "$slice_cgroup/cpu.max"
   [ "$cpu_quota" != max ] && [ $((100 * cpu_quota)) -eq $((workspace_cpu_quota * cpu_period)) ] || fail "could not apply the workspace CPU quota"

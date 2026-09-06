@@ -16,7 +16,7 @@
   "scripts": {
     "generate:workspace-modules": "bun run --cwd apps/web scripts/generate-workspace-modules.ts",
     "image:build": "bun run scripts/build-atelier-image.ts",
-    "image:publish": "bun run scripts/build-atelier-image.ts --push --platform linux/amd64",
+    "image:publish": "bun run scripts/build-atelier-image.ts --push --platform linux/amd64,linux/arm64",
     "docker:dev": "bun run scripts/run-atelier-docker-dev.ts",
     "check": "bun run generate:workspace-modules && bun run lint && bunx tsc --noEmit -p tsconfig.json",
     "lint": "oxlint .",
