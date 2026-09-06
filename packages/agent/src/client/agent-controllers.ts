@@ -21,7 +21,6 @@ export { promptTemplateHotkeyConflict } from "./completions-controller.ts";
 export { createHtmlAutocompleteController } from "./html-autocomplete-controller.ts";
 export { fitHtmlPreview } from "./html-preview-controller.ts";
 export { forwardAgentTerminalWheel, terminalOutputHasPrintableText } from "./terminal-controller.ts";
-export { shouldPositionTranscriptAfterSnapshot, transcriptFollowingAfterScroll, workspaceSelectionScrollTop } from "./transcript-navigation.ts";
 
 export const agentClientModule: WorkspaceClientModule = {
   id: "agent",

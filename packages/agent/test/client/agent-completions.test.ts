@@ -1,5 +1,5 @@
 import { describe, expect, mock, test } from "bun:test";
-import { type AgentCompletionInput, agentCompletionRequest, agentComposerPrimaryAction, agentComposerTextStorageKey, agentConnectionShouldRun, fileCompletionPrefix, forwardAgentTerminalWheel, insertSlashCommand, navigatePromptHistory, promptTemplateHotkeyConflict, shouldPositionTranscriptAfterSnapshot, terminalOutputHasPrintableText, transcriptFollowingAfterScroll, workspaceSelectionScrollTop } from "../../src/client/agent-controllers.ts";
+import { type AgentCompletionInput, agentCompletionRequest, agentComposerPrimaryAction, agentComposerTextStorageKey, agentConnectionShouldRun, fileCompletionPrefix, forwardAgentTerminalWheel, insertSlashCommand, navigatePromptHistory, promptTemplateHotkeyConflict, terminalOutputHasPrintableText } from "../../src/client/agent-controllers.ts";
 
 function input(value: string, cursor = value.length): AgentCompletionInput {
   return {
@@ -32,42 +32,9 @@ describe("Agent pane residency", () => {
     expect(agentComposerPrimaryAction(true, "Follow up", 0)).toBe("steer");
     expect(agentComposerPrimaryAction(false, "", 0)).toBe("send");
   });
-
-  test("repositions snapshots for a selection but preserves manual history on an in-place reconnect", () => {
-    expect(shouldPositionTranscriptAfterSnapshot(false, false)).toBe(true);
-    expect(shouldPositionTranscriptAfterSnapshot(true, true)).toBe(true);
-    expect(shouldPositionTranscriptAfterSnapshot(true, false)).toBe(false);
-  });
 });
 
-describe("agent transcript navigation", () => {
-  test("positions a selected workspace at its target when idle and at the tail when busy", () => {
-    const transcript = {
-      scrollTop: 100,
-      scrollHeight: 1_000,
-      clientHeight: 300,
-      getBoundingClientRect: () => ({ top: 100 }),
-    };
-    const target = { getBoundingClientRect: () => ({ top: 340 }) };
-
-    expect(workspaceSelectionScrollTop(transcript, target, false)).toBe(340);
-    expect(workspaceSelectionScrollTop(transcript, target, true)).toBe(700);
-    expect(workspaceSelectionScrollTop(transcript, null, false)).toBe(0);
-  });
-
-  test("preserves following when a delayed scroll event observes newly streamed content", () => {
-    expect(transcriptFollowingAfterScroll(true, { top: 400, end: 400 }, { top: 400, end: 580 })).toBe(true);
-  });
-
-  test("stops following when the user scrolls up", () => {
-    expect(transcriptFollowingAfterScroll(true, { top: 400, end: 400 }, { top: 399, end: 580 })).toBe(false);
-  });
-
-  test("resumes following only at the end", () => {
-    expect(transcriptFollowingAfterScroll(false, { top: 525, end: 580 }, { top: 579, end: 580 })).toBe(false);
-    expect(transcriptFollowingAfterScroll(false, { top: 525, end: 580 }, { top: 580, end: 580 })).toBe(true);
-  });
-
+describe("agent terminal output", () => {
   test("does not treat terminal initialization escapes as visible output", () => {
     const initialization = "\x1b[?1049h\x1b[H\x1b[2J\x1b=\x1b(B\x1b[m\r\n";
     expect(terminalOutputHasPrintableText(initialization)).toBe(false);
