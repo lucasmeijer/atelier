@@ -281,7 +281,7 @@ function renderTranscriptEndNavigation(): string {
       iconHtml: '<svg viewBox="0 0 20 20" aria-hidden="true"><path d="M4 16h12M10 4v9m-4-4 4 4 4-4"/></svg>',
       label: "Jump to end of transcript",
     },
-    attributesHtml: 'data-action="agent-pane#scrollToTranscriptEnd"',
+    attributesHtml: 'data-mobile-popular data-action="agent-pane#scrollToTranscriptEnd"',
   });
   return `<div class="agent-transcript-navigation" data-agent-pane-target="transcriptEnd" hidden>${button}</div>`;
 }
