@@ -129,7 +129,7 @@ export const entries: CatalogueEntry[] = [
     title: "Action link",
     when: "Navigation that deserves button emphasis. Use normal links for prose.",
     contract:
-      "A native anchor: href is navigation, never a click handler masquerading as navigation. No disabled links. Same content and variants as Button.",
+      "A native anchor: href is navigation, never a click handler masquerading as navigation. No disabled links. Same content and variants as Button. Icon-only links may use perimeterComparison: referencePercent and valuePercent (0–100) share one ring clockwise from twelve. Their overlap is neutral; reference beyond value is green, value beyond reference is red. A dim full-circle track preserves the button outline, including at zero. Include both values and their meaning in the accessible label; focus has a separate outline.",
     imports: { "action-link": "actionLinkHtml" },
     examples: [
       {
@@ -140,6 +140,17 @@ export const entries: CatalogueEntry[] = [
             variant: "secondary",
             content: { kind: "caption", caption: "Explore Popup" },
           }),
+      },
+      {
+        title: "Comparison ring · behind, ahead, equal, zero, full and unavailable",
+        render: () => buttonGroupHtml({ orientation: "horizontal", semantics: "group", label: "Comparison ring states", itemsHtml: [
+          { referencePercent: 75, valuePercent: 40 },
+          { referencePercent: 40, valuePercent: 75 },
+          { referencePercent: 50, valuePercent: 50 },
+          { referencePercent: 0, valuePercent: 0 },
+          { referencePercent: 100, valuePercent: 100 },
+          undefined,
+        ].map((comparison) => actionLinkHtml({ href: "#action-link", variant: "secondary", content: { kind: "icon-only", iconHtml: Icons.Usage, label: comparison ? `Time ${comparison.referencePercent}%, Usage ${comparison.valuePercent}%` : "Usage unavailable" }, perimeterComparison: comparison })).join("") }),
       },
     ],
   },

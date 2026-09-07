@@ -1,3 +1,5 @@
+import { handleUsageRequest, renderUsagePaneAction } from "./usage-web.ts";
+import { usageOpenApiPaths } from "./usage-openapi.ts";
 import { resolveAgentConversation } from "./delegation.ts";
 import type { WorkspaceAgentTabProvider, WorkspaceCommandContribution, WorkspaceModule } from "@atelier/shared";
 import {
@@ -147,6 +149,7 @@ export const agentWorkspaceModule: WorkspaceModule = {
     },
   }],
   staticFiles: agentStaticFiles,
+  renderWorkspacePaneActions: renderUsagePaneAction,
   openApiPaths: {
     "/agent-notifications/public-key": { get: {
       summary: "Get this Atelier installation's VAPID public key for browser PushManager subscription",
@@ -169,6 +172,7 @@ export const agentWorkspaceModule: WorkspaceModule = {
         responses: { "200": { description: "Notification state updated; JSON or Turbo Stream according to Accept" }, "409": { description: "The requested turn is no longer running" }, "422": { description: "Invalid notification intent or unsupported push service" } },
       },
     },
+    ...usageOpenApiPaths,
     "/workspaces/{id}/agents/{conversationId}/reveal/{target}": { get: {
       summary: "Reveal a transcript item by stable key or contributed anchor",
       parameters: ["id", "conversationId", "target"].map((name) => ({ name, in: "path", required: true, schema: { type: "string" } })),
@@ -188,7 +192,7 @@ export const agentWorkspaceModule: WorkspaceModule = {
       return { createdAgentConversationId: conversation.conversationId };
     },
   }],
-  routes: [{
+  routes: [{ handle: handleUsageRequest }, {
     async handle(request, url, context) {
       // SAFETY: The module boundary validates or constructs this value with the asserted domain shape.
       return handleAgentRequest(request, url, { events: context.events as AtelierEventBus | undefined });

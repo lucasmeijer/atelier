@@ -67,3 +67,13 @@
 /* Pressed controls and current navigation destinations share selected paint. */
 .button[aria-pressed="true"],
 .button[aria-current]:not([aria-current="false"]) { border-color: var(--accent); background: var(--accent-soft); color: var(--text-bright); }
+
+/* Reference and value share one clockwise ring over a quiet full-circle track. */
+.button.action-link--comparison { position: relative; border-color: transparent; --button-hover-border: transparent; }
+.button.action-link--comparison:not(:disabled):not([aria-disabled="true"]):focus-visible { outline: 2px solid var(--accent); outline-offset: 3px; }
+.button.action-link--comparison > .action-link__perimeter { position: absolute; inset: -1px; width: calc(100% + 2px); height: calc(100% + 2px); overflow: visible; pointer-events: none; }
+.button.action-link--comparison > .action-link__perimeter path { fill: none; stroke-width: 2; stroke-linecap: butt; vector-effect: non-scaling-stroke; }
+.action-link__perimeter .action-link__reference { stroke: var(--success); }
+.action-link__perimeter .action-link__value { stroke: var(--danger); }
+.action-link__perimeter .action-link__shared { stroke: var(--text-muted); }
+.button.action-link--comparison > .action-link__perimeter .action-link__track { stroke: var(--text-muted); stroke-width: 1; opacity: .25; }

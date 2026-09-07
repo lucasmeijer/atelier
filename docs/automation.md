@@ -57,6 +57,7 @@ Other browser-navigable surfaces are:
 /workspaces/new                         # New projectless workspace
 /projects/:projectId/workspaces/new     # New workspace for a project
 /projects/new                           # Add a project
+/usage                                  # Provider limits and Atelier-measured usage
 /settings                               # Atelier settings
 /settings?section=models                # A specific settings section
 /settings/development                   # Development settings
@@ -138,3 +139,54 @@ After staging the desired Work view, use the agent's `present` tool with:
 ```text
 http://localhost:3000/workspaces/<id>
 ```
+
+## Inspect provider usage
+
+`GET /usage` with `Accept: application/json` returns all connected providers with
+implemented subscription-usage support (currently OpenAI Codex). Refresh an
+individual provider with `GET /usage/providers/openai-codex` and the same header.
+The HTML representations drive the Usage dialog next to workspace Settings.
+
+Each result includes provider-reported windows, their durations and resets,
+installation-local token totals for the last 30 days, and local totals within
+each reported window. `partialCoverage` and `trackingSince` identify incomplete
+local history. Tracking records new inference responses, not copied session
+history, and survives workspace deletion and server restarts. Token counts cover
+all accounts used with that provider in this installation and are attributed to
+response completion. They cannot be converted to the provider's subscription
+percentage. Provider failures populate `error` without removing local totals.
+
+The Usage dialog collapses provider-reported 0% windows under **Unused limits**
+and renders reset countdowns such as `3d 12h`. The workspace Usage button traces
+Time and Usage for the selected Agent’s provider, retaining the
+most recent provider when no workspace is visible. It refreshes every minute
+while visible, on focus, and after a dialog refresh. Unsupported, disconnected,
+or unavailable providers have no comparison ring. Both arcs start at twelve
+o’clock and run clockwise on the same circle. Their shared portion is neutral;
+Time beyond Usage is green, and Usage beyond Time is red. A dim full-circle
+track preserves the button outline beneath the arcs.
+Among active windows with nonzero usage, the button selects the greatest
+Usage-minus-Time difference; ties prefer higher Usage. When all active windows are
+unused, the main allowance takes precedence over feature-specific allowances. Expired/not-started windows are
+excluded.
+`GET /usage/button?provider=openai-codex` returns the server-rendered button frame
+(or a Turbo Stream with `Accept: text/vnd.turbo-stream.html`).
+
+When no current or browser-remembered provider is available (for example opening
+`/usage` in a fresh tab), the button uses the saved most-recent model provider.
+Each window also includes `timing`: the inferred start (`reset − duration`),
+elapsed-time percentage, and usage-minus-time difference in percentage points.
+`paceDifferenceSeconds` converts that difference to distance along the allowance
+schedule (`paceDifferencePoints / 100 × durationSeconds`). The dialog and button
+label show compact durations such as `30m ahead of pace` or `1d 4h behind pace`.
+Positive means consumption is ahead; negative means behind. This is not time
+until exhaustion. Both difference fields are null outside an active window.
+The dialog shows Time and Usage percentages above one comparison bar per allowance.
+Both grow from the left: overlap is neutral, Time beyond Usage is green, and Usage
+beyond Time is red. Outside an active window the bar stays neutral. This is a linear pacing
+reference, not a billing forecast; pacing is omitted before a window starts or
+once its reset is due.
+
+Usage is contributed by the Agent module, including these OpenAPI paths. Its
+header action and directly navigable dialog use the generic
+[module-owned workspace-pane action interface](workspace-pane-actions.md).

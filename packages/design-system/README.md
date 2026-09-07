@@ -24,7 +24,7 @@ Prefer consistency over feature-specific visual preservation.
 |---|---|---|
 | Tokens, themes, spacing | `foundations` (CSS) | [role tokens and composition](src/design-system.css) |
 | Action, including icon-only | `button` | [ButtonOptions](src/button/button-html.ts), [content / variants](src/button/button-content.ts) |
-| Prominent navigation | `action-link` | [ActionLinkOptions](src/action-link/action-link-html.ts) |
+| Prominent navigation, optional icon-only comparison ring | `action-link` | [ActionLinkOptions](src/action-link/action-link-html.ts) |
 | Related actions, not selection | `button-group` | [ButtonGroupOptions](src/button-group/button-group-html.ts) |
 | Actionable row / compound row | `action-item` | [ActionItemOptions](src/action-item/action-item-html.ts) |
 | Running, still cancellable | `activity-button` | [ActivityButtonOptions](src/activity-button/activity-button-html.ts) |
@@ -82,6 +82,9 @@ state and viewport collision handling. `trigger.attributesHtml` and
 Stimulus positioning lifecycle uses the visual viewport, repositions on scrolling
 and resizing, and bounds long menus with internal scrolling. It deliberately does
 not depend on CSS anchor positioning (fixed triggers misposition in WebKit).
+
+Comparison-ring Action links retain a dim full-circle track beneath the colored
+arcs, including when both values are zero.
 
 Touch controls keep their target sizes in landscape as well as portrait.
 For frequently used actions, add `data-mobile-popular` to the button's

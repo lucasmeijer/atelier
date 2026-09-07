@@ -190,9 +190,14 @@ export interface WorkspaceModuleCommandHandler<Input = unknown> {
   execute(context: WorkspaceModuleCommandContext<Input>): Promise<WorkspaceModuleCommandResult> | WorkspaceModuleCommandResult;
 }
 
+/** One active module dialog, shared by module routes and the Atelier shell. */
+export const workspaceModuleModalFrameId = "workspace_module_modal_host";
+
 export interface WorkspaceModuleRouteContext {
   events?: AtelierEventBus;
   openWorkView(workspaceId: string, reference: WorkspaceWorkViewReference): Promise<Response>;
+  /** Render a full Atelier page with this server-rendered dialog body in the shared modal frame. */
+  renderModalPage(dialogHtml: string): Promise<Response>;
 }
 
 export interface WorkspaceModuleRouteHandler {
@@ -315,6 +320,9 @@ export interface WorkspaceServerModuleContext {
 }
 
 export interface WorkspaceModule {
+  /** Icon-only design-system actions before Settings, in module registration order.
+   * Render immediately; module-owned Turbo requests load any remote state. */
+  renderWorkspacePaneActions?(): string;
   cableChannels?: import("./cable.ts").CableChannelAdapter[];
   openApiPaths?: Record<string, import("@atelier/core").JsonObject>;
   id: string;

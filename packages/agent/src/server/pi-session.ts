@@ -1,3 +1,4 @@
+import { modelRuntimeWithUsageTracking } from "./usage-tracking.ts";
 import { agentDelegation, type AgentSessionAttachment, type AgentDelegationTranscript } from "./delegation.ts";
 import { attachModelRequestPipeline } from "./model-request-pipeline.ts";
 import { mkdir, readFile, writeFile } from "node:fs/promises";
@@ -78,7 +79,7 @@ export async function createPiSession(agent: WorkspaceAgentConversationInfo, opt
   const { session } = await createAgentSession({
     cwd: workspaceRoot,
     agentDir: dirname(agent.path),
-    modelRuntime: modelRuntimeWithServiceTiers(modelRuntime, serviceTiers),
+    modelRuntime: modelRuntimeWithUsageTracking(modelRuntimeWithServiceTiers(modelRuntime, serviceTiers)),
     model: initial.model ?? (inheritedModel ? modelRuntime.getModel(inheritedModel.provider, inheritedModel.id) : undefined),
     thinkingLevel: initial.thinkingLevel ?? preparation?.thinkingLevel,
     resourceLoader: createAtelierResourceLoader(agentsFiles, appendSystemPrompt, skillResources),

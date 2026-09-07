@@ -1,4 +1,5 @@
 import { createAgentNotificationsController } from "./notifications-controller.ts";
+import { createUsageControllers } from "./usage-controllers.ts";
 import type { WorkspaceClientModule } from "@atelier/shared";
 import { createAgentPaneController, registerAgentPaneVisibilityHooks } from "./agent-pane.ts";
 import { createAgentAttachmentsController } from "./attachments-controller.ts";
@@ -28,6 +29,7 @@ export const agentClientModule: WorkspaceClientModule = {
   id: "agent",
   install({ application, Controller, hooks }) {
     application.register("agent-notifications", createAgentNotificationsController(Controller));
+    for (const [name, controller] of Object.entries(createUsageControllers(Controller))) application.register(name, controller);
     application.register("agent-pane", createAgentPaneController(Controller));
     application.register("agent-attachments", createAgentAttachmentsController(Controller));
     application.register("composer-focus", createComposerFocusController(Controller));

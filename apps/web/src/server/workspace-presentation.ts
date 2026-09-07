@@ -262,7 +262,7 @@ function renderWorkspacePaneCollections(presentation: WorkspacePanePresentation,
 const workspacePaneScrollDomId = "fixed_shell_workspace_scroll";
 const workspaceProjectsDrawerDomId = "fixed_shell_projects_drawer";
 
-export function renderWorkspacePane(presentation: WorkspacePanePresentation, sidebarContributionsHtml = ""): string {
+export function renderWorkspacePane(presentation: WorkspacePanePresentation, sidebarContributionsHtml = "", moduleActionsHtml = ""): string {
   const settings = actionLinkHtml({
     href: "/settings",
     variant: "secondary",
@@ -271,7 +271,7 @@ export function renderWorkspacePane(presentation: WorkspacePanePresentation, sid
   });
   return `<div class="fixed-shell-workspace-pane">${panelHtml({
     element: { tag: "aside",  attributesHtml: 'aria-label="Workspaces"' },
-    headerHtml: `<strong class="panel__title">${Icons.Atelier}Atelier</strong>${buttonGroupHtml({ orientation: "horizontal", semantics: "layout", itemsHtml: `${settings}${barButton("Collapse Workspace pane", "click->workspace-navigation#toggleWorkspacePaneCollapsed", Icons.Panel, "data-collapse-workspace-pane")}` })}`,
+    headerHtml: `<strong class="panel__title">${Icons.Atelier}Atelier</strong>${buttonGroupHtml({ orientation: "horizontal", semantics: "layout", itemsHtml: `${moduleActionsHtml}${settings}${barButton("Collapse Workspace pane", "click->workspace-navigation#toggleWorkspacePaneCollapsed", Icons.Panel, "data-collapse-workspace-pane")}` })}`,
     bodyHtml: renderWorkspacePaneCollections(presentation, sidebarContributionsHtml),
   })}</div>`;
 }

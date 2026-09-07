@@ -322,7 +322,7 @@ export function renderAgentPaneComposerFooter(ctx: AgentRenderContext, stats: Ag
   const thinkingFormId = `${formPrefix}_thinking`;
   const selectionForms = `<form id="${modelFormId}" method="post" action="${escapeHtml(agentPath(ctx, "/model"))}" hidden></form>
 ${stats.thinkingLevels.length > 0 ? `<form id="${thinkingFormId}" method="post" action="${escapeHtml(agentPath(ctx, "/thinking"))}" hidden></form>` : ""}`;
-  return `<span data-agent-compact-available="${stats.compactAvailable}" hidden></span>
+  return `<span data-agent-compact-available="${stats.compactAvailable}" data-controller="usage-provider" data-usage-provider-provider-value="${escapeHtml(models.find((model) => model.selected)?.provider ?? "")}" hidden></span>
 ${meter}
 <span class="agent-stat" title="Tokens up (input)">↑ <b>${formatTokens(stats.inputTokens)}</b></span>
 <span class="agent-stat" title="Tokens down (output)">↓ <b>${formatTokens(stats.outputTokens)}</b></span>

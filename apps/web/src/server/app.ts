@@ -21,6 +21,7 @@ import { isGitProjectInit, listProjects, projectWorkspaceInit, type ProjectSumma
 import { createWorkspacePresentationStore, generateWorkspaceId, listWorkspaces, setWorkspaceParked, setWorkspaceTitle, type WorkspaceCreationContext, type WorkspaceInitInstruction, type WorkspaceWorkViewReference, type WorkspaceWorkViewState } from "@atelier/workspace";
 import { createWorkspaceProvisioningStore } from "@atelier/workspace/server/provisioning";
 import {
+  workspaceModuleModalFrameId,
   atelierCableConnectionHeader,
   CableTopics,
   emptyWorkspaceCommandInputSchema,
@@ -497,6 +498,7 @@ export function createWebApp(deps: WebAppDeps): WebApp {
   }
 
   type ShellSurface =
+    | { kind: "module-modal"; dialogHtml: string }
     | { kind: "project-settings"; projectId: string; section: string | undefined }
     | { kind: "new-project" }
     | { kind: "new-workspace"; project?: ProjectSummary }
@@ -514,13 +516,14 @@ export function createWebApp(deps: WebAppDeps): WebApp {
       ? surface.project ? await renderProjectLaunchComposerFrame(surface.project) : await renderProjectlessLaunchComposerFrame()
       : `<turbo-frame id="${launchComposerFrameId}"></turbo-frame>`;
     return `<div class="app fixed-shell-app" data-controller="atelier-shortcuts workspace-navigation">
-    ${renderWorkspacePane(pane, renderGlobalSidebarContributions())}
+    ${renderWorkspacePane(pane, renderGlobalSidebarContributions(), workspaceModules.map((module) => module.renderWorkspacePaneActions?.() ?? "").join(""))}
     <main class="fixed-shell-app-main">${await workspaceDetailHostHtml(pane, selectedId)}</main>
     ${renderAtelierBar()}
   </div>
   ${projectEditor}
   <div id="update_modal_host"></div>
   <div id="settings_modal_host">${settings}</div>
+  <turbo-frame id="${workspaceModuleModalFrameId}">${surface?.kind === "module-modal" ? surface.dialogHtml : ""}</turbo-frame>
   <div id="onboarding_modal_host">${await renderOnboardingDialog()}</div>
   <div id="${workspaceCommandModalHostId}"></div>
   ${launchComposer}`;
@@ -1157,6 +1160,7 @@ export function createWebApp(deps: WebAppDeps): WebApp {
     for (const moduleRoute of workspaceModuleRoutes()) {
       const moduleResponse = await moduleRoute.handle(request, url, {
         events: deps.events,
+        renderModalPage: (dialogHtml) => surfacePage({ kind: "module-modal", dialogHtml }),
         openWorkView: async (workspaceId, reference) => await openWorkspaceModuleWorkView(workspaceId, reference, request),
       });
       if (moduleResponse) return moduleResponse;
