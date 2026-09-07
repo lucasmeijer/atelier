@@ -23,6 +23,10 @@ main { margin-left: 230px; padding: 32px 40px 24px; max-width: 1250px; }
 .catalogue-components > article > header h2, .catalogue-lab > h2 { color: var(--text-bright); font-size: var(--text-title); font-weight: var(--weight-semibold); margin: 0 0 8px; }
 .catalogue-components > article > header p { margin: 0 0 24px; max-width: 75ch; }
 .catalogue-example { margin: 0 0 24px; }
+.catalogue-comparison { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 16px; }
+.catalogue-size { min-width: 0; }
+.catalogue-size > h4 { margin: 0 0 8px; font: inherit; color: var(--text-muted); }
+.catalogue-size-note { color: var(--text-muted); }
 .catalogue-example > h3, .catalogue-reference-content > h3 { font: inherit; margin: 0 0 12px; }
 .catalogue-stage { display: flex; flex-wrap: wrap; align-items: flex-start; gap: 12px; width: min(100%, var(--example-width, 100%)); min-width: 0; overflow: auto; padding: 4px 0; }
 .catalogue-stage > :is(.action-list, .form-stack, .managed-list, .panel) { width: 100%; min-width: 0; }

@@ -8,6 +8,8 @@
 :is(.activity-button__content, .progress-button__content) {
   grid-area: content;
   justify-self: center;
+  min-width: 0;
+  max-width: 100%;
   height: 100%;
   box-sizing: border-box;
   display: inline-flex;
@@ -33,7 +35,9 @@
   y: 1px;
   width: calc(100% - 2px);
   height: calc(100% - 2px);
-  rx: 13px;
+  /* Resolve both radii from height so circles and wide pills match the button. */
+  ry: calc(50% - 1px);
+  rx: auto;
   fill: none;
   stroke-width: 1.5;
   stroke-linecap: round;
@@ -42,5 +46,4 @@
 @keyframes perimeter-button-orbit { to { stroke-dashoffset: -100; } }
 @media (max-width: 700px), (pointer: coarse) {
   :is(.activity-button, .progress-button):not(.icon-only) :is(.activity-button__content, .progress-button__content) { padding-inline: 16px; }
-  :is(.button.activity-button > .activity-button__indicator, .button.progress-button > .progress-button__perimeter) rect { rx: 22px; }
 }

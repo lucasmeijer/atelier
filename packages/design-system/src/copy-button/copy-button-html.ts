@@ -24,7 +24,7 @@ export function copyButtonHtml(options: CopyButtonOptions): string {
     options.attributesHtml,
     options.disabled ? "disabled" : undefined,
   ].filter(Boolean).join(" ");
-  const caption = options.caption === undefined ? "" : `<span>${escapeHtml(options.caption)}</span>`;
+  const caption = options.caption === undefined ? "" : `<span class="button__caption">${escapeHtml(options.caption)}</span>`;
 
   return transientFeedbackMarkup({
     element: {

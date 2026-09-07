@@ -24,7 +24,9 @@ export interface CatalogueEntry {
   contract: string;
   imports?: Record<string, string>;
   sources?: string[];
-  examples: { title: string; render: () => string }[];
+  /** Compare the same specimen with and without the popular mobile group marker. */
+  compareButtonSizes?: boolean;
+  examples: { title: string; render: (idSuffix?: string) => string }[];
 }
 export const entries: CatalogueEntry[] = [
   {
@@ -59,6 +61,7 @@ export const entries: CatalogueEntry[] = [
   },
   {
     id: "button",
+    compareButtonSizes: true,
     title: "Button",
     when: "An action, not navigation. Primary for the main action, secondary for supporting actions, danger for destructive actions.",
     contract:
@@ -67,13 +70,12 @@ export const entries: CatalogueEntry[] = [
     sources: ["button/button-content.ts"],
     examples: [
       {
-        title: "Mobile sizing · regular · popular button · popular group",
+        title: "Icon-only · grouped icon and caption",
         render: () =>
-          buttonHtml({ type: "button", variant: "secondary", content: { kind: "icon-only", iconHtml: Icons.Plus, label: "Regular action" } }) +
-          buttonHtml({ type: "button", variant: "secondary", content: { kind: "icon-only", iconHtml: Icons.Plus, label: "Popular action" }, attributesHtml: "data-mobile-popular" }) +
+          buttonHtml({ type: "button", variant: "secondary", content: { kind: "icon-only", iconHtml: Icons.Plus, label: "Add item" } }) +
           buttonGroupHtml({
-            semantics: "group", label: "Popular actions", orientation: "horizontal", attributesHtml: "data-mobile-popular",
-            itemsHtml: buttonHtml({ type: "button", variant: "secondary", content: { kind: "icon-only", iconHtml: Icons.Plus, label: "Popular grouped action" } }) +
+            semantics: "group", label: "Quick actions", orientation: "horizontal",
+            itemsHtml: buttonHtml({ type: "button", variant: "secondary", content: { kind: "icon-only", iconHtml: Icons.Plus, label: "Add grouped item" } }) +
               buttonHtml({ type: "button", variant: "secondary", content: { kind: "caption", caption: "/quick-launch" } }),
           }),
       },
@@ -123,6 +125,7 @@ export const entries: CatalogueEntry[] = [
   },
   {
     id: "action-link",
+    compareButtonSizes: true,
     title: "Action link",
     when: "Navigation that deserves button emphasis. Use normal links for prose.",
     contract:
@@ -142,12 +145,33 @@ export const entries: CatalogueEntry[] = [
   },
   {
     id: "button-group",
+    compareButtonSizes: true,
     title: "Button group",
     when: "Related actions sharing horizontal or vertical spacing. For mutually exclusive values, use Toggle.",
     contract:
       "Use semantics: group with a label for a meaningful group; layout for spacing only. Wrapping forms are allowed in itemsHtml.",
     imports: { "button-group": "buttonGroupHtml", button: "buttonHtml" },
     examples: [
+      {
+        title: "Vertical group · caption · icon-only · wrapped form",
+        render: () => buttonGroupHtml({
+          orientation: "vertical",
+          semantics: "group",
+          label: "Workspace actions",
+          itemsHtml:
+            buttonHtml({ type: "button", variant: "primary", content: { kind: "caption", caption: "Open workspace" } }) +
+            activityButtonHtml({
+              variant: "secondary", iconOnly: true, state: "active",
+              initialLabel: "Start", activeLabel: "Stop",
+              initialContent: { kind: "html", html: Icons.Agent },
+              activeContent: { kind: "html", html: Icons.Close },
+              attributesHtml: 'data-action="catalogue#activity"',
+            }) +
+            '<form data-action="submit->catalogue#submit">' +
+            buttonHtml({ type: "submit", variant: "secondary", content: { kind: "caption", caption: "Save workspace" } }) +
+            '<output aria-live="polite"></output></form>',
+        }),
+      },
       {
         title: "Horizontal action group",
         render: () =>
@@ -172,6 +196,7 @@ export const entries: CatalogueEntry[] = [
   },
   {
     id: "action-item",
+    compareButtonSizes: true,
     title: "Action item",
     when: "Rows in menus, navigation, trees and action lists. Use compound when a row has separately actionable trailing controls.",
     contract:
@@ -216,6 +241,7 @@ export const entries: CatalogueEntry[] = [
   },
   {
     id: "activity-button",
+    compareButtonSizes: true,
     title: "Activity button",
     when: "A running operation that can still be stopped. For uninterruptible operations use Progress button.",
     contract:
@@ -223,6 +249,45 @@ export const entries: CatalogueEntry[] = [
     imports: { "activity-button": "activityButtonHtml" },
     sources: ["activity-button/activity-button-client.ts"],
     examples: [
+      {
+        title: "Long caption · stable width across states",
+        render: () => activityButtonHtml({
+          variant: "secondary",
+          state: "active",
+          initialContent: { kind: "text", text: "Start preparing the development workspace" },
+          activeContent: { kind: "text", text: "Stop preparing the development workspace" },
+          attributesHtml: 'data-action="catalogue#activity"',
+        }),
+      },
+      {
+        title: "Grouped activity and progress perimeters",
+        render: () =>
+          buttonGroupHtml({
+            semantics: "group",
+            label: "Running actions",
+            orientation: "horizontal",
+            itemsHtml:
+              activityButtonHtml({
+                variant: "primary",
+                iconOnly: true,
+                state: "active",
+                initialLabel: "Start agent",
+                activeLabel: "Stop agent",
+                initialContent: { kind: "html", html: Icons.Agent },
+                activeContent: { kind: "html", html: Icons.Close },
+                attributesHtml: 'data-action="catalogue#activity"',
+              }) +
+              progressButtonHtml({
+                variant: "secondary",
+                iconOnly: true,
+                state: "in-progress",
+                initialLabel: "Start processing",
+                progressLabel: "Processing",
+                initialContent: { kind: "html", html: Icons.Refresh },
+                progressContent: { kind: "html", html: Icons.Refresh },
+              }),
+          }),
+      },
       {
         title: "Initial and active",
         render: () =>
@@ -245,12 +310,39 @@ export const entries: CatalogueEntry[] = [
   },
   {
     id: "progress-button",
+    compareButtonSizes: true,
     title: "Progress button",
     when: "An operation whose action must not be invoked again while running.",
     contract:
       "In-progress always disables the control. Omit progress for indeterminate; otherwise use a finite number from 0 to 100. Server-render new states with Turbo.",
     imports: { "progress-button": "progressButtonHtml" },
     examples: [
+      {
+        title: "Icon-only · initial · indeterminate · 0% · 50% · 100%",
+        render: () =>
+          (["initial", undefined, 0, 50, 100] as const).map((progress) =>
+            progressButtonHtml({
+              variant: "primary",
+              iconOnly: true,
+              state: progress === "initial" ? "initial" : "in-progress",
+              progress: progress === "initial" ? undefined : progress,
+              initialLabel: "Install",
+              progressLabel: progress === "initial" || progress === undefined ? "Installing" : `Installing ${progress}%`,
+              initialContent: { kind: "html", html: Icons.ArrowDown },
+              progressContent: { kind: "html", html: Icons.ArrowDown },
+            }),
+          ).join(""),
+      },
+      {
+        title: "Long caption · stable width across states",
+        render: () => progressButtonHtml({
+          variant: "secondary",
+          state: "in-progress",
+          progress: 50,
+          initialContent: { kind: "text", text: "Install all dependencies for this workspace" },
+          progressContent: { kind: "text", text: "Installing all dependencies for this workspace…" },
+        }),
+      },
       {
         title: "Indeterminate · 0% · 50% · 100%",
         render: () =>
@@ -276,12 +368,21 @@ export const entries: CatalogueEntry[] = [
   },
   {
     id: "copy-button",
+    compareButtonSizes: true,
     title: "Copy button",
     when: "Copy a known value, with automatic transient success feedback.",
     contract:
       "Provide label and copyText; caption is optional. Clipboard needs a secure context and permission. Errors are not presented as success. Try copying, then paste into Text entry.",
     imports: { "copy-button": "copyButtonHtml" },
     examples: [
+      {
+        title: "Long caption · initial and copied feedback",
+        render: () => copyButtonHtml({
+          label: "Copy workspace setup command",
+          caption: "Copy the complete workspace setup command",
+          copyText: "bun run web",
+        }),
+      },
       {
         title: "Icon-only and caption",
         render: () =>
@@ -299,6 +400,7 @@ export const entries: CatalogueEntry[] = [
   },
   {
     id: "destructive-confirmation",
+    compareButtonSizes: true,
     title: "Destructive confirmation",
     when: "An inline two-step destructive form action. Use Dialog for explanations or additional input.",
     contract:
@@ -378,6 +480,7 @@ export const entries: CatalogueEntry[] = [
   },
   {
     id: "popup",
+    compareButtonSizes: true,
     title: "Popup",
     when: "Compact choices anchored to a disclosure. Prefer popupHtml: one call owns trigger, anchor, ARIA and native popover behavior.",
     contract:
@@ -386,8 +489,8 @@ export const entries: CatalogueEntry[] = [
     examples: [
       {
         title: "Constrained trigger · single-line caption",
-        render: () => `<div style="width: 180px">${popupHtml({
-          id: "catalogue-popup-constrained",
+        render: (idSuffix = "") => `<div style="width: 180px; max-width: 100%">${popupHtml({
+          id: `catalogue-popup-constrained${idSuffix}`,
           label: "Model",
           trigger: { variant: "secondary", content: { kind: "caption", caption: "An unusually long model name" } },
           contentHtml: actionItemHtml({ kind: "single", label: { kind: "text", text: "An unusually long model name" }, element: { tag: "button", attributesHtml: 'type="button" role="menuitemradio" aria-checked="true"' } }),
@@ -395,9 +498,9 @@ export const entries: CatalogueEntry[] = [
       },
       {
         title: "Anchored menu · disabled · long option",
-        render: () =>
+        render: (idSuffix = "") =>
           popupHtml({
-            id: "catalogue-popup",
+            id: `catalogue-popup${idSuffix}`,
             label: "Example actions",
             trigger: {
               variant: "secondary",
@@ -425,6 +528,7 @@ export const entries: CatalogueEntry[] = [
   },
   {
     id: "popup-select",
+    compareButtonSizes: true,
     title: "Popup select",
     when: "A native form select enhanced into a consistent popover. Prefer Toggle for a few short options.",
     contract:
@@ -538,6 +642,7 @@ export const entries: CatalogueEntry[] = [
   },
   {
     id: "transient-feedback",
+    compareButtonSizes: true,
     title: "Transient feedback",
     when: "Brief acknowledgement of a completed action. Prefer Copy button for clipboard actions.",
     contract:

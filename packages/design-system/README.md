@@ -9,7 +9,11 @@ Prefer consistency over feature-specific visual preservation.
 - **Humans:** run `bun run web`, open `/design-system-catalogue.html`.
   Search or scan live examples; expand **Usage & API** for contracts, executable
   examples and authoritative source. Try all five themes, narrow containers,
-  RTL, browser zoom and reduced motion. The edge laboratory pins a real popup
+  RTL, browser zoom and reduced motion. Button specimens always show **Regular**
+  and **Popular** side by side. Popular sizing activates on a narrow viewport or
+  coarse pointer; desktop sizes remain identical (the Example width control alone
+  does not activate mobile media queries).
+  The edge laboratory pins a real popup
   to any viewport corner; Dialog includes a nested select and long content.
 - **Agents:** search [`catalogue/entries.ts`](catalogue/entries.ts) for `id: "…"`.
   Each entry keeps **when to use**, **contract**, **imports**, **source paths** and
@@ -85,7 +89,9 @@ For frequently used actions, add `data-mobile-popular` to the button's
 At ≤700px or with a coarse pointer, regular icon-only buttons are 42.5px with
 17.85px icons; popular ones are 62.5px with 26.25px icons. Popular caption buttons
 also get a 62.5px minimum height (for example, composer quick launches). Untagged
-caption buttons and desktop sizing are unchanged. The tag applies to all descendant
+caption button minimum heights and desktop sizing are unchanged. Caption controls,
+including activity, progress and copy buttons, wrap long labels on mobile; perimeter
+indicators follow the resulting button height. The tag applies to all descendant
 buttons, so keep groups scoped to the actions that should be large. Action
 items retain their shared rounded treatment and reveal truncated labels on engagement. Enhanced selects retain native form values and reset behavior.
 

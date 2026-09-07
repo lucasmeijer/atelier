@@ -45,8 +45,10 @@ export async function designSystemCatalogueHtml(
         ),
       );
       return `<article id="${entry.id}" data-catalogue-target="entry" data-search="${escapeHtml(`${entry.title} ${entry.when}`.toLowerCase())}">
-      <header><h2><a href="#${entry.id}">${entry.title}</a></h2><p>${entry.when}</p></header>
-      ${entry.examples.map((example) => `<section class="catalogue-example"><h3>${escapeHtml(example.title)}</h3><div class="catalogue-stage">${example.render()}</div></section>`).join("")}
+      <header><h2><a href="#${entry.id}">${entry.title}</a></h2><p>${entry.when}</p>${entry.compareButtonSizes ? '<p class="catalogue-size-note">Regular and popular side by side. Popular buttons enlarge on mobile or touch; desktop sizes are identical.</p>' : ""}</header>
+      ${entry.examples.map((example) => `<section class="catalogue-example"><h3>${escapeHtml(example.title)}</h3>${entry.compareButtonSizes
+        ? `<div class="catalogue-comparison">${["regular", "popular"].map((size) => `<section class="catalogue-size"><h4>${size === "regular" ? "Regular" : "Popular"}</h4><div class="catalogue-stage"${size === "popular" ? " data-mobile-popular" : ""}>${example.render(`-${size}`)}</div></section>`).join("")}</div>`
+        : `<div class="catalogue-stage">${example.render()}</div>`}</section>`).join("")}
       <details class="catalogue-reference">${disclosure("Usage & API")}<div class="catalogue-reference-content"><h3>Contract</h3><p>${escapeHtml(entry.contract)}</p><h3>Example usage</h3>${entry.examples.map((example) => code(`${imports}\n\nconst renderExample = ${example.render.toString()};`)).join("")}<h3>API source</h3>${contracts.join("")}</div></details>
     </article>`;
     }),

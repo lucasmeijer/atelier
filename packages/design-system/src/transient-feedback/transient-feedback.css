@@ -7,4 +7,4 @@
 @media (max-width: 700px), (pointer: coarse) {
   .transient-feedback__status { min-height: 44px; }
 }
-.button.transient-feedback > .transient-feedback__content:not([hidden]) { display: inline-flex; align-items: center; justify-content: center; gap: inherit; }
+.button.transient-feedback > .transient-feedback__content:not([hidden]) { display: inline-flex; min-width: 0; max-width: 100%; align-items: center; justify-content: center; gap: inherit; }
