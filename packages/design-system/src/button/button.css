@@ -45,7 +45,6 @@
 .button[aria-disabled="true"] { opacity: .45; cursor: default; transform: none; }
 .button.icon-only { width: 26px; flex: 0 0 auto; padding: 0; }
 .button svg { width: 14px; height: 14px; flex: 0 0 auto; fill: none; stroke: currentColor; stroke-width: 2; stroke-linecap: round; stroke-linejoin: round; }
-.button svg circle { fill: currentColor; stroke: none; }
 .button__icon { display: inline-flex; align-items: center; justify-content: center; }
 
 @media (max-width: 700px), (pointer: coarse) {
