@@ -119,7 +119,8 @@ function composerIsTranscribing(element: Element): boolean {
 
 export function createAgentCompletionsController(Controller: StimulusControllerConstructor, hooks: WorkspaceClientHooks) {
   const HtmlAutocompleteController = createHtmlAutocompleteController(Controller, {
-    optionSelector: "[role=\"option\"]:not([hidden]):not(:disabled)",
+    // Quick launches are buttons, not keyboard-selected listbox options.
+    optionSelector: ':is([role="option"], [data-agent-quick-launch]):not([hidden]):not(:disabled)',
     loadingHtml: autocompleteHtml({ kind: "message", role: "status", content: { kind: "html", html: '<span class="agent-completion-spinner" aria-hidden="true"></span>Loading completions…' } }),
     triggerKeysWhenClosed: ["/", "@"],
     fullscreenShortcut: (option) => option.dataset.completionKind === "prompt-template",
