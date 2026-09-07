@@ -1,7 +1,7 @@
 import { Controller } from "@hotwired/stimulus";
 import { createHtmlAutocompleteController, PromptHistoryNavigator } from "@atelier/agent/client";
 import { autocompleteHtml } from "@atelier/design-system/autocomplete";
-import { composerSubmitKey, focusLikelyOpensSoftwareKeyboard, looksLikeProjectSpec, phoneLayoutMediaQuery } from "@atelier/shared";
+import { composerSubmitKey, focusLikelyOpensSoftwareKeyboard, isWorkspacePaneVisible, looksLikeProjectSpec, phoneLayoutMediaQuery } from "@atelier/shared";
 import { Type } from "typebox";
 import { Value } from "typebox/value";
 import { submitFormWithFirstButton } from "./form-submission.ts";
@@ -23,6 +23,17 @@ class SubmitShortcutController extends Controller {
     if (this.submitting) return;
     // SAFETY: The server-rendered DOM and connected controller contract establish this element shape.
     submitFormWithFirstButton(event.currentTarget as HTMLFormElement);
+  }
+
+  windowKeydown(event: KeyboardEvent): void {
+    if (event.defaultPrevented || event.repeat || event.isComposing) return;
+    if (composerSubmitKey(event, false) !== "shortcut") return;
+    if (!isWorkspacePaneVisible(this.element) || !this.element.checkVisibility()) return;
+    if (document.querySelector("dialog[open]")) return;
+    event.preventDefault();
+    if (this.submitting) return;
+    // SAFETY: Window-level shortcuts are attached to the form they submit.
+    submitFormWithFirstButton(this.element as HTMLFormElement);
   }
 
   submit(event: SubmitEvent): void {
