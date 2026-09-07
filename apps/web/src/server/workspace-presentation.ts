@@ -286,7 +286,7 @@ function renderAtelierNextUnreadButton(): string {
 export function renderAtelierBar(): string {
   const close = barButton("Close workspace list", "click->workspace-navigation#closeWorkspacePane", Icons.Close, "data-close-workspace-pane disabled");
   const newWorkspace = barButton("New Workspace With Same Project", "click->atelier-shortcuts#runCommand", Icons.Plus, 'data-command-id="agent.open-launch-composer"');
-  return `<nav class="fixed-shell-mobile-nav fixed-shell-atelier-bar" aria-label="Atelier">${close}${renderAtelierNextUnreadButton()}${newWorkspace}</nav>`;
+  return `<nav class="fixed-shell-mobile-nav fixed-shell-atelier-bar" data-mobile-popular aria-label="Atelier">${close}${renderAtelierNextUnreadButton()}${newWorkspace}</nav>`;
 }
 
 export function workspacePresentationDomId(workspaceId: string): string {
@@ -529,7 +529,7 @@ const mobileMoreAttentionHtml = '<i class="status-dot attention" aria-label="Hid
 
 export function renderMobileWorkspaceBar(destinationsHtml = "", moreMenuHtml = ""): string {
   const workspace = barButton("Show workspaces", "click->workspace-navigation#showWorkspacePane", Icons.Workspace, "data-show-workspace-list");
-  return `<nav class="fixed-shell-mobile-nav fixed-shell-workspace-bar" aria-label="Current Workspace destinations">
+  return `<nav class="fixed-shell-mobile-nav fixed-shell-workspace-bar" data-mobile-popular aria-label="Current Workspace destinations">
     <div class="fixed-shell-mobile-scroll" data-mobile-overflow-container>${workspace}${destinationsHtml}</div>
     ${moreMenuHtml}
   </nav>`;

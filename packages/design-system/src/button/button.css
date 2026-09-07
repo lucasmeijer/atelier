@@ -51,9 +51,17 @@
   .button { height: 44px; padding-inline: 16px; max-width: 100%; min-width: 0; }
   .button:has(.button__caption) { height: auto; min-height: 44px; padding-block: 10px; }
   .button__caption { min-width: 0; white-space: normal; overflow-wrap: anywhere; }
-  .button.icon-only { width: 50px; height: 50px; padding: 0; }
+  /* Regular icon controls are 15% smaller than the original 50px / 21px. */
+  .button.icon-only { width: 42.5px; height: 42.5px; padding: 0; }
   .button svg { width: 20px; height: 20px; }
-  .button.icon-only svg { width: 21px; height: 21px; }
+  .button.icon-only svg { width: 17.85px; height: 17.85px; }
+
+  /* Mark a button or containing group; only mobile/touch sizing changes. */
+  .button:where([data-mobile-popular], [data-mobile-popular] *),
+  .button:has(.button__caption):where([data-mobile-popular], [data-mobile-popular] *) { min-height: 62.5px; }
+  .button.icon-only:where([data-mobile-popular], [data-mobile-popular] *) { width: 62.5px; height: 62.5px; }
+  .button:where([data-mobile-popular], [data-mobile-popular] *) svg,
+  .button.icon-only:where([data-mobile-popular], [data-mobile-popular] *) svg { width: 26.25px; height: 26.25px; }
 }
 
 /* Pressed controls and current navigation destinations share selected paint. */

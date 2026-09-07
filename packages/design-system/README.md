@@ -79,7 +79,14 @@ Stimulus positioning lifecycle uses the visual viewport, repositions on scrollin
 and resizing, and bounds long menus with internal scrolling. It deliberately does
 not depend on CSS anchor positioning (fixed triggers misposition in WebKit).
 
-Touch controls keep their target sizes in landscape as well as portrait. Action
+Touch controls keep their target sizes in landscape as well as portrait.
+For frequently used actions, add `data-mobile-popular` to the button's
+`attributesHtml` or a containing group (including ButtonGroup's `attributesHtml`).
+At ≤700px or with a coarse pointer, regular icon-only buttons are 42.5px with
+17.85px icons; popular ones are 62.5px with 26.25px icons. Popular caption buttons
+also get a 62.5px minimum height (for example, composer quick launches). Untagged
+caption buttons and desktop sizing are unchanged. The tag applies to all descendant
+buttons, so keep groups scoped to the actions that should be large. Action
 items retain their shared rounded treatment and reveal truncated labels on engagement. Enhanced selects retain native form values and reset behavior.
 
 ## Rules for callers

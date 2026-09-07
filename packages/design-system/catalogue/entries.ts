@@ -62,10 +62,21 @@ export const entries: CatalogueEntry[] = [
     title: "Button",
     when: "An action, not navigation. Primary for the main action, secondary for supporting actions, danger for destructive actions.",
     contract:
-      "Choose caption OR icon-only with a mandatory accessible label. Native type and disabled are explicit. Do not add classes or override component anatomy via attributesHtml.",
+      "Choose caption OR icon-only with a mandatory accessible label. On narrow screens (≤700px) or coarse pointers, regular icon-only controls are 42.5px with 17.85px icons. Add data-mobile-popular to a button (via attributesHtml) or containing group for 62.5px controls and 26.25px icons. Popular caption buttons also have a 62.5px minimum height; ordinary caption buttons and desktop sizes are unchanged. Native type and disabled are explicit. Do not add classes or override component anatomy via attributesHtml.",
     imports: { button: "buttonHtml", icons: "Icons" },
     sources: ["button/button-content.ts"],
     examples: [
+      {
+        title: "Mobile sizing · regular · popular button · popular group",
+        render: () =>
+          buttonHtml({ type: "button", variant: "secondary", content: { kind: "icon-only", iconHtml: Icons.Plus, label: "Regular action" } }) +
+          buttonHtml({ type: "button", variant: "secondary", content: { kind: "icon-only", iconHtml: Icons.Plus, label: "Popular action" }, attributesHtml: "data-mobile-popular" }) +
+          buttonGroupHtml({
+            semantics: "group", label: "Popular actions", orientation: "horizontal", attributesHtml: "data-mobile-popular",
+            itemsHtml: buttonHtml({ type: "button", variant: "secondary", content: { kind: "icon-only", iconHtml: Icons.Plus, label: "Popular grouped action" } }) +
+              buttonHtml({ type: "button", variant: "secondary", content: { kind: "caption", caption: "/quick-launch" } }),
+          }),
+      },
       {
         title: "Variants · disabled · icon-only · long caption",
         render: () =>

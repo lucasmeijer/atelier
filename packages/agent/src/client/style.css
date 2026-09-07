@@ -243,7 +243,7 @@
 /* Keep the control in flow so its shared button dimensions size the action row. */
 .composer-primary-action { display: inline-flex; flex: 0 0 auto; }
 @media (max-width: 700px), (pointer: coarse) {
-  .composer { --composer-control-size: 50px; }
+  .composer { --composer-control-size: 62.5px; }
 }
 
 .agent-completion-menu-host { position: absolute; z-index: 20; }
