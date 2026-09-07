@@ -194,7 +194,6 @@ class AtelierShortcutsController extends Controller<HTMLElement> {
   private deleteVisibleWorkspace(force = false): void {
     const form = this.visibleWorkspaceDeleteForm();
     if (!form) return;
-    const workspaceId = this.visibleWorkspaceId()!;
     if (force) {
       const submitter = document.createElement("button");
       submitter.type = "submit";
@@ -208,7 +207,6 @@ class AtelierShortcutsController extends Controller<HTMLElement> {
     } else {
       submitFormWithFirstButton(form);
     }
-    residencyController()?.unselectWorkspace(workspaceId);
   }
 
   private visibleWorkspacePresentation(): HTMLElement | null {

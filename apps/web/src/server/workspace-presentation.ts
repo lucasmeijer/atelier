@@ -370,7 +370,7 @@ function renderAgentActions(presentation: WorkspacePresentation): string {
     confirmCaption: "Yes, delete",
     cancelCaption: "Oops",
   });
-  const deleteWorkspace = `<form class="fixed-shell-delete-workspace" data-turbo="true" method="post" action="/workspaces/${encodeURIComponent(presentation.workspace.id)}/delete">${deleteConfirmation}</form>`;
+  const deleteWorkspace = `<form class="fixed-shell-delete-workspace" data-action="turbo:submit-start->workspace-navigation#workspaceDeletionStarted" data-turbo="true" method="post" action="/workspaces/${encodeURIComponent(presentation.workspace.id)}/delete">${deleteConfirmation}</form>`;
   const notification = renderNotificationHeader(presentation.workspace.id, presentation.agentConversations);
   const itemsHtml = `${notification}${parkWorkspace}${deleteWorkspace}${barButton("Show Work pane", "click->workspace-presentation#toggleWorkPane", Icons.Panel, "data-show-work-pane")}`;
   return buttonGroupHtml({ orientation: "horizontal", semantics: "layout", itemsHtml });

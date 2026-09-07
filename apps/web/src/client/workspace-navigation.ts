@@ -122,6 +122,13 @@ class WorkspaceNavigationController extends Controller<HTMLElement> {
     await residencyController()?.selectWorkspace(workspaceId, `/workspaces/${encodeURIComponent(workspaceId)}`);
   }
 
+  workspaceDeletionStarted(event: Event): void {
+    // SAFETY: This action is attached only to server-rendered workspace deletion forms.
+    const form = event.currentTarget as HTMLFormElement;
+    const workspaceId = form.closest<HTMLElement>(".workspace-detail-resident")!.dataset.workspaceId!;
+    residencyController()?.unselectWorkspace(workspaceId);
+  }
+
   async parkWorkspace(event: Event): Promise<void> {
     event.preventDefault();
     // SAFETY: This action is attached only to the server-rendered Agent-pane park form.
