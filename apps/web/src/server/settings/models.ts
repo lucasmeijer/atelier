@@ -340,7 +340,7 @@ function apiKeyModal(id: string, label: string, surface: SettingsSurface, model?
   });
 }
 
-type PendingPrompt = { resolve: (value: string) => void; reject: (error: Error) => void };
+type PendingPrompt = { input: Exclude<PiAuthPrompt, { type: "select" }>; resolve: (value: string) => void; reject: (error: Error) => void };
 type PendingOAuthFlow = {
   id: string;
   provider: string;
@@ -415,7 +415,7 @@ function handleOAuthPrompt(flow: PendingOAuthFlow, prompt: PiAuthPrompt): Promis
       cleanup();
       reject(error);
     };
-    flow.prompt = { resolve: finish, reject: fail };
+    flow.prompt = { input: prompt, resolve: finish, reject: fail };
   });
 }
 
@@ -462,10 +462,16 @@ function oauthRedirectFormId(flow: PendingOAuthFlow): string {
   return domId("oauth_redirect_form", flow.id);
 }
 
+function oauthPromptForm(flow: PendingOAuthFlow): string {
+  if (!flow.prompt) return "";
+  const prompt = flow.prompt.input;
+  const inputId = domId("oauth_prompt", flow.id);
+  return `<form id="${oauthRedirectFormId(flow)}" class="settings-oauth-card" method="post" action="/settings/providers/${encodeURIComponent(flow.provider)}/oauth/${encodeURIComponent(flow.id)}/prompt" data-turbo="true"><label for="${inputId}">${escapeHtml(prompt.message)}</label><input id="${inputId}" class="settings-input text-field" type="${prompt.type === "secret" ? "password" : "text"}" name="value" placeholder="${escapeHtml(prompt.placeholder ?? "")}"${prompt.type === "manual_code" || prompt.type === "secret" ? " required" : ""}></form>`;
+}
+
 function oauthBrowserRedirectBody(flow: PendingOAuthFlow): string {
   const prompt = flow.prompt;
-  const inputId = domId("oauth_redirect", flow.id);
-  const promptForm = prompt ? `<form id="${oauthRedirectFormId(flow)}" class="settings-oauth-card" method="post" action="/settings/providers/${encodeURIComponent(flow.provider)}/oauth/${encodeURIComponent(flow.id)}/prompt" data-turbo="true"><label for="${inputId}">Redirect URL</label><input id="${inputId}" class="settings-input text-field" name="value" placeholder="http://localhost:1455/callback?code=abc123...&state=..." required></form>` : "";
+  const promptForm = oauthPromptForm(flow);
   return `<div class="settings-oauth-card">
     <div class="settings-oauth-callout"><b>Before you start</b>${escapeHtml(flow.label)} assumes you will sign in on your local machine, but that’s not how Atelier works.<br><br>${escapeHtml(flow.label)} will redirect you to a localhost URL after you sign in. That URL will fail to load. You need to copy the long URL from the address bar, and paste it here.</div>
     ${oauthAuthenticationAction(flow, flow.authUrl ?? "#")}
@@ -487,7 +493,7 @@ function oauthFlowModal(flow: PendingOAuthFlow): string {
   const submitUrlButton = buttonHtml({
     type: "submit",
     variant: "primary",
-    content: { kind: "caption", caption: "Submit URL" },
+    content: { kind: "caption", caption: flow.authUrl ? "Submit URL" : "Continue" },
     attributesHtml: `form="${oauthRedirectFormId(flow)}"`,
   });
   const body = flow.status === "complete"
@@ -498,17 +504,19 @@ function oauthFlowModal(flow: PendingOAuthFlow): string {
         ? oauthDeviceCodeBody(flow)
         : flow.authUrl
           ? oauthBrowserRedirectBody(flow)
-          : `<div class="settings-oauth-card">${oauthStatus("pending", "Starting OAuth flow", "Waiting for the provider to respond.")}</div>`;
+          : flow.prompt
+            ? oauthPromptForm(flow)
+            : `<div class="settings-oauth-card">${oauthStatus("pending", "Starting OAuth flow", "Waiting for the provider to respond.")}</div>`;
   const action = flow.status === "complete"
     ? `<form method="post" action="/settings/providers/${encodeURIComponent(flow.provider)}/oauth/${encodeURIComponent(flow.id)}/finish" data-turbo="true">${doneButton}</form>`
     : flow.status === "pending"
-      ? `<form method="post" action="/settings/providers/${encodeURIComponent(flow.provider)}/oauth/${encodeURIComponent(flow.id)}/cancel" data-turbo="true">${cancelButton}</form>${flow.authUrl && flow.prompt ? submitUrlButton : ""}`
+      ? `<form method="post" action="/settings/providers/${encodeURIComponent(flow.provider)}/oauth/${encodeURIComponent(flow.id)}/cancel" data-turbo="true">${cancelButton}</form>${flow.prompt ? submitUrlButton : ""}`
       : `<form method="post" action="/settings/providers/${encodeURIComponent(flow.provider)}/oauth/${encodeURIComponent(flow.id)}/finish" data-turbo="true">${buttonHtml({ type: "submit", variant: "secondary", content: { kind: "caption", caption: "Close" } })}</form>`;
   return dialogHtml({
     element: {
       id: "settings_flow_dialog",
 
-      attributesHtml: `data-controller="oauth-flow" data-dialog-auto-show data-oauth-flow-status-url-value="/settings/providers/${encodeURIComponent(flow.provider)}/oauth/${encodeURIComponent(flow.id)}/status" data-oauth-flow-active-value="${flow.status === "pending" ? "true" : "false"}" data-oauth-flow-poll-ms-value="${pollMs}"`,
+      attributesHtml: `data-controller="oauth-flow" data-dialog-auto-show data-oauth-flow-status-url-value="/settings/providers/${encodeURIComponent(flow.provider)}/oauth/${encodeURIComponent(flow.id)}/status" data-oauth-flow-active-value="${flow.status === "pending" && !(flow.prompt && !flow.authUrl && !flow.verificationUri) ? "true" : "false"}" data-oauth-flow-poll-ms-value="${pollMs}"`,
     },
     iconHtml: providerIcon(flow.provider, flow.label),
     titleCaption: `Sign in with ${flow.label}`,
@@ -642,6 +650,7 @@ export async function handleModelSettingsRequest(request: Request, url: URL): Pr
       flow.redirectSubmitted = true;
       flow.prompt?.resolve(String(form.get("value") ?? ""));
       flow.prompt = undefined;
+      await waitForOAuthFlowReady(flow);
       return stream(replace("settings_flow_dialog", oauthFlowModal(flow)));
     }
     if (action === "cancel") {
