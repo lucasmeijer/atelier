@@ -289,13 +289,13 @@ turbo-frame { display: contents; }
   .fixed-workspace-presentation:not(.is-work-pane-open) .fixed-shell-work-pane { display: none; }
 }
 
-/* Below the combined pane minimum (380 + 360 + 8), keep both surfaces
- * reachable by stacking them. Query the space beside the sidebar, not the
- * viewport, so collapsing the sidebar can restore the horizontal split. */
+/* Below the preferred pane minimums (380 + 360 + 8), shrink both panes
+ * side by side until the mobile layout takes over. Query the space beside
+ * the sidebar so neither pane overflows the available desktop width. */
 @media (min-width: 701px) and (hover: hover) and (pointer: fine) {
   @container workspace-content (width < 748px) {
-    .fixed-shell-main { flex-direction: column; }
-    .fixed-shell-agent-pane, .fixed-shell-work-pane { min-width: 0; flex: 1; }
+    .fixed-shell-agent-pane { min-width: 0; flex: 1 1 380px; }
+    .fixed-shell-work-pane { min-width: 0; flex: 1 1 360px; }
     .fixed-shell-work-resizer { display: none; }
   }
 }
