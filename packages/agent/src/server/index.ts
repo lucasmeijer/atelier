@@ -24,7 +24,7 @@ export {
 export { registerAgentEvents } from "./agent-events.ts";
 export { handleAgentRequest } from "./routes.ts";
 export { workspaceFileEndpoint } from "./workspace-files.ts";
-export { resolveWorkspacePortProxyTarget } from "./workspace-proxy.ts";
+export { resolveWorkspacePortProxyBackend } from "./workspace-proxy.ts";
 export { agentConversationKey } from "./render-context.ts";
 export { renderAgentPane, renderAgentPaneComposer, renderLaunchComposer, renderLaunchComposerSettings } from "./render-composer.ts";
 export { agentWorkspaceModule, agentWorkspaceModule as atelierServerModule, workspaceAgentTabProvider } from "./web.ts";

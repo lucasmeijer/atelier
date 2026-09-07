@@ -1,3 +1,5 @@
+import type { WorkspaceGateway } from "./workspace-gateway.ts";
+export * from "./workspace-gateway.ts";
 import type { AtelierEventBus, JsonObject, JsonValue } from "@atelier/core";
 import type { TSchema } from "typebox";
 import { escapeHtml } from "./html.ts";
@@ -237,6 +239,7 @@ export interface WorkspaceAppRef {
 export interface WorkspaceHttpAppBackend {
   kind: "http";
   target: URL;
+  gateway?: WorkspaceGateway;
   adaptRequestHeaders?(headers: Headers, request: Request): Promise<Headers> | Headers;
   adaptResponse?(response: Response, request: Request): Promise<Response> | Response;
 }

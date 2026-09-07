@@ -1,5 +1,6 @@
+import { backendTransport } from "./backend-transport.ts";
 import type { ServerWebSocket } from "bun";
-import { stripHopByHopHeaders, workspaceProxyUrl, type WorkspaceAppBackend, type WorkspaceAppRef } from "@atelier/shared";
+import { workspaceGatewayErrorHeader, stripHopByHopHeaders, workspaceProxyUrl, type WorkspaceAppBackend, type WorkspaceAppRef, type WorkspaceHttpAppBackend } from "@atelier/shared";
 import { createMemoryOriginIdentityStore, type OriginIdentityStore } from "./origin-identity.ts";
 import { closeWebSocket } from "./websocket.ts";
 import {
@@ -100,7 +101,9 @@ interface OriginLease {
   target?: string;
 }
 
-const nestedOriginPortRange: PortRange = { start: 3001, end: 3010 };
+// Nested listeners need no individually published Docker ports. Preserve old
+// assignments while allowing more than ten nested origins.
+const nestedOriginPortRange: PortRange = { start: 3001, end: 65535 };
 const parentOriginHeader = "x-atelier-parent-origin";
 const parentWorkspaceHeader = "x-atelier-parent-workspace";
 export const nestedWorkspaceProxyRedirectHeader = "x-atelier-nested-workspace-proxy-redirect";
@@ -172,7 +175,10 @@ export function createWorkspaceIngress(options: WorkspaceIngressOptions): Worksp
                 const backend = await resolveBackend(lease.app, new URL(request.url));
                 if (backend.kind !== "http") return textResponse("This workspace app does not support WebSockets", 400);
                 lease.target = backend.target.toString();
-                const upstream = await openUpstreamSocket(websocketTarget(backend.target), publicRequestHost(request), websocketProtocols(request));
+                const upstreamHeaders = await appRequestHeaders(lease, backend, request);
+                for (const name of ["sec-websocket-key", "sec-websocket-version", "sec-websocket-extensions", "sec-websocket-protocol"]) upstreamHeaders.delete(name);
+                const transport = backendTransport(backend, upstreamHeaders);
+                const upstream = await openUpstreamSocket(websocketTarget(transport.target), transport.headers, websocketProtocols(request));
                 const headers = upstream.protocol ? { "sec-websocket-protocol": upstream.protocol } : undefined;
                 if (server.upgrade(request, { data: { upstream, lease }, headers })) return undefined;
                 upstream.close(1011, "Downstream WebSocket upgrade failed");
@@ -235,29 +241,22 @@ export function createWorkspaceIngress(options: WorkspaceIngressOptions): Worksp
       }
 
       lease.target = backend.target.toString();
-      let headers = stripHopByHopHeaders(request.headers, ["host"]);
-      const publicContext = publicRequestContext(request);
-      headers.set("host", publicContext.host);
-      headers.set("x-forwarded-host", publicContext.host);
-      headers.set("x-forwarded-proto", publicContext.protocol);
-      headers.set("x-forwarded-port", publicContext.port);
-      headers.delete(parentOriginHeader);
-      headers.delete(parentWorkspaceHeader);
-      if (lease.parentContext) {
-        headers.set(parentOriginHeader, lease.parentContext.origin);
-        headers.set(parentWorkspaceHeader, lease.parentContext.workspaceId);
-      }
-      if (backend.adaptRequestHeaders) headers = await backend.adaptRequestHeaders(headers, request);
+      const transport = backendTransport(backend, await appRequestHeaders(lease, backend, request));
 
       const method = request.method.toUpperCase();
-      const init: RequestInit & { duplex?: "half" } = {
+      const init: RequestInit & { duplex?: "half"; proxy?: string } = {
         method,
-        headers,
+        headers: transport.headers,
+        // Bun 1.4 ignores proxy: "" for fetch. Use the gateway as BOTH URL and
+        // explicit proxy: whether NO_PROXY bypasses it or not, traffic can only
+        // reach this gateway, never an environment-selected proxy or the app.
+        proxy: backend.gateway?.url.toString(),
+        signal: request.signal,
         body: method === "GET" || method === "HEAD" ? undefined : request.body,
         redirect: "manual",
       };
       if (init.body) init.duplex = "half";
-      let response = normalizeDecodedFetchResponse(await fetchWithStartupRetry(backend.target, init));
+      let response = normalizeDecodedFetchResponse(await fetchWithStartupRetry(transport.target, init, Boolean(backend.gateway)));
       if (backend.adaptResponse) response = await backend.adaptResponse(response, request);
       response = adaptWorkspaceEmbedding(response);
       lease.lastFailure = undefined;
@@ -348,13 +347,37 @@ export function createWorkspaceIngress(options: WorkspaceIngressOptions): Worksp
   };
 }
 
-async function fetchWithStartupRetry(target: URL, init: RequestInit): Promise<Response> {
+async function appRequestHeaders(lease: OriginLease, backend: WorkspaceHttpAppBackend, request: Request): Promise<Headers> {
+  let headers = stripHopByHopHeaders(request.headers, ["host"]);
+  const publicContext = publicRequestContext(request);
+  headers.set("host", publicContext.host);
+  headers.set("x-forwarded-host", publicContext.host);
+  headers.set("x-forwarded-proto", publicContext.protocol);
+  headers.set("x-forwarded-port", publicContext.port);
+  headers.delete(parentOriginHeader);
+  headers.delete(parentWorkspaceHeader);
+  if (lease.parentContext) {
+    headers.set(parentOriginHeader, lease.parentContext.origin);
+    headers.set(parentWorkspaceHeader, lease.parentContext.workspaceId);
+  }
+  if (backend.adaptRequestHeaders) headers = await backend.adaptRequestHeaders(headers, request);
+
+  return headers;
+}
+
+async function fetchWithStartupRetry(target: URL, init: RequestInit, throughGateway: boolean): Promise<Response> {
   const retryable = init.method === "GET" || init.method === "HEAD";
   for (let attempt = 0; ; attempt += 1) {
     try {
-      return await fetch(target, init);
+      const response = await fetch(target, init);
+      if (throughGateway && response.headers.get(workspaceGatewayErrorHeader) === "upstream") {
+        // Consume the failed response before retrying so its connection is reusable.
+        const message = (await response.text()).trim();
+        throw new Error(message || "Workspace app connection failed");
+      }
+      return response;
     } catch (error) {
-      if (!retryable || attempt >= 2) throw error;
+      if (!retryable || attempt >= 2 || init.signal?.aborted) throw error;
       await new Promise((resolve) => setTimeout(resolve, 100 * (attempt + 1)));
     }
   }
@@ -465,10 +488,10 @@ function websocketProtocols(request: Request): string[] {
   return (request.headers.get("sec-websocket-protocol") ?? "").split(",").map((value) => value.trim()).filter(Boolean);
 }
 
-async function openUpstreamSocket(target: string, host: string, protocols: string[]): Promise<WebSocket> {
+async function openUpstreamSocket(target: string, headers: Headers, protocols: string[]): Promise<WebSocket> {
   // SAFETY: Bun supports the options constructor at runtime although DOM declarations omit it.
   const WebSocketWithOptions = WebSocket as typeof WebSocket & (new (url: string | URL, options: Bun.WebSocketOptions) => WebSocket);
-  const upstream = new WebSocketWithOptions(target, { headers: { Host: host }, protocols });
+  const upstream = new WebSocketWithOptions(target, { headers: Object.fromEntries(headers), protocols, proxy: "" });
   upstream.binaryType = "arraybuffer";
   await new Promise<void>((resolve, reject) => {
     const timer = setTimeout(() => {

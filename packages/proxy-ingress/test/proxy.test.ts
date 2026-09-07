@@ -227,6 +227,28 @@ describe("workspace ingress", () => {
     upstream.stop(true);
   });
 
+  test("nested Atelier can lease more than ten app origins", async () => {
+    const ingress = createWorkspaceIngress({
+      hostname: "127.0.0.1",
+      resolveWorkspace: () => undefined,
+      resolveApp: () => ({ kind: "fetch", fetch: () => new Response("nested") }),
+    });
+    const request = new Request("http://127.0.0.1:3000/", {
+      headers: { "x-atelier-parent-origin": "https://outer.example", "x-atelier-parent-workspace": "outer" },
+    });
+    try {
+      for (let index = 0; index < 12; index += 1) {
+        const response = await ingress.openCanonical({ workspaceId: "inner", appKey: `app-${index}` }, "/", request);
+        expect(response.status).toBe(302);
+      }
+      const leases = ingress.inspect();
+      expect(leases).toHaveLength(12);
+      expect(leases.some((lease) => lease.port! > 3010)).toBe(true);
+    } finally {
+      await ingress.stopAll();
+    }
+  });
+
   test("keeps direct and nested origin leases independent", async () => {
     const port = await freePort();
     const ingress = createWorkspaceIngress({

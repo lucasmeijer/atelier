@@ -11,7 +11,7 @@ import { getWorkspaceAgentRuntime, closeWorkspaceAgentConversation, removeWorksp
 import { registerAgentEvents } from "./agent-events.ts";
 import { handleAgentRequest } from "./routes.ts";
 import { workspaceFileEndpoint } from "./workspace-files.ts";
-import { resolveWorkspacePortProxyTarget } from "./workspace-proxy.ts";
+import { resolveWorkspacePortProxyBackend } from "./workspace-proxy.ts";
 import { archiveWorkspaceAgentConversation, createNextWorkspaceAgentConversation, ensureDefaultWorkspaceAgentConversation, listWorkspaceAgentConversations, sessionShareDir, sessionShareKeyForInit, sessionShareMountPath, type WorkspaceAgentConversationInfo } from "./session-store.ts";
 import { renderWorkspaceCompletionCatalog } from "./completion-catalog.ts";
 import { agentConversationKey } from "./render-context.ts";
@@ -226,10 +226,7 @@ export const agentWorkspaceModule: WorkspaceModule = {
       }
       const portMatch = app.appKey.match(/^port-(\d+)$/);
       if (!portMatch) return undefined;
-      return {
-        kind: "http",
-        target: await resolveWorkspacePortProxyTarget(app.workspaceId, Number(portMatch[1]), requestUrl.pathname, requestUrl.search),
-      };
+      return await resolveWorkspacePortProxyBackend(app.workspaceId, Number(portMatch[1]), requestUrl.pathname, requestUrl.search);
     });
     subscribeWorkspaceViewBusy(({ workspaceId, viewKey, busy }) => context.registry.setViewBusy(workspaceId, viewKey, busy));
     context.onWorkspaceRemoved(removeWorkspaceAgentRuntimes);

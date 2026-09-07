@@ -3,7 +3,7 @@ import { hostname } from "node:os";
 import { dirname, join } from "node:path";
 import { AtelierCoreError, atelierDataPath, createProcessFileLock, dockerHostAtelierDataPath, getAtelierRuntimeContext, gitHubCredentialHelperShellBody, invalidArguments, isJsonObject, requireDocker, runDocker, runDockerBuffer, shellQuote, type AtelierEventBus, type CommandInput, type JsonObject } from "@atelier/core";
 import { runHostObservableCommand, stripTerminalControls, tailTerminalText } from "@atelier/observable-terminal/server";
-import type { WorkspaceServerProvisioningHook } from "@atelier/shared";
+import { isWorkspaceAppPort, workspaceGatewayPort, type WorkspaceGateway, type WorkspaceHttpAppBackend, type WorkspaceServerProvisioningHook } from "@atelier/shared";
 import { ensureDefaultWorkspaceImage, inspectWorkspaceImage, nativeLinuxDockerPlatform, nestedDockerDaemonInitScript, prepareWorkspaceImageCarrier, resolveDockerImagePreload, resolveWorkspaceImageResolution, type WorkspaceImageResolution } from "@atelier/workspace-image";
 import { Type } from "typebox";
 import { Value } from "typebox/value";
@@ -57,12 +57,6 @@ const stringArraySchema = Type.Array(Type.String());
 const nonBlankStringArraySchema = Type.Array(nonBlankStringSchema);
 export const workspaceRoot = "/work";
 export const workspaceVSCodePort = 8000;
-export const workspacePreviewPorts = [3000, 3001, 3002, 3003, 3004, 3005, 3006, 3007, 3008, 3009, 3010] as const;
-export type WorkspacePreviewPort = (typeof workspacePreviewPorts)[number];
-
-export function isWorkspacePreviewPort(port: number): port is WorkspacePreviewPort {
-  return workspacePreviewPorts.some((previewPort) => previewPort === port);
-}
 
 export interface WorkspaceNewResult { id: string }
 export interface WorkspaceListResult { workspaces: Array<{ id: string; title: string | null; parked?: boolean; init?: WorkspaceInitInstruction; imageOutdated?: boolean }> }
@@ -134,7 +128,7 @@ async function inspectWorkspaceContainerImage(id: string): Promise<string> {
 
 async function waitForWorkspaceStartup(id: string): Promise<string> {
   const timeoutSeconds = Math.ceil(workspaceStartupTimeoutMs / 1000);
-  const result = await runDocker(["exec", "--user", "root", workspaceContainerName(id), "sh", "-lc", `deadline=$(( $(date +%s) + ${timeoutSeconds} )); while [ "$(date +%s)" -le "$deadline" ]; do if test -f /.atelier/ready; then cat /.atelier/startup.log; exit 0; fi; sleep 0.05; done; tail -n 120 /.atelier/startup.log; exit 1`]);
+  const result = await runDocker(["exec", "--user", "root", workspaceContainerName(id), "sh", "-lc", `deadline=$(( $(date +%s) + ${timeoutSeconds} )); while [ "$(date +%s)" -le "$deadline" ]; do if test -f /.atelier/ready && test "$(curl --noproxy '*' --silent --max-time 1 --output /dev/null --write-out '%{http_code}' http://127.0.0.1:${workspaceGatewayPort}/)" = 401; then cat /.atelier/startup.log; exit 0; fi; sleep 0.05; done; tail -n 120 /.atelier/startup.log; exit 1`]);
   const log = result.stdout.trim();
   if (result.exitCode === 0) return log;
   const output = result.stderr.trim();
@@ -413,13 +407,14 @@ function planEnvDockerArgs(env: Record<string, string>): string[] {
   return Object.entries(env).flatMap(([name, value]) => ["--env", `${name}=${value}`]);
 }
 
-function workspaceCreateDockerArgs(container: string, image: string, publishHost: string, plan: WorkspaceDockerPlan): string[] {
+function workspaceCreateDockerArgs(container: string, image: string, publishHost: string, gatewayHostPort: number, plan: WorkspaceDockerPlan): string[] {
   return [
     "create",
+    "--init",
     "--restart", "unless-stopped",
     "--name", container,
     ...Object.entries(plan.labels).flatMap(([name, value]) => ["--label", `${name}=${value}`]),
-    ...plan.publishes.flatMap((port) => ["--publish", `${publishHost}::${port}`]),
+    ...plan.publishes.flatMap((port) => ["--publish", `${publishHost}:${port === workspaceGatewayPort ? gatewayHostPort : ""}:${port}`]),
     ...planEnvDockerArgs(plan.env),
     ...plan.extraArgs,
     ...plan.mounts.flatMap((mount) => ["--mount", dockerMountArg(mount)]),
@@ -453,7 +448,7 @@ function hostUserEnv(): WorkspaceEnvironment {
 }
 
 function baseWorkspacePlan(labels: Record<string, string>): WorkspaceDockerPlan {
-  return { labels, env: { LANG: "C.UTF-8", LC_ALL: "C.UTF-8", ...hostUserEnv() }, mounts: [], publishes: [workspaceVSCodePort, ...workspacePreviewPorts], extraArgs: ["--privileged"], initScripts: [workspaceGitCredentialInitScript()], containerFiles: [], cleanup: [] };
+  return { labels, env: { LANG: "C.UTF-8", LC_ALL: "C.UTF-8", ...hostUserEnv() }, mounts: [], publishes: [workspaceGatewayPort], extraArgs: ["--privileged"], initScripts: [workspaceGitCredentialInitScript()], containerFiles: [], cleanup: [] };
 }
 
 function alignWorkspaceUserScript(): string {
@@ -481,6 +476,7 @@ fi`;
 function workspaceStartupPreambleScript(): string {
   return `set -eu
 mkdir -p /.atelier
+rm -f /.atelier/ready
 startup_started_at_ms="$(($(date +%s%N) / 1000000))"
 startup_log_path=/.atelier/startup.log
 : > "$startup_log_path"
@@ -501,13 +497,13 @@ startup_log_step ${shellQuote(`${id}.done`)}`;
 function workspaceInitScript(plan: WorkspaceDockerPlan): string {
   return [
     workspaceStartupPreambleScript(),
+    workspaceInitStepScript("gateway-credential", "chown root:root /etc/atelier-workspace-gateway-token; chmod 600 /etc/atelier-workspace-gateway-token"),
     workspaceInitStepScript("align-user", alignWorkspaceUserScript()),
     workspaceInitStepScript("atelier-dir", `install -d -o atelier -g atelier /.atelier`),
     ...plan.initScripts.map((script, index) => workspaceInitStepScript(`init-${index + 1}`, script)),
-    "touch /.atelier/ready",
-    "startup_log_step ready",
+    "startup_log_step gateway.start",
     "trap - EXIT",
-    "sleep infinity",
+    "exec /usr/local/bin/atelier-workspace-gateway",
   ].join("\n");
 }
 
@@ -534,6 +530,9 @@ export async function createWorkspace(options: CreateWorkspaceOptions = {}): Pro
     }
     const labels = { [workspaceTypeLabel]: "workspace", [namespaceLabel]: namespace(), [workspaceIdLabel]: id } satisfies Record<string, string>;
     plan = baseWorkspacePlan(labels);
+    const gatewayTokenPath = atelierDataPath(getAtelierRuntimeContext(), "workspaces", id, "gateway-token");
+    await writeFile(gatewayTokenPath, crypto.randomUUID() + crypto.randomUUID(), { mode: 0o600 });
+    plan.containerFiles.push({ source: gatewayTokenPath, target: "/etc/atelier-workspace-gateway-token" });
     const cgroupParent = await configuredWorkspaceCgroupParent();
     if (cgroupParent) plan.extraArgs.push("--cgroup-parent", cgroupParent);
     plan.mounts.push({ type: "bind", source: source.dockerHostWorktreePath, target: workspaceRoot });
@@ -574,8 +573,16 @@ export async function createWorkspace(options: CreateWorkspaceOptions = {}): Pro
       if (!image) throw new AtelierCoreError("workspace_image_missing", "workspace image was not resolved");
       const publishHost = workspacePublishHost();
       const container = workspaceContainerName(id);
-      await requireDocker(workspaceCreateDockerArgs(container, image, publishHost, activePlan));
-      for (const file of activePlan.containerFiles) await requireDocker(["cp", file.source, `${container}:${file.target}`]);
+      // Pin the allocated host port in Docker's configuration. Docker's ::port
+      // shorthand reallocates it on automatic restart, invalidating ingress's
+      // cached endpoint. Hold the host port until immediately before Docker binds.
+      const reservation = Bun.listen({ hostname: publishHost, port: 0, socket: { data(socket) { socket.end(); } } });
+      try {
+        await requireDocker(workspaceCreateDockerArgs(container, image, publishHost, reservation.port, activePlan));
+        for (const file of activePlan.containerFiles) await requireDocker(["cp", file.source, `${container}:${file.target}`]);
+      } finally {
+        reservation.stop(true);
+      }
       await requireDocker(["start", container]);
     });
     await provisionStep(options.events, id, "workspace.startup", "Wait for workspace startup", () => waitForWorkspaceStartup(id), { output: (log) => log });
@@ -588,50 +595,44 @@ export async function createWorkspace(options: CreateWorkspaceOptions = {}): Pro
   return { id };
 }
 
-const workspacePublishedPortCache = new Map<string, Promise<number>>();
+const workspaceGatewayCache = new Map<string, Promise<WorkspaceGateway>>();
 
-function workspacePublishedPortCacheKey(id: string, containerPort: number): string {
-  return `${namespace()}\0${id}\0${containerPort}`;
+function workspaceGatewayCacheKey(id: string): string {
+  return `${namespace()}\0${id}`;
 }
 
-function clearWorkspacePublishedPortCache(id: string): void {
-  const prefix = `${namespace()}\0${id}\0`;
-  for (const key of workspacePublishedPortCache.keys()) {
-    if (key.startsWith(prefix)) workspacePublishedPortCache.delete(key);
-  }
-}
-
-async function inspectWorkspacePublishedPort(id: string, containerPort: number): Promise<number> {
+async function inspectWorkspaceGateway(id: string): Promise<WorkspaceGateway> {
   await resolveWorkspace(id);
-  const result = await runDocker(["port", workspaceContainerName(id), `${containerPort}/tcp`]);
-  if (result.exitCode !== 0) throw new AtelierCoreError("workspace_port_not_found", result.stderr.trim() || `workspace ${id} does not publish port ${containerPort}`);
+  const result = await runDocker(["port", workspaceContainerName(id), `${workspaceGatewayPort}/tcp`]);
+  if (result.exitCode !== 0) throw new AtelierCoreError("workspace_gateway_unavailable", `Workspace ${id} has no published gateway. Recreate workspaces made with an older image. ${result.stderr.trim()}`);
   const line = result.stdout.trim().split(/\n+/)[0] ?? "";
-  const match = line.match(/^\[([^\]]+)\]:(\d+)$/) ?? line.match(/^(.+):(\d+)$/);
-  if (!match) throw new AtelierCoreError("workspace_port_not_found", `could not parse published port for ${id}:${containerPort}: ${line}`);
-  return Number(match[2]!);
+  const match = line.match(/^127\.0\.0\.1:(\d+)$/);
+  if (!match) throw new AtelierCoreError("workspace_gateway_unavailable", `Invalid workspace gateway binding: ${line}`);
+  const token = await readFile(atelierDataPath(getAtelierRuntimeContext(), "workspaces", id, "gateway-token"), "utf8");
+  return { url: new URL(`http://127.0.0.1:${match[1]}`), token };
 }
 
-async function workspacePublishedPort(id: string, containerPort: number): Promise<number> {
-  const key = workspacePublishedPortCacheKey(id, containerPort);
-  const cached = workspacePublishedPortCache.get(key);
-  if (cached) return await cached;
-
-  const inspected = inspectWorkspacePublishedPort(id, containerPort).catch((error) => {
-    workspacePublishedPortCache.delete(key);
-    throw error;
-  });
-  workspacePublishedPortCache.set(key, inspected);
-  return await inspected;
+async function workspaceGateway(id: string): Promise<WorkspaceGateway> {
+  const key = workspaceGatewayCacheKey(id);
+  let gateway = workspaceGatewayCache.get(key);
+  if (!gateway) {
+    gateway = inspectWorkspaceGateway(id).catch((error) => {
+      workspaceGatewayCache.delete(key);
+      throw error;
+    });
+    workspaceGatewayCache.set(key, gateway);
+  }
+  return await gateway;
 }
 
-export async function workspacePortUrl(id: string, containerPort: number, pathAndSearch: string, protocol = "http:"): Promise<URL> {
+/** Resolve any workspace-local web app through the one published gateway. */
+export async function workspacePortBackend(id: string, port: number, pathAndSearch: string, protocol = "http:"): Promise<WorkspaceHttpAppBackend> {
+  if (!isWorkspaceAppPort(port)) throw invalidArguments(`Invalid workspace app port ${port}: use 1–65535, except reserved gateway port ${workspaceGatewayPort}`);
+  if (protocol !== "http:" && protocol !== "https:") throw invalidArguments("Workspace apps must use HTTP or HTTPS");
   const path = pathAndSearch.startsWith("/") ? pathAndSearch : `/${pathAndSearch}`;
-  return new URL(path, `${protocol}//127.0.0.1:${await workspacePublishedPort(id, containerPort)}`);
-}
-
-export async function workspacePreviewPortUrl(id: string, containerPort: number, pathAndSearch: string, protocol = "http:"): Promise<URL> {
-  if (!isWorkspacePreviewPort(containerPort)) throw invalidArguments(`unsupported workspace preview port: ${containerPort}. Supported ports: ${workspacePreviewPorts.join(", ")}`);
-  return await workspacePortUrl(id, containerPort, pathAndSearch, protocol);
+  // Concatenation, not URL resolution: // in an app path must never change hosts.
+  const target = new URL(`${protocol}//127.0.0.1:${port}${path}`);
+  return { kind: "http", target, gateway: await workspaceGateway(id) };
 }
 
 async function currentWorkspaceImageId(sourcePath: string): Promise<string | undefined> {
@@ -679,7 +680,7 @@ export async function deleteWorkspace(id: string, options: DeleteWorkspaceOption
   }
   if (containerExists) await requireDocker(["rm", "-f", workspaceContainerName(id)]);
   await retireWorkspaceId(id);
-  clearWorkspacePublishedPortCache(id);
+  workspaceGatewayCache.delete(workspaceGatewayCacheKey(id));
   await options.events?.emit("workspace_deleted", { workspaceId: id });
   await deleteWorkspaceWorkDir(id);
   return null;
@@ -701,6 +702,8 @@ export async function setWorkspaceTitle(id: string, title: string): Promise<null
 async function updateWorkspaceContainerRunning(id: string, running: boolean): Promise<void> {
   const name = workspaceContainerName(id);
   await requireDocker(running ? ["start", name] : ["stop", "--time", "0", name]);
+  workspaceGatewayCache.delete(workspaceGatewayCacheKey(id));
+  if (running) await waitForWorkspaceStartup(id);
 }
 
 export async function setWorkspaceContainerRunning(id: string, running: boolean): Promise<null> {

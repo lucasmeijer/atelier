@@ -2,6 +2,7 @@ import { describe, expect, setDefaultTimeout, test, beforeAll, afterAll } from "
 import { AtelierCoreError, createAtelierEventBus } from "@atelier/core";
 import {
   createWorkspace,
+  workspacePortBackend,
   deleteWorkspace,
   execWorkspaceCommand,
   execWorkspaceCommandBuffer,
@@ -17,6 +18,7 @@ import {
   type WorkspaceExecResult,
   type WorkspaceInitInstruction,
 } from "@atelier/workspace";
+import { workspaceGatewayPort, workspaceGatewayTokenHeader, workspaceGatewayPortHeader, workspaceGatewayProtocolHeader, workspaceGatewayHostHeader } from "@atelier/shared";
 import { nativeLinuxDockerPlatform, repositoryWorkspaceImageTag, resolveWorkspaceImage } from "@atelier/workspace-image";
 import { registerProjectWorkspaceEvents, setGitIdentity } from "@atelier/projects";
 import { cleanupNamespace, createTestNamespace, docker } from "./helpers.ts";
@@ -87,6 +89,100 @@ describe("core workspaces", () => {
 
     expect(created.id).toMatch(/^[0-9a-f]{8}$/);
     expect((await listWorkspaces()).workspaces).toContainEqual({ id: created.id, title: null });
+  });
+
+  test("publishes only the gateway and reaches loopback-only apps on arbitrary ports", async () => {
+    const id = await getReusableWorkspaceId();
+    const published = await docker(["port", workspaceContainerName(id)]);
+    expect(published.exitCode).toBe(0);
+    expect(published.stdout.trim()).toMatch(new RegExp(`^${workspaceGatewayPort}/tcp -> 127\\.0\\.0\\.1:[0-9]+$`));
+    const startApp = () => execWorkspaceShell(id, `printf 'gateway proof' > /tmp/gateway-proof.txt
+      tmux new-session -d -s gateway-proof 'python3 -m http.server 5173 --bind 127.0.0.1 --directory /tmp'
+      for attempt in $(seq 1 100); do
+        if curl -fsS http://127.0.0.1:5173/gateway-proof.txt; then exit 0; fi
+        sleep 0.05
+      done
+      exit 1`);
+    const started = await startApp();
+    expect(started.exitCode, started.stderr).toBe(0);
+    try {
+      const backend = await workspacePortBackend(id, 5173, "/gateway-proof.txt");
+      expect(backend.target.toString()).toBe("http://127.0.0.1:5173/gateway-proof.txt");
+      const gateway = backend.gateway!;
+      const response = await fetch(new URL(backend.target.pathname, gateway.url), {
+        proxy: gateway.url.toString(),
+        headers: {
+          [workspaceGatewayTokenHeader]: gateway.token,
+          [workspaceGatewayPortHeader]: "5173",
+          [workspaceGatewayProtocolHeader]: "http",
+          [workspaceGatewayHostHeader]: "preview.example",
+        },
+      });
+      expect(response.status).toBe(200);
+      expect(await response.text()).toBe("gateway proof");
+      const denied = await fetch(gateway.url, { proxy: gateway.url.toString() });
+      expect(denied.status).toBe(401);
+      await denied.text();
+      const credentialMode = await execWorkspaceShell(id, "stat -c '%U:%a' /etc/atelier-workspace-gateway-token", { user: "root" });
+      expect(credentialMode.stdout.trim()).toBe("root:600");
+      const init = await docker(["inspect", "--format", "{{.HostConfig.Init}}", workspaceContainerName(id)]);
+      expect(init.stdout.trim()).toBe("true");
+      await setWorkspaceParked(id, true);
+      await setWorkspaceParked(id, false);
+      const restarted = await startApp();
+      expect(restarted.exitCode, restarted.stderr).toBe(0);
+      const resumed = await workspacePortBackend(id, 5173, "/gateway-proof.txt");
+      expect(resumed.gateway!.token).toBe(gateway.token);
+      expect(resumed.gateway!.url.toString()).toBe(gateway.url.toString());
+      const liveBinding = await docker(["port", workspaceContainerName(id), `${workspaceGatewayPort}/tcp`]);
+      expect(resumed.gateway!.url.host).toBe(liveBinding.stdout.trim());
+      const resumedResponse = await fetch(new URL(resumed.target.pathname, resumed.gateway!.url), {
+        proxy: resumed.gateway!.url.toString(),
+        headers: {
+          [workspaceGatewayTokenHeader]: resumed.gateway!.token,
+          [workspaceGatewayPortHeader]: "5173",
+          [workspaceGatewayProtocolHeader]: "http",
+          [workspaceGatewayHostHeader]: "preview.example",
+        },
+      });
+      expect(resumedResponse.status).toBe(200);
+      expect(await resumedResponse.text()).toBe("gateway proof");
+      // An unplanned gateway exit must not change the host port behind the cache.
+      const stoppedGateway = await execWorkspaceShell(id, "pkill -TERM -x atelier-workspa", { user: "root" });
+      expect(stoppedGateway.exitCode).toBe(0);
+      let running = false;
+      for (let attempt = 0; attempt < 100; attempt += 1) {
+        const state = await docker(["inspect", "--format", "{{.RestartCount}} {{.State.Running}}", workspaceContainerName(id)]);
+        if (state.stdout.trim() === "1 true") { running = true; break; }
+        await Bun.sleep(100);
+      }
+      expect(running).toBe(true);
+      const afterCrash = await docker(["port", workspaceContainerName(id), `${workspaceGatewayPort}/tcp`]);
+      expect(afterCrash.stdout.trim()).toBe(gateway.url.host);
+      const configured = await docker(["inspect", "--format", `{{(index .HostConfig.PortBindings "${workspaceGatewayPort}/tcp" 0).HostPort}}`, workspaceContainerName(id)]);
+      expect(configured.stdout.trim()).toBe(gateway.url.port);
+      const readyAgain = await execWorkspaceShell(id, `for attempt in $(seq 1 100); do
+        if test -f /.atelier/ready && test "$(curl --noproxy '*' --silent --max-time 1 --output /dev/null --write-out '%{http_code}' http://127.0.0.1:${workspaceGatewayPort}/)" = 401; then exit 0; fi
+        sleep 0.05
+      done
+      exit 1`, { user: "root" });
+      expect(readyAgain.exitCode, readyAgain.stderr).toBe(0);
+      const appAgain = await startApp();
+      expect(appAgain.exitCode, appAgain.stderr).toBe(0);
+      const afterCrashResponse = await fetch(new URL(backend.target.pathname, gateway.url), {
+        proxy: gateway.url.toString(),
+        headers: {
+          [workspaceGatewayTokenHeader]: gateway.token,
+          [workspaceGatewayPortHeader]: "5173",
+          [workspaceGatewayProtocolHeader]: "http",
+          [workspaceGatewayHostHeader]: "preview.example",
+        },
+      });
+      expect(afterCrashResponse.status).toBe(200);
+      expect(await afterCrashResponse.text()).toBe("gateway proof");
+    } finally {
+      await execWorkspaceShell(id, "tmux kill-session -t gateway-proof");
+    }
   });
 
   test("default workspaces include Compose and start a private Docker daemon", async () => {

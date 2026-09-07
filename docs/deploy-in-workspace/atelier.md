@@ -137,13 +137,13 @@ Work views can be selected, reordered, and closed inside the single contextual W
 
 Every workspace includes Docker, Docker Compose, Buildx, and a running private Docker daemon. You can use `docker build`, `docker run`, and `docker compose up --build` directly, without an Atelier configuration file or installing a daemon. Build from your local checkout to preview changes rather than running only a published application image.
 
-For a Compose app, publish its web service on a workspace port from `3000` through `3010`, then open that port in a Browser view. The inner daemon uses `fuse-overlayfs` to support building images inside the workspace container.
+For a Compose app, publish its web service on any available workspace TCP port except `2999` (reserved for the workspace gateway), then open that port in a Browser view. The inner daemon uses `fuse-overlayfs` to support building images inside the workspace container.
 
 Each workspace has its own Docker images, build cache, containers, and named volumes. Parking stops the workspace and its Docker daemon; unpark to restart the daemon, then use `docker compose up -d` to start services that do not restart automatically. The Docker store survives parking but is removed when the workspace is deleted; it is not shared with other workspaces.
 
 ## 6. Previewing Apps and Outputs
 
-Atelier exposes workspace web servers on ports `3000` through `3010`. Start dev servers on one of those ports, bind them to all interfaces (`0.0.0.0`), then open a Browser view to preview them.
+Atelier can preview workspace web servers on any TCP port from `1` through `65535`, except `2999` (reserved for the workspace gateway). Start the server on its normal port, bound to `127.0.0.1` or `0.0.0.0`, then open a Browser view to preview it. Individual app ports do not need Docker publishing in the outer workspace container. For a nested Compose service, publish its service port onto the workspace as described above.
 
 Preview requests pass through Atelier's reverse proxy, so the browser-facing `Host` header depends on the Atelier deployment. Configure development servers with strict host checks to accept requests from any hostname instead of adding the current deployment hostname to an allowlist. This keeps previews working when Atelier's hostname changes or the workspace runs on another Atelier installation.
 

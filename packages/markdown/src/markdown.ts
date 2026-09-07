@@ -2,7 +2,7 @@ import { copyButtonHtml } from "@atelier/design-system/copy-button";
 import { buttonHtml } from "@atelier/design-system/button";
 import MarkdownIt from "markdown-it";
 import { atelierFileHref, renderAtelierEmbed } from "./atelier-markdown.ts";
-import { escapeHtml, workspaceProxyUrl } from "@atelier/shared";
+import { escapeHtml, isWorkspaceAppPort, workspaceProxyUrl } from "@atelier/shared";
 import { highlightCodeHtml } from "@atelier/syntax";
 
 export interface MarkdownRenderOptions {
@@ -99,7 +99,7 @@ function workspaceLocalPreviewHref(workspaceId: string, href: string): string | 
   const hostname = url.hostname.toLowerCase();
   if (!["localhost", "127.0.0.1", "::1", "[::1]", "0.0.0.0"].includes(hostname)) return undefined;
   const port = Number(url.port || (url.protocol === "https:" ? 443 : 80));
-  if (!Number.isInteger(port) || port < 3000 || port > 3010 || url.protocol !== "http:") return undefined;
+  if (!isWorkspaceAppPort(port) || url.protocol !== "http:") return undefined;
   return workspaceProxyUrl(workspaceId, `port-${port}`, `${url.pathname}${url.search}${url.hash}`);
 }
 

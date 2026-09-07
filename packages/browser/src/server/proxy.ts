@@ -1,9 +1,10 @@
 import { inlineDesignSystemCss } from "@atelier/design-system/styles/server";
 import { panelHtml } from "@atelier/design-system/panel";
 import { escapeHtml } from "@atelier/shared";
-import { isWorkspacePreviewPort, workspacePreviewPortUrl, workspacePreviewPorts } from "@atelier/workspace";
+import { workspacePortBackend } from "@atelier/workspace";
 import { nestedWorkspaceProxyRedirectHeader, publicWorkspaceAppOrigin, type WorkspaceAppHost } from "@atelier/proxy-ingress/server";
 import { getWorkspaceBrowserView, setWorkspaceBrowserTarget, type WorkspaceBrowserView } from "./state.ts";
+import type { WorkspaceHttpAppBackend } from "@atelier/shared";
 import { browserOriginParam, browserProxyUrl, stripBrowserProxyParams } from "../shared.ts";
 
 export function isBrowserWorkspaceApp(workspaceId: string, appKey: string): boolean {
@@ -66,7 +67,7 @@ async function renderPlainTextError(status: number, message: string): Promise<st
   </style></head><body><main>${panel}</main></body></html>`;
 }
 
-export async function resolveBrowserWorkspaceAppTarget(app: WorkspaceAppHost, requestUrl: URL): Promise<URL> {
+export async function resolveBrowserWorkspaceAppBackend(app: WorkspaceAppHost, requestUrl: URL): Promise<WorkspaceHttpAppBackend> {
   const browserView = getWorkspaceBrowserView(app.workspaceId, app.appKey);
   if (!browserView) throw new Error(`unknown workspace app: ${app.appKey}`);
   if (!browserView.targetUrl) throw new Error(`Browser view has no target URL: ${app.appKey}`);
@@ -74,11 +75,7 @@ export async function resolveBrowserWorkspaceAppTarget(app: WorkspaceAppHost, re
   if (!isLoopbackHost(target.hostname)) throw new Error("External browser targets load directly and do not have a workspace proxy");
 
   const containerPort = Number(target.port || defaultPortForProtocol(target.protocol));
-  if (!isWorkspacePreviewPort(containerPort)) {
-    throw new Error(`Port ${target.port || defaultPortForProtocol(target.protocol)} is not published for browser previews. Use one of: ${workspacePreviewPorts.join(", ")}`);
-  }
-
-  return await workspacePreviewPortUrl(app.workspaceId, containerPort, target.pathname + target.search, target.protocol);
+  return await workspacePortBackend(app.workspaceId, containerPort, target.pathname + target.search, target.protocol);
 }
 
 function defaultPortForProtocol(protocol: string): number {

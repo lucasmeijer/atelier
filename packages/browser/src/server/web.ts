@@ -3,7 +3,7 @@ import { turboStream, type WorkspaceCommandContribution, type WorkspaceModule, t
 import { browserWorkViewPresentation, renderBrowserFrame, renderBrowserWorkViewBody } from "./render.ts";
 import { browserFrameId, createWorkspaceBrowserView, deleteWorkspaceBrowserState, deleteWorkspaceBrowserView, getWorkspaceBrowserView, listWorkspaceBrowserViews, setWorkspaceBrowserTarget } from "./state.ts";
 import { browserStaticFiles } from "./static.ts";
-import { isBrowserWorkspaceApp, patchBrowserWorkspaceAppResponse, resolveBrowserWorkspaceAppTarget } from "./proxy.ts";
+import { isBrowserWorkspaceApp, patchBrowserWorkspaceAppResponse, resolveBrowserWorkspaceAppBackend } from "./proxy.ts";
 import { invalidArguments, readJsonObject, requestAcceptsJson, type JsonObject, type JsonValue } from "@atelier/core";
 import { createBrowserPresenter } from "./agent-tool.ts";
 import { registerWorkspacePresenter } from "@atelier/agent/server";
@@ -86,10 +86,9 @@ export const browserWorkspaceModule: WorkspaceModule = {
   initialize(context) {
     context.registerWorkspaceAppResolver(async (app, requestUrl) => {
       if (!isBrowserWorkspaceApp(app.workspaceId, app.appKey)) return undefined;
-      const target = await resolveBrowserWorkspaceAppTarget(app, requestUrl);
+      const backend = await resolveBrowserWorkspaceAppBackend(app, requestUrl);
       return {
-        kind: "http",
-        target,
+        ...backend,
         adaptResponse: (response, request) => patchBrowserWorkspaceAppResponse(app, response, request),
       };
     });

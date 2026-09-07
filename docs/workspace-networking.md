@@ -7,11 +7,11 @@ Atelier is a single-user application intended to run inside a trusted network, s
 Atelier uses one networking model for workspace app ports:
 
 ```text
-workspace container:<container-port> -> published on host 127.0.0.1:<allocated-port>
-Atelier -> http://127.0.0.1:<allocated-port>
+workspace gateway:2999 -> published on host 127.0.0.1:<allocated-port>
+Atelier -> gateway -> workspace 127.0.0.1:<requested-app-port>
 ```
 
-Workspace containers publish the supported app ports, such as VS Code and preview ports, on the Docker host loopback interface. Atelier never connects to workspace container IPs, Docker DNS names, Docker bridge addresses, or `host.docker.internal` for workspace app ingress.
+Workspace containers publish only their authenticated gateway port on the Docker host loopback interface. Atelier allocates and pins that host port in Docker’s container configuration, so both controlled and automatic restarts retain the same ingress endpoint. VS Code and browser previews both use that gateway. Atelier never connects to workspace container IPs, Docker DNS names, Docker bridge addresses, or `host.docker.internal` for workspace app ingress.
 
 ## Supported shapes
 
@@ -45,13 +45,35 @@ Do not run the Atelier container on Docker's default bridge network for this mod
 
 ### Atelier in an Atelier workspace
 
-An Atelier development server in a workspace uses that workspace's nested Docker daemon. Its inner workspace ports are still published on the surrounding workspace's loopback interface, so the inner server can reach them normally.
+An Atelier development server in a workspace uses that workspace's nested Docker daemon. Its inner workspace gateway ports are still published on the surrounding workspace's loopback interface, so the inner server can reach them normally.
 
-Browser-facing app identity is independent from an active listener. A stable canonical app link retains a logical browser-origin assignment while listeners and external publication are leased only while the app is active. Origin assignments are never transferred to another app, preventing stale addresses and browser storage from crossing app identities. In a nested Atelier, the inner ingress leases an origin already published by the surrounding workspace and redirects through that workspace's canonical app route. The outer ingress then supplies the browser-reachable origin. This preserves root-relative URLs and WebSockets without keeping inactive listeners or externally published resources alive.
+Browser-facing app identity is independent from an active listener. A stable canonical app link retains a logical browser-origin assignment while listeners and external publication are leased only while the app is active. Origin assignments are never transferred to another app, preventing stale addresses and browser storage from crossing app identities. In a nested Atelier, the inner ingress leases a local origin reachable through the surrounding workspace’s gateway and redirects through that workspace's canonical app route. The outer ingress then supplies the browser-reachable origin. This preserves root-relative URLs and WebSockets without keeping inactive listeners or externally published resources alive.
 
-## Eligible preview ports and remote HTTPS
+## Workspace gateway
 
-Raw workspace development servers may be exposed on TCP ports **3000 through 3010**, using HTTP inside the workspace. Attempts to use other raw ports are rejected with the eligible range.
+A small Go binary, `/usr/local/bin/atelier-workspace-gateway`, runs as the workspace container's main process after initialization, under Docker's `--init` signal-forwarder and child-process reaper. It binds port **2999**, writes the startup readiness marker only after binding, and exits with the container. Stopping or restarting a workspace stops or restarts its gateway; gateway failure terminates the container rather than silently leaving previews broken. Docker's existing restart policy applies.
+
+Workspace web apps can use **any TCP port from 1 through 65535 except 2999**, including privileged ports and services bound only to IPv4 loopback (`127.0.0.1`). The gateway always connects to `127.0.0.1:<port>` inside the workspace. It never resolves a caller-supplied hostname or routes to another container, the Docker host, or the internet. This is web-app ingress, not general-purpose TCP/UDP publishing. Only explicitly requested app routes are exposed; services are not scanned or automatically published.
+
+Ingress sends the destination port, HTTP/HTTPS protocol, app Host, and a per-workspace credential in reserved `X-Atelier-Gateway-*` headers. Browser-supplied values are removed and replaced with trusted routing metadata. The gateway authenticates and validates the request, strips its metadata and proxy credentials, then forwards it using Go's standard reverse proxy. App authorization, cookies, public Host/forwarded headers, streaming, redirects, and WebSocket upgrades are preserved. HTTPS upstreams require certificates trusted by the gateway; certificate verification is not disabled.
+
+The credential is generated at workspace creation, stored in a mode-0600 host-side workspace file, and copied to `/etc/atelier-workspace-gateway-token` inside the container. It is not an environment variable, URL parameter, or browser credential. Workspaces already allow privileged/root access, so this protects gateway access from other network callers, not from code executing inside that same workspace.
+
+### Bun transport and environment proxies
+
+Bun 1.4's `fetch` honors `NO_PROXY` even with an explicit proxy, and an empty `proxy` string does not suppress `HTTP_PROXY`. Ingress therefore uses the gateway URL as both the HTTP destination and explicit proxy. Whether Bun sends an origin-form request directly or an absolute-form proxy request, it reaches the **same authenticated gateway**. The gateway ignores the URL authority when choosing an upstream and uses only the validated local-port metadata. A separate app-Host header preserves the intended Host in both forms. No global environment changes are needed.
+
+Bun WebSockets connect directly to the gateway with routing headers and no proxy; unlike `fetch`, that client does not implicitly select an environment proxy. Go handles the app-side HTTP or HTTPS upgrade. There is no CONNECT handshake in this gateway protocol.
+
+The gateway preserves raw query strings, including semicolons, leaving query parsing to the app. Transport failures carry a reserved `X-Atelier-Gateway-Error: upstream` response marker; the gateway strips this marker from app responses. Ingress consumes marked failures, retries GET/HEAD startup requests, and records persistent failures in ingress status. Application-generated 502 responses pass through without retries.
+
+### Existing workspaces and verification
+
+Workspaces created with older images must be recreated to gain the gateway. There is deliberately no legacy port-publishing fallback or live-container migration. A missing published gateway produces an actionable error.
+
+Run `bun run test:gateway` with Go 1.26+ installed for the real Bun-ingress/Go-gateway protocol integration. It covers both bypass-all and bypass-none proxy environments, streaming uploads, SSE and cancellation, text/binary WebSockets, subprotocols, cookies, authentication, and shutdown. Go tests also cover HTTPS trust, invalid destinations, connection errors, and credential isolation. The image build runs the Go tests before compiling a static binary in a separate build stage; Go is not installed in the workspace runtime image.
+
+## Remote HTTPS
 
 When Atelier is reached over HTTPS, every active browser-origin port must also be reachable with a trusted HTTPS certificate. The supported automatic configuration uses `ATELIER_TAILSCALE_SERVE=1` with an HTTPS `ATELIER_PUBLIC_URL`; Atelier publishes and retracts active origins through Tailscale Serve. An operator using another trusted-network reverse proxy must equivalently terminate HTTPS and forward the managed origin range (41000–41999 by default) to the same local ports. Publishing only Atelier's main port is insufficient because each app origin intentionally has a separate browser origin.
 

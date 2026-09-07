@@ -1,5 +1,6 @@
+import type { WorkspaceHttpAppBackend } from "@atelier/shared";
 import { isJsonObject } from "@atelier/core";
-import { workspacePortUrl, workspaceVSCodePort } from "@atelier/workspace";
+import { workspacePortBackend, workspaceVSCodePort } from "@atelier/workspace";
 import type { WorkspaceAppHost } from "@atelier/proxy-ingress/server";
 import { ensureWorkspaceVSCodeServer } from "./workspace-vscode.ts";
 
@@ -141,7 +142,7 @@ export async function patchVSCodeWorkspaceAppResponse(app: WorkspaceAppHost, res
   return new Response(themed, { status: response.status, statusText: response.statusText, headers });
 }
 
-export async function resolveVSCodeWorkspaceAppTarget(app: WorkspaceAppHost, requestUrl: URL): Promise<URL> {
+export async function resolveVSCodeWorkspaceAppBackend(app: WorkspaceAppHost, requestUrl: URL): Promise<WorkspaceHttpAppBackend> {
   if (app.appKey !== vscodeAppKey) throw new Error(`unknown workspace app: ${app.appKey}`);
   await ensureRecentVSCodeServer(app.workspaceId);
   const targetUrl = new URL(requestUrl.pathname + requestUrl.search, "http://atelier.local");
@@ -149,5 +150,5 @@ export async function resolveVSCodeWorkspaceAppTarget(app: WorkspaceAppHost, req
     if (key.startsWith("atelier")) targetUrl.searchParams.delete(key);
   });
   const path = targetUrl.pathname + targetUrl.search;
-  return await workspacePortUrl(app.workspaceId, workspaceVSCodePort, path);
+  return await workspacePortBackend(app.workspaceId, workspaceVSCodePort, path);
 }

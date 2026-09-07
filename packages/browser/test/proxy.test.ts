@@ -1,6 +1,6 @@
 import { describe, expect, test } from "bun:test";
 import { nestedWorkspaceProxyRedirectHeader } from "@atelier/proxy-ingress/server";
-import { patchBrowserWorkspaceAppResponse, resolveBrowserWorkspaceAppTarget } from "../src/server/proxy.ts";
+import { patchBrowserWorkspaceAppResponse, resolveBrowserWorkspaceAppBackend } from "../src/server/proxy.ts";
 import { renderBrowserFrame } from "../src/server/render.ts";
 import { createWorkspaceBrowserView, deleteWorkspaceBrowserView, listWorkspaceBrowserViews, normalizeBrowserUrl, setWorkspaceBrowserTarget } from "../src/server/state.ts";
 
@@ -78,14 +78,14 @@ describe("browser proxy response patching", () => {
     const view = createWorkspaceBrowserView("external_target_work");
     setWorkspaceBrowserTarget("external_target_work", view.key, "https://example.com/root");
 
-    await expect(resolveBrowserWorkspaceAppTarget(
+    await expect(resolveBrowserWorkspaceAppBackend(
       { appKey: view.key, workspaceId: "external_target_work" },
       new URL("/page?x=1", "https://browser.localhost"),
     )).rejects.toThrow("load directly");
   });
 
   test("rejects browser app keys that do not belong to a Workspace view", async () => {
-    await expect(resolveBrowserWorkspaceAppTarget(
+    await expect(resolveBrowserWorkspaceAppBackend(
       { appKey: "browser-999", workspaceId: "unknown_browser_work" },
       new URL("/", "https://browser.localhost"),
     )).rejects.toThrow("unknown workspace app: browser-999");

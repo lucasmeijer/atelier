@@ -4,7 +4,7 @@ import type { WorkspaceCommandContribution, WorkspaceModule, WorkspaceWorkViewPr
 import { renderVSCodePane, vscodeViewKey } from "./render.ts";
 import { createWorkspaceVSCodeView, deleteWorkspaceVSCodeState, deleteWorkspaceVSCodeView, listWorkspaceVSCodeViews, type WorkspaceVSCodeView } from "./workspace-vscode.ts";
 import { vscodeStaticFiles } from "./static.ts";
-import { deleteWorkspaceVSCodeProxyState, patchVSCodeWorkspaceAppResponse, resolveVSCodeWorkspaceAppTarget, vscodeAppKey } from "./proxy.ts";
+import { deleteWorkspaceVSCodeProxyState, patchVSCodeWorkspaceAppResponse, resolveVSCodeWorkspaceAppBackend, vscodeAppKey } from "./proxy.ts";
 import { Type, type Static } from "typebox";
 import { Value } from "typebox/value";
 
@@ -59,8 +59,7 @@ export const vscodeWorkspaceModule: WorkspaceModule = {
   initialize(context) {
     context.registerWorkspaceAppResolver(async (app, requestUrl) => app.appKey === vscodeAppKey
       ? {
-          kind: "http",
-          target: await resolveVSCodeWorkspaceAppTarget(app, requestUrl),
+          ...await resolveVSCodeWorkspaceAppBackend(app, requestUrl),
           adaptResponse: (response, request) => patchVSCodeWorkspaceAppResponse(app, response, request),
         }
       : undefined);

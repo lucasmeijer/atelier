@@ -44,7 +44,7 @@ await rm(outDir, { recursive: true, force: true });
 await mkdir(join(outDir, "files"), { recursive: true });
 
 const hash = createHash("sha256");
-hash.update("atelier-workspace-image-v10\n");
+hash.update("atelier-workspace-image-v11\n");
 const apt = [];
 const env = {};
 const moduleNames = [];
@@ -84,8 +84,16 @@ for (const { path, dir, name, manifest, hashPath } of manifests) {
   modules.push({ name, copyInstructions: moduleCopyInstructions, runInstructions: manifest.run ?? [] });
 }
 
+// The gateway is built separately so Go never enters the runtime image.
+const gatewaySource = join(packagesDir, "workspace-image", "workspace-image", "gateway");
+await cp(gatewaySource, join(outDir, "gateway"), { recursive: true });
+for (const name of (await readdir(gatewaySource)).sort()) {
+  hash.update(`gateway/${name}\0`);
+  hash.update(await readFile(join(gatewaySource, name)));
+}
+
 const uniqueApt = [...new Set(apt)].sort();
-let dockerfile = `FROM oven/bun:1.4.0 AS bun-dist\n\nFROM ubuntu:26.04\n\nARG DEBIAN_FRONTEND=noninteractive\nLABEL com.atelier.workspace-image.modules=${quote(moduleNames.join(","))}\n\n`;
+let dockerfile = `FROM golang:1.26.0 AS gateway-build\nWORKDIR /src\nCOPY gateway/ ./\nRUN go test ./... && CGO_ENABLED=0 go build -trimpath -ldflags="-s -w" -o /atelier-workspace-gateway .\n\nFROM oven/bun:1.4.0 AS bun-dist\n\nFROM ubuntu:26.04\n\nARG DEBIAN_FRONTEND=noninteractive\nLABEL com.atelier.workspace-image.modules=${quote(moduleNames.join(","))}\n\n`;
 if (uniqueApt.length) {
   const aptPackages = dockerContinuationList(uniqueApt);
   dockerfile += `RUN --mount=type=cache,target=/var/cache/apt,sharing=locked \\\n    --mount=type=cache,target=/var/lib/apt/lists,sharing=locked \\\n    apt-get update \\\n && apt-get install -y --no-install-recommends \\\n${aptPackages}\n\n`;
@@ -107,6 +115,7 @@ for (const module of modules) {
 if (finalCopies.length) dockerfile += "# Files independent of module setup\n";
 appendCopies(finalCopies);
 if (Object.keys(env).length) dockerfile += `ENV ${Object.entries(env).map(([key, value]) => `${key}=${quote(value)}`).join(" \\\n    ")}\n\n`;
+dockerfile += `COPY --from=gateway-build /atelier-workspace-gateway /usr/local/bin/atelier-workspace-gateway\n\n`;
 dockerfile += `WORKDIR /work\n`;
 await writeFile(join(outDir, "Dockerfile"), dockerfile);
 await writeFile(join(outDir, "metadata.json"), `${JSON.stringify({ tag: `atelier-workspace:${hash.digest("hex").slice(0, 16)}`, modules: moduleNames }, null, 2)}\n`);
