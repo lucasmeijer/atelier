@@ -317,7 +317,7 @@
 .agent-working > summary.action-item { width: fit-content; max-width: 100%; }
 .agent-working > summary, .agent-tool > summary { list-style: none; cursor: pointer; }
 .agent-working > summary::-webkit-details-marker, .agent-tool > summary::-webkit-details-marker { display: none; }
-.agent-working--empty > summary .disclosure-icon { display: none; }
+.agent-working:not(:has(.agent-working-items > .agent-item, turbo-frame)) > summary .disclosure-icon { display: none; }
 .agent-working-timing { color: var(--text-muted); }
 .agent-working-items { margin: 2px 0 4px; }
 .agent-working-items > .agent-item + .agent-item { margin-top: 8px; }

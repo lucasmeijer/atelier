@@ -81,6 +81,10 @@ export class RealAgentRuntime extends BaseAgentRuntime {
     unsubscribe?.();
   }
 
+  protected override liveTiming() {
+    return this.turnTiming?.snapshot(performance.now()) ?? super.liveTiming();
+  }
+
   protected override decorateTranscript(items: TranscriptItem[]): TranscriptItem[] {
     const snapshot = this.delegation.transcript?.snapshot();
     if (!snapshot) return items;

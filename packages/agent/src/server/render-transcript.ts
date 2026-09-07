@@ -75,23 +75,29 @@ function renderWorkingItems(ctx: AgentRenderContext, section: WorkingTranscriptI
 
 function renderWorkingSection(ctx: AgentRenderContext, section: WorkingTranscriptItem): string {
   if (section.completedAt !== undefined && section.items.length === 0 && !section.timing) return "";
-  const endedAt = section.completedAt ?? section.stoppedAt;
-  const active = endedAt === undefined;
-  const activityLabel = active ? "Working"
-    : `${section.completedAt !== undefined ? "Worked for" : "Stopped after"} ${formatDuration(section.timing?.elapsedMs ?? (endedAt - section.startedAt))}`;
-  const timingLabel = renderWorkingTiming(section);
-  const status = active ? '<i class="status-dot running action-item__status" aria-label="In progress"></i>' : "";
-  const summary = transcriptActionItemHtml({ kind: "text", text: activityLabel }, { disclosure: true, leadingHtml: status, trailingHtml: timingLabel });
-  const emptyClass = section.items.length === 0 ? " agent-working--empty" : "";
+  const active = section.completedAt === undefined && section.stoppedAt === undefined;
+  const summary = renderWorkingSummary(ctx, section);
   const revealing = Boolean(ctx.revealTarget && section.items.some((item) => item.anchor === ctx.revealTarget || item.key === ctx.revealTarget));
   const lazy = !active && !section.live && !revealing;
-  const attributes = lazy ? ' data-controller="agent-lazy-detail" data-action="toggle->agent-lazy-detail#load mouseenter->agent-lazy-detail#load"' : active || revealing ? " open" : "";
+  const attributes = lazy ? ' data-controller="agent-lazy-detail" data-action="toggle->agent-lazy-detail#load mouseenter->agent-lazy-detail#load"' : revealing ? " open" : "";
   const items = lazy ? lazyTranscriptItemFrame(ctx, section.key) : renderWorkingItems(ctx, section, { live: section.live, open: active });
-  return `<details class="agent-working${emptyClass}${active ? " active" : ""}" id="${ids.item(ctx, section.key)}"${attributes}>${summary}${items}</details>`;
+  return `<details class="agent-working${active ? " active" : ""}" id="${ids.item(ctx, section.key)}"${attributes}>${summary}${items}</details>`;
 }
 
-function renderWorkingTiming(section: WorkingTranscriptItem): string {
-  if (section.completedAt === undefined || !section.timing) return "";
+export function renderWorkingSummary(ctx: AgentRenderContext, section: Omit<WorkingTranscriptItem, "items">): string {
+  const endedAt = section.completedAt ?? section.stoppedAt;
+  const active = endedAt === undefined;
+  const duration = formatDuration(section.timing?.elapsedMs ?? ((endedAt ?? Date.now()) - section.startedAt));
+  const activityLabel = `${active ? "Working for" : section.completedAt !== undefined ? "Worked for" : "Stopped after"} ${duration}`;
+  const status = active ? '<i class="status-dot running action-item__status" aria-label="In progress"></i>' : "";
+  return transcriptActionItemHtml({ kind: "text", text: activityLabel }, {
+    disclosure: true, leadingHtml: status, trailingHtml: renderWorkingTiming(section),
+    summaryId: ids.itemSummaryContent(ctx, section.key),
+  });
+}
+
+function renderWorkingTiming(section: Omit<WorkingTranscriptItem, "items">): string {
+  if (!section.timing) return "";
   const timing = section.timing;
   const rate = timing.usageComplete && timing.inferenceMs > 0
     ? `${(timing.outputTokens / (timing.inferenceMs / 1000)).toFixed(1)} tps`

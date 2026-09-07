@@ -17,6 +17,7 @@ import {
   renderTranscript,
   renderTranscriptItem,
   renderTranscriptItemDetailFrame,
+  renderWorkingSummary,
   type AgentModelContextView,
 } from "./render-transcript.ts";
 import type {
@@ -89,6 +90,7 @@ export abstract class BaseAgentRuntime implements WorkspaceAgentRuntime {
   protected live?: LiveState;
   private announcedBusy = false;
   private disposed = false;
+  private workingSummaryTimer?: ReturnType<typeof setInterval>;
   private toolArgsFlushTimer?: ReturnType<typeof setTimeout>;
   protected liveSubscriberCount = 0;
   private readonly livePresentation = createSnapshotFirstLivePresentation((publishToExisting) => {
@@ -167,6 +169,7 @@ export abstract class BaseAgentRuntime implements WorkspaceAgentRuntime {
   protected markDisposed(): boolean {
     if (this.disposed) return false;
     this.disposed = true;
+    clearInterval(this.workingSummaryTimer);
     finishNotificationTurn(this.ctx);
     this.cancelToolArgsFlush();
     return true;
@@ -207,6 +210,11 @@ export abstract class BaseAgentRuntime implements WorkspaceAgentRuntime {
       terminalTimers: new Map(),
     };
     this.live = live;
+    this.workingSummaryTimer = setInterval(() => {
+      if (this.liveSubscriberCount === 0) return;
+      // Keep the summary mounted: replacing it makes WebKit briefly reflow even a closed details group.
+      this.stream(turboStream("replace", ids.itemSummaryContent(this.ctx, live.working.key), renderWorkingSummary(this.ctx, { ...live.working, timing: this.liveTiming() }), { method: "morph" }));
+    }, 1000);
     if (user) {
       const item: TranscriptItem = { type: "user", timestamp: now, key: `${live.id}:user`, text: user.text, images: user.images };
       live.items.push(item);
@@ -220,10 +228,12 @@ export abstract class BaseAgentRuntime implements WorkspaceAgentRuntime {
     return this.live!;
   }
 
+  protected liveTiming(): WorkingTranscriptItem["timing"] { return this.live?.working.timing; }
+
   private liveWorkingSection(live: LiveState): WorkingTranscriptItem {
     const userIndex = live.items[0]?.type === "user" ? 1 : 0;
     const end = live.finalIndex ?? live.items.length;
-    return { ...live.working, items: [...live.cacheMissNotices, ...live.items.slice(userIndex, end)] };
+    return { ...live.working, timing: this.liveTiming(), items: [...live.cacheMissNotices, ...live.items.slice(userIndex, end)] };
   }
 
   private renderLiveWorkingSection(live: LiveState): string {
@@ -586,6 +596,7 @@ export abstract class BaseAgentRuntime implements WorkspaceAgentRuntime {
 
   /** End the live model synchronously; terminal lifecycle must not wait on stats I/O. */
   protected finishLivePresentation(): void {
+    clearInterval(this.workingSummaryTimer);
     this.cancelToolArgsFlush();
     // Supersede any paced tail with one canonical full-source render before the
     // live state (and its renderer session) is discarded.

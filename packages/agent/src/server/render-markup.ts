@@ -13,14 +13,14 @@ export function transcriptRow(html: string): string {
   return `<div class="agent-row">${html}</div>`;
 }
 
-export function transcriptActionItemHtml(label: ActionItemLabel, options: { disclosure: boolean; leadingHtml?: string; trailingHtml?: string; labelId?: string }): string {
+export function transcriptActionItemHtml(label: ActionItemLabel, options: { disclosure: boolean; leadingHtml?: string; trailingHtml?: string; labelId?: string; summaryId?: string }): string {
   return actionItemHtml({
     kind: "single",
     primary: options.disclosure ? undefined : false,
     leadingHtml: `${options.disclosure ? Icons.Disclosure : ""}${options.leadingHtml ?? ""}`,
     trailingHtml: options.trailingHtml,
     label: { ...label, textAttributesHtml: options.labelId ? `id="${options.labelId}"` : undefined },
-    element: { tag: options.disclosure ? "summary" : "div" },
+    element: { tag: options.disclosure ? "summary" : "div", attributesHtml: options.summaryId ? `id="${options.summaryId}"` : undefined },
   });
 }
 
