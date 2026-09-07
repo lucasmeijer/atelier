@@ -435,7 +435,7 @@ function oauthAuthenticationAction(flow: PendingOAuthFlow, url: string, hidden =
   return actionLinkHtml({
     href: url,
     variant: "primary",
-    content: { kind: "caption", caption: `Open ${authenticationName} Authentication page so I can paste the button there` },
+    content: { kind: "caption", caption: `Open ${authenticationName} Authentication page so I can paste the code there` },
     attributesHtml: `target="_blank" rel="noreferrer"${hidden ? ' data-oauth-device-auth hidden data-action="oauth-flow#showWaitingStatus"' : ""}`,
   });
 }
