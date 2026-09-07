@@ -76,6 +76,9 @@ function bashTimeoutSeconds(args: JsonObject): number {
 /** Only attach the inline terminal when a tool call has been running this long. */
 const terminalRevealMs = 3000;
 const liveContentFlushIntervalMs = 50;
+// Roughly the largest 5% of historical invocation arguments. Keep small calls responsive.
+const largeToolArgsBytes = 2 * 1024;
+const largeToolArgsFlushIntervalMs = 500;
 export abstract class BaseAgentRuntime implements WorkspaceAgentRuntime {
   workspaceId: string;
   conversationId: string;
@@ -439,10 +442,15 @@ export abstract class BaseAgentRuntime implements WorkspaceAgentRuntime {
     // The authoritative prefix changes immediately. Only rendering is coalesced.
     this.livePresentation.publish();
     if (this.liveSubscriberCount === 0 || this.toolArgsFlushTimer) return;
+    // An already scheduled flush may finish at the fast cadence; subsequent flushes
+    // use the accumulated UTF-8 argument size, without postponing work on every delta.
+    const intervalMs = Buffer.byteLength(item.tool.argsStream, "utf8") >= largeToolArgsBytes
+      ? largeToolArgsFlushIntervalMs
+      : liveContentFlushIntervalMs;
     this.toolArgsFlushTimer = setTimeout(() => {
       this.toolArgsFlushTimer = undefined;
       this.streamActiveToolContent(item);
-    }, liveContentFlushIntervalMs);
+    }, intervalMs);
   }
 
   private cancelToolArgsFlush(): void {

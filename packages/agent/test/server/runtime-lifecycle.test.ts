@@ -169,6 +169,43 @@ test("tool deltas update authoritative state immediately and coalesce server pub
   subscription.unsubscribe();
 });
 
+test("large tool arguments slow publications to 500 ms without delaying state or completion", async () => {
+  const { session, emit } = fakeSession(deferred());
+  const runtime = runtimeFor(session);
+  const subscription = runtime.subscribeLivePresentation(() => {});
+  await subscription.ready;
+  const event = (inner: ToolStreamEvent) => emit({ type: "message_update", assistantMessageEvent: inner });
+  emit({ type: "agent_start" });
+  event({ type: "toolcall_start", contentIndex: 0, partial: { content: [{ name: "write" }] } });
+  // Exactly 2 KiB in UTF-8, but fewer than 2,048 UTF-16 code units.
+  const prefix = '{"content":"' + "é".repeat(1018);
+  expect(Buffer.byteLength(prefix)).toBe(2048);
+  event({ type: "toolcall_delta", delta: prefix.slice(0, -1) });
+  await Bun.sleep(70);
+  expect(runtime.toolContentUpdates).toHaveLength(1);
+  event({ type: "toolcall_delta", delta: "é" });
+  await Bun.sleep(100);
+  expect(runtime.toolContentUpdates).toHaveLength(1);
+  event({ type: "toolcall_delta", delta: "more" });
+  const item = runtime.inspectLiveItems().flatMap((item) => item.type === "working" ? item.items : [item]).find((item) => item.type === "tool");
+  expect(item?.type === "tool" && item.tool.argsStream).toBe(prefix + "more");
+  await Bun.sleep(450);
+  expect(runtime.toolContentUpdates).toHaveLength(2);
+  expect(runtime.toolContentUpdates.at(-1)?.prefix).toBe(prefix + "more");
+  event({ type: "toolcall_delta", delta: '"}' });
+  event({ type: "toolcall_end", toolCall: { id: "large", name: "write", arguments: { path: "large.txt", content: "é".repeat(1018) + "more" } } });
+  expect(runtime.toolContentUpdates.at(-1)?.status).toBe("running");
+  const count = runtime.toolContentUpdates.length;
+  await Bun.sleep(550);
+  expect(runtime.toolContentUpdates).toHaveLength(count);
+  // A later small call gets the fast cadence again.
+  event({ type: "toolcall_start", contentIndex: 1, partial: { content: [{ name: "write" }, { name: "write" }] } });
+  event({ type: "toolcall_delta", delta: '{"content":"small' });
+  await Bun.sleep(70);
+  expect(runtime.toolContentUpdates).toHaveLength(count + 1);
+  subscription.unsubscribe();
+});
+
 test("pending tool updates stop when the last subscriber leaves", async () => {
   const { session, emit } = fakeSession(deferred());
   const runtime = runtimeFor(session);

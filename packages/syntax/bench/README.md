@@ -97,8 +97,11 @@ The server cache is bounded by 256 entries and 2,000,000 retained UTF-16 units
 fullscreen content is highlighted once. Changed prefixes still require parsing.
 
 Tool arguments accumulate immediately, but rendering is coalesced to one flush
-per 50 ms while subscribed. Completion flushes immediately and cancels pending
-work; unsubscribe/disposal also cancels pending work. Assistant text flushes all
+per 50 ms while subscribed, slowing to 500 ms once accumulated arguments reach
+2 KiB in UTF-8 (roughly the historical 95th percentile). An already scheduled
+50 ms flush may finish; subsequent flushes use the slower cadence. Each new tool
+call starts with the fast cadence again. Completion flushes immediately and cancels
+pending work; unsubscribe/disposal also cancels pending work. Assistant text flushes all
 available text every 50 ms instead of manufacturing 24-character updates every
 16 ms. Partial JSON parsing occurs at rendering, not on each delta.
 
