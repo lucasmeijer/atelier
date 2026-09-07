@@ -62,6 +62,12 @@ function measuredBreakdown(measured: MeasuredUsage): string {
 
 function renderUsageWindow({ reported: window, measured: local, timing }: ProviderUsageOverview["windows"][number]): string {
   const label = `${window.limitName} · ${usageDuration(window.durationSeconds)}`;
+  if (timing.state === "unknown" || window.resetsAt === null) {
+    return `<article class="usage-limit"><h4>${escapeHtml(label)}</h4>
+      <div class="usage-limit-heading usage-caption"><span>Reset time unavailable</span><span>Usage <strong>${number(window.usedPercent)}%</strong></span></div>
+      <p class="usage-caption">The provider hasn’t reported a reset time. Pacing is unavailable.</p>
+    </article>`;
+  }
   const remaining = (new Date(window.resetsAt).getTime() - Date.now()) / 1000;
   const difference = timing.paceDifferenceSeconds;
   const pace = usagePace(difference);
@@ -73,7 +79,7 @@ function renderUsageWindow({ reported: window, measured: local, timing }: Provid
       <span class="usage-comparison__shared" style="width:${Math.min(timing.elapsedPercent, window.usedPercent)}%"></span>
     </div>
     <div class="usage-limit-heading usage-caption"><span>${remaining > 0 ? `Resets in ${usageDuration(remaining)}` : "Reset due"}</span>${pace ? `<span title="Distance along the linear allowance schedule, not a forecast">${pace}</span>` : ""}</div>
-    ${local ? `<details class="usage-window-local"><summary>Atelier · <strong>${number(local.totalTokens)} tokens</strong>${local.partialCoverage ? " · partial" : ""}${window.meteredFeature ? " · all Codex" : ""}</summary>${measuredBreakdown(local)}</details>` : ""}
+    ${local ? `<details class="usage-window-local"><summary>Atelier · <strong>${number(local.totalTokens)} tokens</strong>${local.partialCoverage ? " · partial" : ""}${window.meteredFeature ? " · all provider tokens" : ""}</summary>${measuredBreakdown(local)}</details>` : ""}
   </article>`;
 }
 
@@ -82,12 +88,12 @@ function renderUsageLimits({ reported, error, windows }: ProviderUsageOverview):
   if (!reported) return "<p>Disconnected.</p>";
   const used = windows.filter(({ reported }) => reported.usedPercent > 0);
   const unused = windows.filter(({ reported }) => reported.usedPercent === 0);
-  return `${reported.limitReached || reported.allowed === false ? '<p class="usage-error" role="status">Subscription limit reached.</p>' : ""}${used.map(renderUsageWindow).join("")}${unused.length ? `<details class="usage-unused"><summary>Unused limits (${unused.length})</summary><div class="usage-section">${unused.map(renderUsageWindow).join("")}</div></details>` : ""}${windows.length ? "" : '<p>No limits reported.</p>'}`;
+  return `${reported.limitReached || reported.allowed === false ? '<p class="usage-error" role="status">Subscription limit reached.</p>' : ""}${used.map(renderUsageWindow).join("")}${unused.length ? `<details class="usage-unused"${used.length ? "" : " open"}><summary>Unused limits (${unused.length})</summary><div class="usage-section">${unused.map(renderUsageWindow).join("")}</div></details>` : ""}${windows.length ? "" : '<p>No limits reported.</p>'}`;
 }
 
 function renderUsageProvider(overview: ProviderUsageOverview): string {
   const { reported, measured } = overview;
-  return `<section class="usage-provider" data-controller="usage-snapshot"><header class="usage-provider-heading"><h2>${providerIcon(overview.provider.id, overview.provider.label)}${escapeHtml(overview.provider.label)}</h2>${reported ? `<span class="usage-plan">${escapeHtml(reported.plan)}</span>` : ""}</header>
+  return `<section class="usage-provider" data-controller="usage-snapshot"><header class="usage-provider-heading"><h2>${providerIcon(overview.provider.id, overview.provider.label)}${escapeHtml(overview.provider.label)}</h2>${reported?.plan ? `<span class="usage-plan">${escapeHtml(reported.plan)}</span>` : ""}</header>
     <section class="usage-section">
       ${renderUsageLimits(overview)}
     </section>
@@ -110,7 +116,7 @@ async function renderUsageButton(providerId: string | null): Promise<string> {
   if (!provider) return usageButtonHtml(undefined, providerId ? `Usage — ${providerId}: limits not supported` : "Usage");
   const overview = await getProviderUsageOverview(provider);
   const selected = selectPacingWindow(overview.windows);
-  if (!selected) return usageButtonHtml(undefined, `Usage — ${provider.label}: limits unavailable`);
+  if (!selected || selected.timing.state !== "active") return usageButtonHtml(undefined, `Usage — ${provider.label}: limits unavailable`);
   const { reported, timing } = selected;
   const pace = usagePace(timing.paceDifferenceSeconds);
   return usageButtonHtml({ referencePercent: timing.elapsedPercent, valuePercent: reported.usedPercent }, `Usage — ${provider.label} · ${reported.limitName} ${usageDuration(reported.durationSeconds)}: Time ${number(timing.elapsedPercent)}%, Usage ${number(reported.usedPercent)}% · ${pace}`);
@@ -122,7 +128,7 @@ function providerPlaceholder(provider: UsageProvider): string {
 
 async function renderUsageOverview(): Promise<string> {
   const providers = await connectedUsageProviders();
-  return `<turbo-frame id="${overviewFrameId}" class="usage-overview">${providers.map(providerPlaceholder).join("") || '<p class="usage-caption">Connect OpenAI Codex in Settings to see usage.</p>'}</turbo-frame>`;
+  return `<turbo-frame id="${overviewFrameId}" class="usage-overview">${providers.map(providerPlaceholder).join("") || '<p class="usage-caption">Connect OpenAI Codex or an Anthropic subscription in Settings to see usage.</p>'}</turbo-frame>`;
 }
 
 async function renderUsageDialog(): Promise<string> {

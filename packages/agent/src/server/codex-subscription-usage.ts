@@ -1,7 +1,6 @@
-import { ModelsError } from "@earendil-works/pi-ai";
+import { SubscriptionUsageError, type SubscriptionUsage } from "./subscription-usage.ts";
 import { Type, type Static } from "typebox";
 import { Value } from "typebox/value";
-import { createPiModelRuntime } from "./pi-config-models.ts";
 
 const claimsSchema = Type.Object({ "https://api.openai.com/auth": Type.Object({ chatgpt_account_id: Type.String({ minLength: 1 }) }) });
 const windowSchema = Type.Object({
@@ -25,25 +24,15 @@ const payloadSchema = Type.Object({
   })), Type.Null()])),
 });
 
-export type CodexSubscriptionUsage = {
-  plan: string;
-  checkedAt: string;
-  allowed: boolean | null;
-  limitReached: boolean | null;
-  windows: { limitName: string; meteredFeature: string | null; kind: "primary" | "secondary"; usedPercent: number; durationSeconds: number; resetsAt: string }[];
-};
-
-export class CodexUsageError extends Error {}
-
 /** ChatGPT's account endpoint, also used by the Codex CLI. Not a public, versioned API. */
-export async function fetchCodexSubscriptionUsage(accessToken: string, fetcher: (url: string, init: RequestInit) => Promise<Response> = fetch): Promise<CodexSubscriptionUsage> {
+export async function fetchCodexSubscriptionUsage(accessToken: string, fetcher: (url: string, init: RequestInit) => Promise<Response> = fetch): Promise<SubscriptionUsage> {
   let claims: unknown;
   try {
     claims = JSON.parse(Buffer.from(accessToken.split(".")[1] ?? "", "base64url").toString());
   } catch {
-    throw new CodexUsageError("OpenAI credentials are invalid. Reconnect OpenAI Codex.");
+    throw new SubscriptionUsageError("OpenAI credentials are invalid. Reconnect OpenAI Codex.");
   }
-  if (!Value.Check(claimsSchema, claims)) throw new CodexUsageError("OpenAI credentials have no account ID. Reconnect OpenAI Codex.");
+  if (!Value.Check(claimsSchema, claims)) throw new SubscriptionUsageError("OpenAI credentials have no account ID. Reconnect OpenAI Codex.");
   let response: Response;
   try {
     response = await fetcher("https://chatgpt.com/backend-api/wham/usage", {
@@ -52,17 +41,17 @@ export async function fetchCodexSubscriptionUsage(accessToken: string, fetcher: 
       redirect: "error",
     });
   } catch {
-    throw new CodexUsageError("Could not reach OpenAI to check subscription usage. Try again.");
+    throw new SubscriptionUsageError("Could not reach OpenAI to check subscription usage. Try again.");
   }
-  if (response.status === 401) throw new CodexUsageError("OpenAI rejected the credentials. Reconnect OpenAI Codex.");
-  if (!response.ok) throw new CodexUsageError(`OpenAI usage is unavailable (HTTP ${response.status}). Try again later.`);
+  if (response.status === 401) throw new SubscriptionUsageError("OpenAI rejected the credentials. Reconnect OpenAI Codex.");
+  if (!response.ok) throw new SubscriptionUsageError(`OpenAI usage is unavailable (HTTP ${response.status}). Try again later.`);
   let payload: unknown;
-  try { payload = await response.json(); } catch { throw new CodexUsageError("OpenAI returned an invalid usage response."); }
-  if (!Value.Check(payloadSchema, payload)) throw new CodexUsageError("OpenAI returned an unrecognized usage response.");
+  try { payload = await response.json(); } catch { throw new SubscriptionUsageError("OpenAI returned an invalid usage response."); }
+  if (!Value.Check(payloadSchema, payload)) throw new SubscriptionUsageError("OpenAI returned an unrecognized usage response.");
   return normalizeUsage(payload);
 }
 
-function normalizeUsage(payload: Static<typeof payloadSchema>): CodexSubscriptionUsage {
+function normalizeUsage(payload: Static<typeof payloadSchema>): SubscriptionUsage {
   const limits = payload.rate_limit;
   return {
     plan: payload.plan_type,
@@ -78,17 +67,4 @@ function normalizeUsage(payload: Static<typeof payloadSchema>): CodexSubscriptio
       return window ? [{ limitName: group.limit_name, meteredFeature: group.metered_feature, kind, usedPercent: window.used_percent, durationSeconds: window.limit_window_seconds, resetsAt: new Date(window.reset_at * 1000).toISOString() }] : [];
     })),
   };
-}
-
-export async function getCodexSubscriptionUsage(): Promise<CodexSubscriptionUsage> {
-  const runtime = await createPiModelRuntime();
-  // Pi owns credential storage and serialized OAuth refresh; never read auth.json ourselves.
-  const auth = await runtime.getAuth("openai-codex", { signal: AbortSignal.timeout(10_000) }).catch((error) => {
-    if (error instanceof ModelsError && error.code === "oauth") {
-      throw new CodexUsageError("OpenAI sign-in could not be refreshed. Try again or reconnect OpenAI Codex.", { cause: error });
-    }
-    throw error;
-  });
-  if (!auth?.auth.apiKey) throw new CodexUsageError("OpenAI credentials are unavailable. Reconnect OpenAI Codex.");
-  return fetchCodexSubscriptionUsage(auth.auth.apiKey);
 }

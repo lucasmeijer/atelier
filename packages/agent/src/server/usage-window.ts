@@ -1,6 +1,12 @@
-import type { CodexSubscriptionUsage } from "./codex-subscription-usage.ts";
+import type { SubscriptionUsage } from "./subscription-usage.ts";
 
-export interface UsageWindowTiming {
+export type UsageWindowTiming = {
+  state: "unknown";
+  startsAt: null;
+  elapsedPercent: null;
+  paceDifferencePoints: null;
+  paceDifferenceSeconds: null;
+} | {
   /** Inferred from the provider's reset timestamp minus its window duration. */
   startsAt: string;
   elapsedPercent: number;
@@ -12,7 +18,8 @@ export interface UsageWindowTiming {
 }
 
 /** A linear pacing reference, not a prediction of provider allowance consumption. */
-export function usageWindowTiming(window: CodexSubscriptionUsage["windows"][number], at: Date): UsageWindowTiming {
+export function usageWindowTiming(window: SubscriptionUsage["windows"][number], at: Date): UsageWindowTiming {
+  if (window.resetsAt === null) return { state: "unknown", startsAt: null, elapsedPercent: null, paceDifferencePoints: null, paceDifferenceSeconds: null };
   const reset = new Date(window.resetsAt).getTime();
   const duration = window.durationSeconds * 1000;
   const start = reset - duration;
@@ -23,7 +30,7 @@ export function usageWindowTiming(window: CodexSubscriptionUsage["windows"][numb
 }
 
 export interface PacedUsageWindow {
-  reported: CodexSubscriptionUsage["windows"][number];
+  reported: SubscriptionUsage["windows"][number];
   timing: UsageWindowTiming;
 }
 
@@ -33,9 +40,8 @@ export function selectPacingWindow(windows: readonly PacedUsageWindow[]): PacedU
   const active = windows.filter((window) => window.timing.state === "active");
   const used = active.filter((window) => window.reported.usedPercent > 0);
   if (!used.length) return active.find((window) => window.reported.meteredFeature === null) ?? active[0];
-  return used.reduce<PacedUsageWindow | undefined>((selected, window) => {
-    if (!selected) return window;
+  return used.reduce((selected, window) => {
     const difference = window.timing.paceDifferencePoints! - selected.timing.paceDifferencePoints!;
     return difference > 0 || (difference === 0 && window.reported.usedPercent > selected.reported.usedPercent) ? window : selected;
-  }, undefined);
+  });
 }

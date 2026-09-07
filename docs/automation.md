@@ -143,8 +143,15 @@ http://localhost:3000/workspaces/<id>
 ## Inspect provider usage
 
 `GET /usage` with `Accept: application/json` returns all connected providers with
-implemented subscription-usage support (currently OpenAI Codex). Refresh an
-individual provider with `GET /usage/providers/openai-codex` and the same header.
+implemented subscription-usage support (OpenAI Codex and Anthropic). Refresh an
+individual provider with `GET /usage/providers/openai-codex` or
+`GET /usage/providers/anthropic` and the same header. Anthropic requires subscription
+OAuth sign-in, not an API key. Its five-hour, weekly, and available model/feature
+windows use the same pacing reference. Buckets with no reset timestamp retain
+their reported usage, with null reset and timing values and timing state `unknown`.
+Null buckets are omitted; monetary extra usage is not a paced allowance. Anthropic
+does not report a plan name or account-wide allowed/limit-reached flags, so these
+are null.
 The HTML representations drive the Usage dialog next to workspace Settings.
 
 Each result includes provider-reported windows, their durations and resets,
@@ -156,7 +163,8 @@ all accounts used with that provider in this installation and are attributed to
 response completion. They cannot be converted to the provider's subscription
 percentage. Provider failures populate `error` without removing local totals.
 
-The Usage dialog collapses provider-reported 0% windows under **Unused limits**
+The Usage dialog groups provider-reported 0% windows under **Unused limits**
+(collapsed when there are used limits, expanded when all limits are unused)
 and renders reset countdowns such as `3d 12h`. The workspace Usage button traces
 Time and Usage for the selected Agent’s provider, retaining the
 most recent provider when no workspace is visible. It refreshes every minute
@@ -167,8 +175,8 @@ Time beyond Usage is green, and Usage beyond Time is red. A dim full-circle
 track preserves the button outline beneath the arcs.
 Among active windows with nonzero usage, the button selects the greatest
 Usage-minus-Time difference; ties prefer higher Usage. When all active windows are
-unused, the main allowance takes precedence over feature-specific allowances. Expired/not-started windows are
-excluded.
+unused, the main allowance takes precedence over feature-specific allowances.
+Expired/not-started windows and windows with unknown reset timing are excluded.
 `GET /usage/button?provider=openai-codex` returns the server-rendered button frame
 (or a Turbo Stream with `Accept: text/vnd.turbo-stream.html`).
 

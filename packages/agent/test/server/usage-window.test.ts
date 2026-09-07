@@ -1,11 +1,11 @@
 import { expect, test } from "bun:test";
-import type { CodexSubscriptionUsage } from "../../src/server/codex-subscription-usage.ts";
+import type { SubscriptionUsage } from "../../src/server/subscription-usage.ts";
 import { usageWindowTiming, selectPacingWindow } from "../../src/server/usage-window.ts";
 
-const window: CodexSubscriptionUsage["windows"][number] = {
+const window = {
   limitName: "Codex", meteredFeature: null, kind: "primary", usedPercent: 60,
   durationSeconds: 5 * 3600, resetsAt: "2026-09-07T15:00:00.000Z",
-};
+} satisfies SubscriptionUsage["windows"][number];
 
 test("infers the start and compares usage to elapsed time in percentage points", () => {
   expect(usageWindowTiming(window, new Date("2026-09-07T12:30:00Z"))).toEqual({
@@ -31,6 +31,7 @@ test("uses actual durations for weekly and longer windows", () => {
     const result = usageWindowTiming({ ...window, durationSeconds: days * 86400 }, new Date(reset - days * 86400_000 / 4));
     expect(result.elapsedPercent).toBe(75);
     expect(result.paceDifferencePoints).toBe(-15);
+    if (result.state === "unknown") throw new Error("Expected known reset timing");
     expect(new Date(result.startsAt).getTime()).toBe(reset - days * 86400_000);
   }
 });
@@ -64,11 +65,10 @@ test("does not display pacing for expired or not-started windows", () => {
 });
 
 function pacedWindow(name: string, usage: number, time: number) {
-  const reported = { ...window, limitName: name, usedPercent: usage };
+  const reported: SubscriptionUsage["windows"][number] = { ...window, limitName: name, usedPercent: usage };
   const at = new Date(new Date(window.resetsAt).getTime() - window.durationSeconds * 1000 * (1 - time / 100));
   return { reported, timing: usageWindowTiming(reported, at) };
 }
-
 
 test("an unused main allowance takes precedence over feature windows that have not been used", () => {
   const main = pacedWindow("Codex", 0, 25);
@@ -76,7 +76,6 @@ test("an unused main allowance takes precedence over feature windows that have n
   feature.reported.meteredFeature = "codex_spark";
   expect(selectPacingWindow([feature, main])).toBe(main);
 });
-
 
 test("expresses ahead, behind and on pace as distance along the window schedule", () => {
   expect(usageWindowTiming(window, new Date("2026-09-07T12:30:00Z")).paceDifferenceSeconds).toBe(1800);
@@ -95,5 +94,17 @@ test("the same percentage gap represents different durations for different allow
 test("schedule distance is unavailable before a window starts and after it resets", () => {
   for (const at of ["2026-09-07T09:00:00Z", window.resetsAt, "2026-09-08T15:00:00Z"]) {
     expect(usageWindowTiming(window, new Date(at)).paceDifferenceSeconds).toBeNull();
+  }
+});
+
+test("missing reset timestamps preserve unknown timing and never participate in pacing", () => {
+  for (const usedPercent of [0, 42]) {
+    const reported = { ...window, usedPercent, resetsAt: null };
+    const timing = usageWindowTiming(reported, new Date("2026-09-07T12:30:00Z"));
+    expect(timing).toEqual({ state: "unknown", startsAt: null, elapsedPercent: null, paceDifferencePoints: null, paceDifferenceSeconds: null });
+    const unknown = { reported, timing };
+    expect(selectPacingWindow([unknown])).toBeUndefined();
+    const active = pacedWindow("Active", 20, 10);
+    expect(selectPacingWindow([unknown, active])).toBe(active);
   }
 });
