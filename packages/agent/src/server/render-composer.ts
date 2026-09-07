@@ -161,10 +161,11 @@ async function renderSharedComposer(options: SharedComposerRenderOptions): Promi
     : `<div class="composer-footer">${await renderLaunchComposerSettings({ ...options.launchComposerSettings!, formId })}</div>`;
   const turboAttr = options.formTurbo === undefined ? "" : ` data-turbo="${options.formTurbo ? "true" : "false"}"`;
   const dropTarget = options.dropTarget ?? true;
-  const promptControllers = [dropTarget ? "agent-attachments" : "", completionsEnabled ? "agent-completions" : "", transcriptionComposerController].filter(Boolean).join(" ");
+  const promptControllers = ["composer-focus", dropTarget ? "agent-attachments" : "", completionsEnabled ? "agent-completions" : "", transcriptionComposerController].filter(Boolean).join(" ");
   const promptAttrs = [
     `data-controller="${promptControllers}"`,
-    dropTarget ? agentAttachmentDropAttrs(uploadUrl) : "",
+    `data-action="mousedown->composer-focus#preserveInputFocus${dropTarget ? ` ${agentAttachmentDropAction}` : ""}"`,
+    dropTarget ? `data-agent-attachments-upload-url-value="${escapeHtml(uploadUrl)}"` : "",
     options.ctx ? `data-agent-completions-url-value="${escapeHtml(agentPath(options.ctx, "/completions"))}"` : "",
   ].filter(Boolean).join(" ");
   const composerOverlays = options.includePaneActions && options.ctx ? renderTranscriptEndNavigation() : "";
