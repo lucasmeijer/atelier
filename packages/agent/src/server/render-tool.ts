@@ -209,9 +209,16 @@ function renderBashResultViews(ctx: AgentRenderContext, key: string, tool: ToolV
   return `<section class="agent-tool-region agent-bash-output">${comparisonHeader("Result", "As emitted")}<div class="agent-region-pane region-primary-pane">${fullscreenSourceRegion("Result", copyableToolBody(resultHtml, "colored result"), fullResult)}</div><div class="agent-region-pane region-model-pane">${fullscreenSourceRegion("As seen by model", copyableToolBody(modelHtml, "model result"), `<pre class="agent-tool-result agent-tool-region-body">${escapeHtml(model || "(no output)")}</pre>`)}</div></section>`;
 }
 
-function renderBashCommand(command: string): string {
-  const formatted = formatBashCommandForDisplay(command);
+function renderBashCommand(command: string, streaming: boolean): string {
   const bodyClass = "agent-tool-code agent-tool-region-body";
+  // Incomplete shell syntax alternates between parseable and unparseable as
+  // arguments arrive. Formatting it rewrites earlier lines and toggles the
+  // comparison layout, even with morph updates. Keep the source layout until
+  // the command is complete, including its embedded code regions.
+  if (streaming) {
+    return sourceRegionHtml("Command", copyableToolBody(highlightedBashCommandHtml(command, bodyClass), "command"), "agent-tool-region agent-bash-command");
+  }
+  const formatted = formatBashCommandForDisplay(command);
   const embedded = embeddedBashCommand(command, formatted, bodyClass);
   const commandBody = embedded?.html ?? highlightedBashCommandHtml(formatted, bodyClass);
   if (formatted === command && !embedded?.differs) return sourceRegionHtml("Command", copyableToolBody(commandBody, "command"), "agent-tool-region agent-bash-command");
@@ -222,7 +229,7 @@ function renderBashCommand(command: string): string {
 
 function renderBashDetail(ctx: AgentRenderContext, key: string, tool: ToolView, count: number): string {
   const command = stringArg(toolArgs(tool), "command") ?? "";
-  const commandHtml = renderBashCommand(command);
+  const commandHtml = renderBashCommand(command, tool.status === "streaming");
   if (tool.status === "streaming") return `<div class="agent-tool-detail">${commandHtml}</div>`;
   if (tool.status === "running") {
     const terminal = tool.tmuxSession && tool.terminalVisible ? `<section class="agent-tool-region agent-bash-output agent-terminal-awaiting-output"><div class="agent-region-header">Live terminal</div><div class="agent-terminal-viewport"><div class="agent-tool-term observable-terminal-host" data-controller="agent-term" data-agent-term-workspace-id-value="${escapeHtml(ctx.workspaceId)}" data-agent-term-session-value="${escapeHtml(tool.tmuxSession)}"></div></div></section>` : "";
