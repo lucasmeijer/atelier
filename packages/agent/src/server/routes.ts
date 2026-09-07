@@ -1,3 +1,4 @@
+import { handleNotificationRequest } from "./notification-routes.ts";
 import { handleAttachmentRequest } from "./attachment-routes.ts";
 import { handleCompletionRequest } from "./completion-routes.ts";
 import { handleConfigurationRequest } from "./configuration-routes.ts";
@@ -6,6 +7,7 @@ import type { AgentRouteHandler, AgentRouteOptions } from "./route-support.ts";
 import { handleSessionRequest } from "./session-routes.ts";
 
 const agentRouteHandlers: readonly AgentRouteHandler[] = [
+  handleNotificationRequest,
   handleAttachmentRequest,
   handleCompletionRequest,
   handleMessageRequest,

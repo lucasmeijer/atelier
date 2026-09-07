@@ -1,3 +1,4 @@
+import { currentNotificationTurn, setTurnNotification } from "../../src/server/turn-notifications.ts";
 import { createAtelierEventBus } from "@atelier/core";
 import { expect, test } from "bun:test";
 import { RealAgentRuntime } from "../../src/server/real-agent-runtime.ts";
@@ -206,6 +207,7 @@ test("awaited tree summarization leaves busy and emits one terminal event when n
     expect(runtime.isStreaming).toBe(false);
     expect(busy).toEqual([true, false]);
     expect(finished).toBe(1);
+    expect(currentNotificationTurn(runtime)).toBeUndefined();
   } finally {
     unsubscribeBusy();
   }
@@ -284,7 +286,11 @@ test("disposing a busy closed Agent unsubscribes and suppresses delayed terminal
 
   try {
     emit({ type: "agent_start" });
+    const turn = currentNotificationTurn(runtime)!;
+    setTurnNotification(runtime, turn.id, { endpoint: "https://web.push.apple.com/disposed", keys: { p256dh: "unused", auth: "unused" } });
     await runtime.dispose();
+    expect(currentNotificationTurn(runtime)).toBeUndefined();
+    expect(setTurnNotification(runtime, turn.id, undefined)).toBe(false);
     emitStale({ type: "agent_end" });
     await Bun.sleep(0);
 
@@ -380,16 +386,21 @@ test("retry boundaries remain continuously busy and only the terminal Agent end 
 
   try {
     emit({ type: "agent_start" });
+    const notificationTurn = currentNotificationTurn(runtime);
+    expect(notificationTurn).toBeDefined();
     emit({ type: "agent_end", willRetry: true });
     await Bun.sleep(0);
     expect(busy).toEqual([true]);
     expect(finished).toBe(0);
+    expect(currentNotificationTurn(runtime)).toEqual(notificationTurn);
 
     emit({ type: "agent_start" });
+    expect(currentNotificationTurn(runtime)).toEqual(notificationTurn);
     emit({ type: "agent_end", willRetry: false });
     await Bun.sleep(0);
     expect(busy).toEqual([true, false]);
     expect(finished).toBe(1);
+    expect(currentNotificationTurn(runtime)).toBeUndefined();
   } finally {
     unsubscribeBusy();
   }
@@ -423,6 +434,7 @@ test("threshold compaction inside an Agent loop stays busy until the loop ends",
     await Bun.sleep(0);
     expect(busy).toEqual([true, false]);
     expect(finished).toBe(1);
+    expect(currentNotificationTurn(runtime)).toBeUndefined();
 
     // Post-loop compaction must still clear busy even while Pi's outer
     // prompt operation reports isStreaming until agent_settled.
@@ -457,6 +469,7 @@ test("a terminal Agent end becomes ready before stats and cannot clear a newer r
 
     expect(busy).toEqual([true, false]);
     expect(finished).toBe(1);
+    expect(currentNotificationTurn(runtime)).toBeUndefined();
 
     emit({ type: "agent_start" });
     releaseOldStats.resolve();
@@ -489,6 +502,7 @@ test("throwing terminal stats do not suppress idle state or readiness", async ()
 
     expect(busy).toEqual([true, false]);
     expect(finished).toBe(1);
+    expect(currentNotificationTurn(runtime)).toBeUndefined();
   } finally {
     unsubscribeBusy();
   }

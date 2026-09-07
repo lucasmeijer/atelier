@@ -11,6 +11,7 @@ import {
   runWorkspaceSetupScript,
   setWorkspaceParked,
   setWorkspaceTitle,
+  getWorkspaceTitle,
   workspaceContainerName,
   getWorkspaceInit,
   type WorkspaceExecResult,
@@ -179,7 +180,9 @@ docker compose run --rm app cat /data/message`);
   test("setWorkspaceTitle sets the workspace title and listWorkspaces reflects it", async () => {
     const workspaceId = await getReusableWorkspaceId();
 
+    expect(await getWorkspaceTitle(workspaceId)).toBeNull();
     expect(await setWorkspaceTitle(workspaceId, "Add dark mode toggle")).toBeNull();
+    expect(await getWorkspaceTitle(workspaceId)).toBe("Add dark mode toggle");
     expect((await listWorkspaces()).workspaces).toContainEqual({ id: workspaceId, title: "Add dark mode toggle" });
   });
 

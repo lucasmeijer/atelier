@@ -1,3 +1,6 @@
+import { finishNotificationTurn, startNotificationTurn } from "./turn-notifications.ts";
+import { sendTurnNotification } from "./web-push.ts";
+import { notificationControlTurboStream } from "./render-notification.ts";
 import { AtelierCoreError, type JsonObject } from "@atelier/core";
 import { StreamingMarkdownRenderer } from "@atelier/markdown";
 import { Type } from "typebox";
@@ -101,6 +104,11 @@ export abstract class BaseAgentRuntime implements WorkspaceAgentRuntime {
 
   protected async emitTurnFinished(): Promise<void> {
     if (this.disposed) return;
+    const subscription = finishNotificationTurn(this.ctx);
+    if (subscription) void sendTurnNotification(this.ctx, subscription).catch((error) => {
+      console.error("Could not send Agent turn notification", error);
+      this.notice("error", "The turn ended, but its push notification could not be sent.");
+    });
     await this.options.events?.emit("workspace_agent_turn_finished", { workspaceId: this.workspaceId, conversationId: this.conversationId });
     // Re-announce terminal actions after unread state is recorded. A connected,
     // logically visible pane uses this targeted update to acknowledge that exact
@@ -156,6 +164,7 @@ export abstract class BaseAgentRuntime implements WorkspaceAgentRuntime {
   protected markDisposed(): boolean {
     if (this.disposed) return false;
     this.disposed = true;
+    finishNotificationTurn(this.ctx);
     this.cancelToolArgsFlush();
     return true;
   }
@@ -163,6 +172,10 @@ export abstract class BaseAgentRuntime implements WorkspaceAgentRuntime {
   protected setBusy(busy: boolean): void {
     if (this.announcedBusy === busy) return;
     this.announcedBusy = busy;
+    if (busy) startNotificationTurn(this.ctx, () => {
+      this.stream(notificationControlTurboStream(this.ctx, this.isStreaming));
+    });
+    this.stream(notificationControlTurboStream(this.ctx, busy));
     publishWorkspaceViewBusy({ workspaceId: this.workspaceId, viewKey: `agent:${this.conversationId}`, busy });
     this.stream(turboStream("update", ids.actions(this.ctx), renderPromptActions(this.ctx, busy)));
   }
@@ -656,9 +669,11 @@ export abstract class BaseAgentRuntime implements WorkspaceAgentRuntime {
 
   private captureAuthoritativePresentationUpdate(): () => Promise<string> {
     const completeState = this.capturePaneState();
+    const notificationHtml = notificationControlTurboStream(this.ctx, this.isStreaming);
     return async () => {
       const state = await completeState();
-      return turboStream("update", ids.transcript(this.ctx), state.transcriptHtml)
+      return notificationHtml
+        + turboStream("update", ids.transcript(this.ctx), state.transcriptHtml)
         + turboStream("update", ids.actions(this.ctx), renderPromptActions(this.ctx, state.busy))
         + turboStream("update", ids.stats(this.ctx), renderAgentPaneComposerFooter(this.ctx, state.stats));
     };

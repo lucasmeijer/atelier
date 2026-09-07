@@ -103,6 +103,9 @@ items retain their shared rounded treatment and reveal truncated labels on engag
    not extra general-purpose dialog or button variants.
 6. Server state changes should return HTML / Turbo Streams. Client JavaScript
    is for browser-owned behavior and must live in focused Stimulus controllers.
+7. Error banners must include an accessible close button. Use the shared Button
+   with the Close icon and a descriptive dismissal label; do not make users wait
+   for a timeout or navigate away to dismiss an error.
 
 ## Hardened composition
 

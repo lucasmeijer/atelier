@@ -685,6 +685,11 @@ export async function deleteWorkspace(id: string, options: DeleteWorkspaceOption
   return null;
 }
 
+export async function getWorkspaceTitle(id: string): Promise<string | null> {
+  await resolveWorkspace(id);
+  return await readTitle(getAtelierRuntimeContext(), id);
+}
+
 export async function setWorkspaceTitle(id: string, title: string): Promise<null> {
   await resolveWorkspace(id);
   const context = getAtelierRuntimeContext();

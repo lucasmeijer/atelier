@@ -1,3 +1,4 @@
+import { createAgentNotificationsController } from "./notifications-controller.ts";
 import type { WorkspaceClientModule } from "@atelier/shared";
 import { createAgentPaneController, registerAgentPaneVisibilityHooks } from "./agent-pane.ts";
 import { createAgentAttachmentsController } from "./attachments-controller.ts";
@@ -25,6 +26,7 @@ export { forwardAgentTerminalWheel, terminalOutputHasPrintableText } from "./ter
 export const agentClientModule: WorkspaceClientModule = {
   id: "agent",
   install({ application, Controller, hooks }) {
+    application.register("agent-notifications", createAgentNotificationsController(Controller));
     application.register("agent-pane", createAgentPaneController(Controller));
     application.register("agent-attachments", createAgentAttachmentsController(Controller));
     application.register("composer-selection-autosubmit", createComposerSelectionAutosubmitController(Controller));

@@ -2,11 +2,17 @@ import type { WorkspaceClientControllerConstructor as StimulusControllerConstruc
 
 export function createAgentNoticeController(Controller: StimulusControllerConstructor) {
   return class AgentNoticeController extends Controller {
+    static values = { autoDismiss: { type: Boolean, default: true } };
+    declare readonly autoDismissValue: boolean;
     declare readonly element: HTMLElement;
     private timer?: ReturnType<typeof setTimeout>;
 
     connect(): void {
-      this.timer = setTimeout(() => this.element.remove(), 8000);
+      if (this.autoDismissValue) this.timer = setTimeout(() => this.dismiss(), 8000);
+    }
+
+    dismiss(): void {
+      this.element.remove();
     }
 
     disconnect(): void {

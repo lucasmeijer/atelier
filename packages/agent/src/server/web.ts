@@ -148,6 +148,27 @@ export const agentWorkspaceModule: WorkspaceModule = {
   }],
   staticFiles: agentStaticFiles,
   openApiPaths: {
+    "/agent-notifications/public-key": { get: {
+      summary: "Get this Atelier installation's VAPID public key for browser PushManager subscription",
+      responses: { "200": { description: "Public application-server key", content: { "application/json": { schema: { type: "object", properties: { publicKey: { type: "string" } } } } } } },
+    } },
+    "/workspaces/{id}/agents/{conversationId}/notification": {
+      parameters: ["id", "conversationId"].map((name) => ({ name, in: "path", required: true, schema: { type: "string" } })),
+      get: {
+        summary: "Get the current turn's one-shot notification state",
+        responses: { "200": { description: "Current turnId (null when idle), busy and armed; HTML clients receive the header control", content: { "application/json": { schema: { type: "object", properties: { turnId: { type: ["string", "null"] }, busy: { type: "boolean" }, armed: { type: "boolean" } } } } } } },
+      },
+      post: {
+        summary: "Arm or cancel a native Web Push notification for this exact running turn",
+        requestBody: { required: true, content: { "application/json": { schema: {
+          type: "object", required: ["turnId", "enabled"], properties: {
+            turnId: { type: "string" }, enabled: { type: "boolean" },
+            subscription: { type: "object", description: "Required when enabled; PushSubscription.toJSON() from the receiving device", required: ["endpoint", "keys"], properties: { endpoint: { type: "string" }, keys: { type: "object", required: ["p256dh", "auth"], properties: { p256dh: { type: "string" }, auth: { type: "string" } } } } },
+          },
+        } } } },
+        responses: { "200": { description: "Notification state updated; JSON or Turbo Stream according to Accept" }, "409": { description: "The requested turn is no longer running" }, "422": { description: "Invalid notification intent or unsupported push service" } },
+      },
+    },
     "/workspaces/{id}/agents/{conversationId}/reveal/{target}": { get: {
       summary: "Reveal a transcript item by stable key or contributed anchor",
       parameters: ["id", "conversationId", "target"].map((name) => ({ name, in: "path", required: true, schema: { type: "string" } })),
