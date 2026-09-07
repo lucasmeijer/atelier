@@ -120,8 +120,8 @@ export function createFileWorkspaceDeletionStore(path: string): WorkspaceDeletio
 
 export interface WorkspaceRegistry {
   setCallbacks(callbacks: WorkspaceRegistryCallbacks): void;
-  /** Seed from the containers Docker knows about. Replaces all current entries with phase "ready". */
-  seed(workspaces: Array<{ id: string; title: string | null; parked?: boolean; init?: WorkspaceInitInstruction; imageOutdated?: boolean }>): Promise<void>;
+  /** Seed from the containers Docker knows about. Restores recovery failures and persisted deletion state alongside ready entries. */
+  seed(workspaces: Array<{ id: string; title: string | null; parked?: boolean; init?: WorkspaceInitInstruction; imageOutdated?: boolean; recoveryError?: string }>): Promise<void>;
   list(): WorkspaceEntry[];
   get(id: string): WorkspaceEntry | undefined;
   add(id: string, title?: string | null, init?: WorkspaceInitInstruction): WorkspaceEntry;
@@ -213,7 +213,7 @@ export function createWorkspaceRegistry(options: WorkspaceRegistryOptions = {}):
           workspaceDeletions[workspace.id] = deletion;
           persistedBlockedAssessment = true;
         }
-        const phase: WorkspacePhase = deletion?.status === "deleting" ? "deleting" : deletion?.status === "failed" ? "failed" : deletion ? "checking_delete" : "ready";
+        const phase: WorkspacePhase = deletion?.status === "deleting" ? "deleting" : deletion?.status === "failed" ? "failed" : deletion ? "checking_delete" : workspace.recoveryError !== undefined ? "failed" : "ready";
         const entry: WorkspaceEntry = {
           id: workspace.id,
           title: workspace.title,
@@ -225,6 +225,7 @@ export function createWorkspaceRegistry(options: WorkspaceRegistryOptions = {}):
           deletion,
         };
         if (deletion?.status === "failed") entry.error = deletion.error;
+        else if (!deletion && workspace.recoveryError !== undefined) entry.error = workspace.recoveryError;
         entries.set(workspace.id, entry);
       }
       if (persistedBlockedAssessment) persistDeletions();

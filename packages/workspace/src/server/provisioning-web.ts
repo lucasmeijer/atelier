@@ -145,10 +145,10 @@ export function createWorkspaceProvisioningStore(options: { onChange: (workspace
       for (const step of allSteps) if (step.parentId) childrenByParent.set(step.parentId, [...(childrenByParent.get(step.parentId) ?? []), step]);
       const body = top.length
         ? top.map((step) => renderProvisionStep(workspaceId, step, childrenByParent.get(step.id) ?? [])).join("")
-        : '<li class="status-list__item provision-step" aria-busy="true"><span class="status-list__marker"></span><div class="provision-step-content"><span class="provision-step-label">Preparing workspace</span></div></li>';
+        : renderOptions.failed ? "" : '<li class="status-list__item provision-step" aria-busy="true"><span class="status-list__marker"></span><div class="provision-step-content"><span class="provision-step-label">Preparing workspace</span></div></li>';
       const failed = allSteps.find((step) => step.status === "failed");
       const failure = failed?.label ? `Failed while: ${failed.label}` : renderOptions.failed ? (renderOptions.error ?? "unknown error") : "";
-      return `<section aria-label="Workspace preparation">${failure ? `<p class="provision-error">${escapeHtml(failure)}</p>` : ""}<ol class="status-list provision-list">${body}</ol></section>`;
+      return `<section aria-label="Workspace preparation">${failure ? `<p class="provision-error">${escapeHtml(failure)}</p>` : ""}${body ? `<ol class="status-list provision-list">${body}</ol>` : ""}</section>`;
     },
 
     delete(workspaceId) {

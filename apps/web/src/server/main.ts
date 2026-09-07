@@ -1,3 +1,4 @@
+import { recoverWorkspaces } from "./workspace-recovery.ts";
 import { designSystemCatalogueHtml } from "@atelier/design-system/catalogue";
 import { configureAgentDelegation } from "@atelier/agent/server";
 import { subagentsDelegation } from "@atelier/subagents/server";
@@ -247,8 +248,7 @@ atelierEvents.on("workspace_title_changed", ({ workspaceId, title }) => registry
 // Docker is the persistent truth for which workspaces exist. Restore each container to the state recorded by
 // park/unpark before modules initialize, then seed the registry so startup-time contributions have rows to attach to.
 const persistedWorkspaces = (await listWorkspaces()).workspaces;
-await Promise.all(persistedWorkspaces.map((workspace) => setWorkspaceContainerRunning(workspace.id, !workspace.parked)));
-await registry.seed(persistedWorkspaces);
+await recoverWorkspaces(persistedWorkspaces, registry, setWorkspaceContainerRunning);
 
 for (const module of workspaceModules) {
   await module.initialize?.({
