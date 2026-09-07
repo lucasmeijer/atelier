@@ -41,7 +41,8 @@ async function current(workspaceId: string): Promise<{ index: ReviewIndex; comme
 }
 
 async function bodyStream(workspaceId: string, index: ReviewIndex, comments: ReviewComment[]): Promise<string> {
-  return turboStream("replace", reviewBodyId(workspaceId), renderReviewBody(workspaceId, index, comments, await readReviewSettings()));
+  const { files, title } = await refreshStats(workspaceId, index);
+  return renderReviewTitleStream(workspaceId, title) + turboStream("replace", reviewBodyId(workspaceId), renderReviewBody(workspaceId, index, comments, await readReviewSettings(), files), { method: "morph" });
 }
 
 async function refreshStats(workspaceId: string, index: ReviewIndex) {
@@ -186,8 +187,7 @@ export const reviewWorkspaceModule: WorkspaceModule = {
   initialize(context) {
     context.events.on("workspace_agent_turn_finished", async ({ workspaceId }) => {
       const { index, comments } = await refresh(workspaceId);
-      const { title } = await refreshStats(workspaceId, index);
-      context.broadcastWorkspace(workspaceId, `${renderReviewTitleStream(workspaceId, title)}${await bodyStream(workspaceId, index, comments)}`);
+      context.broadcastWorkspace(workspaceId, await bodyStream(workspaceId, index, comments));
     });
     context.events.on("workspace_agent_prompt_preparing", (event) => {
       const section = reviewCommentsPrompt(reviewCommentsForPrompt(event.workspaceId, event.reviewCommentIds));

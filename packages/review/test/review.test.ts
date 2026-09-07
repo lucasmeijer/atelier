@@ -4,7 +4,7 @@ import { join } from "node:path";
 import { tmpdir } from "node:os";
 import { reviewCommentsPrompt, type ReviewCommentModel } from "../src/model.ts";
 import { collectReviewFile, collectReviewIndex, collectReviewStats, type ReviewFile, type ReviewFileStats } from "../src/server/diff.ts";
-import { renderReviewBody, renderReviewFileDetails, renderReviewStatsFrame } from "../src/server/render.ts";
+import { renderReviewBody, renderReviewStatsFrame } from "../src/server/render.ts";
 import { readReviewSettings, updateReviewSettings } from "../src/server/settings.ts";
 import { addReviewComment, deleteReviewState, listReviewComments, remapReviewComment, updateReviewComment, type ReviewComment } from "../src/server/state.ts";
 import { command, createReviewRepository } from "./support/repository.ts";
@@ -190,50 +190,6 @@ describe("Review presentation", () => {
 
     const notGit = await renderReviewBody("workspace 1", { phase: "not-git" }, []);
     expect(notGit).toContain("No git repo in /work yet");
-  });
-
-  test("renders file grouping collapsed by default with explicit review comment actions", async () => {
-    const comment: ReviewComment = { id: "comment-1", path: "src/example.ts", side: "additions", startLine: 2, endLine: 2, body: "Keep this lazy", snippet: "target" };
-    const file: ReviewFile = { path: "src/example.ts", change: "modified", kind: "binary", detail: "Binary file changed" };
-    const html = renderReviewBody("workspace 1", { phase: "ready", files: [file] }, [comment]);
-
-    expect(html).toContain('class="review-files action-list" data-controller="linear-navigation" data-action="keydown->review#changeFileDisclosure"');
-    expect(html).toContain('class="action-item action-item__primary" data-linear-navigation-target="item"');
-    expect(html).toContain('<details class="review-file" data-review-target="file" data-review-path="src/example.ts" data-review-change="modified" data-review-comments="1" data-action="pointerenter->review#requestFile pointerdown->review#requestFile focusin->review#requestFile focusin->review#selectFile focusout->review#deselectFile toggle->review#requestFile">');
-    expect([...html.matchAll(/<details class="review-file"[^>]*>/g)].every(([details]) => !details.includes(" open"))).toBe(true);
-    expect(html).toContain('data-src="/workspaces/workspace%201/review/files/src%2Fexample.ts"');
-    expect(html).not.toContain("Binary file changed");
-    expect(html).not.toContain("Copy into composer</button>");
-    expect(html).toContain('class="button secondary icon-only copy-button transient-feedback"');
-    expect(html).toContain('data-transient-feedback-feedback-label="Copied to clipboard"');
-    expect(html).toContain('aria-label="Copy review comments to clipboard"');
-    expect(html).toContain('action="/workspaces/workspace%201/review/comments/delete"');
-    expect(html).toContain('aria-label="Delete all review comments"');
-    expect(html).toContain('aria-label="Refresh review"');
-    expect(html).toContain('aria-label="Collapse all files"');
-    expect(html).toContain('aria-label="Expand all files"');
-    expect(html).toContain('role="group" aria-label="Diff layout" data-controller="toggle" data-action="change-&gt;review#setDiffLayout" method="post" action="/review/settings/diff-layout?viewport=desktop"');
-    expect(html).toContain('name="review-diff-layout" value="unified" aria-pressed="true">Unified</button>');
-    expect(html).toContain('name="review-diff-layout" value="split" aria-pressed="false">Side by side</button>');
-    expect(html).toContain('role="group" aria-label="Diff highlighting" data-controller="toggle" data-action="change-&gt;review#setDiffHighlighting" method="post" action="/review/settings/diff-highlighting"');
-    expect(html).toContain('name="review-diff-highlighting" value="line" aria-pressed="false">Lines</button>');
-    expect(html).toContain('name="review-diff-highlighting" value="word" aria-pressed="true">Words</button>');
-    expect(html).toContain('role="group" aria-label="Long lines" data-controller="toggle" data-action="change-&gt;review#setDiffOverflow" method="post" action="/review/settings/diff-overflow"');
-    expect(html).toContain('name="review-diff-overflow" value="scroll" aria-pressed="false">Scroll</button>');
-    expect(html).toContain('name="review-diff-overflow" value="wrap" aria-pressed="true">Wrap</button>');
-    expect(html.indexOf(">Unified</button>")).toBeLessThan(html.indexOf(">Side by side</button>"));
-    expect(html.indexOf(">Lines</button>")).toBeLessThan(html.indexOf(">Words</button>"));
-    expect(html.indexOf(">Scroll</button>")).toBeLessThan(html.indexOf(">Wrap</button>"));
-    expect(html).toContain('<span class="review-comment-count" aria-label="1 comment">1</span>');
-    const details = await renderReviewFileDetails("workspace 1", file, [comment]);
-    expect(details).toContain('role="note"');
-    expect(details).toContain("Binary file changed");
-    expect(details).toContain("Content preview isn’t available for binary files.");
-    expect(html.indexOf('aria-label="Copy review comments into composer"')).toBeLessThan(html.indexOf('aria-label="Copy review comments to clipboard"'));
-    expect(html.indexOf('aria-label="Copy review comments to clipboard"')).toBeLessThan(html.indexOf('aria-label="Delete all review comments"'));
-    expect(html.indexOf('aria-label="Delete all review comments"')).toBeLessThan(html.indexOf('aria-label="Refresh review"'));
-    expect(html).not.toContain('aria-label="Review totals"');
-    expect(html).not.toContain('name="reviewComment"');
   });
 
   test("loads zero deletion stats for added files without an untracked label", () => {

@@ -312,6 +312,7 @@ export function createWorkspacePresentationController(
     }
 
     workBodyLoaded(event: Event): void {
+      if (event.target !== event.currentTarget) return;
       // SAFETY: The action is attached directly to the server-rendered Work Turbo Frame.
       const frame = event.currentTarget as HTMLElement;
       const pane = frame.closest<PresentationPane>("[data-workspace-pane-role='work']");
@@ -322,6 +323,8 @@ export function createWorkspacePresentationController(
     }
 
     workBodyWillRender(event: Event): void {
+      // Nested file refreshes do not hide or reconstruct the Work view itself.
+      if (event.target !== event.currentTarget) return;
       // SAFETY: The action is attached directly to the server-rendered Work Turbo Frame.
       const frame = event.currentTarget as HTMLElement;
       const pane = frame.closest<PresentationPane>("[data-workspace-pane-role='work']");

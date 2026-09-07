@@ -43,7 +43,7 @@ function diffModel(file: ReviewFile, comments: ReviewComment[]) {
 }
 
 function renderDiffModel(workspaceId: string, file: ReviewFile, comments: ReviewComment[]): string {
-  return `<script id="${reviewDiffModelId(workspaceId, file.path)}" type="application/json" data-review-model data-review-target="model">${jsonForHtml(diffModel(file, comments))}</script>`;
+  return `<script id="${reviewDiffModelId(workspaceId, file.path)}" type="application/json" data-turbo-eval="false" data-review-model data-review-target="model">${jsonForHtml(diffModel(file, comments))}</script>`;
 }
 
 async function renderTextFile(file: ReviewFile, comments: ReviewComment[], target: "review" | "deletion-review", modelHtml: string): Promise<string> {
@@ -127,15 +127,15 @@ export function renderReviewStatsFrame(workspaceId: string, files: ReviewFileSta
   return `<turbo-frame id="${reviewStatsFrameId(workspaceId)}">${titleStream}${fileStreams}</turbo-frame>`;
 }
 
-function renderFile(workspaceId: string, file: ReviewFileSummary, comments: ReviewComment[]): string {
+function renderFile(workspaceId: string, file: ReviewFileSummary, comments: ReviewComment[], stats?: ReviewFileStats): string {
   const fileComments = anchoredCommentsFor(comments, file.path);
   const frameId = reviewFileFrameId(workspaceId, file.path);
   const detailUrl = `/workspaces/${encodeURIComponent(workspaceId)}/review/files/${encodeURIComponent(file.path)}`;
   const label = `${file.previousPath ? `${file.previousPath} → ` : ""}${file.path}`;
-  const summary = renderFileSummary({ kind: "text", text: label }, `<span id="${reviewFileCommentCountId(workspaceId, file.path)}">${renderCommentCount(fileComments.length)}</span>${renderGitStats(workspaceId, file)}`, file.path);
-  return `<details class="review-file" data-review-target="file" data-review-path="${escapeHtml(file.path)}" data-review-change="${file.change}" data-review-comments="${fileComments.length}" data-action="pointerenter->review#requestFile pointerdown->review#requestFile focusin->review#requestFile focusin->review#selectFile focusout->review#deselectFile toggle->review#requestFile">
+  const summary = renderFileSummary({ kind: "text", text: label }, `<span id="${reviewFileCommentCountId(workspaceId, file.path)}">${renderCommentCount(fileComments.length)}</span>${renderGitStats(workspaceId, file, stats)}`, file.path);
+  return `<details id="${frameId}_disclosure" class="review-file" data-review-target="file" data-review-path="${escapeHtml(file.path)}" data-review-change="${file.change}" data-review-comments="${fileComments.length}" data-action="pointerenter->review#requestFile pointerdown->review#requestFile focusin->review#requestFile focusin->review#selectFile focusout->review#deselectFile toggle->review#requestFile">
     ${summary}
-    <turbo-frame id="${frameId}" data-src="${escapeHtml(detailUrl)}"><div class="review-file-loading" role="status"><span class="status-spinner" aria-hidden="true"></span> Loading changes…</div></turbo-frame>
+    <turbo-frame id="${frameId}" refresh="morph" data-src="${escapeHtml(detailUrl)}"><div class="review-file-loading" role="status"><span class="status-spinner" aria-hidden="true"></span> Loading changes…</div></turbo-frame>
   </details>`;
 }
 
@@ -163,7 +163,7 @@ export function renderReviewCommentUpdate(workspaceId: string, file: ReviewFile,
 }
 
 export async function renderReadOnlyReviewFile(frameId: string, file: ReviewFile): Promise<string> {
-  const model = `<script type="application/json" data-review-model>${jsonForHtml(diffModel(file, []))}</script>`;
+  const model = `<script type="application/json" data-turbo-eval="false" data-review-model>${jsonForHtml(diffModel(file, []))}</script>`;
   const body = file.kind === "text" ? await renderTextFile(file, [], "deletion-review", model) : renderSpecialFile(file);
   return `<turbo-frame id="${escapeHtml(frameId)}"><div class="review-file-diff">${body}</div></turbo-frame>`;
 }
@@ -277,18 +277,18 @@ function toolbar(workspaceId: string, comments: ReviewComment[], settings: Revie
   </header>`;
 }
 
-export function renderReviewBody(workspaceId: string, index: ReviewIndex, comments: ReviewComment[], settings: ReviewSettings = defaultReviewSettings): string {
+export function renderReviewBody(workspaceId: string, index: ReviewIndex, comments: ReviewComment[], settings: ReviewSettings = defaultReviewSettings, stats?: ReviewFileStats[]): string {
   if (index.phase === "not-git") {
-    return `<section id="${reviewBodyId(workspaceId)}" class="review-body review-empty" data-controller="review" data-review-workspace-id-value="${escapeHtml(workspaceId)}"><p>No git repo in /work yet</p></section>`;
+    return `<section id="${reviewBodyId(workspaceId)}" class="review-body review-empty" data-mobile-diff-layout="${settings.mobile}" data-desktop-diff-layout="${settings.desktop}" data-diff-highlighting="${settings.highlighting}" data-diff-overflow="${settings.overflow}" data-controller="review" data-review-workspace-id-value="${escapeHtml(workspaceId)}"><p>No git repo in /work yet</p></section>`;
   }
 
   const unanchoredComments = comments.filter((comment) => comment.outdated);
-  const renderedFiles = index.files.map((file) => renderFile(workspaceId, file, comments));
+  const renderedFiles = index.files.map((file) => renderFile(workspaceId, file, comments, stats?.find((entry) => entry.path === file.path)));
   const content = renderedFiles.length || unanchoredComments.length
     ? `<div class="review-files action-list" data-controller="linear-navigation" data-action="keydown->review#changeFileDisclosure">${renderedFiles.join("")}${renderUnanchoredSlot(workspaceId, unanchoredComments)}</div>`
     : `<div class="review-no-changes"><p>No changes to review<br>The working tree matches HEAD.</p></div>`;
   const statsUrl = `/workspaces/${encodeURIComponent(workspaceId)}/review/stats`;
-  return `<section id="${reviewBodyId(workspaceId)}" class="review-body" data-controller="review" data-review-workspace-id-value="${escapeHtml(workspaceId)}" data-mobile-diff-layout="${settings.mobile}" data-desktop-diff-layout="${settings.desktop}" data-diff-highlighting="${settings.highlighting}" data-diff-overflow="${settings.overflow}">${toolbar(workspaceId, comments, settings)}${content}<turbo-frame id="${reviewStatsFrameId(workspaceId)}" src="${escapeHtml(statsUrl)}"></turbo-frame>${renderCommentsModel(workspaceId, comments)}</section>`;
+  return `<section id="${reviewBodyId(workspaceId)}" class="review-body" data-controller="review" data-review-workspace-id-value="${escapeHtml(workspaceId)}" data-mobile-diff-layout="${settings.mobile}" data-desktop-diff-layout="${settings.desktop}" data-diff-highlighting="${settings.highlighting}" data-diff-overflow="${settings.overflow}">${toolbar(workspaceId, comments, settings)}${content}<turbo-frame id="${reviewStatsFrameId(workspaceId)}" data-review-stats-frame src="${escapeHtml(statsUrl)}"></turbo-frame>${renderCommentsModel(workspaceId, comments)}</section>`;
 }
 
 export const reviewWorkViewPresentation: WorkspaceWorkViewPresentation = {

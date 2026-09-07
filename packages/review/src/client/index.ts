@@ -22,7 +22,6 @@ type DraftModel = {
 };
 type AnnotationMetadata = ({ kind: "comment" } & ReviewCommentModel) | DraftModel;
 type DiffModel = { fileDiff: FileDiffMetadata; comments: ReviewCommentModel[] };
-interface SavedReviewPosition { path: string; offset: number; openPaths: string[]; line?: number; lineType?: string }
 type FileDiffConstructor = typeof import("@pierre/diffs")["FileDiff"];
 
 declare global {
@@ -96,6 +95,8 @@ function createReviewController(Controller: StimulusControllerConstructor) {
     static targets = ["file", "diff", "model", "layoutStatus", "layoutStatusText"];
     declare readonly element: HTMLElement;
     declare readonly workspaceIdValue: string;
+    private refreshing = false;
+    private visible = false;
     declare readonly fileTargets: HTMLDetailsElement[];
     declare readonly diffTargets: HTMLElement[];
     declare readonly layoutStatusTarget: HTMLElement;
@@ -105,6 +106,7 @@ function createReviewController(Controller: StimulusControllerConstructor) {
     private instancesByHost = new WeakMap<HTMLElement, FileDiff<AnnotationMetadata>>();
     private staleInstances = new Set<FileDiff<AnnotationMetadata>>();
     private models = new Map<string, DiffModel>();
+    private modelObservers = new Map<HTMLScriptElement, MutationObserver>();
     private hydratedHosts = new WeakSet<HTMLElement>();
     private draft?: DraftModel;
     private hydrated = false;
@@ -114,11 +116,48 @@ function createReviewController(Controller: StimulusControllerConstructor) {
     private pane!: HTMLElement;
     private resident!: HTMLElement;
     private viewportMedia!: MediaQueryList;
-    private readonly becameVisible = (): void => { void this.becomeVisible(); };
-    private readonly beforeStreamRender = (event: Event): void => {
-      if (!(event.target instanceof Element)) return;
-      if (event.target.getAttribute("action") !== "replace" || event.target.getAttribute("target") !== this.element.id) return;
-      this.rememberPosition();
+    private readonly becameVisible = (): void => {
+      if (this.visible || !isWorkspacePaneVisible(this.element)) return;
+      this.visible = true;
+      void this.becomeVisible();
+      void this.refresh();
+    };
+    private readonly becameHidden = (): void => { this.visible = false; };
+    private readonly beforeMorphElement = (event: Event): void => {
+      if (!(event.target instanceof HTMLElement)) return;
+      const current = event.target;
+      // Stats arrive in the body stream; do not restart the initial lazy stats request.
+      if (current.hasAttribute("data-review-stats-frame")) {
+        event.preventDefault();
+        return;
+      }
+      // Pierre owns the shadow DOM and its expanded context; morph only its model.
+      if (current.matches("diffs-container")) {
+        event.preventDefault();
+        return;
+      }
+      if (!current.matches("turbo-frame[data-src]")) return;
+      // SAFETY: Turbo supplies newElement when morphing, but not when removing a node.
+      const incoming = (event as CustomEvent<{ newElement?: Element }>).detail.newElement;
+      if (!incoming) return;
+      // Keep the loaded frame instead of morphing it into the lazy placeholder.
+      // Its own response is morphed by Turbo's refresh="morph" frame renderer.
+      event.preventDefault();
+      if (current.hasAttribute("src")) {
+        // SAFETY: The selector above identifies a Turbo frame with reload().
+        void (current as HTMLElement & { reload(): Promise<void> }).reload();
+      }
+    };
+    private readonly beforeMorphAttribute = (event: Event): void => {
+      // SAFETY: Turbo before-morph-attribute supplies the changed attribute name.
+      const { attributeName } = (event as CustomEvent<{ attributeName: string }>).detail;
+      if (event.target instanceof HTMLDetailsElement && attributeName === "open") event.preventDefault();
+      if (event.target instanceof HTMLElement && event.target.matches(".review-file > summary") && attributeName === "aria-current") event.preventDefault();
+    };
+    private readonly afterMorphElement = (event: Event): void => {
+      // The server renders desktop controls; restore this viewport after the
+      // entire body (including its settings attributes and toolbar) has morphed.
+      if (event.target === this.element) this.syncViewportLayout();
     };
     private readonly viewportChanged = (): void => {
       const layout = this.syncViewportLayout();
@@ -126,7 +165,9 @@ function createReviewController(Controller: StimulusControllerConstructor) {
     };
 
     connect(): void {
-      document.addEventListener("turbo:before-stream-render", this.beforeStreamRender);
+      this.element.addEventListener("turbo:before-morph-element", this.beforeMorphElement);
+      this.element.addEventListener("turbo:before-morph-attribute", this.beforeMorphAttribute);
+      this.element.addEventListener("turbo:morph-element", this.afterMorphElement);
       this.viewportMedia = window.matchMedia(phoneLayoutMediaQuery);
       this.viewportMedia.addEventListener("change", this.viewportChanged);
       this.diffStyle = this.syncViewportLayout();
@@ -138,20 +179,41 @@ function createReviewController(Controller: StimulusControllerConstructor) {
       this.pane = this.element.closest<HTMLElement>('[data-workspace-pane-role="work"]')!;
       this.resident = this.element.closest<HTMLElement>(".workspace-detail-resident")!;
       this.pane.addEventListener("atelier:workspace-pane-visible", this.becameVisible);
-      if (isWorkspacePaneVisible(this.element)) void this.becomeVisible();
+      this.pane.addEventListener("atelier:workspace-pane-hidden", this.becameHidden);
+      if (isWorkspacePaneVisible(this.element)) this.becameVisible();
     }
 
     disconnect(): void {
-      document.removeEventListener("turbo:before-stream-render", this.beforeStreamRender);
+      this.element.removeEventListener("turbo:before-morph-element", this.beforeMorphElement);
+      this.element.removeEventListener("turbo:before-morph-attribute", this.beforeMorphAttribute);
+      this.element.removeEventListener("turbo:morph-element", this.afterMorphElement);
       this.viewportMedia.removeEventListener("change", this.viewportChanged);
       this.pane.removeEventListener("atelier:workspace-pane-visible", this.becameVisible);
+      this.pane.removeEventListener("atelier:workspace-pane-hidden", this.becameHidden);
+      this.visible = false;
       for (const instance of this.instances) instance.cleanUp();
       this.instances = [];
       this.containers.clear();
       this.instancesByHost = new WeakMap();
       this.staleInstances.clear();
       this.models.clear();
+      for (const observer of this.modelObservers.values()) observer.disconnect();
+      this.modelObservers.clear();
       this.hydrated = false;
+    }
+
+    private async refresh(): Promise<void> {
+      if (this.refreshing || !isWorkspacePaneVisible(this.element)) return;
+      this.refreshing = true;
+      try {
+        const url = `/workspaces/${encodeURIComponent(this.workspaceIdValue)}/review/refresh`;
+        const response = await fetch(url, { method: "POST", headers: { Accept: "text/vnd.turbo-stream.html" } });
+        if (!response.ok) throw new Error(await response.text());
+        const stream = await response.text();
+        if (this.element.isConnected && stream) window.Turbo?.renderStreamMessage(stream);
+      } finally {
+        this.refreshing = false;
+      }
     }
 
     async becomeVisible(): Promise<void> {
@@ -160,7 +222,7 @@ function createReviewController(Controller: StimulusControllerConstructor) {
       await Promise.all(this.diffTargets.map((host) => this.hydrateHost(host)));
       if (this.draft && !this.fileTargets.some((file) => file.dataset.reviewPath === this.draft?.path)) this.clearDraft();
       requestAnimationFrame(() => {
-        if (!this.restorePosition()) this.fileTargets[0]?.querySelector<HTMLElement>(":scope > summary")!.focus();
+        this.fileTargets[0]?.querySelector<HTMLElement>(":scope > summary")!.focus();
       });
     }
 
@@ -168,12 +230,39 @@ function createReviewController(Controller: StimulusControllerConstructor) {
       if (this.hydrated) void this.hydrateHost(host);
     }
 
+    diffTargetDisconnected(host: HTMLElement): void {
+      const instance = this.instancesByHost.get(host);
+      if (!instance) return;
+      instance.cleanUp();
+      this.instances = this.instances.filter((candidate) => candidate !== instance);
+      this.containers.delete(instance);
+      this.instancesByHost.delete(host);
+      this.staleInstances.delete(instance);
+      this.hydratedHosts.delete(host);
+    }
+
     modelTargetConnected(script: HTMLScriptElement): void {
+      // Idiomorph leaves identical text untouched. Only actual model DOM changes
+      // need to be forwarded to the shadow-DOM widget.
+      const observer = new MutationObserver(() => this.updateModel(script));
+      observer.observe(script, { childList: true, characterData: true, subtree: true });
+      this.modelObservers.set(script, observer);
+      this.updateModel(script);
+    }
+
+    modelTargetDisconnected(script: HTMLScriptElement): void {
+      this.modelObservers.get(script)?.disconnect();
+      this.modelObservers.delete(script);
+    }
+
+    private updateModel(script: HTMLScriptElement): void {
       if (!this.hydrated) return;
       const host = script.closest<HTMLElement>('[data-review-target="diff"]')!;
       const instance = this.instancesByHost.get(host);
       if (!instance) return;
       const model = parseDiffModel(script);
+      // Pierre otherwise caches highlighted contents by filename across model changes.
+      model.fileDiff.cacheKey = crypto.randomUUID();
       this.models.set(host.dataset.reviewPath!, model);
       instance.render({ fileDiff: model.fileDiff, lineAnnotations: this.annotations(host.dataset.reviewPath!) });
     }
@@ -221,9 +310,11 @@ function createReviewController(Controller: StimulusControllerConstructor) {
     private syncViewportLayout(): ReviewDiffLayout {
       const viewport = this.viewport;
       const layout = this.element.dataset[`${viewport}DiffLayout`] === "split" ? "split" : "unified";
-      const toggle = this.element.querySelector<HTMLFormElement>('[role="group"][aria-label="Diff layout"]')!;
-      toggle.action = `/review/settings/diff-layout?viewport=${viewport}`;
-      setToggleValue(toggle, layout);
+      const toggle = this.element.querySelector<HTMLFormElement>('[role="group"][aria-label="Diff layout"]');
+      if (toggle) {
+        toggle.action = `/review/settings/diff-layout?viewport=${viewport}`;
+        setToggleValue(toggle, layout);
+      }
       return layout;
     }
 
@@ -549,52 +640,7 @@ function createReviewController(Controller: StimulusControllerConstructor) {
       if (!(event.currentTarget instanceof HTMLFormElement)) throw new Error("Review refresh requires a form");
       const button = event.currentTarget.querySelector<HTMLButtonElement>(".activity-button")!;
       const active = event.type === "submit";
-      if (active) this.rememberPosition();
       setActivityButtonState(button, active ? "active" : "initial");
-    }
-
-    rememberPosition(): void {
-      const scroller = this.element;
-      const scrollerTop = scroller.getBoundingClientRect().top;
-      const toolbarBottom = scrollerTop + (this.element.querySelector<HTMLElement>(".review-toolbar")?.offsetHeight ?? 0) + 12;
-      const file = this.fileTargets.findLast((candidate) => candidate.getBoundingClientRect().top <= toolbarBottom) ?? this.fileTargets[0];
-      if (file) {
-        const saved: SavedReviewPosition = {
-          path: file.dataset.reviewPath!,
-          offset: file.getBoundingClientRect().top - scrollerTop,
-          openPaths: this.fileTargets.filter((candidate) => candidate.open).map((candidate) => candidate.dataset.reviewPath!),
-        };
-        const container = file.querySelector<HTMLElement>("diffs-container");
-        const numbers = [...(container?.shadowRoot?.querySelectorAll<HTMLElement>("[data-column-number]") ?? [])];
-        const line = numbers.findLast((candidate) => candidate.getBoundingClientRect().top <= toolbarBottom);
-        if (line) {
-          saved.offset = line.getBoundingClientRect().top - scrollerTop;
-          saved.line = Number(line.dataset.columnNumber);
-          saved.lineType = line.dataset.lineType;
-        }
-        sessionStorage.setItem(this.positionKey, JSON.stringify(saved));
-      }
-
-    }
-
-    private restorePosition(): boolean {
-      const raw = sessionStorage.getItem(this.positionKey);
-      sessionStorage.removeItem(this.positionKey);
-      if (!raw) return false;
-      // SAFETY: rememberPosition writes this browser-owned value with this exact shape.
-      const saved = JSON.parse(raw) as SavedReviewPosition;
-      for (const candidate of this.fileTargets) candidate.open = saved.openPaths.includes(candidate.dataset.reviewPath!);
-      const file = this.fileTargets.find((candidate) => candidate.dataset.reviewPath === saved.path);
-      if (!file) return false;
-      const scroller = this.element;
-      let anchor: HTMLElement = file;
-      if (saved.line !== undefined) {
-        const root = file.querySelector<HTMLElement>("diffs-container")?.shadowRoot;
-        const candidates = [...(root?.querySelectorAll<HTMLElement>(`[data-column-number="${saved.line}"]`) ?? [])];
-        anchor = candidates.find((candidate) => candidate.dataset.lineType === saved.lineType) ?? candidates[0] ?? file;
-      }
-      scroller.scrollTop += anchor.getBoundingClientRect().top - scroller.getBoundingClientRect().top - saved.offset;
-      return true;
     }
 
     private persistDraft(): void {
@@ -613,7 +659,6 @@ function createReviewController(Controller: StimulusControllerConstructor) {
       this.draft = JSON.parse(raw) as DraftModel;
     }
 
-    private get positionKey(): string { return `atelier.review.position:${this.workspaceIdValue}`; }
     private get draftKey(): string { return `atelier.review.draft:${this.workspaceIdValue}`; }
   };
 }
