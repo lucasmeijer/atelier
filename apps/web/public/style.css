@@ -321,10 +321,11 @@ html.software-keyboard-visible .fixed-shell-work-pane { bottom: 0; }
 html.software-keyboard-visible .fixed-shell-app .fixed-shell-mobile-nav { display: none; }
 
 @media (max-width: 700px), (hover: none) and (pointer: coarse) {
-  .fixed-shell-app { --fixed-shell-mobile-nav-height: calc(58px + env(safe-area-inset-bottom, 0px)); gap: 0; padding: 0; }
-  .fixed-workspace-presentation { display: block; padding-bottom: var(--fixed-shell-mobile-nav-height); }
+  /* 50px buttons + 2px press clearance + 8px padding + 1px border. */
+  .fixed-shell-app { --fixed-shell-mobile-nav-height: calc(61px + env(safe-area-inset-bottom, 0px)); --fixed-shell-mobile-nav-gap: 2px; gap: 0; padding: 0; }
+  .fixed-workspace-presentation { display: block; padding-bottom: calc(var(--fixed-shell-mobile-nav-height) + var(--fixed-shell-mobile-nav-gap)); }
   .fixed-shell-main { display: block; height: 100%; }
-  .fixed-shell-workspace-pane, .fixed-shell-agent-pane, .fixed-shell-work-pane { position: absolute; inset: 0 0 var(--fixed-shell-mobile-nav-height); width: 100%; max-width: none; min-width: 0; margin: 0 !important; border: 0; border-radius: 0; opacity: 0; visibility: hidden; pointer-events: none; transform: none; transition: opacity 150ms ease; }
+  .fixed-shell-workspace-pane, .fixed-shell-agent-pane, .fixed-shell-work-pane { position: absolute; inset: 0 0 calc(var(--fixed-shell-mobile-nav-height) + var(--fixed-shell-mobile-nav-gap)); width: 100%; max-width: none; min-width: 0; margin: 0 !important; border: 0; border-radius: 0; opacity: 0; visibility: hidden; pointer-events: none; transform: none; transition: opacity 150ms ease; }
   .fixed-shell-app > .fixed-shell-workspace-pane { z-index: 20; }
   .fixed-shell-app:not(:has(.workspace-detail-resident.visible)) > .fixed-shell-workspace-pane,
   .fixed-shell-app.is-switching-workspace > .fixed-shell-workspace-pane,
