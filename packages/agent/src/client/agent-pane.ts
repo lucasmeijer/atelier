@@ -1,7 +1,7 @@
 import { setActivityButtonState } from "@atelier/design-system/activity-button/client";
 import { CableTopics, composerSubmitKey, focusLikelyOpensSoftwareKeyboard, setTextInputValue, type CableSubscription, type WorkspaceClientApplication as StimulusApplication, type WorkspaceClientControllerConstructor as StimulusControllerConstructor, type WorkspaceClientHooks } from "@atelier/shared";
 import { agentComposerPrimaryAction, agentComposerTextStorageKey, PromptHistoryNavigator } from "./composer-state.ts";
-import { transcriptFollowingAfterScroll, transcriptScrollPosition, workspaceSelectionScrollTop } from "./transcript-navigation.ts";
+import { TranscriptNavigation } from "./transcript-navigation.ts";
 
 type TurboSubmitEndEvent = CustomEvent<{ success: boolean; fetchResponse?: { response: Response } }>;
 
@@ -40,75 +40,26 @@ export function createAgentPaneController(Controller: StimulusControllerConstruc
     declare readonly formTarget: HTMLFormElement;
     declare readonly sendStopTarget: HTMLButtonElement;
 
-    private stuck = true;
+    private navigation!: TranscriptNavigation;
     private logicallyVisible = false;
     private cableSubscription?: CableSubscription;
     private hasBeenReady = false;
-    private selectionAwaitingReady = false;
-    private transcriptMutationObserver?: MutationObserver;
-    private transcriptLayoutObserver?: ResizeObserver;
     private composerMutationObserver?: MutationObserver;
     private reconnectingStatus?: HTMLElement;
     private reconnectingStatusTimer?: ReturnType<typeof setTimeout>;
-    private scrollbarHideTimer?: ReturnType<typeof setTimeout>;
-    private transcriptLayoutFrame = 0;
-    private transcriptPosition = { top: 0, end: 0, height: 0 };
-    private selectedWhileBusy?: boolean;
     private connected = false;
     private composerRevision = 0;
     private submittedComposer?: { revision: number; attachmentIds: string[] };
     private readonly promptHistory = new PromptHistoryNavigator();
-    private readonly onScroll = (event?: Event): void => {
-      const el = this.transcriptTarget;
-      if (event) {
-        el.classList.add("is-scrolling");
-        clearTimeout(this.scrollbarHideTimer);
-        this.scrollbarHideTimer = setTimeout(() => el.classList.remove("is-scrolling"), 800);
-      }
-      const next = transcriptScrollPosition(el);
-      this.stuck = transcriptFollowingAfterScroll(this.stuck, this.transcriptPosition, next);
-      this.transcriptPosition = next;
-      this.transcriptEndTarget.hidden = this.stuck;
-    };
-    private latestUserTranscriptItem(): HTMLElement | null {
-      const matches = this.transcriptTarget.querySelectorAll<HTMLElement>(".agent-user");
-      return matches.item(matches.length - 1)?.closest<HTMLElement>(".agent-item") ?? null;
-    }
-    private updateTranscriptPosition(): void {
-      if (!this.logicallyVisible) return;
-      if (this.selectedWhileBusy !== undefined) {
-        this.transcriptTarget.scrollTop = workspaceSelectionScrollTop(this.transcriptTarget, this.latestUserTranscriptItem(), this.selectedWhileBusy);
-        this.selectedWhileBusy = undefined;
-      } else if (this.stuck) {
-        this.transcriptTarget.scrollTop = this.transcriptTarget.scrollHeight;
-      }
-      this.onScroll();
-    }
-    private observeTranscriptItems(): void {
-      for (const item of this.transcriptTarget.children) this.transcriptLayoutObserver!.observe(item);
-    }
-    private readonly transcriptLayoutChanged = (): void => {
-      cancelAnimationFrame(this.transcriptLayoutFrame);
-      this.transcriptLayoutFrame = requestAnimationFrame(() => this.updateTranscriptPosition());
-    };
     private readonly onVisibilityChange = (): void => {
       this.reconcileConnection();
     };
-    private readonly positionForSelection = (): void => {
-      const busy = this.sendStopTarget.dataset.agentBusy === "true";
-      this.stuck = busy;
-      this.selectedWhileBusy = busy;
-      this.transcriptLayoutChanged();
-    };
     private readonly cableReady = (): void => {
-      const positionForSelection = this.selectionAwaitingReady;
       this.hasBeenReady = true;
       void this.revealTranscriptTarget();
-      this.selectionAwaitingReady = false;
       this.setReconnecting(false);
       this.startAgentTerminals();
-      if (positionForSelection) this.positionForSelection();
-      else this.transcriptLayoutChanged();
+      this.navigation.snapshotReady(this.sendStopTarget.dataset.agentBusy === "true");
     };
     private readonly cableDisconnected = (): void => {
       if (this.cableSubscription) this.setReconnecting(true);
@@ -128,29 +79,12 @@ export function createAgentPaneController(Controller: StimulusControllerConstruc
           if (this.composerRevision === submittedRevision) this.setInputValue("");
         });
       }
-      // Reach the current end before blurring. On mobile, closing the keyboard
-      // can emit a layout-driven scroll event before the next animation frame;
-      // if we are still scrolled up then, it looks like the user opted out of
-      // following and cancels the submit-time jump.
       this.scrollToTranscriptEnd();
-      this.transcriptLayoutChanged();
       this.relinquishSoftwareKeyboardFocus();
     };
     connect(): void {
-      this.transcriptLayoutObserver = new ResizeObserver(this.transcriptLayoutChanged);
-      this.transcriptLayoutObserver.observe(this.transcriptTarget);
-      this.observeTranscriptItems();
-      this.transcriptMutationObserver = new MutationObserver(() => {
-        this.observeTranscriptItems();
-      });
-      this.transcriptMutationObserver.observe(this.transcriptTarget, { childList: true, subtree: true });
-      this.transcriptLayoutObserver.observe(this.element.querySelector<HTMLElement>(".composer")!);
-      this.transcriptPosition = transcriptScrollPosition(this.transcriptTarget);
-      this.transcriptTarget.addEventListener("scroll", this.onScroll);
-      this.transcriptEndTarget.hidden = this.stuck;
+      this.navigation = new TranscriptNavigation(this.transcriptTarget, this.transcriptEndTarget, this.element.querySelector<HTMLElement>(".composer")!);
       document.addEventListener("visibilitychange", this.onVisibilityChange);
-      // Software-keyboard changes may precede ResizeObserver notifications.
-      window.visualViewport?.addEventListener("resize", this.transcriptLayoutChanged);
       this.formTarget.addEventListener("submit", this.submitting);
       this.composerMutationObserver = new MutationObserver(() => this.updateSendStopButton());
       this.composerMutationObserver.observe(this.formTarget, { childList: true, subtree: true });
@@ -162,15 +96,9 @@ export function createAgentPaneController(Controller: StimulusControllerConstruc
 
     disconnect(): void {
       this.connected = false;
-      this.transcriptMutationObserver?.disconnect();
-      this.transcriptLayoutObserver?.disconnect();
+      this.navigation.disconnect();
       this.composerMutationObserver?.disconnect();
-      cancelAnimationFrame(this.transcriptLayoutFrame);
-      this.transcriptTarget.removeEventListener("scroll", this.onScroll);
-      clearTimeout(this.scrollbarHideTimer);
-      this.transcriptTarget.classList.remove("is-scrolling");
       document.removeEventListener("visibilitychange", this.onVisibilityChange);
-      window.visualViewport?.removeEventListener("resize", this.transcriptLayoutChanged);
       this.formTarget.removeEventListener("submit", this.submitting);
       this.logicallyVisible = false;
       this.stopConnection();
@@ -189,13 +117,14 @@ export function createAgentPaneController(Controller: StimulusControllerConstruc
 
     becomeVisible(): void {
       this.logicallyVisible = true;
-      this.selectionAwaitingReady = true;
+      this.navigation.setVisible(true);
       this.reconcileConnection();
-      this.positionForSelection();
+      this.navigation.select(this.sendStopTarget.dataset.agentBusy === "true");
     }
 
     noLongerVisible(): void {
       this.logicallyVisible = false;
+      this.navigation.setVisible(false);
       this.reconcileConnection();
     }
 
@@ -229,8 +158,7 @@ export function createAgentPaneController(Controller: StimulusControllerConstruc
       requestAnimationFrame(() => {
         const target = this.transcriptTarget.querySelector<HTMLElement>(`[data-transcript-anchor="${CSS.escape(message)}"], [data-transcript-key="${CSS.escape(message)}"]`);
         if (!target) return;
-        this.stuck = false;
-        target.scrollIntoView({ block: "center" });
+        this.navigation.reveal(target);
       });
     }
 
@@ -286,13 +214,7 @@ export function createAgentPaneController(Controller: StimulusControllerConstruc
     // ---- transcript navigation ----
 
     scrollToTranscriptEnd(): void {
-      // Explicit navigation supersedes selection positioning, both the pending
-      // animation frame and a snapshot that has not arrived yet.
-      this.selectedWhileBusy = undefined;
-      this.selectionAwaitingReady = false;
-      this.stuck = true;
-      this.transcriptTarget.scrollTop = this.transcriptTarget.scrollHeight;
-      this.onScroll();
+      this.navigation.followLatest();
     }
 
     private userPrompts(): string[] {
@@ -310,7 +232,8 @@ export function createAgentPaneController(Controller: StimulusControllerConstruc
       if (submitKey === "shortcut" || softwareKeyboardSubmit) {
         event.preventDefault();
         if (this.inputTarget.value.trim() || this.formTarget.querySelector(".agent-chip")) {
-          // Relinquish focus before requestSubmit so Turbo records the keyboard-closed state.
+          // Let Turbo capture the keyboard-closed focus state. Following no longer
+          // depends on whether this blur occurs before or after submission.
           if (softwareKeyboardSubmit) this.relinquishSoftwareKeyboardFocus();
           const submitter = this.formTarget.querySelector<HTMLButtonElement>('button[value="send"], button[value="steer"]');
           this.formTarget.requestSubmit(submitter ?? undefined);
@@ -350,9 +273,7 @@ export function createAgentPaneController(Controller: StimulusControllerConstruc
       const nextHeight = Math.ceil(input.scrollHeight) + 2;
       input.style.height = `${Math.min(nextHeight, maxHeight)}px`;
       input.style.overflowY = nextHeight > maxHeight ? "auto" : "hidden";
-      // height:auto can temporarily clamp the transcript without a net viewport
-      // resize. Restore its position before the resulting scroll event arrives.
-      this.updateTranscriptPosition();
+      this.navigation.layoutChanged();
       this.updateSendStopButton();
     }
 
