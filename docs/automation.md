@@ -57,7 +57,7 @@ Other browser-navigable surfaces are:
 /workspaces/new                         # New projectless workspace
 /projects/:projectId/workspaces/new     # New workspace for a project
 /projects/new                           # Add a project
-/usage                                  # Provider limits and Atelier-measured usage
+/usage                                  # Provider-reported limits
 /settings                               # Atelier settings
 /settings?section=models                # A specific settings section
 /settings/development                   # Development settings
@@ -155,13 +155,8 @@ are null.
 The HTML representations drive the Usage dialog next to workspace Settings.
 
 Each result includes provider-reported windows, their durations and resets,
-installation-local token totals for the last 30 days, and local totals within
-each reported window. `partialCoverage` and `trackingSince` identify incomplete
-local history. Tracking records new inference responses, not copied session
-history, and survives workspace deletion and server restarts. Token counts cover
-all accounts used with that provider in this installation and are attributed to
-response completion. They cannot be converted to the provider's subscription
-percentage. Provider failures populate `error` without removing local totals.
+and pacing relative to elapsed time. Provider failures populate `error`.
+The Usage feature does not record or persist installation-wide token totals.
 
 The Usage dialog groups provider-reported 0% windows under **Unused limits**
 (collapsed when there are used limits, expanded when all limits are unused)

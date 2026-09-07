@@ -1,8 +1,7 @@
 import { requestAcceptsJson } from "@atelier/core";
 import { getConfiguredAgentModels } from "./pi-config-models.ts";
-import { selectPacingWindow } from "./usage-window.ts";
+import { selectPacingWindow, type PacedUsageWindow } from "./usage-window.ts";
 import { connectedUsageProviders, getProviderUsageOverview, supportedUsageProviders, type ProviderUsageOverview, type UsageProvider } from "./provider-usage.ts";
-import type { MeasuredUsage } from "./usage-ledger.ts";
 import { actionLinkHtml } from "@atelier/design-system/action-link";
 import { dialogHtml } from "@atelier/design-system/dialog";
 import { Icons } from "@atelier/design-system/icons";
@@ -34,7 +33,6 @@ const overviewFrameId = "usage_overview";
 const providerPath = (id: string) => `/usage/providers/${encodeURIComponent(id)}`;
 const providerFrameId = (id: string) => `usage_provider_${id}`;
 const number = (value: number) => value.toLocaleString("en-US", { maximumFractionDigits: 1 });
-const date = (value: string) => new Date(value).toLocaleDateString("en-US", { month: "short", day: "numeric", timeZone: "UTC" });
 
 /** Two compact units for allowance windows, reset countdowns, and pacing gaps. */
 function usageDuration(seconds: number): string {
@@ -56,14 +54,10 @@ function usagePace(seconds: number | null): string {
   return `${usageDuration(Math.abs(seconds))} ${seconds > 0 ? "ahead of" : "behind"} pace`;
 }
 
-function measuredBreakdown(measured: MeasuredUsage): string {
-  return `<dl class="usage-token-breakdown"><div><dt>Input (uncached)</dt><dd>${number(measured.input)}</dd></div><div><dt>Cached input</dt><dd>${number(measured.cacheRead)}</dd></div><div><dt>Cache writes</dt><dd>${number(measured.cacheWrite)}</dd></div><div><dt>Output incl. reasoning</dt><dd>${number(measured.output)}</dd></div></dl>`;
-}
-
-function renderUsageWindow({ reported: window, measured: local, timing }: ProviderUsageOverview["windows"][number]): string {
+function renderUsageWindow({ reported: window, timing }: PacedUsageWindow): string {
   const label = `${window.limitName} · ${usageDuration(window.durationSeconds)}`;
   if (timing.state === "unknown" || window.resetsAt === null) {
-    return `<article class="usage-limit"><h4>${escapeHtml(label)}</h4>
+    return `<article class="usage-limit"><h3>${escapeHtml(label)}</h3>
       <div class="usage-limit-heading usage-caption"><span>Reset time unavailable</span><span>Usage <strong>${number(window.usedPercent)}%</strong></span></div>
       <p class="usage-caption">The provider hasn’t reported a reset time. Pacing is unavailable.</p>
     </article>`;
@@ -71,7 +65,7 @@ function renderUsageWindow({ reported: window, measured: local, timing }: Provid
   const remaining = (new Date(window.resetsAt).getTime() - Date.now()) / 1000;
   const difference = timing.paceDifferenceSeconds;
   const pace = usagePace(difference);
-  return `<article class="usage-limit"><h4>${escapeHtml(label)}</h4>
+  return `<article class="usage-limit"><h3>${escapeHtml(label)}</h3>
     <div class="usage-limit-heading usage-caption"><span title="Window start inferred from reset time minus duration">Time <strong>${number(timing.elapsedPercent)}%</strong></span><span>Usage <strong>${number(window.usedPercent)}%</strong></span></div>
     <div class="usage-comparison${difference === null ? " usage-comparison--inactive" : ""}" aria-hidden="true">
       <span class="usage-comparison__time" style="width:${timing.elapsedPercent}%"></span>
@@ -79,7 +73,6 @@ function renderUsageWindow({ reported: window, measured: local, timing }: Provid
       <span class="usage-comparison__shared" style="width:${Math.min(timing.elapsedPercent, window.usedPercent)}%"></span>
     </div>
     <div class="usage-limit-heading usage-caption"><span>${remaining > 0 ? `Resets in ${usageDuration(remaining)}` : "Reset due"}</span>${pace ? `<span title="Distance along the linear allowance schedule, not a forecast">${pace}</span>` : ""}</div>
-    ${local ? `<details class="usage-window-local"><summary>Atelier · <strong>${number(local.totalTokens)} tokens</strong>${local.partialCoverage ? " · partial" : ""}${window.meteredFeature ? " · all provider tokens" : ""}</summary>${measuredBreakdown(local)}</details>` : ""}
   </article>`;
 }
 
@@ -92,14 +85,10 @@ function renderUsageLimits({ reported, error, windows }: ProviderUsageOverview):
 }
 
 function renderUsageProvider(overview: ProviderUsageOverview): string {
-  const { reported, measured } = overview;
+  const { reported } = overview;
   return `<section class="usage-provider" data-controller="usage-snapshot"><header class="usage-provider-heading"><h2>${providerIcon(overview.provider.id, overview.provider.label)}${escapeHtml(overview.provider.label)}</h2>${reported?.plan ? `<span class="usage-plan">${escapeHtml(reported.plan)}</span>` : ""}</header>
     <section class="usage-section">
       ${renderUsageLimits(overview)}
-    </section>
-    <section class="usage-section"><div class="usage-limit-heading"><h3>Atelier</h3><span class="usage-caption">30d · this installation</span></div>
-      <div class="usage-total"><strong>${number(measured.totalTokens)}</strong><span>tokens · ${number(measured.requests)} ${measured.requests === 1 ? "response" : "responses"}</span></div>
-      <details><summary>Token breakdown${measured.partialCoverage ? ` · tracked since ${date(measured.trackingSince)}` : ""}</summary>${measuredBreakdown(measured)}<p class="usage-caption">Includes all accounts used here. Tokens aren’t equivalent to subscription percentages.${measured.partialCoverage ? " Earlier usage is not recorded." : ""}</p></details>
     </section>
   </section>`;
 }

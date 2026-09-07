@@ -6,7 +6,7 @@
 .usage-provider-heading h2 { display: flex; align-items: center; gap: 8px; margin: 0; font-size: var(--text-title); }
 .usage-plan { color: var(--text-muted); text-transform: capitalize; }
 .usage-section { display: grid; gap: 12px; }
-.usage-section h3, .usage-limit h4 { margin: 0; font-size: var(--text-body); }
+.usage-limit h3 { margin: 0; font-size: var(--text-body); }
 .usage-limit { display: grid; gap: 8px; padding: 12px; border: 1px solid var(--line); border-radius: var(--radius-surface); background: var(--bg); }
 /* Both values grow from the left on one bar, like the button's clockwise ring. */
 .usage-comparison { position: relative; height: 8px; overflow: hidden; border-radius: var(--radius-round); background: color-mix(in srgb, var(--text-muted) 12%, transparent); }
@@ -15,17 +15,8 @@
 .usage-comparison__usage { background: var(--danger); }
 .usage-comparison__shared { background: var(--text-muted); }
 .usage-comparison--inactive > span { background: var(--text-muted); }
-.usage-window-local { padding-top: 8px; margin-top: 0; border-top: 1px solid var(--line); font-size: var(--text-small); }
-.usage-total { display: flex; align-items: baseline; flex-wrap: wrap; gap: 8px; }
-.usage-total > strong { font-size: 28px; font-variant-numeric: tabular-nums; }
-.usage-total > span { color: var(--text-muted); }
-.usage-token-breakdown { display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); gap: 12px; margin: 0; }
-.usage-token-breakdown dt { font-size: var(--text-small); color: var(--text-muted); }
-.usage-token-breakdown dd { margin: 4px 0 0; font-variant-numeric: tabular-nums; }
-.usage-provider details { font-size: var(--text-small); }
-.usage-provider summary { cursor: pointer; color: var(--text-muted); }
-.usage-provider details > p, .usage-provider details > dl { margin-top: 12px; }
-@media (max-width: 600px) { .usage-token-breakdown { grid-template-columns: repeat(2, minmax(0, 1fr)); } }
+.usage-unused { font-size: var(--text-small); }
+.usage-unused > summary { cursor: pointer; color: var(--text-muted); }
 
 .usage-unused > .usage-section { margin-top: 12px; }
 

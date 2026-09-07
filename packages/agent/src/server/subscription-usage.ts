@@ -6,6 +6,5 @@ export type SubscriptionUsage = {
   windows: { limitName: string; meteredFeature: string | null; kind: "primary" | "secondary"; usedPercent: number; durationSeconds: number; resetsAt: string | null }[];
 };
 
-
-/** Expected provider/authentication failures that can be shown alongside local usage. */
+/** Expected provider/authentication failures that can be shown in the usage overview. */
 export class SubscriptionUsageError extends Error {}
