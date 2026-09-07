@@ -16,7 +16,7 @@ import { listWorkspaceAgentConversations } from "@atelier/agent/server";
 import type { AgentRouteHandler } from "@atelier/agent/server";
 
 export const subagentsWorkView: WorkspaceWorkViewPresentation = {
-  reference: { type: "subagents" }, sourceKey: "subagents", label: "Subagents", kind: "contextual", iconHtml: Icons.Subagents, availability: { phase: "live" },
+  reference: { type: "subagents" }, sourceKey: "subagents", label: "Subagents", kind: "contextual", iconHtml: Icons.Subagents, availability: { phase: "live" }, initiallyOpen: false,
 };
 export const subagentsWorkViewAdapter: WorkspaceModuleWorkViewAdapter = {
   type: "subagents",

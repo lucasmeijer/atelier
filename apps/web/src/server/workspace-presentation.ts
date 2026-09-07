@@ -524,7 +524,6 @@ function renderMobileWorkViewCloser(view: WorkPaneContribution): string {
   return view.close ? renderMobileCloser(`work:${view.key}`, view.close) : "";
 }
 
-const mobileLauncherCommandIds = new Set(["files.create", "terminal.create", "terminal.attach", "browser.create", "vscode.open"]);
 const mobileMoreAttentionHtml = '<i class="status-dot attention" aria-label="Hidden Attention" data-mobile-overflow-attention hidden></i>';
 
 export function renderMobileWorkspaceBar(destinationsHtml = "", moreMenuHtml = ""): string {
@@ -538,7 +537,7 @@ export function renderMobileWorkspaceBar(destinationsHtml = "", moreMenuHtml = "
 function renderWorkspaceBar(presentation: WorkspacePresentation): string {
   const agentsDestination = renderMobileDestination("Agents", "agents", Icons.Agent);
   const workViews = renderMobileWorkViews(presentation.workViews);
-  const launchers = (presentation.commands ?? []).filter((command) => mobileLauncherCommandIds.has(command.id)).map((command) => renderWorkLauncherCommand(command, presentation.workspace.id, "submit->workspace-presentation#closeMore")).join("");
+  const launchers = (presentation.commands ?? []).filter((command) => command.placement === "work-launcher").map((command) => renderWorkLauncherCommand(command, presentation.workspace.id, "submit->workspace-presentation#closeMore")).join("");
   const closers = presentation.workViews.map(renderMobileWorkViewCloser).join("");
   const moreMenuId = workViewDomId(presentation.workspace.id, "mobile_more_menu");
   const moreMenu = popupHtml({

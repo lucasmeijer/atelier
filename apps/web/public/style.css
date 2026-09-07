@@ -337,6 +337,8 @@ html.software-keyboard-visible .fixed-shell-app .fixed-shell-mobile-nav { displa
   .fixed-shell-app.is-mobile-workspace-pane-open > .fixed-shell-workspace-pane,
   .fixed-workspace-presentation[data-phone-destination="agents"] .fixed-shell-agent-pane,
   .fixed-workspace-presentation[data-phone-destination^="work:"] .fixed-shell-work-pane { opacity: 1; visibility: visible; pointer-events: auto; }
+  /* Mobile Work navigation lives in the bottom workspace bar and More menu. */
+  .fixed-shell-work-pane > .panel > .panel__header { display: none; }
   .fixed-shell-work-resizer, [data-show-work-pane], [data-show-workspace-pane], [data-collapse-workspace-pane] { display: none; }
   .fixed-shell-mobile-nav { position: relative; grid-area: 2 / 1; z-index: 30; min-width: 0; display: flex; align-items: center; gap: 8px; margin-top: 2px; padding: 4px 4px calc(4px + env(safe-area-inset-bottom, 0px)); border-top: 1px solid var(--fixed-shell-border); background: var(--panel); }
   .fixed-shell-atelier-bar { display: none; align-items: center; }
