@@ -51,6 +51,7 @@ class WorkspaceResidencyController extends Controller<HTMLElement> {
 
   connect(): void {
     this.residencyConnected = true;
+    this.syncCloseWorkspacePaneButton();
     document.addEventListener("atelier:workspace-removed", this.workspaceRemoved);
     document.addEventListener("atelier:workspace-pane-changed", this.workspacePaneChanged);
     document.addEventListener("atelier:workspace-preparation-invalidated", this.workspacePreparationInvalidated);
@@ -159,6 +160,10 @@ class WorkspaceResidencyController extends Controller<HTMLElement> {
   private syncNextUnreadButton(): void {
     const button = document.querySelector<HTMLButtonElement>("#fixed_shell_atelier_next_unread");
     if (button) button.disabled = this.oldestPreparedAttentionWorkspaceId() === undefined;
+  }
+
+  private syncCloseWorkspacePaneButton(): void {
+    document.querySelector<HTMLButtonElement>("[data-close-workspace-pane]")!.disabled = this.visibleWorkspaceId() === undefined;
   }
 
   private workspaceIdFromLocation(): string | undefined {
@@ -444,6 +449,7 @@ class WorkspaceResidencyController extends Controller<HTMLElement> {
         if (workspaceId !== this.intendedWorkspaceId) void this.capturePreparedResident(workspaceId, resident).catch((error) => console.error(`Could not retain prepared Workspace ${workspaceId}`, error));
       }
     }
+    this.syncCloseWorkspacePaneButton();
   }
 
   private async capturePreparedResident(workspaceId: string, resident: HTMLElement): Promise<void> {
@@ -508,6 +514,7 @@ class WorkspaceResidencyController extends Controller<HTMLElement> {
       }
       candidate.classList.toggle("visible", candidate === resident);
     }
+    this.syncCloseWorkspacePaneButton();
     resident.querySelector<HTMLElement>(".fixed-workspace-presentation")?.dispatchEvent(new CustomEvent("atelier:workspace-residency-visible"));
     const workspaceId = resident.dataset.workspaceId!;
     workspaceNavigationController()?.setActiveWorkspace(workspaceId);

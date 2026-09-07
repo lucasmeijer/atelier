@@ -284,7 +284,7 @@ function renderAtelierNextUnreadButton(): string {
 }
 
 export function renderAtelierBar(): string {
-  const close = barButton("Close workspace list", "click->workspace-navigation#closeWorkspacePane", Icons.Close, "data-close-workspace-pane");
+  const close = barButton("Close workspace list", "click->workspace-navigation#closeWorkspacePane", Icons.Close, "data-close-workspace-pane disabled");
   const newWorkspace = barButton("New Workspace With Same Project", "click->atelier-shortcuts#runCommand", Icons.Plus, 'data-command-id="agent.open-launch-composer"');
   return `<nav class="fixed-shell-mobile-nav fixed-shell-atelier-bar" aria-label="Atelier">${close}${renderAtelierNextUnreadButton()}${newWorkspace}</nav>`;
 }
