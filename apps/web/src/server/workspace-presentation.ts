@@ -252,8 +252,8 @@ function renderWorkspacePaneCollectionRegions(presentation: WorkspacePanePresent
 
 function renderWorkspacePaneCollections(presentation: WorkspacePanePresentation, sidebarContributionsHtml = ""): string {
   const regions = renderWorkspacePaneCollectionRegions(presentation);
-  return `<div class="fixed-shell-pane-collections" data-workspace-pane-collections>
-    <div id="${workspacePaneScrollDomId}" class="fixed-shell-workspace-scroll" data-workspace-navigation-target="scroll">${regions.scrollHtml}</div>
+  return `<div class="fixed-shell-pane-collections" data-workspace-pane-collections data-workspace-navigation-target="scroll">
+    <div id="${workspacePaneScrollDomId}" class="fixed-shell-workspace-scroll">${regions.scrollHtml}</div>
     <section id="global_sidebar_contributions">${sidebarContributionsHtml}</section>
     ${regions.projectsDrawerHtml}
   </div>`;
