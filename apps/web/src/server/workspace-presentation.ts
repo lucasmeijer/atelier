@@ -278,20 +278,15 @@ export function renderWorkspacePane(presentation: WorkspacePanePresentation, sid
 
 const atelierNextUnreadDomId = "fixed_shell_atelier_next_unread";
 
-function workspacePaneHasAttention(presentation: WorkspacePanePresentation): boolean {
-  return presentation.projects.some((project) => [...project.workspaces, ...(project.parkedWorkspaces ?? [])].some((workspace) => workspace.attention))
-    || [...(presentation.projectlessWorkspaces ?? []), ...(presentation.projectlessParkedWorkspaces ?? [])].some((workspace) => workspace.attention);
+function renderAtelierNextUnreadButton(): string {
+  const icon = `${Icons.Next}<i class="status-dot attention" aria-hidden="true"></i>`;
+  return barButton("Next unread Workspace", "click->atelier-shortcuts#openPreparedAttentionWorkspace", icon, `id="${atelierNextUnreadDomId}" disabled`);
 }
 
-function renderAtelierNextUnreadButton(presentation: WorkspacePanePresentation): string {
-  const disabled = workspacePaneHasAttention(presentation) ? "" : " disabled";
-  return barButton("Next unread Workspace", "click->atelier-shortcuts#openOldestAttentionWorkspace", Icons.Next, `id="${atelierNextUnreadDomId}"${disabled}`);
-}
-
-export function renderAtelierBar(presentation: WorkspacePanePresentation): string {
+export function renderAtelierBar(): string {
   const close = barButton("Close workspace list", "click->workspace-navigation#closeWorkspacePane", Icons.Close, "data-close-workspace-pane");
   const newWorkspace = barButton("New Workspace With Same Project", "click->atelier-shortcuts#runCommand", Icons.Plus, 'data-command-id="agent.open-launch-composer"');
-  return `<nav class="fixed-shell-mobile-nav fixed-shell-atelier-bar" aria-label="Atelier">${close}${renderAtelierNextUnreadButton(presentation)}${newWorkspace}</nav>`;
+  return `<nav class="fixed-shell-mobile-nav fixed-shell-atelier-bar" aria-label="Atelier">${close}${renderAtelierNextUnreadButton()}${newWorkspace}</nav>`;
 }
 
 export function workspacePresentationDomId(workspaceId: string): string {
@@ -706,7 +701,7 @@ export function workspacePaneCollectionsTurboStream(presentation: WorkspacePaneP
   return [
     turboStream("update", workspacePaneScrollDomId, regions.scrollHtml),
     turboStream("replace", workspaceProjectsDrawerDomId, regions.projectsDrawerHtml),
-    turboStream("replace", atelierNextUnreadDomId, renderAtelierNextUnreadButton(presentation)),
+    turboStream("replace", atelierNextUnreadDomId, renderAtelierNextUnreadButton()),
     '<turbo-stream action="workspace-pane-changed" targets="[data-workspace-pane-collections]"></turbo-stream>',
   ].join("");
 }

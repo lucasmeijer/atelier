@@ -152,6 +152,15 @@ class WorkspaceResidencyController extends Controller<HTMLElement> {
     return this.residentTargets.find((resident) => resident.classList.contains("visible"))?.dataset.workspaceId;
   }
 
+  oldestPreparedAttentionWorkspaceId(): string | undefined {
+    return this.attentionWorkspaces().find(({ workspaceId }) => this.prepared.has(workspaceId))?.workspaceId;
+  }
+
+  private syncNextUnreadButton(): void {
+    const button = document.querySelector<HTMLButtonElement>("#fixed_shell_atelier_next_unread");
+    if (button) button.disabled = this.oldestPreparedAttentionWorkspaceId() === undefined;
+  }
+
   private workspaceIdFromLocation(): string | undefined {
     const match = location.pathname.match(/^\/workspaces\/([^/]+)$/);
     return match ? decodeURIComponent(match[1]!) : undefined;
@@ -286,6 +295,7 @@ class WorkspaceResidencyController extends Controller<HTMLElement> {
 
   private reconcileResidents(): void {
     this.evictIfNeeded();
+    this.syncNextUnreadButton();
     this.backgroundWakeRequested = true;
     this.startBackgroundPump();
   }
@@ -408,6 +418,7 @@ class WorkspaceResidencyController extends Controller<HTMLElement> {
   }
 
   private evictIfNeeded(): void {
+    this.syncNextUnreadButton();
     const retained = retainedWorkspaceIds(this.retentionCandidates(), this.maxResidentValue);
     for (const resident of this.residentTargets) {
       if (!retained.has(resident.dataset.workspaceId!)) this.evictResident(resident);
@@ -419,6 +430,7 @@ class WorkspaceResidencyController extends Controller<HTMLElement> {
     if (resident.classList.contains("visible")) throw new Error(`Cannot evict visible Workspace ${workspaceId}`);
     this.prepared.delete(workspaceId);
     resident.remove();
+    this.syncNextUnreadButton();
   }
 
   private hideResidents(): void {

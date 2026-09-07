@@ -343,7 +343,7 @@ html.software-keyboard-visible .fixed-shell-app .fixed-shell-mobile-nav { displa
   .fixed-shell-mobile-scroll.is-compact { gap: 8px; }
   .fixed-shell-mobile-nav [hidden] { display: none; }
   .fixed-shell-mobile-nav button > svg { width: 21px; height: 21px; }
-  .fixed-shell-mobile-nav :is([data-mobile-destination], [data-mobile-more]) > .status-dot.attention { position: absolute; top: 7px; right: calc(50% - 15px); }
+  .fixed-shell-mobile-nav :is([data-mobile-destination], [data-mobile-more], #fixed_shell_atelier_next_unread) > .status-dot.attention { position: absolute; top: 7px; right: calc(50% - 15px); }
   .fixed-shell-more-close-section:has([data-more-close-destination]:not([hidden])) { margin-top: 4px; padding-top: 5px; border-top: 1px solid var(--line); }
 }
 
@@ -502,3 +502,6 @@ button.settings-link:disabled { opacity: .45; cursor: default; filter: none; }
 /* Pane wrappers own layout; the enclosed Panel owns its complete surface. */
 .fixed-shell-workspace-pane, .fixed-shell-agent-pane, .fixed-shell-work-pane { display: flex; flex-direction: column; min-height: 0; }
 .fixed-shell-workspace-pane > .panel, .fixed-shell-agent-pane > .panel, .fixed-shell-work-pane > .panel { flex: 1; min-height: 0; }
+
+#fixed_shell_atelier_next_unread { position: relative; }
+#fixed_shell_atelier_next_unread:disabled > .status-dot { display: none; }

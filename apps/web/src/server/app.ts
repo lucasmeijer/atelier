@@ -516,7 +516,7 @@ export function createWebApp(deps: WebAppDeps): WebApp {
     return `<div class="app fixed-shell-app" data-controller="atelier-shortcuts workspace-navigation">
     ${renderWorkspacePane(pane, renderGlobalSidebarContributions())}
     <main class="fixed-shell-app-main">${await workspaceDetailHostHtml(pane, selectedId)}</main>
-    ${renderAtelierBar(pane)}
+    ${renderAtelierBar()}
   </div>
   ${projectEditor}
   <div id="update_modal_host"></div>

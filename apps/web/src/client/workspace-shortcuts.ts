@@ -532,6 +532,11 @@ class AtelierShortcutsController extends Controller<HTMLElement> {
       ?? residencyController()?.visibleWorkspaceId();
   }
 
+  async openPreparedAttentionWorkspace(): Promise<void> {
+    const workspaceId = residencyController()?.oldestPreparedAttentionWorkspaceId();
+    if (workspaceId) await workspaceNavigationController()?.selectWorkspaceById(workspaceId);
+  }
+
   async openOldestAttentionWorkspace(): Promise<void> {
     const response = await fetch("/workspaces/open-oldest-unread", {
       method: "POST",
