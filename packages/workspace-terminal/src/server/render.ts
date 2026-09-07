@@ -22,7 +22,9 @@ function renderTerminalAccessoryBar(): string {
 export function renderTerminalPane(workspaceId: string, terminal: WorkspaceTerminal): string {
   return `<section id="${domId("terminal_pane", workspaceId, terminal.id)}" class="terminal-work-view" data-work-view-source="${escapeHtml(terminalViewKey(terminal.id))}">
     <div class="terminal-pane" data-controller="terminal-pane" data-terminal-pane-workspace-id-value="${escapeHtml(workspaceId)}" data-terminal-pane-id-value="${escapeHtml(terminal.id)}" data-terminal-id="${escapeHtml(terminal.id)}">
-      <div class="observable-terminal-host" tabindex="0"></div>
+      <div class="observable-terminal-host" tabindex="0">
+        <div class="terminal-loading" role="status" aria-label="Loading terminal"><span class="activity-spinner" aria-hidden="true"></span></div>
+      </div>
       ${renderTerminalAccessoryBar()}
     </div>
   </section>`;

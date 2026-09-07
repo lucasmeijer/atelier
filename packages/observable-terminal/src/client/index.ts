@@ -134,6 +134,21 @@ export async function createObservableTerminalViewer(options: ObservableTerminal
   const sendSize = ({ cols, rows }: { cols: number; rows: number }): void => {
     if (ws.readyState === WebSocket.OPEN) ws.send(encodeObservableTerminalMessage({ type: "resize", cols, rows }));
   };
+  let awaitingFirstOutput = true;
+  let disposed = false;
+  const writeOutput = (data: string | Uint8Array): void => {
+    if (!awaitingFirstOutput) {
+      term.write(data);
+      return;
+    }
+    awaitingFirstOutput = false;
+    // Keep the pane background visible until the first output has been rendered.
+    void term.writeAsync(data).then(() => {
+      if (!disposed) term.element.classList.add("observable-terminal-painted");
+    }).catch((error: Error) => {
+      if (!disposed) console.error("Could not paint initial terminal output", error);
+    });
+  };
   const outputDecoder = new TextDecoder();
   const inputDecoder = new TextDecoder();
   term.on("error", (error) => console.error("Gespenst terminal error", error));
@@ -155,22 +170,17 @@ export async function createObservableTerminalViewer(options: ObservableTerminal
     if (options.mode === "interactive") sendSize(term.geometry);
   };
   ws.onmessage = (event: MessageEvent<string | ArrayBuffer>) => {
-    if (event.data instanceof ArrayBuffer) {
-      const data = new Uint8Array(event.data);
-      if (options.onOutput) options.onOutput(outputDecoder.decode(data, { stream: true }));
-      term.write(data);
-      return;
-    }
-    options.onOutput?.(event.data);
-    term.write(event.data);
+    const data = event.data instanceof ArrayBuffer ? new Uint8Array(event.data) : event.data;
+    options.onOutput?.(data instanceof Uint8Array ? outputDecoder.decode(data, { stream: true }) : data);
+    writeOutput(data);
   };
   ws.onclose = () => {
     const message = options.disconnectedMessage;
-    if (message) term.write(message);
+    if (message) writeOutput(message);
   };
   ws.onerror = () => {
     const message = options.errorMessage;
-    if (message) term.write(message);
+    if (message) writeOutput(message);
   };
 
   return {
@@ -185,6 +195,7 @@ export async function createObservableTerminalViewer(options: ObservableTerminal
     sendInput,
     setTheme: (nextTheme) => void term.setTheme(nextTheme),
     dispose: () => {
+      disposed = true;
       ws.onclose = null;
       ws.onerror = null;
       ws.close();

@@ -1,3 +1,7 @@
 @import url("/gespenst.css");
 
 .observable-terminal-host { position: relative; flex: 1; min-height: 0; width: 100%; height: 100%; padding: 0; background: var(--bg, #2e3440); outline: none; }
+
+/* Keep input focus and measurement available while the first output is painted. */
+.observable-terminal-host > .gespenst:not(.observable-terminal-painted) { background: transparent; }
+.observable-terminal-host > .gespenst:not(.observable-terminal-painted) > .gespenst__canvas { visibility: hidden; }
