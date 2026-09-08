@@ -19,20 +19,25 @@ export interface StreamingMarkdownUpdate {
 /**
  * Finds completed top-level blocks that can be rendered independently. This is
  * intentionally more conservative than a Markdown parser: lists, quotes,
- * indented blocks, and tables remain mutable until the message is finalized.
+ * indented blocks, tables, and potential reference links/definitions remain
+ * mutable until the message is finalized. Boundaries index the original source.
  */
 export function streamingMarkdownStableBoundary(source: string): number {
   let boundary = 0;
   let fence: Fence | undefined;
-  const lines = source.match(/.*(?:\n|$)/g)?.filter(Boolean) ?? [];
+  const lines = source.match(/[^\r\n]*(?:\r\n|\r|\n|$)/g)?.filter(Boolean) ?? [];
   let offset = 0;
 
   for (const lineWithEnding of lines) {
-    const line = lineWithEnding.endsWith("\n") ? lineWithEnding.slice(0, -1).replace(/\r$/, "") : lineWithEnding;
+    const terminated = /[\r\n]$/.test(lineWithEnding);
+    const line = lineWithEnding.replace(/(?:\r\n|\r|\n)$/, "");
     const lineStart = offset;
     offset += lineWithEnding.length;
     fence = nextFence(fence, line);
 
+    // A trailing space may become an indented continuation, not a blank line.
+    // Wait on a final CR as well: the next delta may complete a CRLF pair.
+    if (!terminated || (lineWithEnding.endsWith("\r") && offset === source.length)) continue;
     if (line.trim() !== "" || fence) continue;
     const candidate = source.slice(boundary, lineStart);
     if (isIndependentCompletedBlock(candidate)) boundary = offset;
@@ -52,36 +57,28 @@ function nextFence(open: Fence | undefined, line: string): Fence | undefined {
 
 function openFence(text: string): Fence | undefined {
   let open: Fence | undefined;
-  for (const line of text.replaceAll("\r\n", "\n").split("\n")) open = nextFence(open, line);
+  for (const line of text.replace(/\r\n?/g, "\n").split("\n")) open = nextFence(open, line);
   return open;
 }
 
 function isIndependentCompletedBlock(block: string): boolean {
-  if (!block.trim() || openFence(block) || hasIncompleteLinkOrImage(block)) return false;
-  const lines = block.replaceAll("\r\n", "\n").split("\n");
-  const startsWithFence = /^ {0,3}(?:`{3,}|~{3,})/.test(lines.find((line) => line.trim()) ?? "");
-  if (startsWithFence) return true;
-  if (lines.some((line) => /^(?: {4}|\t| {0,3}(?:[-+*]|\d+[.)])\s| {0,3}>)/.test(line))) return false;
-  return !lines.some((line, index) => index > 0 && /^\s*\|?(?:\s*:?-+:?\s*\|)+\s*:?-+:?\s*\|?\s*$/.test(line));
-}
-
-function hasIncompleteLinkOrImage(text: string): boolean {
-  let escaped = false;
-  let inCode = false;
-  let square = 0;
-  let destination = 0;
-  for (let index = 0; index < text.length; index++) {
-    const char = text[index]!;
-    if (escaped) { escaped = false; continue; }
-    if (char === "\\") { escaped = true; continue; }
-    if (char === "`" && text[index - 1] !== "`") { inCode = !inCode; continue; }
-    if (inCode) continue;
-    if (char === "[") square++;
-    else if (char === "]" && square) square--;
-    else if (char === "(" && text[index - 1] === "]") destination++;
-    else if (char === ")" && destination) destination--;
+  if (!block.trim()) return false;
+  let fence: Fence | undefined;
+  const outsideFenceLines: string[] = [];
+  for (const line of block.replace(/\r\n?/g, "\n").split("\n")) {
+    const wasInFence = fence !== undefined;
+    fence = nextFence(fence, line);
+    if (!wasInFence && !fence) outsideFenceLines.push(line);
   }
-  return square > 0 || destination > 0;
+  if (fence) return false;
+  // Reference links (including shortcut links) can depend on definitions anywhere
+  // in the document. Keep the first bracket-bearing block and all subsequent
+  // blocks together in the mutable tail, preserving one Markdown environment.
+  // Deliberately conservative for literal brackets and inline links; fenced code
+  // has no reference semantics and can still be committed independently.
+  if (outsideFenceLines.some((line) => line.includes("["))) return false;
+  if (outsideFenceLines.some((line) => /^(?: {4}|\t| {0,3}(?:[-+*]|\d+[.)])\s| {0,3}>)/.test(line))) return false;
+  return !outsideFenceLines.some((line, index) => index > 0 && /^\s*\|?(?:\s*:?-+:?\s*\|)+\s*:?-+:?\s*\|?\s*$/.test(line));
 }
 
 /** Make only a temporary parsing copy of an incomplete mutable tail. */

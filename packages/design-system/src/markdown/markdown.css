@@ -5,7 +5,6 @@
 .markdown h2 { margin: 26px 0 10px; font-size: 1.35em; }
 .markdown h3 { margin: 20px 0 8px; font-size: 1.1em; }
 .markdown :is(p, ul, ol, blockquote) { margin: 0 0 var(--markdown-block-spacing, 12px); }
-.markdown p:has(+ p + hr) { margin-bottom: 6px; }
 .markdown :is(p, ul, ol):last-child { margin-bottom: 0; }
 .markdown :is(ul, ol) { padding-left: 1.35em; }
 .markdown table { width: 100%; border-collapse: collapse; font-size: .95em; }
