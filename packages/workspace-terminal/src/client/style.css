@@ -7,7 +7,13 @@
 .terminal-loading { position: absolute; inset: 0; z-index: 3; display: grid; place-items: center; color: var(--text-muted); pointer-events: none; }
 .observable-terminal-host:has(> .observable-terminal-painted) > .terminal-loading { display: none; }
 .terminal-accessory-bar { display: none; }
-html.software-keyboard-visible .terminal-pane:has(.gespenst__input:focus) > .terminal-accessory-bar { display: grid; flex: 0 0 auto; grid-template-columns: repeat(6, minmax(42px, 1fr)); gap: 6px; padding: 6px 2px 2px; border-top: 1px solid var(--line-strong); background: var(--bg); }
+@media (hover: none) and (pointer: coarse) {
+  /* Prevent iOS input zoom without changing the rendered terminal font. */
+  .terminal-pane .gespenst__input { font-size: 16px !important; }
+  /* Show keys for focused touch input independently of keyboard detection. */
+  .terminal-pane:has(.gespenst__input:focus) { max-height: var(--terminal-viewport-height); }
+  .terminal-pane:has(.gespenst__input:focus) > .terminal-accessory-bar { display: grid; flex: 0 0 auto; grid-template-columns: repeat(6, minmax(42px, 1fr)); gap: 6px; padding: 6px 2px 2px; border-top: 1px solid var(--line-strong); background: var(--bg); }
+}
 .terminal-session-list { max-height: min(480px, 60vh); padding: 8px; overflow: auto; }
 .terminal-session-name, .terminal-session-process { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .terminal-session-name { flex: 0 1 auto; color: var(--text-bright); font-weight: var(--weight-medium); }

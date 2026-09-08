@@ -6,11 +6,9 @@ import {
   observableWebSocketUrl,
   type ObservableTerminalTheme,
 } from "@atelier/observable-terminal/client";
-import { isWorkspacePaneVisible, type WorkspaceClientModule } from "@atelier/shared";
+import { isWorkspacePaneVisible, type WorkspaceClientControllerConstructor, type WorkspaceClientModule } from "@atelier/shared";
 import { terminalViewKey, terminalIdFromViewKey } from "../shared.ts";
 import { TerminalViewerRegistry } from "./terminal-viewer-registry.ts";
-
-type StimulusControllerConstructor = new (...args: never[]) => { element: Element };
 
 const terminals = new TerminalViewerRegistry();
 const pendingTerminalControl = new Set<string>();
@@ -114,7 +112,7 @@ function stopTerminal(workspaceId: string, terminalId: string): void {
   terminals.cancel(key);
 }
 
-function createTerminalSessionPickerController(Controller: StimulusControllerConstructor) {
+function createTerminalSessionPickerController(Controller: WorkspaceClientControllerConstructor) {
   return class TerminalSessionPickerController extends Controller {
     static targets = ["input", "item"];
     declare readonly inputTarget: HTMLInputElement;
@@ -130,23 +128,79 @@ function createTerminalSessionPickerController(Controller: StimulusControllerCon
   };
 }
 
-function createTerminalPaneController(Controller: StimulusControllerConstructor) {
+function createTerminalPaneController(Controller: WorkspaceClientControllerConstructor) {
   return class TerminalPaneController extends Controller {
     static values = { workspaceId: String, id: String };
     declare readonly element: HTMLElement;
     declare readonly workspaceIdValue: string;
     declare readonly idValue: string;
+    private readonly viewport = window.visualViewport!;
+    private readonly layoutObserver = new ResizeObserver(() => this.syncViewportHeight());
+    private terminalTouch?: Touch;
+
+    readonly syncViewportHeight = (): void => {
+      // Keep the accessory row above the keyboard without resizing the app shell.
+      // offsetTop matters when the browser pans the visual viewport to the input.
+      const bottom = this.viewport.offsetTop + this.viewport.height;
+      const height = Math.max(0, bottom - this.element.getBoundingClientRect().top);
+      this.element.style.setProperty("--terminal-viewport-height", `${height}px`);
+    };
+
     connect(): void {
+      this.viewport.addEventListener("resize", this.syncViewportHeight);
+      this.viewport.addEventListener("scroll", this.syncViewportHeight);
+      this.layoutObserver.observe(this.element.parentElement!);
+      this.syncViewportHeight();
       if (isWorkspacePaneVisible(this.element)) {
         void startTerminal(this.workspaceIdValue, this.idValue, { focus: document.hasFocus() });
       }
     }
 
     disconnect(): void {
+      this.viewport.removeEventListener("resize", this.syncViewportHeight);
+      this.viewport.removeEventListener("scroll", this.syncViewportHeight);
+      this.layoutObserver.disconnect();
+      this.terminalTouch = undefined;
+      this.element.style.removeProperty("--terminal-viewport-height");
       stopTerminal(this.workspaceIdValue, this.idValue);
     }
 
-    preserveTerminalFocus(event: PointerEvent): void {
+    startTerminalTouch(event: TouchEvent): void {
+      this.terminalTouch = event.touches.length === 1 ? event.touches[0] : undefined;
+    }
+
+    moveTerminalTouch(event: TouchEvent): void {
+      if (!this.isTerminalTap(event.touches[0]!)) this.cancelTerminalTouch();
+    }
+
+    cancelTerminalTouch(): void {
+      this.terminalTouch = undefined;
+    }
+
+    private isTerminalTap(touch: Touch): boolean {
+      const start = this.terminalTouch;
+      // Screen coordinates exclude keyboard-induced viewport panning.
+      return start !== undefined && touch.identifier === start.identifier
+        && Math.hypot(touch.screenX - start.screenX, touch.screenY - start.screenY) <= 10;
+    }
+
+    finishTerminalTouch(event: TouchEvent): void {
+      const tapped = event.touches.length === 0 && event.changedTouches.length === 1
+        && this.isTerminalTap(event.changedTouches[0]!);
+      this.cancelTerminalTouch();
+      if (!tapped) return;
+
+      // Gespenst focuses on pointerdown. iOS can undo that focus when the native
+      // touch finishes on the canvas. Own the completed tap, not blur events:
+      // suppress release-time activation and focus within this user gesture.
+      event.preventDefault();
+      terminals.active(terminalKey(this.workspaceIdValue, this.idValue))?.focus();
+    }
+
+    preserveTerminalFocus(event: MouseEvent): void {
+      if (event.button !== 0) return;
+      // Cancel only the focus transfer, not the touch/pointer activation: WebKit
+      // can suppress the accessory's native click after a cancelled pointerdown.
       event.preventDefault();
     }
 
