@@ -274,7 +274,7 @@
 .launch-composer-dialog .composer-surface { width: 100%; max-width: none; margin: 0; border: 0; border-top: 1px solid var(--line); border-radius: 0; box-shadow: none; }
 .launch-composer-dialog .composer-surface:focus-within { border-color: var(--line); }
 .launch-composer-dialog .composer-surface > form { min-height: 260px; }
-.launch-composer-dialog .composer-input { min-height: 210px; padding-top: 12px; }
+.launch-composer-dialog .composer-input { min-height: 260px; padding-top: 12px; overflow-y: auto; }
 
 /* Transcript + tool-owned renderers */
 .agent-item { position: relative; width: 100%; }
