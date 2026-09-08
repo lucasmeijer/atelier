@@ -23,8 +23,14 @@ describe("transcription settings", () => {
   test("defaults to multilingual Nemotron and persists another supported model", async () => {
     await useTemporaryDataDirectory();
     expect(await readTranscriptionModel()).toBe(defaultTranscriptionModel);
-    await writeTranscriptionModel("parakeet-tdt");
-    expect(await readTranscriptionModel()).toBe("parakeet-tdt");
+    await writeTranscriptionModel("nemotron-en");
+    expect(await readTranscriptionModel()).toBe("nemotron-en");
+  });
+
+  test.each(["parakeet-tdt", "parakeet-ctc"])("uses the default for retired %s selections", async (model) => {
+    const root = await useTemporaryDataDirectory();
+    await writeFile(join(root, "transcription.json"), JSON.stringify({ model }));
+    expect(await readTranscriptionModel()).toBe(defaultTranscriptionModel);
   });
 
   test("rejects malformed persisted settings", async () => {
