@@ -24,7 +24,7 @@ export interface CatalogueEntry {
   contract: string;
   imports?: Record<string, string>;
   sources?: string[];
-  /** Compare the same specimen with and without the popular mobile group marker. */
+  /** Compare the same specimen with and without the popular group marker. */
   compareButtonSizes?: boolean;
   examples: { title: string; render: (idSuffix?: string) => string }[];
 }
@@ -76,7 +76,7 @@ export const entries: CatalogueEntry[] = [
     title: "Button",
     when: "An action, not navigation. Primary for the main action, secondary for supporting actions, danger for destructive actions.",
     contract:
-      "Choose caption OR icon-only with a mandatory accessible label. On narrow screens (≤700px) or coarse pointers, regular icon-only controls are 42.5px with 17.85px icons. Add data-mobile-popular to a button (via attributesHtml) or containing group for 62.5px controls and 26.25px icons. Popular caption buttons also have a 62.5px minimum height; ordinary caption buttons and desktop sizes are unchanged. Native type and disabled are explicit. Do not add classes or override component anatomy via attributesHtml.",
+      "Choose caption OR icon-only with a mandatory accessible label. On narrow screens (≤700px) or coarse pointers, regular icon-only controls are 42.5px with 17.85px icons. Add data-popular-button to a button (via attributesHtml) or containing group for 62.5px controls and 26.25px icons. Popular caption buttons also have a 62.5px minimum height; ordinary caption buttons are unchanged. Desktop popular sizes are fixed: 38.24px icon controls with 20.59px icons, and 36.93px minimum-height caption controls with 18.38px icons. Native type and disabled are explicit. Do not add classes or override component anatomy via attributesHtml.",
     imports: { button: "buttonHtml", icons: "Icons" },
     sources: ["button/button-content.ts"],
     examples: [

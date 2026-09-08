@@ -47,6 +47,12 @@
 .button svg { width: 14px; height: 14px; flex: 0 0 auto; fill: none; stroke: currentColor; stroke-width: 2; stroke-linecap: round; stroke-linejoin: round; }
 .button__icon { display: inline-flex; align-items: center; justify-content: center; }
 
+/* Popular desktop sizes; the marker also applies to descendant buttons. */
+.button:where([data-popular-button], [data-popular-button] *) { min-height: 36.93px; }
+.button.icon-only:where([data-popular-button], [data-popular-button] *) { width: 38.24px; height: 38.24px; }
+.button:where([data-popular-button], [data-popular-button] *) svg { width: 18.38px; height: 18.38px; }
+.button.icon-only:where([data-popular-button], [data-popular-button] *) svg { width: 20.59px; height: 20.59px; }
+
 @media (max-width: 700px), (pointer: coarse) {
   .button { height: 44px; padding-inline: 16px; max-width: 100%; min-width: 0; }
   .button:not(.icon-only) { height: auto; min-height: 44px; padding-block: 10px; white-space: normal; overflow-wrap: anywhere; }
@@ -56,12 +62,12 @@
   .button svg { width: 20px; height: 20px; }
   .button.icon-only svg { width: 17.85px; height: 17.85px; }
 
-  /* Mark a button or containing group; only mobile/touch sizing changes. */
-  .button:where([data-mobile-popular], [data-mobile-popular] *),
-  .button:not(.icon-only):where([data-mobile-popular], [data-mobile-popular] *) { min-height: 62.5px; }
-  .button.icon-only:where([data-mobile-popular], [data-mobile-popular] *) { width: 62.5px; height: 62.5px; }
-  .button:where([data-mobile-popular], [data-mobile-popular] *) svg,
-  .button.icon-only:where([data-mobile-popular], [data-mobile-popular] *) svg { width: 26.25px; height: 26.25px; }
+  /* Preserve the mobile/touch popular sizes. */
+  .button:where([data-popular-button], [data-popular-button] *),
+  .button:not(.icon-only):where([data-popular-button], [data-popular-button] *) { min-height: 62.5px; }
+  .button.icon-only:where([data-popular-button], [data-popular-button] *) { width: 62.5px; height: 62.5px; }
+  .button:where([data-popular-button], [data-popular-button] *) svg,
+  .button.icon-only:where([data-popular-button], [data-popular-button] *) svg { width: 26.25px; height: 26.25px; }
 }
 
 /* Pressed controls and current navigation destinations share selected paint. */

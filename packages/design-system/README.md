@@ -88,12 +88,13 @@ Comparison-ring Action links retain a dim full-circle track beneath the colored
 arcs, including when both values are zero.
 
 Touch controls keep their target sizes in landscape as well as portrait.
-For frequently used actions, add `data-mobile-popular` to the button's
+For frequently used actions, add `data-popular-button` to the button's
 `attributesHtml` or a containing group (including ButtonGroup's `attributesHtml`).
 At ≤700px or with a coarse pointer, regular icon-only buttons are 42.5px with
 17.85px icons; popular ones are 62.5px with 26.25px icons. Popular caption buttons
 also get a 62.5px minimum height (for example, composer quick launches). Untagged
-caption button minimum heights and desktop sizing are unchanged. Caption controls,
+caption button minimum heights are unchanged. Desktop popular controls have fixed sizes: icon buttons are 38.24px with 20.59px icons,
+and caption buttons have a 36.93px minimum height with 18.38px icons. Caption controls,
 including activity, progress and copy buttons, wrap long labels on mobile; perimeter
 indicators follow the resulting button height. The tag applies to all descendant
 buttons, so keep groups scoped to the actions that should be large. Action

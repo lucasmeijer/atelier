@@ -41,7 +41,7 @@ export function renderSlashCommandCatalog(templates: readonly PromptTemplate[], 
       attributesHtml: `data-agent-completion-option data-agent-quick-launch data-completion-kind="quick-launch" data-command-trigger="${escapeHtml(template.trigger)}"${hotkeyData}`,
     });
   }).join("");
-  const quickLaunchCatalog = quickLaunches ? `<div class="agent-quick-launches" data-mobile-popular role="group" aria-label="Quick launch">${quickLaunches}</div>` : "";
+  const quickLaunchCatalog = quickLaunches ? `<div class="agent-quick-launches" data-popular-button role="group" aria-label="Quick launch">${quickLaunches}</div>` : "";
   const slashCommandCatalog = autocompleteHtml({ kind: "results", label: "Slash commands", contentHtml: commands.map((command, index) => {
     const template = command.prompt !== undefined;
     return actionItemHtml({

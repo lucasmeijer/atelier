@@ -14,7 +14,7 @@ export function renderTranscriptionComposerControl(): string {
     state: "initial",
     initialContent: { kind: "html", html: `${microphoneIcon}<canvas data-transcription-composer-target="waveform" aria-hidden="true"></canvas>` },
     progressContent: { kind: "html", html: '<i class="activity-spinner" aria-hidden="true"></i>' },
-    attributesHtml: 'data-mobile-popular aria-pressed="false" data-state="idle" data-transcription-composer-target="button" data-action="transcription-composer#toggle"',
+    attributesHtml: 'data-popular-button aria-pressed="false" data-state="idle" data-transcription-composer-target="button" data-action="transcription-composer#toggle"',
   });
   return `${button}<span class="transcription-status" data-transcription-composer-target="status" aria-live="polite">Dictate</span>`;
 }

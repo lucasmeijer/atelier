@@ -273,7 +273,7 @@ export function createWebApp(deps: WebAppDeps): WebApp {
       type: "submit",
       variant: "secondary",
       content: { kind: "icon-only", iconHtml: Icons.Close, label: "Close launch composer" },
-      attributesHtml: "data-mobile-popular",
+      attributesHtml: "data-popular-button",
     });
     return `<turbo-frame id="${launchComposerFrameId}"><dialog class="launch-composer-dialog" data-controller="launch-composer-dialog submit-shortcut" data-launch-composer-dialog-discard-url-value="/agent-attachment-drafts/${encodeURIComponent(draftId)}/discard">
   <header class="launch-composer-header">
