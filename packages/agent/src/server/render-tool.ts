@@ -116,7 +116,7 @@ export function renderToolCard(ctx: AgentRenderContext, key: string, original: T
   const tool = toolForRender(original);
   const label = { kind: "text" as const, text: toolSummaryText(tool) };
   const labelOptions = {
-    leadingHtml: statusHtml(tool.status),
+    leadingHtml: `<span class="agent-tool-status">${statusHtml(tool.status)}</span>`,
     labelId: ids.itemSummaryContent(ctx, key),
     trailingHtml: `<span id="${ids.itemSummaryMetadata(ctx, key)}">${toolSummaryMetadataHtml(tool)}</span>`,
   };

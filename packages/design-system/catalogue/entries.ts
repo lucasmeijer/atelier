@@ -222,20 +222,29 @@ export const entries: CatalogueEntry[] = [
     title: "Action item",
     when: "Rows in menus, navigation, trees and action lists. Use compound when a row has separately actionable trailing controls.",
     contract:
-      "Choose native buttons or anchors for actions. Caller owns roles, href/type, selection and integration attributes. Never nest buttons. Labels and descriptions are plain text. leadingHtml and trailingHtml fill bounded icon/status and metadata slots; neither can replace the label anatomy. tone: danger is the semantic destructive treatment. Long labels reveal on engagement.",
+      "Choose native buttons or anchors for actions. Caller owns roles, href/type, selection and integration attributes. Never nest buttons. Single rows retain their content spacing with primary: false, without gaining primary-action styling. Labels and descriptions are plain text. leadingHtml and trailingHtml fill bounded icon/status and metadata slots; neither can replace the label anatomy. tone: danger is the semantic destructive treatment. Long labels reveal on engagement.",
     imports: {
       "action-item": "actionItemHtml",
       "copy-button": "copyButtonHtml",
     },
     examples: [
       {
-        title: "Single · disabled · compound long label",
+        title: "Single · semantic · disabled · compound long label",
         render: () =>
           '<div class="action-list">' +
           actionItemHtml({
             kind: "single",
             element: { tag: "button", attributesHtml: 'type="button"' },
             label: { kind: "text", text: "Open workspace" },
+          }) +
+          actionItemHtml({
+            kind: "single",
+            primary: false,
+            element: { tag: "div" },
+            leadingHtml: '<span class="status-dot running" aria-label="In progress"></span>',
+            label: { kind: "text", text: "Reading workspace files" },
+            description: "Non-interactive single row with the same content spacing.",
+            trailingHtml: "In progress",
           }) +
           actionItemHtml({
             kind: "single",

@@ -30,7 +30,7 @@ interface ActionItemContent {
 interface SingleActionItemOptions extends ActionItemContent {
   kind: "single";
   element: ActionItemElement;
-  /** Most action items are their own primary action. Set false for semantic rows such as treeitems. */
+  /** Most action items are their own primary action. Set false for non-primary semantic rows; single-row layout is preserved. */
   primary?: boolean;
 }
 
@@ -60,7 +60,7 @@ function contentHtml(options: ActionItemContent): string {
 export function actionItemHtml(options: ActionItemOptions): string {
   const content = contentHtml(options);
   if (options.kind === "single") {
-    return elementHtml(options.element, classNames("action-item", options.tone === "danger" && "is-danger", options.primary === false ? undefined : "action-item__primary"), content);
+    return elementHtml(options.element, classNames("action-item", "action-item--single", options.tone === "danger" && "is-danger", options.primary === false ? undefined : "action-item__primary"), content);
   }
 
   const primary = elementHtml(options.primary, "action-item__primary", content);

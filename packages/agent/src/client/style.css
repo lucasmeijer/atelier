@@ -300,7 +300,10 @@
 }
 
 .agent-tool { margin: 0; border: 0; border-radius: 0; background: transparent; overflow: visible; }
-.agent-tool > summary.action-item { width: fit-content; max-width: 100%; }
+.agent-tool > .action-item { width: fit-content; max-width: 100%; }
+/* Reserve the absent disclosure slot while a tool has no detail to open. */
+.agent-tool-summary-only > .action-item > .action-item__icon::before { content: ""; width: 16px; flex: 0 0 auto; }
+.agent-tool-status { display: inline-flex; width: 8px; flex: 0 0 auto; align-items: center; justify-content: center; }
 .agent-tool-detail-host { display: contents; }
 .agent-tool-args, .agent-tool-elapsed { margin-inline-start: 8px; }
 .agent-tool-args { color: var(--text-muted); }
