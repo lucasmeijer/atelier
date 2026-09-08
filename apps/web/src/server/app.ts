@@ -359,7 +359,7 @@ export function createWebApp(deps: WebAppDeps): WebApp {
         title: workspaceTitle(entry),
         active: entry.id === activeWorkspaceId,
         state: entry.phase === "starting"
-          ? "starting"
+          ? (provisioningContinuations.has(entry.id) ? "awaiting_continue" : "starting")
           : deletionStatus === "checking" || deletionStatus === "deleting"
             ? "deleting"
             : deletionStatus === "blocked"
@@ -614,7 +614,10 @@ export function createWebApp(deps: WebAppDeps): WebApp {
 
   function waitForProvisioningContinue(workspaceId: string, stepId: string): Promise<void> {
     if (provisioningContinuations.has(workspaceId)) throw new Error(`workspace ${workspaceId} is already waiting for provisioning confirmation`);
-    return new Promise((resolve) => provisioningContinuations.set(workspaceId, { stepId, resolve }));
+    return new Promise((resolve) => {
+      provisioningContinuations.set(workspaceId, { stepId, resolve });
+      broadcastWorkspacePaneCollections();
+    });
   }
 
   function startWorkspaceProvisioning(id: string, options: { init?: WorkspaceInitInstruction; context?: WorkspaceCreationContext; title?: string } = {}): void {
@@ -816,6 +819,7 @@ export function createWebApp(deps: WebAppDeps): WebApp {
     if (entry.phase !== "starting" || !pending) throw new AtelierCoreError("workspace_not_ready", `workspace ${id} is not waiting for provisioning confirmation`);
     provisioningContinuations.delete(id);
     pending.resolve();
+    broadcastWorkspacePaneCollections();
     if (requestAcceptsJson(request)) return jsonResponse({ continued: true, stepId: pending.stepId });
     return turboStreamResponse("");
   }

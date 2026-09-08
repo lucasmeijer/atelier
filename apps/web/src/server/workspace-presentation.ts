@@ -18,7 +18,7 @@ export type WorkViewAvailability =
   | { phase: "reconnecting"; detail?: string }
   | { phase: "unavailable"; detail: string; recoveryHtml?: string };
 
-export type WorkspaceActionState = "starting" | "deleting" | "requires_delete_confirmation" | "idle";
+export type WorkspaceActionState = "starting" | "awaiting_continue" | "deleting" | "requires_delete_confirmation" | "idle";
 
 export interface WorkspacePaneEntry {
   id: string;
@@ -127,6 +127,9 @@ function workspaceStatusSlot(content: string): string {
 }
 
 function renderWorkspaceRowStatus(workspace: WorkspacePaneEntry): string {
+  if (workspace.state === "awaiting_continue") {
+    return workspaceStatusSlot('<i class="status-dot attention at-edge" role="img" aria-label="Workspace startup needs attention" title="Workspace startup needs attention"></i>');
+  }
   if (workspace.state === "starting" || workspace.state === "deleting") {
     const label = workspace.state === "starting" ? "Workspace starting" : "Workspace deleting";
     return workspaceStatusSlot(`<i class="status-spinner sm fixed-shell-workspace-busy" aria-label="${label}" title="${label}"></i>`);
