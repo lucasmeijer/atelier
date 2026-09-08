@@ -78,8 +78,9 @@ function renderWorkingSection(ctx: AgentRenderContext, section: WorkingTranscrip
   const active = section.completedAt === undefined && section.stoppedAt === undefined;
   const summary = renderWorkingSummary(ctx, section);
   const revealing = Boolean(ctx.revealTarget && section.items.some((item) => item.anchor === ctx.revealTarget || item.key === ctx.revealTarget));
-  const lazy = !active && !section.live && !revealing;
-  const attributes = lazy ? ' data-controller="agent-lazy-detail" data-action="toggle->agent-lazy-detail#load mouseenter->agent-lazy-detail#load"' : revealing ? " open" : "";
+  const showError = section.items.some((item) => item.type === "error");
+  const lazy = !active && !section.live && !revealing && !showError;
+  const attributes = lazy ? ' data-controller="agent-lazy-detail" data-action="toggle->agent-lazy-detail#load mouseenter->agent-lazy-detail#load"' : revealing || showError ? " open" : "";
   const items = lazy ? lazyTranscriptItemFrame(ctx, section.key) : renderWorkingItems(ctx, section, { live: section.live, open: active });
   return `<details class="agent-working${active ? " active" : ""}" id="${ids.item(ctx, section.key)}"${attributes}>${summary}${items}</details>`;
 }

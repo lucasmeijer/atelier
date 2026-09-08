@@ -5,7 +5,7 @@ import { RealAgentRuntime } from "../../src/server/real-agent-runtime.ts";
 import type { AgentStatsView } from "../../src/server/render-composer.ts";
 import { AgentServiceTierState } from "../../src/server/service-tier.ts";
 import { subscribeWorkspaceViewBusy } from "../../src/server/workspace-view-busy.ts";
-import type { TranscriptItem } from "../../src/server/transcript.ts";
+import { buildTranscript, type TranscriptItem } from "../../src/server/transcript.ts";
 
 interface Deferred<Value> {
   promise: Promise<Value>;
@@ -425,6 +425,7 @@ test("retry boundaries remain continuously busy and only the terminal Agent end 
     emit({ type: "agent_start" });
     const notificationTurn = currentNotificationTurn(runtime);
     expect(notificationTurn).toBeDefined();
+    emit({ type: "message_end", message: { role: "assistant", content: [], stopReason: "error", errorMessage: "Temporary provider failure" } });
     emit({ type: "agent_end", willRetry: true });
     await Bun.sleep(0);
     expect(busy).toEqual([true]);
@@ -762,4 +763,41 @@ test("a joining snapshot absorbs queued paced text at its actual capture boundar
 
   subscribing.unsubscribe();
   firstSubscription.unsubscribe();
+});
+
+for (const failure of [
+  { stopReason: "error", errorMessage: "Expected a provider request object." },
+  { stopReason: "error", errorMessage: undefined },
+  { stopReason: "aborted", errorMessage: undefined },
+  { stopReason: "aborted", errorMessage: "Request cancelled" },
+] as const) {
+  test(`assistant ${failure.stopReason}: ${failure.errorMessage ?? "no detail"} is published once and agrees with reload`, async () => {
+    const { session, emit } = fakeSession(deferred());
+    const runtime = runtimeFor(session);
+    emit({ type: "agent_start" });
+    const message = { role: "assistant", content: [], ...failure };
+    emit({ type: "message_update", assistantMessageEvent: { type: "error", error: message }, message });
+    emit({ type: "message_end", message });
+    const live = runtime.inspectLiveItems().flatMap((item) => item.type === "working" ? item.items : [item]);
+    const reloaded = buildTranscript([{ kind: "assistant", id: "failure", parts: [], timestamp: 1, ...failure }]);
+    expect(live.filter((item) => item.type === "error").map((item) => item.text))
+      .toEqual(reloaded.filter((item) => item.type === "error").map((item) => item.text));
+    expect(live.filter((item) => item.type === "error")).toHaveLength(1);
+    emit({ type: "agent_end", willRetry: false });
+    expect(runtime.inspectLiveItems()).toEqual([]);
+  });
+}
+
+
+test("provider failure preserves streamed partial content as non-final activity", () => {
+  const { session, emit } = fakeSession(deferred());
+  const runtime = runtimeFor(session);
+  emit({ type: "agent_start" });
+  emit({ type: "message_update", assistantMessageEvent: { type: "text_delta", contentIndex: 0, partial: { content: [{ type: "text", text: "Partial response" }], stopReason: "pending" }, delta: "Partial response" } });
+  emit({ type: "message_end", message: { role: "assistant", content: [{ type: "text", text: "Partial response" }], stopReason: "error", errorMessage: "Connection lost" } });
+  const items = runtime.inspectLiveItems().flatMap((item) => item.type === "working" ? item.items : [item]);
+  expect(items.filter((item) => item.type === "text").map((item) => ({ text: item.text, final: Boolean(item.final) })))
+    .toEqual([{ text: "Partial response", final: false }]);
+  expect(items.filter((item) => item.type === "error").map((item) => item.text)).toEqual(["Connection lost"]);
+  emit({ type: "agent_end", willRetry: false });
 });

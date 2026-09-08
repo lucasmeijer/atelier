@@ -554,7 +554,9 @@ export abstract class BaseAgentRuntime implements WorkspaceAgentRuntime {
   protected liveNote(text: string, tone: "system" | "summary" | "error"): void {
     const live = this.liveEnsure();
     this.closeOpenItem();
-    const item: TranscriptItem = { type: "note", key: this.liveKey(live, live.items.length, "note"), text, tone };
+    const item: TranscriptItem = tone === "error"
+      ? { type: "error", key: this.liveKey(live, live.items.length, "error"), text }
+      : { type: "note", key: this.liveKey(live, live.items.length, "note"), text, tone };
     live.items.push(item);
     live.lastActivityAt = Date.now();
     this.appendLiveItem(item, { live: true });

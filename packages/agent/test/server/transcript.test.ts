@@ -89,3 +89,17 @@ describe("transcript", () => {
     expect(formatTokens(1000)).toBe("1k");
   });
 });
+
+test("empty provider failures retain their detail and stop Working without a final response", () => {
+  const items = buildTranscript([
+    { kind: "user", id: "u", text: "go", images: [], timestamp: 1000 },
+    { kind: "assistant", id: "a", parts: [], stopReason: "error", errorMessage: "Expected a provider request object.", timestamp: 1100 },
+  ]);
+  expect(items.map((item) => item.type)).toEqual(["user", "working"]);
+  const working = items[1];
+  expect(working?.type).toBe("working");
+  if (working?.type !== "working") throw new Error("Missing working section");
+  expect(working.stoppedAt).toBe(1100);
+  expect(working.completedAt).toBeUndefined();
+  expect(working.items).toEqual([{ type: "error", key: "a:error", text: "Expected a provider request object.", timestamp: 1100 }]);
+});

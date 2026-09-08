@@ -46,6 +46,11 @@ export type TranscriptRecord =
   | { kind: "toolResult"; callId: string; text: string; images: SessionImageRef[]; isError: boolean; timestamp: number; details?: ToolViewDetails }
   | { kind: "note"; id?: string; text: string; tone: NoteTone; timestamp?: number };
 
+// Shared by live completion and persisted transcript reconstruction.
+export function assistantErrorText(message: { stopReason: string; errorMessage?: string }): string | undefined {
+  return message.errorMessage || (message.stopReason === "aborted" ? "Run aborted" : message.stopReason === "error" ? "Provider request failed" : undefined);
+}
+
 export type NoteTone = "system" | "summary" | "warning" | "error";
 
 const toolViewDetailsSchema = Type.Object({
@@ -216,8 +221,8 @@ export function buildTranscript(records: TranscriptRecord[]): TranscriptItem[] {
         if (working) working.completedAt = lastWorkingActivityAt;
         working = undefined;
       } else {
-        if (record.errorMessage) appendActivity({ type: "error", key: `${record.id}:error`, text: record.errorMessage }, record.timestamp);
-        else if (record.stopReason === "aborted") appendActivity({ type: "error", key: `${record.id}:aborted`, text: "Run aborted" }, record.timestamp);
+        const errorText = assistantErrorText(record);
+        if (errorText) appendActivity({ type: "error", key: `${record.id}:${record.stopReason === "aborted" && !record.errorMessage ? "aborted" : "error"}`, text: errorText }, record.timestamp);
         if (record.stopReason === "error" || record.stopReason === "aborted") stopWorking(record.timestamp);
       }
       continue;

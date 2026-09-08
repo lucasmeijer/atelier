@@ -24,6 +24,7 @@ import { recordsFromSessionEntries, sessionContentImages } from "./session-recor
 import { replaceWorkspaceAgentSession, type WorkspaceAgentConversationInfo } from "./session-store.ts";
 import { renderAgentSessionTree, updateAgentSessionTreeLabel, type TreeFilterMode } from "./session-tree.ts";
 import {
+  assistantErrorText,
   buildTranscript,
   finalAssistantText,
   isFinalAssistantMessage,
@@ -275,6 +276,10 @@ export class RealAgentRuntime extends BaseAgentRuntime {
             this.liveFinal(finalAssistantText(message.content));
           } else {
             this.closeOpenItem();
+            // Publish only at message_end: the streaming error update describes
+            // the same failed message, and retries have their own completions.
+            const errorText = assistantErrorText(message);
+            if (errorText) this.liveNote(errorText, "error");
           }
           if (message.stopReason !== "aborted" && message.stopReason !== "error") {
             const miss = detectCacheMiss(this.session.sessionManager.getBranch(), message, this.session.modelRuntime);
