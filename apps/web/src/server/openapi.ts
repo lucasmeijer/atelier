@@ -50,6 +50,7 @@ export function atelierOpenApi(commands: WorkspaceModuleCommandHandler[], contri
   const agentMessageResponses = {
     ...jsonResponse("Message accepted", { $ref: "#/components/schemas/AgentStateEnvelope" }, "202"),
     "200": { description: "Agent command completed", content: { "application/json": { schema: { $ref: "#/components/schemas/AgentStateEnvelope" } } } },
+    "307": { description: "/park redirects to the workspace park operation, preserving the POST method and Accept header", headers: { Location: { schema: { type: "string" } } } },
     "422": { description: "The submission has no prompt or completed attachment", content: { "application/json": { schema: { $ref: "#/components/schemas/Error" } } } },
   };
   return {
@@ -104,7 +105,7 @@ export function atelierOpenApi(commands: WorkspaceModuleCommandHandler[], contri
       "/workspaces/{id}/work-views/{key}/attention/request": { post: { summary: "Present a Work view and request Attention", parameters: [workspaceId, { name: "key", in: "path", required: true, schema: { type: "string" } }], responses: jsonResponse("Attention requested", { type: "object" }) } },
       "/workspaces/{id}/work-views/close": { post: { summary: "Close a typed Work view", parameters: [workspaceId], requestBody: jsonBody(closeWorkViewRequestSchema), responses: jsonResponse("Work view closed", { $ref: "#/components/schemas/WorkViewsEnvelope" }) } },
       "/workspaces/{id}/agents/{conversationId}/close": closeAgentConversationPath,
-      "/workspaces/{id}/park": { post: { summary: "Park a workspace", parameters: [workspaceId], responses: jsonResponse("Workspace parked", { type: "object" }) } },
+      "/workspaces/{id}/park": { post: { summary: "Park a workspace", parameters: [workspaceId, { name: "force", in: "query", schema: { type: "string", enum: ["1"] }, description: "Close terminal and VS Code views before parking. Without confirmation, returns 409 if these views are open." }], responses: { ...jsonResponse("Workspace parked", { type: "object" }), "409": errorResponse } } },
       "/workspaces/{id}/unpark": { post: { summary: "Unpark a workspace", parameters: [workspaceId], responses: jsonResponse("Workspace unparked", { type: "object" }) } },
       "/workspaces/{id}/delete": { post: { summary: "Delete a workspace", parameters: [workspaceId], requestBody: jsonBody({ type: "object", properties: { force: { type: "boolean" } }, additionalProperties: false }), responses: jsonResponse("Workspace deletion scheduled or blocked", { type: "object" }) } },
       "/workspaces/{id}/agents/{conversationId}/messages": { post: { summary: "Submit or steer an agent message", parameters: [workspaceId, agentConversationId], requestBody: jsonBody({ type: "object", required: ["text"], properties: { text: { type: "string" }, mode: { type: "string", enum: ["send", "steer"] } }, additionalProperties: false }), responses: agentMessageResponses } },

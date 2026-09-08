@@ -136,6 +136,10 @@ Navigate an existing Browser Work view with `POST /workspaces/:id/browser/:brows
 
 Open Work-view identity, order, and Attention are server-persistent. Active destinations, pane visibility, and Work-pane width are browser-local.
 
+The Agent `/park` message responds with a `307` redirect to the workspace park operation.
+Follow redirects while preserving the POST method and Accept header (for example, `curl -L`).
+Confirmation is returned only to that requester; JSON clients receive `409` when confirmation is needed.
+
 Rename with `POST /workspaces/:id/sidebar-title` and `{ "title": "..." }`. Park, unpark, and delete use the corresponding existing workspace UI routes with `Accept: application/json`.
 
 ## Control an agent

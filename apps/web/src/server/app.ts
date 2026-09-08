@@ -50,7 +50,7 @@ import { atelierOpenApi } from "./openapi.ts";
 import { parseCloseWorkViewRequest, parseReorderWorkViewRequest } from "./work-view-api.ts";
 import { Type } from "typebox";
 import { Value } from "typebox/value";
-import { agentTabsTurboStream, openWorkViewTurboStream, presentWorkViewTurboStream, removeWorkspaceResidentTurboStream, renderAgentBodyFrame, renderAtelierBar, renderMobileWorkspaceBar, renderWorkViewBodyFrame, renderWorkspaceDeletionPresentation, renderWorkspacePane, renderWorkspacePresentation, selectAgentTurboStream, workspacePaneCollectionsTurboStream, workspacePaneOnboardingState, workspacePreparationInvalidatedTurboStream, workspacePresentationDomId, workViewsTurboStream, type AgentPaneContribution, type WorkPaneContribution, type WorkspacePaneEntry, type WorkspacePanePresentation, type WorkspacePresentation as FixedWorkspacePresentation } from "./workspace-presentation.ts";
+import { agentTabsTurboStream, openWorkViewTurboStream, presentWorkViewTurboStream, removeWorkspaceResidentTurboStream, renderAgentBodyFrame, renderAtelierBar, renderMobileWorkspaceBar, renderWorkViewBodyFrame, renderWorkspaceDeletionPresentation, renderWorkspaceParkConfirmation, dismissWorkspaceParkConfirmationTurboStream, renderWorkspacePane, renderWorkspacePresentation, selectAgentTurboStream, workspacePaneCollectionsTurboStream, workspacePaneOnboardingState, workspacePreparationInvalidatedTurboStream, workspacePresentationDomId, workViewsTurboStream, type AgentPaneContribution, type WorkPaneContribution, type WorkspacePaneEntry, type WorkspacePanePresentation, type WorkspacePresentation as FixedWorkspacePresentation } from "./workspace-presentation.ts";
 import type { CableBroadcastOptions } from "./cable.ts";
 import { jsonResponse, problemJsonResponse, response, turboReplaceStream, turboUpdateStream, wantsTurboStream } from "./http-responses.ts";
 import { createPageLayout } from "./page-layout.ts";
@@ -856,33 +856,44 @@ export function createWebApp(deps: WebAppDeps): WebApp {
     return turboStreamResponse(currentDeletionStream(id));
   }
 
-  async function updateWorkspaceParkedState(id: string, parked: boolean): Promise<string> {
-    const entry = requireWorkspace(id);
-    if (entry.phase !== "ready") throw new AtelierCoreError("workspace_not_ready", `workspace ${id} is not ready`);
-    if (entry.parked !== parked) {
-      await persistWorkspaceParked(id, parked);
-      suppressParkedStateCallbacks = true;
-      registry.setParked(id, parked);
-      suppressParkedStateCallbacks = false;
-    }
-    const parkedResident = parked ? removeWorkspaceResidentTurboStream(id) : "";
-    const stateStream = `${workspacePaneCollectionsTurboStream(await workspacePaneCollections(""))}${parkedResident}`;
-    broadcastShell(stateStream);
-    return stateStream;
+  async function requestWorkspaceParkedState(id: string, parked: boolean, force = false): Promise<
+    { kind: "confirmation"; workViews: WorkspaceWorkViewState[] } | { kind: "updated"; stream: string }
+  > {
+    return await serializePresentationMutation(id, async () => {
+      const entry = requireWorkspace(id);
+      if (entry.phase !== "ready") throw new AtelierCoreError("workspace_not_ready", `workspace ${id} is not ready`);
+      const affected = parked ? (await workspacePresentationBundle(id)).storedWorkViews.filter(({ reference }) => reference.type === "terminal" || reference.type === "vscode") : [];
+      if (affected.length && !force) return { kind: "confirmation", workViews: affected };
+      for (const { reference } of affected) await closeWorkView(id, reference);
+      if (entry.parked !== parked) {
+        await persistWorkspaceParked(id, parked);
+        suppressParkedStateCallbacks = true;
+        registry.setParked(id, parked);
+        suppressParkedStateCallbacks = false;
+      }
+      const parkedResident = parked ? `${removeWorkspaceResidentTurboStream(id)}${dismissWorkspaceParkConfirmationTurboStream(id)}` : "";
+      const stream = `${workspacePaneCollectionsTurboStream(await workspacePaneCollections(""))}${parkedResident}`;
+      broadcastShell(stream);
+      return { kind: "updated", stream };
+    });
   }
-
-  deps.events?.on("workspace_park_requested", async ({ workspaceId }) => {
-    await updateWorkspaceParkedState(workspaceId, true);
-  });
 
   async function parkWorkspaceEndpoint(id: string, parked: boolean, request: Request): Promise<Response> {
     const entry = requireWorkspace(id);
     if (entry.phase !== "ready") return requestAcceptsJson(request)
       ? jsonResponse({ error: { code: "workspace_not_ready", message: `workspace ${id} is not ready` } }, { status: 409 })
       : wantsTurboStream(request) ? turboStreamResponse("", { status: 409 }) : response("Workspace is not ready", { status: 409 });
-    const stateStream = await updateWorkspaceParkedState(id, parked);
+    const force = new URL(request.url).searchParams.get("force") === "1";
+    const result = await requestWorkspaceParkedState(id, parked, force);
+    if (result.kind === "confirmation") {
+      if (requestAcceptsJson(request)) return jsonResponse({ error: { code: "workspace_park_confirmation_required", message: "Terminal and VS Code sessions cannot recover after parking." }, workViews: result.workViews }, { status: 409 });
+      const confirmation = renderWorkspaceParkConfirmation(id, workspaceTitle(entry));
+      return wantsTurboStream(request)
+        ? turboStreamResponse(turboUpdateStream(workspaceModuleModalFrameId, confirmation))
+        : await surfacePage({ kind: "module-modal", dialogHtml: confirmation });
+    }
     if (requestAcceptsJson(request)) return jsonResponse({ workspace: { id, parked } });
-    if (wantsTurboStream(request)) return turboStreamResponse(stateStream);
+    if (wantsTurboStream(request)) return turboStreamResponse(result.stream);
     return Response.redirect(request.headers.get("referer") ?? "/", 303);
   }
 
@@ -981,6 +992,12 @@ export function createWebApp(deps: WebAppDeps): WebApp {
     return turboStreamResponse(responseStream);
   }
 
+  async function closeWorkView(workspaceId: string, reference: WorkspaceWorkViewReference): Promise<void> {
+    await workViewAdapterByType.get(reference.type)!.close?.({ workspaceId, reference });
+    await presentationStore.closeWorkView(workspaceId, reference);
+    registry.clearViewAttention(workspaceId, workViewKey(reference));
+  }
+
   async function closeWorkViewEndpoint(workspaceId: string, encodedReference: string, request: Request): Promise<Response> {
     // SAFETY: This value is validated or constructed by the server boundary immediately surrounding this use.
     const reference = JSON.parse(encodedReference) as WorkspaceWorkViewReference;
@@ -992,9 +1009,7 @@ export function createWebApp(deps: WebAppDeps): WebApp {
     const closedIndex = before.findIndex((view) => workViewKey(view.reference) === closedKey);
     const open = closedIndex >= 0;
     if (!open) throw new AtelierCoreError("work_view_not_found", `Work view is not open: ${workViewKey(parsed)}`);
-    await adapter.close?.({ workspaceId, reference: parsed });
-    await presentationStore.closeWorkView(workspaceId, parsed);
-    registry.clearViewAttention(workspaceId, closedKey);
+    await closeWorkView(workspaceId, parsed);
     const storedWorkViews = await presentationStore.listWorkViews(workspaceId);
     const workViews = await currentWorkPanePresentations(workspaceId);
     const successor = workViews[Math.min(closedIndex, workViews.length - 1)]?.key;

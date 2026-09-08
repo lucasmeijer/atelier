@@ -24,9 +24,8 @@ async function submitMessage(workspaceId: string, conversationId: string, reques
     return json ? Response.json({ agent: { conversationId, state: "idle" } }) : turboStreamResponse("");
   }
   if (text.trim() === "/park") {
-    await options.events?.emit("workspace_park_requested", { workspaceId });
     await removeInitialPromptDraft(workspaceId, conversationId);
-    return json ? Response.json({ agent: { conversationId, state: "idle" }, workspace: { id: workspaceId, parked: true } }) : turboStreamResponse("");
+    return new Response(null, { status: 307, headers: { Location: `/workspaces/${encodeURIComponent(workspaceId)}/park` } });
   }
   const compactCommand = parseCompactCommand(text);
   if (compactCommand) {

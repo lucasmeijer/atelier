@@ -1,5 +1,4 @@
 import { afterEach, beforeEach, describe, expect, test } from "bun:test";
-import { createAtelierEventBus } from "@atelier/core";
 import { addProject, isGitProjectInit } from "@atelier/projects";
 import {
   createTestApp,
@@ -238,18 +237,26 @@ describe("workspace lifecycle", () => {
     expect(registry.get("a")?.parked).toBe(true);
   });
 
-  test("application events can park a workspace", async () => {
-    const events = createAtelierEventBus();
-    const persisted: Array<{ id: string; parked: boolean }> = [];
-    const { registry } = createTestApp({
-      events,
-      persistParked: async (id, parked) => { persisted.push({ id, parked }); },
+  test("parking requires confirmation and force closes VS Code views while preserving other views", async () => {
+    const broadcasts: string[] = [];
+    const { app, registry } = createTestApp({ cable: { broadcast: (_topic, html) => { broadcasts.push(html); } } });
+    await registry.seed([{ id: "confirm-park", title: "Confirm park", parked: false }]);
+    const request = (path: string) => new Request(`http://test.local${path}`, {
+      method: "POST", headers: { accept: "application/json", "content-type": "application/json" }, body: "{}",
     });
-    await registry.seed([{ id: "event-park", title: "Park from slash command", parked: false }]);
-
-    await events.emit("workspace_park_requested", { workspaceId: "event-park" });
-
-    expect(registry.get("event-park")?.parked).toBe(true);
-    expect(persisted).toEqual([{ id: "event-park", parked: true }]);
+    await app.fetch(new Request("http://test.local/workspaces/confirm-park", { headers: { accept: "application/json" } }));
+    expect((await app.fetch(request("/workspaces/confirm-park/commands/vscode.open"))).status).toBe(200);
+    broadcasts.length = 0;
+    const blocked = await app.fetch(request("/workspaces/confirm-park/park"));
+    expect(blocked.status).toBe(409);
+    expect((await blocked.json()).workViews).toHaveLength(1);
+    expect(registry.get("confirm-park")?.parked).toBe(false);
+    expect(broadcasts).toEqual([]);
+    expect((await app.fetch(request("/workspaces/confirm-park/park?force=1"))).status).toBe(200);
+    expect(registry.get("confirm-park")?.parked).toBe(true);
+    await app.fetch(request("/workspaces/confirm-park/unpark"));
+    const detail = await (await app.fetch(new Request("http://test.local/workspaces/confirm-park", { headers: { accept: "application/json" } }))).json();
+    expect(detail.workspace.workViews.map((view: { reference: { type: string } }) => view.reference.type)).toEqual(["review"]);
   });
+
 });

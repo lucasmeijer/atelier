@@ -148,13 +148,17 @@ class WorkspaceNavigationController extends Controller<HTMLElement> {
   private async submitParkedState(form: HTMLFormElement): Promise<void> {
     const button = form.querySelector<HTMLButtonElement>("button[type='submit']")!;
     button.disabled = true;
-    const response = await fetch(form.action, {
-      method: "POST",
-      headers: cableRequestHeaders({ Accept: "text/vnd.turbo-stream.html" }),
-    });
-    if (!response.ok) throw new Error(`Could not update parked workspace: HTTP ${response.status}`);
-    const html = await response.text();
-    if (html) window.Turbo?.renderStreamMessage(html);
+    try {
+      const response = await fetch(form.action, {
+        method: "POST",
+        headers: cableRequestHeaders({ Accept: "text/vnd.turbo-stream.html" }),
+      });
+      if (!response.ok) throw new Error(`Could not update parked workspace: HTTP ${response.status}`);
+      const html = await response.text();
+      if (html) window.Turbo?.renderStreamMessage(html);
+    } finally {
+      button.disabled = false;
+    }
   }
 
   toggleProject(event: Event): void {

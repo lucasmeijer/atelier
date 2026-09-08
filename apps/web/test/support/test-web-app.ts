@@ -20,6 +20,7 @@ type ProvisionWorkspace = Parameters<typeof createWebApp>[0]["provisionWorkspace
 export type ProvisionWorkspaceOptions = Parameters<ProvisionWorkspace>[1];
 
 interface TestAppOptions {
+  cable?: Parameters<typeof createWebApp>[0]["cable"];
   provision?: ProvisionWorkspace;
   inspect?: (id: string) => Promise<string[]>;
   destroy?: (id: string) => Promise<void>;
@@ -49,7 +50,7 @@ export function createTestApp(options: TestAppOptions = {}) {
   });
   const app = createWebApp({
     registry,
-    cable: { broadcast() {} },
+    cable: options.cable ?? { broadcast() {} },
     events: options.events,
     provisionWorkspace: options.provision ?? (async () => {}),
     provisioningHooks: [],

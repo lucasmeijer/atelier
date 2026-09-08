@@ -4,6 +4,7 @@ import { actionLinkHtml } from "@atelier/design-system/action-link";
 import { buttonHtml, type ButtonVariant } from "@atelier/design-system/button";
 import { buttonGroupHtml } from "@atelier/design-system/button-group";
 import { destructiveConfirmationHtml } from "@atelier/design-system/destructive-confirmation";
+import { dialogHtml } from "@atelier/design-system/dialog";
 import { Icons } from "@atelier/design-system/icons";
 import { panelHtml } from "@atelier/design-system/panel";
 import { popupHtml } from "@atelier/design-system/popup";
@@ -707,4 +708,18 @@ export function workspacePaneCollectionsTurboStream(presentation: WorkspacePaneP
     turboStream("replace", atelierNextUnreadDomId, renderAtelierNextUnreadButton()),
     '<turbo-stream action="workspace-pane-changed" targets="[data-workspace-pane-collections]"></turbo-stream>',
   ].join("");
+}
+
+export function renderWorkspaceParkConfirmation(id: string, title: string): string {
+  return dialogHtml({
+    element: { id: domId("workspace_park_confirmation", id), attributesHtml: "data-dialog-auto-show" },
+    iconHtml: Icons.Park,
+    titleCaption: `Park “${title}”?`,
+    bodyHtml: "<p>This workspace has terminal or VS Code views open. Their sessions cannot recover after parking. Force park will close these views before parking. Other views will be kept.</p>",
+    footerHtml: `<form method="dialog">${buttonHtml({ type: "submit", variant: "secondary", content: { kind: "caption", caption: "Cancel" } })}</form><form method="post" action="/workspaces/${encodeURIComponent(id)}/park?force=1" data-action="submit->workspace-navigation#parkWorkspace">${buttonHtml({ type: "submit", variant: "primary", content: { kind: "caption", caption: "Force park" } })}</form>`,
+  });
+}
+
+export function dismissWorkspaceParkConfirmationTurboStream(id: string): string {
+  return turboStream("remove", domId("workspace_park_confirmation", id));
 }
