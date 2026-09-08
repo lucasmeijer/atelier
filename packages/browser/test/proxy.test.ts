@@ -110,10 +110,16 @@ describe("browser proxy response patching", () => {
     expect(result.targetUrl()).toBe("http://lucasmeijer.com/atelier/");
   });
 
-  test("preserves a changed localhost port across redirects", async () => {
+  test("keeps the local target when an app redirects using its public forwarded origin", async () => {
+    const result = await patchRedirect("http://localhost:3000/start", "https://browser--redirect.localhost/next", "https://browser--redirect.localhost/start");
+    expect(result.patched.headers.get("location")).toBe("https://browser--redirect.localhost/next");
+    expect(result.targetUrl()).toBe("http://localhost:3000/start");
+  });
+
+  test("does not publish a changed localhost port across redirects", async () => {
     const result = await patchRedirect("http://localhost:3000/start", "http://localhost:3001/next", "https://browser--redirect.localhost/start", 307);
-    expect(result.patched.headers.get("location")).toBe(`https://browser--redirect.localhost/next?atelierBrowserOrigin.${result.appKey}=http%3A%2F%2Flocalhost%3A3001`);
-    expect(result.targetUrl()).toBe("http://localhost:3001/next");
+    expect(result.patched.headers.get("location")).toBe("http://localhost:3001/next");
+    expect(result.targetUrl()).toBe("http://localhost:3000/start");
   });
 
   test("sends cross-host redirects directly to the external site", async () => {

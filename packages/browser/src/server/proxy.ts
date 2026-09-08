@@ -2,7 +2,7 @@ import { inlineDesignSystemCss } from "@atelier/design-system/styles/server";
 import { panelHtml } from "@atelier/design-system/panel";
 import { escapeHtml, type WorkspaceHttpAppBackend } from "@atelier/shared";
 import { workspacePortBackend } from "@atelier/workspace";
-import { nestedWorkspaceProxyRedirectHeader, publicWorkspaceAppOrigin, type WorkspaceAppHost } from "@atelier/proxy-ingress/server";
+import { isSameLocalApp, nestedWorkspaceProxyRedirectHeader, publicWorkspaceAppOrigin, type WorkspaceAppHost } from "@atelier/proxy-ingress/server";
 import { getWorkspaceBrowserView, setWorkspaceBrowserTarget } from "./state.ts";
 import { browserProxyUrl, browserRequestTarget, isWorkspaceLoopbackHost } from "../shared.ts";
 
@@ -85,6 +85,11 @@ function rewriteBrowserRedirect(app: WorkspaceAppHost, requestTarget: URL, locat
     return location;
   }
   if (redirectTarget.protocol !== "http:" && redirectTarget.protocol !== "https:") return location;
+  // Apps honoring X-Forwarded-Host already emit the browser origin. Keep the
+  // workspace-local target rather than treating that URL as an external app.
+  if (redirectTarget.origin === publicOrigin) return location;
+
+  if (isWorkspaceLoopbackHost(redirectTarget.hostname) && !isSameLocalApp(requestTarget, redirectTarget)) return location;
 
   setWorkspaceBrowserTarget(app.workspaceId, app.appKey, redirectTarget.toString());
   if (!isWorkspaceLoopbackHost(redirectTarget.hostname)) return redirectTarget.toString();

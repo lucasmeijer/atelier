@@ -1,3 +1,4 @@
+import { adaptLocalAppResponse, localAppHost, translateLocalAppOrigin } from "./local-app.ts";
 import { backendTransport } from "./backend-transport.ts";
 import type { ServerWebSocket } from "bun";
 import { workspaceGatewayErrorHeader, stripHopByHopHeaders, workspaceProxyUrl, type WorkspaceAppBackend, type WorkspaceAppRef, type WorkspaceHttpAppBackend } from "@atelier/shared";
@@ -106,9 +107,13 @@ interface OriginLease {
 const nestedOriginPortRange: PortRange = { start: 3001, end: 65535 };
 const parentOriginHeader = "x-atelier-parent-origin";
 const parentWorkspaceHeader = "x-atelier-parent-workspace";
+// Like parent routing context, this is supplied by ingress, never browser input.
+const originContextHeader = "x-atelier-origin-context";
+const publicOriginHeader = "x-atelier-public-origin";
 export const nestedWorkspaceProxyRedirectHeader = "x-atelier-nested-workspace-proxy-redirect";
 
 export * from "./tailscale-serve.ts";
+export { isSameLocalApp } from "./local-app.ts";
 export { createFileOriginIdentityStore, createMemoryOriginIdentityStore, type OriginIdentityStore } from "./origin-identity.ts";
 
 export function createWorkspaceIngress(options: WorkspaceIngressOptions): WorkspaceIngress {
@@ -175,7 +180,7 @@ export function createWorkspaceIngress(options: WorkspaceIngressOptions): Worksp
                 const backend = await resolveBackend(lease.app, new URL(request.url));
                 if (backend.kind !== "http") return textResponse("This workspace app does not support WebSockets", 400);
                 lease.target = backend.target.toString();
-                const upstreamHeaders = await appRequestHeaders(lease, backend, request);
+                const { headers: upstreamHeaders } = await appRequestHeaders(lease, backend, request);
                 for (const name of ["sec-websocket-key", "sec-websocket-version", "sec-websocket-extensions", "sec-websocket-protocol"]) upstreamHeaders.delete(name);
                 const transport = backendTransport(backend, upstreamHeaders);
                 const upstream = await openUpstreamSocket(websocketTarget(transport.target), transport.headers, websocketProtocols(request));
@@ -241,7 +246,8 @@ export function createWorkspaceIngress(options: WorkspaceIngressOptions): Worksp
       }
 
       lease.target = backend.target.toString();
-      const transport = backendTransport(backend, await appRequestHeaders(lease, backend, request));
+      const upstreamRequest = await appRequestHeaders(lease, backend, request);
+      const transport = backendTransport(backend, upstreamRequest.headers);
 
       const method = request.method.toUpperCase();
       const init: RequestInit & { duplex?: "half"; proxy?: string } = {
@@ -257,7 +263,11 @@ export function createWorkspaceIngress(options: WorkspaceIngressOptions): Worksp
       };
       if (init.body) init.duplex = "half";
       let response = normalizeDecodedFetchResponse(await fetchWithStartupRetry(transport.target, init, Boolean(backend.gateway)));
+      // Module response adapters need the public identity, not spoofable request
+      // metadata or the local forwarded headers seen by the app.
+      request.headers.set(publicOriginHeader, appPublicOrigin(lease, request));
       if (backend.adaptResponse) response = await backend.adaptResponse(response, request);
+      response = adaptLocalAppResponse(backend, response, appPublicOrigin(lease, request), upstreamRequest.originTranslation);
       response = adaptWorkspaceEmbedding(response);
       lease.lastFailure = undefined;
       recentFailures.delete(appIdentity(lease.app));
@@ -347,22 +357,50 @@ export function createWorkspaceIngress(options: WorkspaceIngressOptions): Worksp
   };
 }
 
-async function appRequestHeaders(lease: OriginLease, backend: WorkspaceHttpAppBackend, request: Request): Promise<Headers> {
+async function appRequestHeaders(lease: OriginLease, backend: WorkspaceHttpAppBackend, request: Request) {
   let headers = stripHopByHopHeaders(request.headers, ["host"]);
-  const publicContext = publicRequestContext(request);
-  headers.set("host", publicContext.host);
-  headers.set("x-forwarded-host", publicContext.host);
-  headers.set("x-forwarded-proto", publicContext.protocol);
-  headers.set("x-forwarded-port", publicContext.port);
+  // Give apps one coherent local origin, including frameworks that prefer
+  // forwarded headers to Host. Public routing identity is Atelier metadata only.
+  const localHost = localAppHost(backend.target);
+  headers.set("host", localHost);
+  headers.set("x-forwarded-host", localHost);
+  headers.set("x-forwarded-proto", backend.target.protocol.slice(0, -1));
+  headers.set("x-forwarded-port", backend.target.port || (backend.target.protocol === "https:" ? "443" : "80"));
+  headers.delete("forwarded");
+  headers.set(publicOriginHeader, appPublicOrigin(lease, request));
   headers.delete(parentOriginHeader);
   headers.delete(parentWorkspaceHeader);
   if (lease.parentContext) {
     headers.set(parentOriginHeader, lease.parentContext.origin);
     headers.set(parentWorkspaceHeader, lease.parentContext.workspaceId);
   }
+  const receivingOrigin = receivingAppOrigin(lease, request);
+  const sameOrigin = receivingOrigin !== undefined && headers.get("origin") === receivingOrigin;
+  const originTranslation = receivingOrigin === undefined ? undefined : translateLocalAppOrigin(backend, headers, receivingOrigin);
+  // Attest the decision to nested Atelier. A foreign Origin could coincidentally
+  // equal a nested listener's localhost address; it must stay foreign at that hop.
+  headers.set(originContextHeader, sameOrigin ? headers.get("origin")! : "null");
   if (backend.adaptRequestHeaders) headers = await backend.adaptRequestHeaders(headers, request);
 
-  return headers;
+  return { headers, originTranslation };
+}
+
+function receivingAppOrigin(lease: OriginLease, request: Request): string | undefined {
+  // Public identity was established when opening the canonical route. Do not let
+  // request-supplied forwarding headers redefine which Origin counts as same-origin.
+  if (lease.scope === "public") return appPublicOrigin(lease, request);
+  // A translating parent attests this hop's origin (or "null" for a foreign one).
+  // Parents forwarding Origin unchanged need only the existing public context.
+  const context = request.headers.get(originContextHeader);
+  return context === "null" ? undefined : context ?? publicWorkspaceAppOrigin(request);
+}
+
+function appPublicOrigin(lease: OriginLease, request: Request): string {
+  if (lease.scope === "nested") return publicWorkspaceAppOrigin(request);
+  const origin = new URL(lease.parentContext!.origin);
+  origin.hostname = hostForOrigin(origin.hostname);
+  origin.port = String(lease.port);
+  return origin.origin;
 }
 
 async function fetchWithStartupRetry(target: URL, init: RequestInit, throughGateway: boolean): Promise<Response> {
@@ -447,7 +485,7 @@ function publicAtelierOrigin(request: Request): string {
 
 function publicLeaseOrigin(request: Request, port: number): string {
   const context = publicRequestContext(request);
-  const hostname = hostnameWithoutPort(request.headers.get("x-forwarded-host")?.split(",")[0]?.trim() || new URL(request.url).host);
+  const hostname = hostnameWithoutPort(context.host);
   return `${context.protocol}://${hostForOrigin(hostname)}:${port}`;
 }
 
@@ -456,6 +494,11 @@ function publicRequestHost(request: Request): string {
 }
 
 function publicRequestContext(request: Request): PublicRequestContext {
+  const previewOrigin = request.headers.get(publicOriginHeader);
+  if (previewOrigin) {
+    const origin = new URL(previewOrigin);
+    return { protocol: origin.protocol.slice(0, -1), host: origin.host, port: origin.port || (origin.protocol === "https:" ? "443" : "80") };
+  }
   const url = new URL(request.url);
   const protocol = request.headers.get("x-forwarded-proto")?.split(",")[0]?.trim() || url.protocol.replace(/:$/, "");
   const host = publicRequestHost(request);

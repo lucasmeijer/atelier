@@ -97,7 +97,7 @@ describe("workspace ingress", () => {
     await ingress.stopAll();
   });
 
-  test("streams HTTP requests through one resolved backend and preserves public context", async () => {
+  test("streams HTTP requests with consistent local forwarding headers", async () => {
     let observed: { method: string; body: string; host: string | null; proto: string | null } | undefined;
     const upstream = Bun.serve({
       hostname: "127.0.0.1",
@@ -131,7 +131,7 @@ describe("workspace ingress", () => {
     expect(response.status).toBe(201);
     expect(response.headers.get("x-app")).toBe("ok");
     expect(await response.text()).toBe("upstream");
-    expect(observed).toEqual({ method: "POST", body: "payload", host: location.host, proto: "http" });
+    expect(observed).toEqual({ method: "POST", body: "payload", host: `localhost:${upstream.port}`, proto: "http" });
 
     await ingress.stopAll();
     upstream.stop(true);
@@ -178,7 +178,7 @@ describe("workspace ingress", () => {
     expect(uploaded).toBe("demo:payload");
     const redirect = await fetch(`${origin}/redirect`, { redirect: "manual" });
     expect(redirect.status).toBe(307);
-    expect(redirect.headers.get("location")).toBe("/final?ok=1");
+    expect(redirect.headers.get("location")).toBe(`${origin}/final?ok=1`);
     const cookie = await fetch(`${origin}/cookie`);
     expect(cookie.headers.get("set-cookie")).toContain("session=abc");
     expect(cookie.headers.get("x-frame-options")).toBeNull();

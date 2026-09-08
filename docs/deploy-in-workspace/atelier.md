@@ -145,9 +145,11 @@ Each workspace has its own Docker images, build cache, containers, and named vol
 
 Atelier can preview workspace web servers on any TCP port from `1` through `65535`, except `2999` (reserved for the workspace gateway). Start the server on its normal port, bound to `127.0.0.1` or `0.0.0.0`, then open a Browser view to preview it. Individual app ports do not need Docker publishing in the outer workspace container. For a nested Compose service, publish its service port onto the workspace as described above.
 
-Preview requests pass through Atelier's reverse proxy, so the browser-facing `Host` header depends on the Atelier deployment. Configure development servers with strict host checks to accept requests from any hostname instead of adding the current deployment hostname to an allowlist. This keeps previews working when Atelier's hostname changes or the workspace runs on another Atelier installation.
+Atelier's reverse proxy presents the app's local origin consistently through `Host`, `X-Forwarded-Host`, `X-Forwarded-Proto`, and `X-Forwarded-Port`. Matching same-origin `Origin` headers are translated for HTTP and WebSockets; foreign, opaque, and missing Origins remain unchanged. The browser keeps its public preview URL. There are no per-app proxy settings.
 
-Atelier publishes preview ports only through its managed ingress. Do not use permissive host validation when the development server is exposed directly on an untrusted network.
+Local redirects and matching CORS response origins are translated back. Redirects do not implicitly publish other local ports. Generated socket URLs can still need configuration: stock webpack-dev-server embeds its local port; `--client-web-socket-url auto://0.0.0.0:0/ws` makes its client connect to the preview URL.
+
+Atelier publishes preview ports only through its managed ingress.
 
 Agents can show generated files inline using:
 

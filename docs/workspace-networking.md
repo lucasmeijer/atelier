@@ -57,9 +57,44 @@ A small Go binary, `/usr/local/bin/atelier-workspace-gateway`, runs as the works
 
 Workspace web apps can use **any TCP port from 1 through 65535 except 2999**, including privileged ports and services bound only to IPv4 loopback (`127.0.0.1`). The gateway always connects to `127.0.0.1:<port>` inside the workspace. It never resolves a caller-supplied hostname or routes to another container, the Docker host, or the internet. This is web-app ingress, not general-purpose TCP/UDP publishing. Only explicitly requested app routes are exposed; services are not scanned or automatically published.
 
-Ingress sends the destination port, HTTP/HTTPS protocol, app Host, and a per-workspace credential in reserved `X-Atelier-Gateway-*` headers. Browser-supplied values are removed and replaced with trusted routing metadata. The gateway authenticates and validates the request, strips its metadata and proxy credentials, then forwards it using Go's standard reverse proxy. App authorization, cookies, public Host/forwarded headers, streaming, redirects, and WebSocket upgrades are preserved. HTTPS upstreams require certificates trusted by the gateway; certificate verification is not disabled.
+Ingress sends the destination port, HTTP/HTTPS protocol, app Host, and a per-workspace credential in reserved `X-Atelier-Gateway-*` headers. Browser-supplied values are removed and replaced with trusted routing metadata. The gateway authenticates and validates the request, strips its metadata and proxy credentials, then forwards it using Go's standard reverse proxy. App authorization, streaming, and WebSocket upgrades are preserved. Ingress applies the workspace app-port Host policy and narrow redirect/cookie translation described below. HTTPS upstreams require certificates trusted by the gateway; certificate verification is not disabled.
 
 The credential is generated at workspace creation, stored in a mode-0600 host-side workspace file, and copied to `/etc/atelier-workspace-gateway-token` inside the container. It is not an environment variable, URL parameter, or browser credential. Workspaces already allow privileged/root access, so this protects gateway access from other network callers, not from code executing inside that same workspace.
+
+### Localhost-compatible app previews
+
+All workspace HTTP apps use one local-origin policy, with no per-app settings:
+
+- `Host` and `X-Forwarded-Host` are `localhost:<app-port>`.
+- `X-Forwarded-Proto` and `X-Forwarded-Port` describe the actual local app target.
+- The RFC `Forwarded` header is removed so it cannot contradict those values.
+- For HTTP and WebSockets, an `Origin` exactly matching the receiving preview
+  origin is translated to the local app origin. Foreign, opaque (`null`), and
+  missing Origins, and `Referer`, are unchanged.
+
+This gives frameworks checking Host and frameworks checking forwarded headers
+one consistent view. Next.js Server Actions and Webpack's Host/Origin checks both
+work with this policy. No framework detection or alternate-host retries are used.
+
+The browser keeps its public preview URL. Atelier carries that identity separately
+in `X-Atelier-Public-Origin` for nested routing and response adaptation. Public
+ingress derives it from the canonical app lease and overwrites caller-supplied
+metadata. `X-Atelier-Origin-Context` carries the same-origin decision between
+nested hops, preventing a foreign Origin that happens to name an intermediate
+localhost address from becoming same-origin. Nested metadata comes from the
+surrounding trusted Atelier ingress, like the existing parent-routing metadata.
+
+Local `Location` headers are mapped back only for the current app's protocol and
+port; redirects cannot publish other services. Explicit local cookie domains
+become host-only. For translated requests, matching `Access-Control-Allow-Origin`
+and `Timing-Allow-Origin` values are mapped back, with `Vary: Origin` preserved or
+added. Bodies, unrelated origins, wildcard values, and other cookie/CORS attributes
+are unchanged.
+
+Source-edit reloads were verified with React/Vite, SvelteKit, Next.js, and Webpack.
+Webpack's separate generated-URL issue remains: its client embeds the workspace
+port and needs a socket-URL hint to reach the public preview port. Header
+translation does not rewrite URLs embedded in HTML or JavaScript.
 
 ### Bun transport and environment proxies
 

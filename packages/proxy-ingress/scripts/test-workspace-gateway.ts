@@ -17,13 +17,30 @@ async function exerciseIngress(gatewayUrl: string, token: string) {
   const cancelled = new Promise<void>(resolve => { streamCancelled = resolve; });
   const app = Bun.serve({
     hostname: "127.0.0.1", port: 0,
-    async fetch(request, server) {
+    async fetch(request, server): Promise<Response | undefined> {
       appRequests += 1;
       for (const name of ["x-atelier-gateway-host", "x-atelier-gateway-token", "x-atelier-gateway-port", "x-atelier-gateway-protocol", "proxy-authorization"]) assert.equal(request.headers.get(name), null, `credential/metadata leaked: ${name}`);
-      assert.equal(request.headers.get("host"), request.headers.get("x-forwarded-host"));
+      assert.equal(request.headers.get("host"), `localhost:${app.port}`);
+      assert.equal(request.headers.get("x-forwarded-host"), request.headers.get("host"));
+      assert.equal(request.headers.get("x-forwarded-proto"), "http");
+      assert.equal(request.headers.get("x-forwarded-port"), String(app.port));
+      assert.equal(request.headers.get("forwarded"), null);
       assert.equal(request.headers.get("x-atelier-parent-workspace"), "integration");
       const url = new URL(request.url);
+      if (url.pathname === "/origin-check") {
+        // Match both styles used by real frameworks: direct Host (Webpack)
+        // and forwarded Host (Next.js Server Actions).
+        const expectedOrigin = `${request.headers.get("x-forwarded-proto")}://${request.headers.get("x-forwarded-host")}`;
+        assert.equal(expectedOrigin, `http://${request.headers.get("host")}`);
+        if (request.headers.get("origin") !== expectedOrigin) return new Response("foreign origin", { status: 403 });
+        return new Response(request.method === "OPTIONS" ? null : await request.text(), { headers: {
+          "access-control-allow-origin": expectedOrigin, "access-control-allow-credentials": "true",
+          "access-control-allow-methods": "POST", "access-control-allow-headers": "X-App",
+          "timing-allow-origin": expectedOrigin,
+        } });
+      }
       if (url.pathname === "/socket") {
+        assert.equal(request.headers.get("origin"), `http://localhost:${app.port}`);
         assert.equal(request.headers.get("cookie"), "session=app");
         assert.equal(request.headers.get("authorization"), "Bearer app-token");
         if (server.upgrade(request, { headers: { "sec-websocket-protocol": "echo" } })) return;
@@ -34,7 +51,7 @@ async function exerciseIngress(gatewayUrl: string, token: string) {
         cancel() { streamCancelled(); },
       }), { headers: { "content-type": "text/event-stream" } });
       if (url.pathname === "/app-error") return new Response("application failure", { status: 502, headers: { "x-atelier-gateway-error": "upstream" } });
-      if (url.pathname === "/redirect") return new Response(null, { status: 302, headers: { location: "http://localhost:5173/next", "set-cookie": "session=ok; HttpOnly" } });
+      if (url.pathname === "/redirect") return new Response(null, { status: 302, headers: { location: `http://localhost:${app.port}/next`, "set-cookie": "session=ok; Domain=localhost; HttpOnly" } });
       if (request.method === "POST") return new Response(await request.text());
       return new Response(`${url.pathname}${url.search}`);
     },
@@ -70,7 +87,7 @@ async function exerciseIngress(gatewayUrl: string, token: string) {
     assert.equal(await (await request(`${origin}/echo`, { method: "POST", body: upload, headers: { "x-atelier-gateway-token": "forged", "x-atelier-gateway-port": "22" } })).text(), payload);
     const redirect = await request(`${origin}/redirect`, { redirect: "manual" });
     assert.equal(redirect.status, 302);
-    assert.equal(redirect.headers.get("location"), "http://localhost:5173/next");
+    assert.equal(redirect.headers.get("location"), `${origin}/next`);
     assert.equal(redirect.headers.get("set-cookie"), "session=ok; HttpOnly");
     await redirect.text();
     const stream = await request(`${origin}/events`);
@@ -80,7 +97,7 @@ async function exerciseIngress(gatewayUrl: string, token: string) {
     await Promise.race([cancelled, Bun.sleep(4000).then(() => { throw new Error("stream cancellation did not reach app"); })]);
     // SAFETY: Bun supports this options constructor; the DOM declaration omits it.
     const Socket = WebSocket as typeof WebSocket & (new (url: string, options: Bun.WebSocketOptions) => WebSocket);
-    const socket = new Socket(`${origin.replace("http:", "ws:")}/socket`, { proxy: "", protocols: ["echo"], headers: { cookie: "session=app", authorization: "Bearer app-token" } });
+    const socket = new Socket(`${origin.replace("http:", "ws:")}/socket`, { proxy: "", protocols: ["echo"], headers: { cookie: "session=app", authorization: "Bearer app-token", origin } });
     socket.binaryType = "arraybuffer";
     await new Promise<void>((resolve, reject) => {
       const timer = setTimeout(() => { socket.close(); reject(new Error("WebSocket timeout")); }, 4000);
@@ -111,6 +128,24 @@ async function exerciseIngress(gatewayUrl: string, token: string) {
     assert.equal(await appError.text(), "application failure");
     assert.equal(appError.headers.get("x-atelier-gateway-error"), null);
     assert.equal(appRequests, beforeAppError + 1, "ordinary app 502 was retried");
+
+    for (const method of ["POST", "OPTIONS"]) {
+      const response = await request(`${origin}/origin-check`, { method, headers: { origin, "access-control-request-method": "POST", "access-control-request-headers": "X-App" }, body: method === "POST" ? "form body" : undefined });
+      assert.equal(response.status, 200);
+      assert.equal(response.headers.get("access-control-allow-origin"), origin);
+      assert.equal(response.headers.get("timing-allow-origin"), origin);
+      assert.equal(response.headers.get("access-control-allow-credentials"), "true");
+      assert.equal(response.headers.get("vary"), "Origin");
+      assert.equal(await response.text(), method === "POST" ? "form body" : "");
+    }
+    for (const foreign of ["https://attacker.example", "null"]) {
+      const before: number = appRequests;
+      const response = await request(`${origin}/origin-check`, { method: "POST", headers: { origin: foreign, "x-forwarded-host": "attacker.example", "x-forwarded-proto": "https", "x-atelier-origin-context": foreign }, body: "foreign" });
+      assert.equal(response.status, 403);
+      assert.equal(await response.text(), "foreign origin");
+      assert.equal(appRequests, before + 1, "origin rejection must not be retried");
+    }
+    console.log("PASS: same-origin POST/preflight and WebSocket translation, CORS/timing reversal, foreign/opaque Origin rejection, spoofed forwarding isolation");
 
     const unused = Bun.serve({ hostname: "127.0.0.1", port: 0, fetch: () => new Response() });
     targetPort = unused.port!;

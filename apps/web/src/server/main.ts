@@ -17,6 +17,7 @@ import {
   createTailscaleOriginPublisher,
   createWorkspaceIngress,
   publicOriginPortRangeFromEnv,
+  publicWorkspaceAppOrigin,
   StoppedWorkspaceError,
   type OriginPublisher,
 } from "@atelier/proxy-ingress/server";
@@ -109,11 +110,11 @@ async function isAuthenticated(request: Request): Promise<boolean> {
 }
 
 function isHttpsRequest(request: Request): boolean {
-  return new URL(request.url).protocol === "https:" || request.headers.get("x-forwarded-proto")?.split(",")[0]?.trim() === "https";
+  return new URL(publicWorkspaceAppOrigin(request)).protocol === "https:";
 }
 
 function sharedCookieDomain(request: Request): string | undefined {
-  const hostname = new URL(request.url).hostname.toLowerCase();
+  const hostname = new URL(publicWorkspaceAppOrigin(request)).hostname.toLowerCase();
   if (hostname === "localhost" || hostname.endsWith(".localhost") || /^[\d.]+$/.test(hostname) || hostname.includes(":")) return undefined;
   const labels = hostname.split(".").filter(Boolean);
   if (labels.length < 2) return undefined;

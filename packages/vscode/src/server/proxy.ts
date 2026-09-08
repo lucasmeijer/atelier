@@ -1,8 +1,13 @@
+import { Type } from "typebox";
+import { Value } from "typebox/value";
 import type { WorkspaceHttpAppBackend } from "@atelier/shared";
 import { isJsonObject } from "@atelier/core";
 import { workspacePortBackend, workspaceVSCodePort } from "@atelier/workspace";
-import type { WorkspaceAppHost } from "@atelier/proxy-ingress/server";
+import { publicWorkspaceAppOrigin, type WorkspaceAppHost } from "@atelier/proxy-ingress/server";
 import { ensureWorkspaceVSCodeServer } from "./workspace-vscode.ts";
+
+const gallerySchema = Type.Object({ resourceUrlTemplate: Type.Optional(Type.String()) });
+const remoteAuthoritySchema = Type.String();
 
 export const vscodeAppKey = "vscode";
 export const vscodeContainerPort = 8000;
@@ -119,6 +124,22 @@ export async function patchVSCodeWorkspaceAppResponse(app: WorkspaceAppHost, res
     const parsed: unknown = JSON.parse(unescapeHtmlAttribute(rawSettings));
     if (!isJsonObject(parsed)) throw new Error("VS Code workbench configuration is not a JSON object");
     const settings = parsed;
+    // VS Code's browser connection settings belong to this adapter, not to the
+    // app-facing Host policy. Keep them pointed at the actual preview endpoint.
+    const publicOrigin = new URL(publicWorkspaceAppOrigin(request));
+    const localAuthority = Value.Parse(remoteAuthoritySchema, settings.remoteAuthority);
+    settings.remoteAuthority = publicOrigin.host;
+    for (const name of ["workspaceUri", "folderUri"]) {
+      const uri = settings[name];
+      if (isJsonObject(uri) && uri.scheme === "vscode-remote" && uri.authority === localAuthority) uri.authority = publicOrigin.host;
+    }
+    const product = settings.productConfiguration;
+    const gallery = isJsonObject(product) ? product.extensionsGallery : undefined;
+    if (isJsonObject(gallery)) {
+      const { resourceUrlTemplate } = Value.Parse(gallerySchema, gallery);
+      const localPrefix = `http://${localAuthority}/`;
+      if (resourceUrlTemplate?.startsWith(localPrefix)) gallery.resourceUrlTemplate = `${publicOrigin.origin}/${resourceUrlTemplate.slice(localPrefix.length)}`;
+    }
     settings.enableWorkspaceTrust = false;
     const configurationDefaults = isJsonObject(settings.configurationDefaults) ? settings.configurationDefaults : {};
     Object.assign(configurationDefaults, {
