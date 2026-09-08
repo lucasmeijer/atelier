@@ -15,6 +15,7 @@
   },
   "scripts": {
     "generate:workspace-modules": "bun run --cwd apps/web scripts/generate-workspace-modules.ts",
+    "release": "bun run scripts/release.ts",
     "image:build": "bun run scripts/build-atelier-image.ts",
     "image:publish": "bun run scripts/build-atelier-image.ts --push --platform linux/amd64,linux/arm64",
     "docker:dev": "bun run scripts/run-atelier-docker-dev.ts",

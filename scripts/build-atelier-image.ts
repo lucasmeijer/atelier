@@ -15,6 +15,8 @@ Options:
   --image <name>        Image repository/name (default: ghcr.io/lucasmeijer/atelier)
   --tag <tag>           Tag to apply. May be passed more than once (default: git describe/short sha)
   --latest             Tag the image as <image>:latest (default)
+  --no-latest          Do not update latest (release staging)
+  --builder <name>     Explicit Buildx builder for both images
   --stable             Also tag the image as <image>:stable
   --push               Push the built images instead of only loading them locally. Uses GH_PACKAGE_TOKEN for ghcr.io.
   --platform <value>   Docker platform(s), e.g. linux/amd64 or linux/amd64,linux/arm64
@@ -37,6 +39,7 @@ interface Options {
   stable: boolean;
   push: boolean;
   platform?: string;
+  builder?: string;
   noCache: boolean;
   forceWorkspace: boolean;
   progress?: string;
@@ -80,6 +83,11 @@ function parseArgs(args: string[]): Options {
       i++;
     } else if (arg === "--latest") {
       options.latest = true;
+    } else if (arg === "--no-latest") {
+      options.latest = false;
+    } else if (arg === "--builder") {
+      options.builder = takeValue(args, i, arg);
+      i++;
     } else if (arg === "--stable") {
       options.stable = true;
     } else if (arg === "--push") {
@@ -206,11 +214,12 @@ function workspaceHashTag(metadataTag: string): string {
 
 function dockerBuildCommand(options: Options, args: string[]): string[] {
   if (options.platform?.includes(",") && !options.push) fail("multi-platform builds require --push");
-  const command = options.platform || options.push
+  const command = options.builder || options.platform || options.push
     ? ["docker", "buildx", "build", ...(options.push ? ["--push", "--provenance=false"] : ["--load"])]
     : ["docker", "build"];
   return [
     ...command,
+    ...(options.builder ? ["--builder", options.builder] : []),
     ...(options.platform ? ["--platform", options.platform] : []),
     ...(options.noCache ? ["--no-cache"] : []),
     ...(options.progress ? ["--progress", options.progress] : []),
