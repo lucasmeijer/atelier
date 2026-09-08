@@ -52,3 +52,35 @@ test("invalid provider usage makes the rate unavailable", () => {
     expect(timing.snapshot(1000)).toMatchObject({ outputTokens: 0, usageComplete: false });
   }
 });
+
+
+test("addressed delayed summaries cannot attach to a newer steering turn", () => {
+  const timing = { elapsedMs: 200, inferenceMs: 150, toolMs: 50, outputTokens: 40, usageComplete: true };
+  const transcript = buildTranscript(recordsFromSessionEntries([
+    { type: "message", id: "old", timestamp: new Date(100).toISOString(), message: { role: "user", content: "go" } },
+    { type: "message", id: "new", timestamp: new Date(300).toISOString(), message: { role: "user", content: "steer" } },
+    { type: "custom", customType: "atelier.turn-timing", timestamp: new Date(350).toISOString(), data: { ...timing, turnEntryId: "old", outcome: "completed" } },
+  ]));
+  expect(transcript.find(item => item.key === "old:working")).toMatchObject({ timing, completedAt: 300 });
+  expect(transcript.find(item => item.key === "new:working")).not.toHaveProperty("timing");
+});
+
+test("timing closes a turn even without an assistant answer and restores terminal outcome", () => {
+  const timing = { elapsedMs: 700, inferenceMs: 700, toolMs: 0, outputTokens: 0, usageComplete: false };
+  for (const outcome of ["completed", "stopped"] as const) {
+    const transcript = buildTranscript(recordsFromSessionEntries([
+      { type: "message", id: "u", timestamp: new Date(100).toISOString(), message: { role: "user", content: "go" } },
+      { type: "custom", customType: "atelier.turn-timing", timestamp: new Date(900).toISOString(), data: { ...timing, turnEntryId: "u", outcome } },
+    ]));
+    expect(transcript[1]).toMatchObject({ key: "u:working", timing, [outcome === "completed" ? "completedAt" : "stoppedAt"]: 800 });
+  }
+});
+
+test("an addressed summary from another branch never falls back to the latest turn", () => {
+  const timing = { elapsedMs: 1, inferenceMs: 1, toolMs: 0, outputTokens: 1, usageComplete: true };
+  const transcript = buildTranscript([
+    { kind: "user", id: "here", text: "go", images: [], timestamp: 0 },
+    { kind: "timing", turnEntryId: "other-branch", outcome: "completed", timing, timestamp: 1 },
+  ]);
+  expect(transcript[1]).not.toHaveProperty("timing");
+});

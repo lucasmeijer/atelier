@@ -20,7 +20,9 @@ type DesiredSubscription = {
   subscriptionId?: string;
 };
 
-export function createAtelierCableClient(): AtelierCableClient {
+export type CableStreamRenderer = (html: string, isCurrent: () => boolean, onApplied: () => void) => void;
+
+export function createAtelierCableClient(renderStreams: CableStreamRenderer): AtelierCableClient {
   const desired = new Map<string, DesiredSubscription>();
   const delays = [100, 250, 500, 1000, 2000, 5000];
   let socket: WebSocket | undefined;
@@ -85,20 +87,24 @@ export function createAtelierCableClient(): AtelierCableClient {
       case "confirm_subscription": {
         const subscription = matchingSubscription(message.identifier, message.subscriptionId);
         if (!subscription) break;
-        if (message.html) window.Turbo?.renderStreamMessage(message.html);
-        requestAnimationFrame(() => {
-          if (matchingSubscription(message.identifier, message.subscriptionId) !== subscription) return;
+        const isCurrent = () => matchingSubscription(message.identifier, message.subscriptionId) === subscription;
+        const applied = () => {
+          if (!isCurrent()) return;
           subscription.ready = true;
           for (const lease of subscription.leases) lease.options?.onReady?.();
-        });
+        };
+        if (message.html) renderStreams(message.html, isCurrent, applied);
+        else applied();
         break;
       }
       case "reject_subscription":
         if (matchingSubscription(message.identifier, message.subscriptionId)) console.error("Cable subscription rejected", message);
         break;
-      case "turbo_stream":
-        if (matchingSubscription(message.identifier, message.subscriptionId)) window.Turbo?.renderStreamMessage(message.html);
+      case "turbo_stream": {
+        const subscription = matchingSubscription(message.identifier, message.subscriptionId);
+        if (subscription) renderStreams(message.html, () => matchingSubscription(message.identifier, message.subscriptionId) === subscription, () => {});
         break;
+      }
       case "ping":
         sendRaw({ command: "pong", time: message.time });
         break;

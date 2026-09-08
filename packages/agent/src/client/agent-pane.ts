@@ -51,6 +51,10 @@ export function createAgentPaneController(Controller: StimulusControllerConstruc
     private composerRevision = 0;
     private submittedComposer?: { revision: number; attachmentIds: string[] };
     private readonly promptHistory = new PromptHistoryNavigator();
+    private readonly turnRevealed = (event: Event): void => {
+      // SAFETY: The agent-turn controller produces this event with the loaded target element.
+      this.navigation.reveal((event as CustomEvent<{ target: HTMLElement }>).detail.target);
+    };
     private readonly onVisibilityChange = (): void => {
       this.reconcileConnection();
     };
@@ -84,6 +88,8 @@ export function createAgentPaneController(Controller: StimulusControllerConstruc
     };
     connect(): void {
       this.navigation = new TranscriptNavigation(this.transcriptTarget, this.transcriptEndTarget, this.element.querySelector<HTMLElement>(".composer")!);
+      this.element.dataset.agentConnectionActive = "false";
+      this.element.addEventListener("agent:turn-reveal", this.turnRevealed);
       document.addEventListener("visibilitychange", this.onVisibilityChange);
       this.formTarget.addEventListener("submit", this.submitting);
       this.composerMutationObserver = new MutationObserver(() => this.updateSendStopButton());
@@ -98,6 +104,7 @@ export function createAgentPaneController(Controller: StimulusControllerConstruc
       this.connected = false;
       this.navigation.disconnect();
       this.composerMutationObserver?.disconnect();
+      this.element.removeEventListener("agent:turn-reveal", this.turnRevealed);
       document.removeEventListener("visibilitychange", this.onVisibilityChange);
       this.formTarget.removeEventListener("submit", this.submitting);
       this.logicallyVisible = false;
@@ -142,6 +149,7 @@ export function createAgentPaneController(Controller: StimulusControllerConstruc
         this.stopConnection();
         return;
       }
+      this.setTurnConnectionActive(true);
       this.startAgentTerminals();
       if (!this.cableSubscription) this.subscribe();
     }
@@ -170,7 +178,13 @@ export function createAgentPaneController(Controller: StimulusControllerConstruc
       );
     }
 
+    private setTurnConnectionActive(active: boolean): void {
+      this.element.dataset.agentConnectionActive = String(active);
+      this.element.dispatchEvent(new Event("agent:connection"));
+    }
+
     private stopConnection(): void {
+      this.setTurnConnectionActive(false);
       this.setReconnecting(false);
       this.cableSubscription?.unsubscribe();
       this.cableSubscription = undefined;

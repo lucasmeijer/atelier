@@ -66,27 +66,6 @@ describe("transcript rendering", () => {
     expect(html).toBe("");
   });
 
-  test("closed working sections defer their activity while live sections retain it", () => {
-    const historical: TranscriptItem = {
-      type: "working",
-      key: "worked",
-      startedAt: 1000,
-      completedAt: 3500,
-      items: [{ type: "thinking", key: "thought", text: "Large historical activity" }],
-    };
-    const shell = renderTranscriptItem(ctx, historical);
-    expect(shell).toContain("Worked for 3s");
-    expect(shell).toContain("mouseenter->agent-lazy-detail#load");
-    expect(shell).toContain(`data-src="/workspaces/ws/agents/00000000-0000-4000-8000-000000000001/transcript-items/worked"`);
-    expect(shell).not.toContain("Large historical activity");
-
-    const detail = renderTranscriptItemDetailFrame(ctx, historical);
-    expect(detail).toContain("Large historical activity");
-
-    const live = renderTranscriptItem(ctx, { ...historical, live: true });
-    expect(live).toContain("Large historical activity");
-    expect(live).not.toContain("agent-lazy-detail");
-  });
 
   test("live assistant text uses stable and mutable server-rendered Markdown targets", () => {
     const html = renderTranscriptItem(ctx, { type: "text", key: "stream", text: "First **bold** paragraph.\n\nTrailing *emphasis*", final: false, live: true });

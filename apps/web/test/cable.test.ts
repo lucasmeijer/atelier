@@ -475,22 +475,29 @@ test("cable leases share topics and reject stale generations across reconnects",
     }
   }
 
-  const names = ["window", "location", "WebSocket", "requestAnimationFrame"] as const;
+  const names = ["window", "location", "WebSocket"] as const;
   const originals = new Map(names.map((name) => [name, Object.getOwnPropertyDescriptor(globalThis, name)]));
   const events: string[] = [];
-  const testWindow = Object.assign(new EventTarget(), {
-    Turbo: { renderStreamMessage: (html: string) => events.push(`render:${html}`) },
-  });
+  const testWindow = new EventTarget();
   Object.defineProperties(globalThis, {
     window: { configurable: true, value: testWindow },
     location: { configurable: true, value: { protocol: "http:", host: "atelier.test" } },
     WebSocket: { configurable: true, value: FakeWebSocket },
-    requestAnimationFrame: { configurable: true, value: (callback: FrameRequestCallback) => { callback(0); return 1; } },
   });
 
   try {
     const identifier = CableTopics.agent("workspace", "conversation-1");
-    const cable = createAtelierCableClient();
+    let deferApplication = false;
+    const pendingApplications: (() => void)[] = [];
+    const cable = createAtelierCableClient((html, isCurrent, onApplied) => {
+      const apply = () => {
+        if (!isCurrent()) return;
+        events.push(`render:${html}`);
+        onApplied();
+      };
+      if (deferApplication) pendingApplications.push(apply);
+      else apply();
+    });
     const firstLease = cable.subscribe(identifier, {
       onReady: () => events.push("ready:first"),
       onDisconnected: () => events.push("disconnected:first"),
@@ -536,6 +543,32 @@ test("cable leases share topics and reject stale generations across reconnects",
       { command: "subscribe", identifier, subscriptionId: secondSubscriptionId },
       { command: "unsubscribe", identifier, subscriptionId: secondSubscriptionId },
     ]);
+    // The transport consumer may apply a received payload asynchronously. Generation
+    // validity must survive that boundary, not just the receive callback.
+    deferApplication = true;
+    const turnIdentifier = CableTopics.agentTurn("workspace", "conversation-1", "turn", "branch");
+    const obsoleteTurn = cable.subscribe(turnIdentifier, { onReady: () => events.push("ready:obsolete-turn") });
+    const obsoleteAttempt = second.sent.at(-1)!;
+    if (obsoleteAttempt.command !== "subscribe") throw new Error("expected turn subscription");
+    const beforeDeferred = [...events];
+    second.receive({ type: "confirm_subscription", identifier: turnIdentifier, subscriptionId: obsoleteAttempt.subscriptionId, html: "deferred-obsolete-snapshot" });
+    expect(events).toEqual(beforeDeferred);
+    expect(pendingApplications).toHaveLength(1);
+    obsoleteTurn.unsubscribe();
+    const currentTurn = cable.subscribe(turnIdentifier, { onReady: () => events.push("ready:current-turn") });
+    const currentAttempt = second.sent.at(-1)!;
+    if (currentAttempt.command !== "subscribe") throw new Error("expected reopened turn subscription");
+    pendingApplications.shift()!();
+    expect(events).toEqual(beforeDeferred);
+    second.receive({ type: "confirm_subscription", identifier: turnIdentifier, subscriptionId: currentAttempt.subscriptionId, html: "deferred-current-snapshot" });
+    expect(events).toEqual(beforeDeferred);
+    pendingApplications.shift()!();
+    expect(events).toEqual([...beforeDeferred, "render:deferred-current-snapshot", "ready:current-turn"]);
+    second.receive({ type: "turbo_stream", identifier: turnIdentifier, subscriptionId: currentAttempt.subscriptionId, html: "deferred-obsolete-increment" });
+    const beforeCancelledIncrement = [...events];
+    currentTurn.unsubscribe();
+    pendingApplications.shift()!();
+    expect(events).toEqual(beforeCancelledIncrement);
     testWindow.dispatchEvent(new Event("pagehide"));
   } finally {
     for (const name of names) {
@@ -626,3 +659,114 @@ test("module topic identity is independent of parameter insertion order", () => 
   expect(serializeCableIdentifier(CableTopics.module("tree", "workspace", { root: "a", filter: "b" })))
     .toBe(serializeCableIdentifier(CableTopics.module("tree", "workspace", { filter: "b", root: "a" })));
 });
+
+test("turn topics require all scope components and isolate branches", () => {
+  const topic = CableTopics.agentTurn("workspace", "conversation", "entry:working", "session:leaf");
+  expect(serializeCableIdentifier(topic)).toBe('["agent-turn","workspace","conversation","entry:working","session:leaf"]');
+  for (const index of [0, 1, 2, 3]) {
+    const scope: [string, string, string, string] = ["workspace", "conversation", "entry:working", "session:leaf"];
+    scope[index] = "";
+    expect(() => CableTopics.agentTurn(...scope)).toThrow("must not be empty");
+    const raw = { ...topic, [ ["workspaceId", "conversationId", "turnId", "branchId"][index]! ]: "" };
+    expect(() => decodeCableServerMessage(JSON.stringify({ type: "confirm_subscription", identifier: raw, subscriptionId: "1" }))).toThrow("unsupported cable server message");
+  }
+  expect(serializeCableIdentifier(topic)).not.toBe(serializeCableIdentifier(CableTopics.agentTurn("workspace", "conversation", "entry:working", "session:other")));
+});
+
+test("turn channels are lazy, independent per browser, and release obsolete generations", async () => {
+  const registry = createWorkspaceRegistry({ activityStore: { load: async () => ({}), save: async () => {} } });
+  const listeners: ((html: string) => void)[] = [];
+  let active = 0;
+  const cable = createCableServer({
+    registry, events: createAtelierEventBus(),
+    channels: [
+      { name: "agent", subscribe(_identifier, listener) { listener("main snapshot"); return { ready: Promise.resolve(), unsubscribe() {} }; } },
+      { name: "agent-turn", subscribe(_identifier, listener) {
+        listeners.push(listener);
+        active++;
+        listener("turn snapshot");
+        return { ready: Promise.resolve(), unsubscribe() { active--; } };
+      } },
+    ],
+  });
+  const folded = fakeSocket({ kind: "cable", connectionId: "folded" });
+  const expanded = fakeSocket({ kind: "cable", connectionId: "expanded" });
+  for (const ws of [folded, expanded]) {
+    cable.open(ws, ws.data);
+    cable.message(ws, JSON.stringify({ command: "subscribe", subscriptionId: "main", identifier: CableTopics.agent("workspace", "conversation") }));
+  }
+  await Bun.sleep(0);
+  expect(active).toBe(0);
+  const foldedCount = folded.sent.length;
+  const identifier = CableTopics.agentTurn("workspace", "conversation", "turn", "branch");
+  for (let cycle = 0; cycle < 20; cycle++) {
+    const subscriptionId = `turn-${cycle}`;
+    cable.message(expanded, JSON.stringify({ command: "subscribe", subscriptionId, identifier }));
+    await Bun.sleep(0);
+    expect(active).toBe(1);
+    const publish = listeners.at(-1)!;
+    for (let update = 0; update < 100; update++) publish(`inner-${update}`);
+    expect(folded.sent.length).toBe(foldedCount);
+    cable.message(expanded, JSON.stringify({ command: "unsubscribe", subscriptionId: "obsolete", identifier }));
+    expect(active).toBe(1);
+    cable.message(expanded, JSON.stringify({ command: "unsubscribe", subscriptionId, identifier }));
+    expect(active).toBe(0);
+    const count = expanded.sent.length;
+    for (const obsolete of listeners) obsolete("obsolete inner update");
+    expect(expanded.sent.length).toBe(count);
+  }
+  expect(() => cable.broadcast(identifier, "bypass")).toThrow("live-presentation interface");
+  cable.close(folded);
+  cable.close(expanded);
+  expect(cable.stats()).toEqual({ sockets: 0, subscriptions: {}, upstreams: {} });
+});
+
+test("turn channels reject invalid branch boundaries before delivering content", async () => {
+  const registry = createWorkspaceRegistry({ activityStore: { load: async () => ({}), save: async () => {} } });
+  const cable = createCableServer({
+    registry, events: createAtelierEventBus(), logError() {},
+    channels: [{ name: "agent-turn", subscribe() { throw new Error("Turn does not belong to selected branch"); } }],
+  });
+  const ws = fakeSocket({ kind: "cable", connectionId: "invalid-turn" });
+  cable.open(ws, ws.data);
+  const identifier = CableTopics.agentTurn("workspace", "conversation", "foreign-turn", "branch");
+  cable.message(ws, JSON.stringify({ command: "subscribe", identifier, subscriptionId: "turn" }));
+  await Bun.sleep(0);
+  expect(ws.sent).toEqual([
+    { type: "welcome", connectionId: "invalid-turn" },
+    { type: "reject_subscription", identifier, subscriptionId: "turn", reason: "Turn does not belong to selected branch" },
+  ]);
+  expect(cable.stats().upstreams).toEqual({});
+  cable.close(ws);
+});
+
+for (const cancellation of ["unsubscribe", "close"] as const) {
+  test(`turn ${cancellation} cancels a pending snapshot without delivering stale content`, async () => {
+    const registry = createWorkspaceRegistry({ activityStore: { load: async () => ({}), save: async () => {} } });
+    const started = deferredSignal();
+    const release = deferredSignal();
+    let active = 0;
+    const cable = createCableServer({
+      registry, events: createAtelierEventBus(),
+      channels: [{ name: "agent-turn", subscribe(_identifier, listener) {
+        active++;
+        return {
+          ready: (async () => { started.resolve(); await release.promise; listener("stale snapshot"); })(),
+          unsubscribe() { active--; },
+        };
+      } }],
+    });
+    const ws = fakeSocket({ kind: "cable", connectionId: "pending-turn" });
+    cable.open(ws, ws.data);
+    const identifier = CableTopics.agentTurn("workspace", "conversation", "turn", "branch");
+    cable.message(ws, JSON.stringify({ command: "subscribe", identifier, subscriptionId: "pending" }));
+    await started.promise;
+    if (cancellation === "close") cable.close(ws);
+    else cable.message(ws, JSON.stringify({ command: "unsubscribe", identifier, subscriptionId: "pending" }));
+    expect(active).toBe(0);
+    release.resolve();
+    await Bun.sleep(0);
+    expect(ws.sent).toEqual([{ type: "welcome", connectionId: "pending-turn" }]);
+    cable.close(ws);
+  });
+}

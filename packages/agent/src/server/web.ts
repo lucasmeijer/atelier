@@ -147,6 +147,14 @@ export const agentWorkspaceModule: WorkspaceModule = {
       const runtime = await getWorkspaceAgentRuntime(agent, { events });
       return runtime.subscribeLivePresentation(listener);
     },
+  }, {
+    name: "agent-turn",
+    async subscribe(identifier, listener, events) {
+      if (identifier.channel !== "agent-turn") throw new Error("Invalid Agent turn channel identifier");
+      const agent = await resolveAgentConversation(identifier.workspaceId, identifier.conversationId, events);
+      const runtime = await getWorkspaceAgentRuntime(agent, { events });
+      return runtime.subscribeTurnPresentation(identifier.turnId, identifier.branchId, listener);
+    },
   }],
   staticFiles: agentStaticFiles,
   renderWorkspacePaneActions: renderUsagePaneAction,

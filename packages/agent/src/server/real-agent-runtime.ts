@@ -1,6 +1,6 @@
 import { applyTranscriptContributions } from "./transcript-contributions.ts";
 import { isJsonObject } from "@atelier/core";
-import { contentText } from "@earendil-works/pi-ai";
+import { contentText, type UserMessage } from "@earendil-works/pi-ai";
 import type { CompactionEntry } from "@earendil-works/pi-coding-agent";
 import { BaseAgentRuntime } from "./base-agent-runtime.ts";
 import { collectCacheMisses, detectCacheMiss } from "./cache-miss.ts";
@@ -25,6 +25,7 @@ import { replaceWorkspaceAgentSession, type WorkspaceAgentConversationInfo } fro
 import { renderAgentSessionTree, updateAgentSessionTreeLabel, type TreeFilterMode } from "./session-tree.ts";
 import {
   assistantErrorText,
+  finalAssistantTextIndexes,
   buildTranscript,
   finalAssistantText,
   isFinalAssistantMessage,
@@ -33,7 +34,7 @@ import {
   type TranscriptItem,
 } from "./transcript.ts";
 
-import { TurnTiming, turnTimingEntryType } from "./turn-timing.ts";
+import { TurnTiming, turnStartEntryType, turnTimingEntryType } from "./turn-timing.ts";
 
 interface AgentPromptPreflightOptions {
   images?: Array<{ type: "image"; data: string; mimeType: string }>;
@@ -48,12 +49,17 @@ function normalizedPromiseError(error: unknown): Error {
 }
 
 export class RealAgentRuntime extends BaseAgentRuntime {
-  // Present from agent_start through agent_end, including mid-loop compaction.
+  // Present until Pi settles the entire prompt, including retries and overflow recovery.
   private turnTiming?: TurnTiming;
+  private turnEntryId?: string;
+  private runStartedAt = 0;
+  private pendingAssistantError?: string;
+  private terminalOutcome: "completed" | "stopped" = "completed";
+  private readonly pendingSteering: string[] = [];
   private summarizing = false;
   private unsubscribeSession?: () => void;
   private postCompactionEstimate?: { entryId: string; tokens: number };
-  private pendingAcceptedPrompt?: { text: string; images: SessionImageRef[] };
+  private pendingAcceptedPrompt?: symbol;
   private readonly terminalSessionOperations = new Set<Promise<void>>();
   private disposal?: Promise<void>;
   private unsubscribeTranscript?: () => void;
@@ -61,6 +67,7 @@ export class RealAgentRuntime extends BaseAgentRuntime {
   constructor(agent: WorkspaceAgentConversationInfo, private session: any, private toolsForModel: AgentToolDefinitionView[], private serviceTiers: AgentServiceTierState, options: WorkspaceAgentRuntimeOptions = {}, private delegation: AgentSessionDelegation = { dispose: async () => {} }) {
     super(agent, options);
     this.ctx.model = this.currentModel();
+    this.selectBranch();
     try {
       this.subscribeToSession();
       this.attachTranscript();
@@ -89,8 +96,7 @@ export class RealAgentRuntime extends BaseAgentRuntime {
   protected override decorateTranscript(items: TranscriptItem[]): TranscriptItem[] {
     const snapshot = this.delegation.transcript?.snapshot();
     if (!snapshot) return items;
-    const turn = recordsFromSessionEntries(this.session.sessionManager.getBranch()).findLast((record) => record.kind === "user" || record.kind === "taskStart");
-    return applyTranscriptContributions(items, snapshot, { activeTurnEntryId: turn?.id });
+    return applyTranscriptContributions(items, snapshot);
   }
 
   private subscribeToSession(): void {
@@ -192,16 +198,47 @@ export class RealAgentRuntime extends BaseAgentRuntime {
     return this.session.sessionManager.getBranch().findLast((entry: any) => entry?.type === "message" && predicate(entry.message));
   }
 
-  private syncLiveUserEntry(): void {
-    const live = this.live;
-    if (!live || live.userEntryId) return;
-    const entry = this.latestSessionMessage((message) => message?.role === "user");
-    const user = live.items.find((item): item is Extract<TranscriptItem, { type: "user" }> => item.type === "user");
-    if (!entry || !user) return;
-    live.userEntryId = entry.id;
-    user.rewindEntryId = entry.id;
-    user.images = sessionContentImages(entry);
-    this.stream(turboStream("replace", ids.item(this.ctx, user.key), renderTranscriptItem(this.ctx, user, { live: true })));
+  private selectBranch(): void {
+    for (const key of this.pendingSteering) this.liveConsumePendingUser(key);
+    this.pendingSteering.length = 0;
+    this.resetTurnSubscriptions(`${this.session.sessionManager.getSessionId()}:${this.session.sessionManager.getLeafId() ?? "root"}`);
+  }
+
+  private finishRun(outcome: "completed" | "stopped"): void {
+    if (this.turnTiming) {
+      const timing = this.turnTiming.snapshot(performance.now());
+      this.session.sessionManager.appendCustomEntry(turnTimingEntryType, { ...timing, turnEntryId: this.turnEntryId, outcome });
+      if (this.live) this.live.working.timing = timing;
+      this.turnTiming = undefined;
+    }
+    this.finishLivePresentation(outcome);
+    this.turnEntryId = undefined;
+  }
+
+  private beginPersistedRun(entryId: string, user?: { text: string; images: SessionImageRef[] }): void {
+    if (this.live) {
+      this.live.working.inputEntryIds!.push(entryId);
+      return;
+    }
+    this.turnEntryId = entryId;
+    this.session.sessionManager.appendCustomEntry(turnStartEntryType, { turnEntryId: entryId, startedAt: this.runStartedAt });
+    this.liveBegin(user, entryId, this.runStartedAt);
+  }
+
+  private consumePersistedUser(message: UserMessage): void {
+    const entry = this.latestSessionMessage((persisted) => persisted === message);
+    if (!entry) throw new Error("Consumed user message was not persisted by Pi");
+    const text = contentText(entry.message.content);
+    // Pi may expand prompt templates before consuming queued steering. Queue
+    // order, rather than text equality, links its user to the pending display.
+    const pending = this.pendingSteering.shift();
+    const user = { text, images: sessionContentImages(entry) };
+    if (this.live) this.liveSteeringUser(entry.id, user, pending);
+    else {
+      if (pending) this.liveConsumePendingUser(pending);
+      this.beginPersistedRun(entry.id, user);
+    }
+    this.pendingAcceptedPrompt = undefined;
   }
 
   private syncLiveToolResult(callId: string): void {
@@ -219,13 +256,33 @@ export class RealAgentRuntime extends BaseAgentRuntime {
   private async handleEvent(event: any): Promise<void> {
     switch (event.type) {
       case "agent_start":
-        this.turnTiming = new TurnTiming(performance.now());
-        this.liveBegin(this.pendingAcceptedPrompt);
-        this.pendingAcceptedPrompt = undefined;
+        if (this.live && this.pendingAssistantError) {
+          this.liveInnerError(this.pendingAssistantError);
+          this.pendingAssistantError = undefined;
+        }
+        if (!this.turnTiming) {
+          this.runStartedAt = Date.now();
+          this.turnTiming = new TurnTiming(performance.now());
+          this.terminalOutcome = "completed";
+        }
+        if (!this.live && !this.pendingAcceptedPrompt) {
+          const records = recordsFromSessionEntries(this.session.sessionManager.getBranch());
+          const startIndex = records.findLastIndex((record) => record.kind === "user" || record.kind === "taskStart");
+          const start = records[startIndex];
+          const finished = records.slice(startIndex + 1).some((record) => record.kind === "timing");
+          // A newly triggered task is persisted after agent_start. Do not
+          // re-advertise the previous completed block while waiting for it.
+          if (start && (start.kind === "user" || start.kind === "taskStart") && !finished) this.beginPersistedRun(start.id);
+        }
         this.setBusy(true);
         break;
       case "turn_start":
         this.turnTiming?.inferenceStart(performance.now());
+        break;
+      case "message_start":
+        if (event.message?.role === "assistant") {
+          this.liveAssistantMessageStart();
+        }
         break;
       case "message_update": {
         const inner = event.assistantMessageEvent;
@@ -265,45 +322,52 @@ export class RealAgentRuntime extends BaseAgentRuntime {
       }
       case "message_end": {
         const message = event.message;
-        // Pi notifies subscribers just before it appends a completed message to
-        // the session. Resolve display URLs on the next task, once that session
-        // entry is available as the image's single source of truth.
-        if (message?.role === "user") setTimeout(() => this.syncLiveUserEntry(), 0);
+        // Pi appends synchronously after listener dispatch. The microtask sees
+        // its permanent entry ID before the next assistant event is dispatched.
+        if (message?.role === "user") {
+          await Promise.resolve();
+          this.consumePersistedUser(message);
+        }
+        if (message?.role === "custom") {
+          await Promise.resolve();
+          const start = recordsFromSessionEntries(this.session.sessionManager.getBranch()).at(-1);
+          if (start?.kind === "taskStart" && this.turnTiming) this.beginPersistedRun(start.id);
+        }
         if (message?.role === "toolResult") setTimeout(() => this.syncLiveToolResult(message.toolCallId), 0);
         if (message?.role === "assistant") {
           this.turnTiming?.inferenceEnd(performance.now(), message.usage?.output);
+          if (message.stopReason !== "aborted" && message.stopReason !== "error") this.terminalOutcome = "completed";
           if (isFinalAssistantMessage(message.content, message.stopReason)) {
-            this.liveFinal(finalAssistantText(message.content));
+            this.liveFinal(finalAssistantText(message.content), finalAssistantTextIndexes(message.content));
           } else {
-            this.closeOpenItem();
-            // Publish only at message_end: the streaming error update describes
-            // the same failed message, and retries have their own completions.
+            if (message.stopReason === "error" || message.stopReason === "aborted") this.liveAssistantFailure();
+            else this.closeOpenItem();
+            // Classify the completed message once; Pi's continuation or settled
+            // event determines whether its error belongs inside or outside.
             const errorText = assistantErrorText(message);
-            if (errorText) this.liveNote(errorText, "error");
+            if (errorText) {
+              this.pendingAssistantError = errorText;
+              this.terminalOutcome = "stopped";
+            }
           }
           if (message.stopReason !== "aborted" && message.stopReason !== "error") {
             const miss = detectCacheMiss(this.session.sessionManager.getBranch(), message, this.session.modelRuntime);
             if (miss) this.liveCacheMiss(miss);
           }
-          void this.refreshStats();
         }
         break;
       }
-      case "agent_end":
-        if (this.turnTiming) {
-          const timing = this.turnTiming.snapshot(performance.now());
-          this.session.sessionManager.appendCustomEntry(turnTimingEntryType, timing);
-          if (this.live) this.live.working.timing = timing;
-          this.turnTiming = undefined;
+      case "agent_settled":
+        // agent_end only ends an agent-core loop. Pi may still compact and
+        // continue without another user, even when agent_end.willRetry is false.
+        if (!this.turnTiming) break;
+        if (this.pendingAssistantError) {
+          this.liveNote(this.pendingAssistantError, "error");
+          this.pendingAssistantError = undefined;
         }
-        // End state and readiness are one synchronous lifecycle boundary. Stats
-        // are secondary presentation data and cannot delay, suppress, or race a
-        // newer agent_start into being marked idle.
-        this.finishLivePresentation();
-        if (!event.willRetry) {
-          this.setBusy(false);
-          await this.emitTurnFinished();
-        }
+        this.finishRun(this.terminalOutcome);
+        this.setBusy(false);
+        await this.emitTurnFinished();
         void this.refreshStats().catch((error) => {
           console.error("Could not refresh Agent stats after turn completion", normalizedPromiseError(error));
         });
@@ -315,8 +379,8 @@ export class RealAgentRuntime extends BaseAgentRuntime {
       case "compaction_end": {
         const entry = event.result && this.latestCompactionEntry();
         if (entry) this.postCompactionEstimate = { entryId: entry.id, tokens: event.result.estimatedTokensAfter };
-        // Mid-loop threshold compaction has willRetry=false, but inference
-        // continues without another agent_start. Only clear busy outside a loop.
+        // Compaction may happen between loops or mid-loop. Keep the whole
+        // prompt busy until agent_settled, independent of willRetry.
         if (!event.willRetry && !this.turnTiming) this.setBusy(false);
         if (event.reason === "manual" && !event.willRetry) await this.emitTurnFinished();
         await this.refreshTranscript();
@@ -325,6 +389,12 @@ export class RealAgentRuntime extends BaseAgentRuntime {
         if (notice) this.notice(notice.level, notice.message);
         break;
       }
+      case "auto_retry_end":
+        if (!event.success && this.turnTiming) {
+          if (event.finalError) this.pendingAssistantError = event.finalError;
+          this.terminalOutcome = "stopped";
+        }
+        break;
       case "auto_retry_start":
         this.notice("info", `Provider error, retrying (attempt ${event.attempt}/${event.maxAttempts})…`);
         break;
@@ -343,13 +413,21 @@ export class RealAgentRuntime extends BaseAgentRuntime {
     if (this.summarizing) throw new Error("Wait for branch summarization to finish before sending another prompt.");
 
     if (this.session.isStreaming) {
-      await this.session.steer(fullText, images.length > 0 ? images : undefined);
-      this.liveNote(`Steer: ${trimmed}`, "system");
+      const key = `pending-user:${crypto.randomUUID()}`;
+      this.pendingSteering.push(key);
+      this.livePendingUser(key, fullText);
+      try {
+        await this.session.steer(fullText, images.length > 0 ? images : undefined);
+      } catch (error) {
+        this.pendingSteering.splice(this.pendingSteering.indexOf(key), 1);
+        this.liveConsumePendingUser(key);
+        throw error;
+      }
       return;
     }
 
     let accepted = false;
-    let acceptedPrompt: { text: string; images: SessionImageRef[] } | undefined;
+    const acceptedPrompt = Symbol("accepted prompt");
     const { promise: acceptance, resolve: resolveAcceptance, reject: rejectAcceptance } = Promise.withResolvers<void>();
     const thisRuntime = this;
     const promptOptions: AgentPromptPreflightOptions = {
@@ -357,10 +435,9 @@ export class RealAgentRuntime extends BaseAgentRuntime {
         if (!success) return;
         accepted = true;
         // Pi invokes this immediately before starting the agent loop. Keep the
-        // accepted prompt pending until agent_start so immediately handled
+        // accepted prompt pending until its persisted user entry so handled
         // extension commands never create a speculative user/Working section or
-        // leave the Agent busy without a matching agent_end.
-        acceptedPrompt = { text: trimmed, images: [] };
+        // leave the Agent busy without a matching agent_settled.
         thisRuntime.pendingAcceptedPrompt = acceptedPrompt;
         resolveAcceptance();
       },
@@ -421,7 +498,7 @@ export class RealAgentRuntime extends BaseAgentRuntime {
       await this.session.abort();
     }
     await this.awaitTerminalSessionOperations();
-    this.finishLivePresentation();
+    this.finishRun("stopped");
     this.setBusy(false);
     void this.refreshStats().catch((error) => {
       console.error("Could not refresh Agent stats after abort", normalizedPromiseError(error));
@@ -499,6 +576,7 @@ export class RealAgentRuntime extends BaseAgentRuntime {
     this.toolsForModel = created.toolViews;
     this.serviceTiers = created.serviceTiers;
     this.sessionFile = agent.path;
+    this.selectBranch();
     try {
       this.subscribeToSession();
       this.attachTranscript();
@@ -528,6 +606,7 @@ export class RealAgentRuntime extends BaseAgentRuntime {
         summarize: options.summarize,
         customInstructions: options.customInstructions?.trim() || undefined,
       });
+      this.selectBranch();
       this.serviceTiers.reload();
       if (options.summarize) {
         await this.finishBranchSummary();
@@ -559,8 +638,7 @@ export class RealAgentRuntime extends BaseAgentRuntime {
     const lifecycle = (async () => {
       this.beginBranchSummary();
       try {
-        this.liveBegin();
-        this.liveNote("Summarizing the abandoned branch…", "system");
+        this.notice("info", "Summarizing the abandoned branch…");
         await this.streamRendered(async () => {
           const truncated = this.canonicalItems(target);
           if (this.live) truncated.push(...this.liveItemsForDisplay(this.live));
@@ -571,6 +649,7 @@ export class RealAgentRuntime extends BaseAgentRuntime {
         started = true;
         resolveStarted();
         await navigation;
+        this.selectBranch();
       // The summarizer may reject with any JavaScript value. Before the
       // detached operation starts, reject the route; afterward render the error.
       // oxlint-disable-next-line anti-slop/no-unknown-parameters -- normalizedPromiseError owns this external boundary.
@@ -612,6 +691,7 @@ export class RealAgentRuntime extends BaseAgentRuntime {
     }
     await this.trackTerminalSessionOperation((async () => {
       await this.session.navigateTree(target, { summarize: false });
+      this.selectBranch();
       this.serviceTiers.reload();
       await this.refreshTranscript();
       await this.refreshStats();

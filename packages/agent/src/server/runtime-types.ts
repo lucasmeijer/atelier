@@ -33,6 +33,8 @@ export interface WorkspaceAgentRuntime {
   readonly isStreaming: boolean;
   /** First delivers one complete authoritative update, then every incremental update in order. */
   subscribeLivePresentation(listener: AgentLivePresentationListener): AgentLivePresentationSubscription;
+  /** Lazily subscribes to one persisted turn on the selected branch; invalid boundaries reject before delivery. */
+  subscribeTurnPresentation(turnId: string, branchId: string, listener: AgentLivePresentationListener): AgentLivePresentationSubscription;
   /** Server-rendered state for initial pane HTML. */
   paneState(revealTarget?: string): Promise<AgentPaneState>;
   userMessages(): string[];

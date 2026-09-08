@@ -1,8 +1,5 @@
 import type { TranscriptItem } from "./transcript.ts";
 
-export interface AgentTranscriptContext {
-  activeTurnEntryId?: string;
-}
 export interface AgentTranscriptAddition {
   item: Extract<TranscriptItem, { type: "extension" }>;
   /** Omit for an independently timed row outside model activity. */
@@ -21,7 +18,7 @@ export interface AgentTranscriptSnapshot {
   anchors: AgentTranscriptAnchor[];
 }
 
-export function applyTranscriptContributions(items: TranscriptItem[], snapshot: AgentTranscriptSnapshot, context: AgentTranscriptContext): TranscriptItem[] {
+export function applyTranscriptContributions(items: TranscriptItem[], snapshot: AgentTranscriptSnapshot): TranscriptItem[] {
   const annotate = (items: TranscriptItem[]): TranscriptItem[] => items.map((item) => {
     if (item.type === "working") return { ...item, items: annotate(item.items) };
     const anchor = snapshot.anchors.find(({ target }) => "toolCallId" in target
@@ -32,7 +29,7 @@ export function applyTranscriptContributions(items: TranscriptItem[], snapshot: 
   const time = (item: TranscriptItem) => item.timestamp ?? (item.type === "working" ? item.startedAt : 0);
   const result = annotate(items);
   for (const { item, placement } of snapshot.rows) {
-    const working = placement && result.find((candidate) => candidate.type === "working" && (candidate.key === `${placement.turnEntryId}:working` || (candidate.live && placement.turnEntryId === context.activeTurnEntryId)));
+    const working = placement && result.find((candidate) => candidate.type === "working" && (candidate.key === `${placement.turnEntryId}:working` || candidate.inputEntryIds?.includes(placement.turnEntryId)));
     if (working?.type === "working" && placement?.relation === "during-turn") {
       working.items = [...working.items, item].sort((a, b) => time(a) - time(b));
     } else if (working) result.splice(result.indexOf(working), 0, item);

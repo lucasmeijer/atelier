@@ -5,7 +5,7 @@ import { Value } from "typebox/value";
 import { significantCacheMissNotice, type CacheMiss } from "./cache-miss.ts";
 import { isToolViewDetails, type SessionImageRef, type TranscriptRecord } from "./transcript.ts";
 
-import { turnTimingEntryType, turnTimingSchema } from "./turn-timing.ts";
+import { turnStartEntryType, turnStartSchema, turnTimingEntryType, turnTimingRecordSchema } from "./turn-timing.ts";
 
 interface ImageDimensions {
   width: number;
@@ -73,8 +73,13 @@ export function recordsFromSessionEntries(entries: any[], cacheMisses = new Map<
   let lastModelChangeRecord: TranscriptRecord | undefined;
   let cacheNoticeInsertIndex: number | undefined;
   for (const entry of entries) {
-    if (entry.type === "custom" && entry.customType === turnTimingEntryType && Value.Check(turnTimingSchema, entry.data)) {
-      records.push({ kind: "timing", timing: entry.data, timestamp: entryTimestamp(entry) });
+    if (entry.type === "custom" && entry.customType === turnStartEntryType && Value.Check(turnStartSchema, entry.data)) {
+      records.push({ kind: "runStart", ...entry.data, timestamp: entryTimestamp(entry) });
+      continue;
+    }
+    if (entry.type === "custom" && entry.customType === turnTimingEntryType && Value.Check(turnTimingRecordSchema, entry.data)) {
+      const { turnEntryId, outcome, ...timing } = entry.data;
+      records.push({ kind: "timing", timing, turnEntryId, outcome, timestamp: entryTimestamp(entry) });
       continue;
     }
     const contributed = agentDelegation?.projectSessionEntry(entry);

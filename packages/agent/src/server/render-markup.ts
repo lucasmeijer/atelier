@@ -19,7 +19,7 @@ export function transcriptActionItemHtml(label: ActionItemLabel, options: { disc
     primary: options.disclosure ? undefined : false,
     leadingHtml: `${options.disclosure ? Icons.Disclosure : ""}${options.leadingHtml ?? ""}`,
     trailingHtml: options.trailingHtml,
-    label: { ...label, textAttributesHtml: options.labelId ? `id="${options.labelId}"` : undefined },
+    label: { ...label, textAttributesHtml: [label.textAttributesHtml, options.labelId ? `id="${options.labelId}"` : ""].filter(Boolean).join(" ") },
     element: { tag: options.disclosure ? "summary" : "div", attributesHtml: options.summaryId ? `id="${options.summaryId}"` : undefined },
   });
 }

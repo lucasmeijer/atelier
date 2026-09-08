@@ -2,9 +2,10 @@ import type { WorkspaceClientControllerConstructor as StimulusControllerConstruc
 
 export function createAgentElapsedController(Controller: StimulusControllerConstructor) {
   return class AgentElapsedController extends Controller {
-    static values = { since: Number, max: Number };
+    static values = { since: Number, max: Number, prefix: String };
     static targets = ["time"];
     declare readonly sinceValue: number;
+    declare readonly prefixValue: string;
     declare readonly maxValue: number;
     declare readonly hasMaxValue: boolean;
     declare readonly timeTargets: HTMLElement[];
@@ -20,7 +21,7 @@ export function createAgentElapsedController(Controller: StimulusControllerConst
       const update = () => {
         const seconds = Math.max(0, Math.round((Date.now() - this.sinceValue) / 1000));
         const max = this.hasMaxValue && this.maxValue > 0 ? ` / ${format(this.maxValue)}` : "";
-        for (const target of this.timeTargets) target.textContent = `${format(seconds)}${max}`;
+        for (const target of this.timeTargets) target.textContent = `${this.prefixValue}${format(seconds)}${max}`;
       };
       update();
       this.timer = setInterval(update, 1000);

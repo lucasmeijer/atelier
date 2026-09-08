@@ -2,6 +2,7 @@ import { Controller } from "@hotwired/stimulus";
 import { atelierCableConnectionHeader, CableTopics, type CableSubscription } from "@atelier/shared";
 import { registerWorkspaceControllers } from "./workspace-controller-registry.ts";
 import { createAtelierCableClient } from "./cable.ts";
+import { renderCableStreams } from "./cable-stream-renderer.ts";
 
 export function cableRequestHeaders(initial: HeadersInit = {}): Headers {
   const headers = new Headers(initial);
@@ -24,7 +25,7 @@ class CableShellController extends Controller {
 }
 
 export function installWorkspaceCable(): void {
-  window.AtelierCable ??= createAtelierCableClient();
+  window.AtelierCable ??= createAtelierCableClient(renderCableStreams);
   document.addEventListener("turbo:before-fetch-request", (event) => {
     // SAFETY: Turbo is the sole producer of this event and provides mutable fetch options.
     const detail = (event as CustomEvent<{ fetchOptions: RequestInit }>).detail;

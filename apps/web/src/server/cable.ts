@@ -56,6 +56,10 @@ export interface CableServer {
   stats(): CableConnectionStats;
 }
 
+function usesLivePresentation(channel: CableIdentifier["channel"]): boolean {
+  return channel === "agent" || channel === "agent-turn" || channel === "module";
+}
+
 function textMessage(message: string | Buffer): string {
   return Buffer.isBuffer(message) ? message.toString() : message;
 }
@@ -165,7 +169,7 @@ export function createCableServer(options: CableServerOptions): CableServer {
     const attempt: SocketSubscriptionAttempt = { ws, identifier, key, subscriptionId, confirmed: false, bufferedHtml: [] };
     socketAttempts.set(key, attempt);
 
-    if (identifier.channel !== "agent") {
+    if (identifier.channel !== "agent" && identifier.channel !== "agent-turn") {
       try {
         authorize(identifier);
       } catch (error) {
@@ -176,7 +180,7 @@ export function createCableServer(options: CableServerOptions): CableServer {
     let attempts = attemptsByIdentifier.get(key);
     if (!attempts) attemptsByIdentifier.set(key, attempts = new Set());
     attempts.add(attempt);
-    if (identifier.channel === "agent" || identifier.channel === "module") void initializeChannelAttempt(attempt);
+    if (usesLivePresentation(identifier.channel)) void initializeChannelAttempt(attempt);
     else void initializeNonAgentAttempt(attempt);
   }
 
@@ -189,7 +193,7 @@ export function createCableServer(options: CableServerOptions): CableServer {
   function broadcast(identifier: CableIdentifier, html: string, options: CableBroadcastOptions = {}): void {
     if (!html) return;
     if (options.exceptConnectionId && options.onlyConnectionId) throw new Error("Cable broadcast cannot combine exceptConnectionId and onlyConnectionId");
-    if (identifier.channel === "module" || identifier.channel === "agent") throw new Error("Channel updates must be published through the live-presentation interface");
+    if (usesLivePresentation(identifier.channel)) throw new Error("Channel updates must be published through the live-presentation interface");
     const key = serializeCableIdentifier(identifier);
     for (const attempt of attemptsByIdentifier.get(key) ?? []) {
       if (!attemptIsCurrent(attempt)) continue;
@@ -240,7 +244,7 @@ export function createCableServer(options: CableServerOptions): CableServer {
       for (const [key, set] of attemptsByIdentifier) subscriptions[key] = set.size;
       const upstreams: Record<string, number> = {};
       for (const [key, attempts] of attemptsByIdentifier) {
-        if (["agent", "module"].includes(attempts.values().next().value?.identifier.channel ?? "")) upstreams[key] = attempts.size;
+        if (usesLivePresentation(attempts.values().next().value!.identifier.channel)) upstreams[key] = attempts.size;
       }
       return { sockets: connections.size, subscriptions, upstreams };
     },

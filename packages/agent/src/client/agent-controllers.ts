@@ -7,6 +7,7 @@ import { createAgentCompletionsController } from "./completions-controller.ts";
 import { createComposerFocusController } from "./composer-focus-controller.ts";
 import { createComposerSelectionAutosubmitController } from "./composer-selection-controller.ts";
 import { createAgentEditDiffController } from "./edit-diff-controller.ts";
+import { createAgentTurnController } from "./turn-controller.ts";
 import { createAgentElapsedController } from "./elapsed-controller.ts";
 import { createAgentNoticeController } from "./notice-controller.ts";
 import { createAgentHtmlPreviewController } from "./html-preview-controller.ts";
@@ -34,6 +35,7 @@ export const agentClientModule: WorkspaceClientModule = {
     application.register("agent-attachments", createAgentAttachmentsController(Controller));
     application.register("composer-focus", createComposerFocusController(Controller));
     application.register("composer-selection-autosubmit", createComposerSelectionAutosubmitController(Controller));
+    application.register("agent-turn", createAgentTurnController(Controller));
     application.register("agent-elapsed", createAgentElapsedController(Controller));
     application.register("agent-edit-diff", createAgentEditDiffController(Controller));
     application.register("agent-html-preview", createAgentHtmlPreviewController(Controller));

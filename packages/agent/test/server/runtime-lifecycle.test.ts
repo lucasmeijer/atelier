@@ -5,6 +5,7 @@ import { RealAgentRuntime } from "../../src/server/real-agent-runtime.ts";
 import type { AgentStatsView } from "../../src/server/render-composer.ts";
 import { AgentServiceTierState } from "../../src/server/service-tier.ts";
 import { subscribeWorkspaceViewBusy } from "../../src/server/workspace-view-busy.ts";
+import { turnTimingEntryType } from "../../src/server/turn-timing.ts";
 import { buildTranscript, type TranscriptItem } from "../../src/server/transcript.ts";
 
 interface Deferred<Value> {
@@ -53,7 +54,9 @@ function fakeSession(navigation: Deferred<{ editorText?: string; cancelled?: boo
     modelRuntime: { getModel: () => undefined },
     sessionManager: {
       appendCustomEntry: () => crypto.randomUUID(),
-      getBranch: () => [],
+      getSessionId: () => "test-session",
+      getLeafId: () => "initial-user",
+      getBranch: () => [{ type: "message", id: "initial-user", parentId: "parent", timestamp: new Date().toISOString(), message: { role: "user", content: [{ type: "text", text: "Initial prompt" }] } }],
       getEntry: (entryId: string) => entries.get(entryId),
     },
     subscribe(next: SessionListener): () => void {
@@ -95,6 +98,13 @@ const emptyStats: AgentStatsView = {
 
 class InspectableAgentRuntime extends RealAgentRuntime {
   private readonly statsCompletions: Array<() => Promise<void>> = [];
+  readonly notes: Array<{ text: string; tone: string }> = [];
+
+  protected override liveNote(text: string, tone: "system" | "summary" | "error"): void {
+    this.notes.push({ text, tone });
+    super.liveNote(text, tone);
+  }
+
   readonly toolContentUpdates: Array<{ prefix?: string; status: string }> = [];
 
   protected override streamActiveToolContent(item: Extract<TranscriptItem, { type: "tool" }>): void {
@@ -121,6 +131,12 @@ class InspectableAgentRuntime extends RealAgentRuntime {
 
   inspectLiveItems(): TranscriptItem[] {
     return this.live ? this.liveItemsForDisplay(this.live) : [];
+  }
+
+  inspectBranchId(): string { return this.ctx.branchId!; }
+
+  subscribeCurrentTurn(listener: (html: string) => void) {
+    return this.subscribeTurnPresentation(this.live!.working.key, this.ctx.branchId!, listener);
   }
 
   inspectLiveSubscriberCount(): number {
@@ -151,6 +167,8 @@ test("tool deltas update authoritative state immediately and coalesce server pub
   await subscription.ready;
   const event = (inner: ToolStreamEvent) => emit({ type: "message_update", assistantMessageEvent: inner });
   emit({ type: "agent_start" });
+  const innerSubscription = runtime.subscribeCurrentTurn(() => {});
+  await innerSubscription.ready;
   event({ type: "toolcall_start", contentIndex: 0, partial: { content: [{ name: "write" }] } });
   const args = { path: "coalescing.js", content: "const n = 42;" };
   const json = JSON.stringify(args);
@@ -162,10 +180,11 @@ test("tool deltas update authoritative state immediately and coalesce server pub
   expect(runtime.toolContentUpdates).toEqual([{ prefix: json, status: "streaming" }]);
   event({ type: "toolcall_delta", delta: " " });
   event({ type: "toolcall_end", toolCall: { id: "call", name: "write", arguments: args } });
-  expect(runtime.toolContentUpdates.at(-1)?.status).toBe("running");
+  expect(item?.type === "tool" && item.tool.status).toBe("running");
   const count = runtime.toolContentUpdates.length;
   await Bun.sleep(70);
   expect(runtime.toolContentUpdates).toHaveLength(count);
+  innerSubscription.unsubscribe();
   subscription.unsubscribe();
 });
 
@@ -176,6 +195,8 @@ test("large tool arguments slow publications to 500 ms without delaying state or
   await subscription.ready;
   const event = (inner: ToolStreamEvent) => emit({ type: "message_update", assistantMessageEvent: inner });
   emit({ type: "agent_start" });
+  const innerSubscription = runtime.subscribeCurrentTurn(() => {});
+  await innerSubscription.ready;
   event({ type: "toolcall_start", contentIndex: 0, partial: { content: [{ name: "write" }] } });
   // Exactly 2 KiB in UTF-8, but fewer than 2,048 UTF-16 code units.
   const prefix = '{"content":"' + "é".repeat(1018);
@@ -194,7 +215,7 @@ test("large tool arguments slow publications to 500 ms without delaying state or
   expect(runtime.toolContentUpdates.at(-1)?.prefix).toBe(prefix + "more");
   event({ type: "toolcall_delta", delta: '"}' });
   event({ type: "toolcall_end", toolCall: { id: "large", name: "write", arguments: { path: "large.txt", content: "é".repeat(1018) + "more" } } });
-  expect(runtime.toolContentUpdates.at(-1)?.status).toBe("running");
+  expect(item?.type === "tool" && item.tool.status).toBe("running");
   const count = runtime.toolContentUpdates.length;
   await Bun.sleep(550);
   expect(runtime.toolContentUpdates).toHaveLength(count);
@@ -203,6 +224,7 @@ test("large tool arguments slow publications to 500 ms without delaying state or
   event({ type: "toolcall_delta", delta: '{"content":"small' });
   await Bun.sleep(70);
   expect(runtime.toolContentUpdates).toHaveLength(count + 1);
+  innerSubscription.unsubscribe();
   subscription.unsubscribe();
 });
 
@@ -409,7 +431,7 @@ test("dispose signals compaction cancellation and waits for the session operatio
   expect(disposed).toBe(true);
 });
 
-test("retry boundaries remain continuously busy and only the terminal Agent end becomes ready", async () => {
+test("retry boundaries remain continuously busy and only the settled prompt becomes ready", async () => {
   const navigation = deferred<{ editorText?: string }>();
   const { session, emit } = fakeSession(navigation);
   const events = createAtelierEventBus();
@@ -435,6 +457,7 @@ test("retry boundaries remain continuously busy and only the terminal Agent end 
     emit({ type: "agent_start" });
     expect(currentNotificationTurn(runtime)).toEqual(notificationTurn);
     emit({ type: "agent_end", willRetry: false });
+    emit({ type: "agent_settled" });
     await Bun.sleep(0);
     expect(busy).toEqual([true, false]);
     expect(finished).toBe(1);
@@ -444,7 +467,7 @@ test("retry boundaries remain continuously busy and only the terminal Agent end 
   }
 });
 
-test("threshold compaction inside an Agent loop stays busy until the loop ends", async () => {
+test("threshold compaction inside an Agent loop stays busy until the prompt settles", async () => {
   const { session, emit } = fakeSession(deferred<{ editorText?: string }>());
   const events = createAtelierEventBus();
   const runtime = runtimeFor(session, events);
@@ -470,23 +493,27 @@ test("threshold compaction inside an Agent loop stays busy until the loop ends",
     expect(busy).toEqual([true]);
     emit({ type: "agent_end", willRetry: false });
     await Bun.sleep(0);
-    expect(busy).toEqual([true, false]);
-    expect(finished).toBe(1);
-    expect(currentNotificationTurn(runtime)).toBeUndefined();
+    expect(busy).toEqual([true]);
+    expect(finished).toBe(0);
 
-    // Post-loop compaction must still clear busy even while Pi's outer
-    // prompt operation reports isStreaming until agent_settled.
+    // Pi can also compact after the loop, before settling its outer prompt.
     emit({ type: "compaction_start", reason: "threshold" });
     emit({ type: "compaction_end", reason: "threshold", willRetry: false });
     await Bun.sleep(0);
-    expect(busy).toEqual([true, false, true, false]);
+    expect(busy).toEqual([true]);
+    expect(finished).toBe(0);
+    session.isStreaming = false;
+    emit({ type: "agent_settled" });
+    await Bun.sleep(0);
+    expect(busy).toEqual([true, false]);
     expect(finished).toBe(1);
+    expect(currentNotificationTurn(runtime)).toBeUndefined();
   } finally {
     unsubscribe();
   }
 });
 
-test("a terminal Agent end becomes ready before stats and cannot clear a newer run", async () => {
+test("a settled prompt becomes ready before stats and cannot clear a newer run", async () => {
   const navigation = deferred<{ editorText?: string }>();
   const { session, emit } = fakeSession(navigation);
   const events = createAtelierEventBus();
@@ -503,6 +530,7 @@ test("a terminal Agent end becomes ready before stats and cannot clear a newer r
   try {
     emit({ type: "agent_start" });
     emit({ type: "agent_end", willRetry: false });
+    emit({ type: "agent_settled" });
     await Bun.sleep(0);
 
     expect(busy).toEqual([true, false]);
@@ -536,6 +564,7 @@ test("throwing terminal stats do not suppress idle state or readiness", async ()
   try {
     emit({ type: "agent_start" });
     emit({ type: "agent_end", willRetry: false });
+    emit({ type: "agent_settled" });
     await Bun.sleep(0);
 
     expect(busy).toEqual([true, false]);
@@ -571,7 +600,7 @@ test.each([
   ["success", {}],
   ["final failure", { error: new Error("provider failed") }],
   ["user abort", { aborted: true }],
-] as const)("%s Agent end emits one terminal readiness", async (_name, terminalEvent) => {
+] as const)("%s settled prompt emits one terminal readiness", async (_name, terminalEvent) => {
   const navigation = deferred<{ editorText?: string }>();
   const { session, emit } = fakeSession(navigation);
   const events = createAtelierEventBus();
@@ -581,6 +610,7 @@ test.each([
 
   emit({ type: "agent_start" });
   emit({ type: "agent_end", willRetry: false, ...terminalEvent });
+  emit({ type: "agent_settled" });
   await Bun.sleep(0);
 
   expect(finished).toBe(1);
@@ -599,7 +629,7 @@ test("submit resolves at Pi preflight acceptance while the turn continues asynch
 
   await runtime.submit("Accepted");
 
-  expect(runtime.inspectLiveItems()).not.toEqual([]);
+  expect(runtime.inspectLiveItems()).toEqual([]);
   turn.resolve();
 });
 
@@ -672,7 +702,7 @@ test("a second live subscriber cannot advance pacing past text the first subscri
   const firstSubscription = runtime.subscribeLivePresentation((html) => firstDeliveries.push(html));
   await firstSubscription.ready;
   const text = "paced-text-abcdefghijklmnopqrstuvwxyz-0123456789";
-  const partial = { stopReason: "pending", content: [{ type: "text", text }] };
+  const partial = { stopReason: "stop", content: [{ type: "text", text }] };
 
   emit({ type: "agent_start" });
   emit({ type: "message_update", assistantMessageEvent: { type: "text_start", contentIndex: 0, partial: { ...partial, content: [{ type: "text", text: "" }] } } });
@@ -729,8 +759,8 @@ test("a joining snapshot absorbs queued paced text at its actual capture boundar
   const beforeBoundary = "abcdefghijklmnopqrstuvwxyz-123456789";
 
   emit({ type: "agent_start" });
-  emit({ type: "message_update", assistantMessageEvent: { type: "text_start", contentIndex: 0, partial: { stopReason: "pending", content: [{ type: "text", text: "" }] } } });
-  emit({ type: "message_update", assistantMessageEvent: { type: "text_delta", contentIndex: 0, delta: beforeBoundary, partial: { stopReason: "pending", content: [{ type: "text", text: beforeBoundary }] } } });
+  emit({ type: "message_update", assistantMessageEvent: { type: "text_start", contentIndex: 0, partial: { stopReason: "stop", content: [{ type: "text", text: "" }] } } });
+  emit({ type: "message_update", assistantMessageEvent: { type: "text_delta", contentIndex: 0, delta: beforeBoundary, partial: { stopReason: "stop", content: [{ type: "text", text: beforeBoundary }] } } });
 
   runtime.queueStatsCompletion(() => releasePredecessor.promise);
   const predecessor = runtime.refreshStatsForTest();
@@ -747,7 +777,7 @@ test("a joining snapshot absorbs queued paced text at its actual capture boundar
   const deliveriesAtBoundary = firstDeliveries.length;
   expect(firstDeliveries.at(-1)).toContain(beforeBoundary);
 
-  emit({ type: "message_update", assistantMessageEvent: { type: "text_delta", contentIndex: 0, delta: "Z", partial: { stopReason: "pending", content: [{ type: "text", text: `${beforeBoundary}Z` }] } } });
+  emit({ type: "message_update", assistantMessageEvent: { type: "text_delta", contentIndex: 0, delta: "Z", partial: { stopReason: "stop", content: [{ type: "text", text: `${beforeBoundary}Z` }] } } });
   await Bun.sleep(70);
   expect(firstDeliveries).toHaveLength(deliveriesAtBoundary);
 
@@ -778,12 +808,13 @@ for (const failure of [
     const message = { role: "assistant", content: [], ...failure };
     emit({ type: "message_update", assistantMessageEvent: { type: "error", error: message }, message });
     emit({ type: "message_end", message });
-    const live = runtime.inspectLiveItems().flatMap((item) => item.type === "working" ? item.items : [item]);
-    const reloaded = buildTranscript([{ kind: "assistant", id: "failure", parts: [], timestamp: 1, ...failure }]);
-    expect(live.filter((item) => item.type === "error").map((item) => item.text))
-      .toEqual(reloaded.filter((item) => item.type === "error").map((item) => item.text));
-    expect(live.filter((item) => item.type === "error")).toHaveLength(1);
+    expect(runtime.notes).toEqual([]);
     emit({ type: "agent_end", willRetry: false });
+    emit({ type: "agent_settled" });
+    const reloaded = buildTranscript([{ kind: "assistant", id: "failure", parts: [], timestamp: 1, ...failure }]);
+    expect(runtime.notes.filter((item) => item.tone === "error").map((item) => item.text))
+      .toEqual(reloaded.filter((item) => item.type === "error").map((item) => item.text));
+    expect(runtime.notes.filter((item) => item.tone === "error")).toHaveLength(1);
     expect(runtime.inspectLiveItems()).toEqual([]);
   });
 }
@@ -798,6 +829,158 @@ test("provider failure preserves streamed partial content as non-final activity"
   const items = runtime.inspectLiveItems().flatMap((item) => item.type === "working" ? item.items : [item]);
   expect(items.filter((item) => item.type === "text").map((item) => ({ text: item.text, final: Boolean(item.final) })))
     .toEqual([{ text: "Partial response", final: false }]);
-  expect(items.filter((item) => item.type === "error").map((item) => item.text)).toEqual(["Connection lost"]);
+  expect(items.filter((item) => item.type === "error")).toEqual([]);
   emit({ type: "agent_end", willRetry: false });
+  emit({ type: "agent_settled" });
+  expect(runtime.notes).toEqual([{ tone: "error", text: "Connection lost" }]);
+});
+
+test("consumed steering keeps the run subscription and publishes only one summary", async () => {
+  const { session, emit } = fakeSession(deferred());
+  const entries = session.sessionManager.getBranch();
+  session.sessionManager.getBranch = () => entries;
+  const timings: Array<{ turnEntryId: string; outcome: string }> = [];
+  session.sessionManager.appendCustomEntry = (_type: string, timing: { turnEntryId: string; outcome: string }) => {
+    if (_type === turnTimingEntryType) timings.push(timing);
+    return "timing";
+  };
+  session.steer = async () => {};
+  const runtime = runtimeFor(session);
+  emit({ type: "agent_start" });
+  const first = runtime.inspectLiveItems().find((item) => item.type === "working")!;
+  expect(first.key).toBe("initial-user:working");
+  const deliveries: string[] = [];
+  const subscription = runtime.subscribeCurrentTurn((payload) => deliveries.push(payload));
+  await subscription.ready;
+  session.isStreaming = true;
+  await runtime.submit("Steer now");
+  expect(runtime.inspectLiveItems().find((item) => item.type === "working")!.key).toBe(first.key);
+  expect(timings).toEqual([]);
+  const user = { role: "user", content: [{ type: "text", text: "Steer now" }] };
+  emit({ type: "turn_start" });
+  emit({ type: "message_end", message: user });
+  // Pi appends after synchronous listener notification, before microtasks run.
+  entries.push({ type: "message", id: "steering-pi-id", parentId: "initial-user", message: user });
+  await Promise.resolve();
+  expect(timings).toEqual([]);
+  expect(runtime.inspectLiveItems().filter((item) => item.type === "working").map((item) => item.key)).toEqual([first.key]);
+  emit({ type: "message_start", message: { role: "assistant" } });
+  const beforeActivity = deliveries.length;
+  emit({ type: "message_update", assistantMessageEvent: { type: "thinking_delta", delta: "Still on the same subscription" } });
+  expect(deliveries.length).toBeGreaterThan(beforeActivity);
+  emit({ type: "message_end", message: { role: "assistant", content: [{ type: "text", text: "After steering" }], stopReason: "stop", usage: { output: 3 } } });
+  expect(runtime.inspectLiveItems().map((item) => item.type)).toEqual(["working", "user", "text"]);
+  expect(runtime.inspectLiveItems()[1]).toMatchObject({ text: "Steer now", rewindEntryId: "steering-pi-id" });
+  emit({ type: "agent_end", willRetry: false });
+  emit({ type: "agent_settled" });
+  expect(timings).toHaveLength(1);
+  expect(timings[0]).toMatchObject({ turnEntryId: "initial-user", outcome: "completed", usageComplete: true, outputTokens: 3 });
+  subscription.unsubscribe();
+});
+
+test("automatic retries retain turn identity and publish only one terminal summary", () => {
+  const { session, emit } = fakeSession(deferred());
+  const timings: Array<{ turnEntryId: string; outputTokens: number }> = [];
+  session.sessionManager.appendCustomEntry = (_type: string, timing: { turnEntryId: string; outputTokens: number }) => { if (_type === turnTimingEntryType) timings.push(timing); return "timing"; };
+  const runtime = runtimeFor(session);
+  emit({ type: "agent_start" });
+  emit({ type: "turn_start" });
+  emit({ type: "message_end", message: { role: "assistant", content: [], usage: { output: 2 }, stopReason: "error", errorMessage: "Retry me" } });
+  emit({ type: "agent_end", willRetry: true });
+  expect(timings).toEqual([]);
+  expect(runtime.notes).toEqual([]);
+  expect(runtime.inspectLiveItems().find((item) => item.type === "working")!.key).toBe("initial-user:working");
+  emit({ type: "agent_start" });
+  emit({ type: "turn_start" });
+  emit({ type: "message_start", message: { role: "assistant" } });
+  emit({ type: "message_end", message: { role: "assistant", content: [{ type: "text", text: "Done" }], usage: { output: 3 }, stopReason: "stop" } });
+  emit({ type: "agent_end", willRetry: false });
+  emit({ type: "agent_settled" });
+  expect(timings).toHaveLength(1);
+  expect(timings[0]).toMatchObject({ turnEntryId: "initial-user", outputTokens: 5, outcome: "completed" });
+});
+
+test("accepted prompt does not advertise a temporary turn before Pi persistence", async () => {
+  const { session, emit } = fakeSession(deferred());
+  const entries: any[] = [];
+  session.sessionManager.getBranch = () => entries;
+  session.prompt = async (_text: string, options: { preflightResult(success: boolean): void }) => {
+    options.preflightResult(true);
+    emit({ type: "agent_start" });
+  };
+  const runtime = runtimeFor(session);
+  await runtime.submit("Start");
+  expect(runtime.inspectLiveItems()).toEqual([]);
+  const user = { role: "user", content: [{ type: "text", text: "Start" }] };
+  emit({ type: "message_end", message: user });
+  entries.push({ type: "message", id: "permanent-start", parentId: null, message: user });
+  await Promise.resolve();
+  expect(runtime.inspectLiveItems().find((item) => item.type === "working")!.key).toBe("permanent-start:working");
+  emit({ type: "agent_end", willRetry: false });
+  emit({ type: "agent_settled" });
+});
+
+test("branch selection rejects obsolete subscriptions even when the turn start is shared", async () => {
+  const navigation = deferred<{ editorText?: string }>();
+  const { session, emit } = fakeSession(navigation);
+  const runtime = runtimeFor(session);
+  emit({ type: "agent_start" });
+  const oldBranch = runtime.inspectBranchId();
+  const deliveries: string[] = [];
+  const old = runtime.subscribeCurrentTurn((html) => deliveries.push(html));
+  await old.ready;
+  emit({ type: "agent_end", willRetry: false });
+  emit({ type: "agent_settled" });
+  session.sessionManager.getLeafId = () => "other-branch";
+  navigation.resolve({});
+  await runtime.navigateTree("other-branch", { summarize: false });
+  expect(runtime.inspectBranchId()).not.toBe(oldBranch);
+  const count = deliveries.length;
+  emit({ type: "agent_start" });
+  expect(runtime.inspectLiveItems().find((item) => item.type === "working")!.key).toBe("initial-user:working");
+  expect(() => runtime.subscribeTurnPresentation("initial-user:working", oldBranch, () => {})).toThrow("obsolete branch");
+  emit({ type: "message_update", assistantMessageEvent: { type: "thinking_delta", delta: "Other branch only" } });
+  expect(deliveries).toHaveLength(count);
+  old.unsubscribe();
+  emit({ type: "agent_end", willRetry: false });
+  emit({ type: "agent_settled" });
+});
+
+test("cancelling retry backoff closes the existing block with a stopped summary", async () => {
+  const { session, emit } = fakeSession(deferred());
+  const timings: Array<{ turnEntryId: string; outcome: string }> = [];
+  session.sessionManager.appendCustomEntry = (_type: string, timing: { turnEntryId: string; outcome: string }) => { if (_type === turnTimingEntryType) timings.push(timing); return "timing"; };
+  const events = createAtelierEventBus();
+  let finished = 0;
+  events.on("workspace_agent_turn_finished", () => { finished += 1; });
+  const runtime = runtimeFor(session, events);
+  emit({ type: "agent_start" });
+  emit({ type: "message_end", message: { role: "assistant", content: [], stopReason: "error", errorMessage: "Busy" } });
+  emit({ type: "agent_end", willRetry: true });
+  emit({ type: "auto_retry_end", success: false, finalError: "Retry cancelled" });
+  emit({ type: "agent_settled" });
+  await Promise.resolve();
+  expect(timings).toHaveLength(1);
+  expect(timings[0]).toMatchObject({ turnEntryId: "initial-user", outcome: "stopped" });
+  expect(runtime.notes).toEqual([{ tone: "error", text: "Retry cancelled" }]);
+  expect(finished).toBe(1);
+  expect(runtime.inspectLiveItems()).toEqual([]);
+});
+
+test("an early-final answer that fails is demoted to inner non-final activity", () => {
+  const { session, emit } = fakeSession(deferred());
+  const runtime = runtimeFor(session);
+  emit({ type: "agent_start" });
+  emit({ type: "message_start", message: { role: "assistant" } });
+  const text = "Incomplete answer";
+  const part = { type: "text", text, textSignature: JSON.stringify({ v: 1, id: "final-id", phase: "final_answer" }) };
+  emit({ type: "message_update", assistantMessageEvent: { type: "text_start", contentIndex: 0, partial: { content: [part], stopReason: "pending" } } });
+  emit({ type: "message_update", assistantMessageEvent: { type: "text_delta", contentIndex: 0, delta: text, partial: { content: [part], stopReason: "pending" } } });
+  expect(runtime.inspectLiveItems().find((item) => item.type === "text")).toMatchObject({ final: true, text });
+  emit({ type: "message_end", message: { role: "assistant", content: [part], stopReason: "error", errorMessage: "Disconnected" } });
+  expect(runtime.inspectLiveItems().filter((item) => item.type === "text")).toEqual([]);
+  const inner = runtime.inspectLiveItems().find((item) => item.type === "working");
+  expect(inner?.type === "working" && inner.items.find((item) => item.type === "text")).toMatchObject({ final: false, text });
+  emit({ type: "agent_end", willRetry: false });
+  emit({ type: "agent_settled" });
 });

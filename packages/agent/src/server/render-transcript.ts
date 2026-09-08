@@ -68,21 +68,23 @@ export function renderTranscriptItem(ctx: AgentRenderContext, item: TranscriptIt
   return `<div class="agent-item" id="${id}" data-transcript-key="${escapeHtml(item.key)}"${item.anchor ? ` data-transcript-anchor="${escapeHtml(item.anchor)}"` : ""}>${body}</div>`;
 }
 
+export function renderWorkingContent(ctx: AgentRenderContext, section: WorkingTranscriptItem, options: { live?: boolean; open?: boolean } = {}): string {
+  const content = section.items.map((item) => renderTranscriptItem(ctx, item, options)).join("");
+  const finished = section.completedAt !== undefined || section.stoppedAt !== undefined;
+  return !content && finished ? '<p class="agent-working-empty">No intermediate activity for this turn.</p>' : content;
+}
+
 function renderWorkingItems(ctx: AgentRenderContext, section: WorkingTranscriptItem, options: { live?: boolean; open?: boolean } = {}): string {
-  const items = section.items.map((item) => renderTranscriptItem(ctx, item, options)).join("");
+  const items = renderWorkingContent(ctx, section, options);
   return `<div class="agent-working-items" id="${ids.workingItems(ctx, section.key)}">${items}</div>`;
 }
 
 function renderWorkingSection(ctx: AgentRenderContext, section: WorkingTranscriptItem): string {
   if (section.completedAt !== undefined && section.items.length === 0 && !section.timing) return "";
-  const active = section.completedAt === undefined && section.stoppedAt === undefined;
   const summary = renderWorkingSummary(ctx, section);
   const revealing = Boolean(ctx.revealTarget && section.items.some((item) => item.anchor === ctx.revealTarget || item.key === ctx.revealTarget));
-  const showError = section.items.some((item) => item.type === "error");
-  const lazy = !active && !section.live && !revealing && !showError;
-  const attributes = lazy ? ' data-controller="agent-lazy-detail" data-action="toggle->agent-lazy-detail#load mouseenter->agent-lazy-detail#load"' : revealing || showError ? " open" : "";
-  const items = lazy ? lazyTranscriptItemFrame(ctx, section.key) : renderWorkingItems(ctx, section, { live: section.live, open: active });
-  return `<details class="agent-working${active ? " active" : ""}" id="${ids.item(ctx, section.key)}"${attributes}>${summary}${items}</details>`;
+  const attributes = ` data-controller="agent-turn" data-agent-turn-workspace-id-value="${escapeHtml(ctx.workspaceId)}" data-agent-turn-conversation-id-value="${escapeHtml(ctx.conversationId)}" data-agent-turn-turn-id-value="${escapeHtml(section.key)}" data-agent-turn-branch-id-value="${escapeHtml(ctx.branchId ?? "")}"${revealing ? ` open data-agent-turn-reveal-value="${escapeHtml(ctx.revealTarget!)}"` : ""} data-action="toggle->agent-turn#toggle"`;
+  return `<details class="agent-working" id="${ids.item(ctx, section.key)}"${attributes}>${summary}<div class="agent-working-items" id="${ids.workingItems(ctx, section.key)}" data-agent-turn-target="items"></div></details>`;
 }
 
 export function renderWorkingSummary(ctx: AgentRenderContext, section: Omit<WorkingTranscriptItem, "items">): string {
@@ -91,8 +93,11 @@ export function renderWorkingSummary(ctx: AgentRenderContext, section: Omit<Work
   const duration = formatDuration(section.timing?.elapsedMs ?? ((endedAt ?? Date.now()) - section.startedAt));
   const activityLabel = `${active ? "Working for" : section.completedAt !== undefined ? "Worked for" : "Stopped after"} ${duration}`;
   const status = active ? '<i class="status-dot running action-item__status" aria-label="In progress"></i>' : "";
-  return transcriptActionItemHtml({ kind: "text", text: activityLabel }, {
-    disclosure: true, leadingHtml: status, trailingHtml: renderWorkingTiming(section),
+  return transcriptActionItemHtml({ kind: "text", text: activityLabel,
+    attributesHtml: active ? `data-controller="agent-elapsed" data-agent-elapsed-since-value="${section.startedAt}" data-agent-elapsed-prefix-value="Working for "` : undefined,
+    textAttributesHtml: active ? 'data-agent-elapsed-target="time"' : undefined,
+  }, {
+    disclosure: true, leadingHtml: status, trailingHtml: active ? "" : renderWorkingTiming(section),
     summaryId: ids.itemSummaryContent(ctx, section.key),
   });
 }
@@ -104,8 +109,8 @@ function renderWorkingTiming(section: Omit<WorkingTranscriptItem, "items">): str
     ? `${(timing.outputTokens / (timing.inferenceMs / 1000)).toFixed(1)} tps`
     : "tps unavailable";
   const toolDuration = formatDuration(timing.toolMs);
-  const toolsLabel = toolDuration === "0s" ? "" : `${toolDuration} tools, `;
-  return ` <span class="agent-working-timing" title="Wall-clock tool wait (parallel calls counted once). Output-token count and tokens per inference second, including reported thinking tokens.">(${escapeHtml(toolsLabel)}${formatTokens(timing.outputTokens)} tok @ ${escapeHtml(rate)})</span>`;
+  const toolsLabel = `${toolDuration} tools, `;
+  return ` <span class="agent-working-timing" title="Wall-clock tool wait (parallel calls counted once). Output-token count and tokens per inference second, including reported thinking tokens.">(${escapeHtml(toolsLabel)}${timing.usageComplete ? `${formatTokens(timing.outputTokens)} tok` : "tokens unavailable"} @ ${escapeHtml(rate)})</span>`;
 }
 
 function renderThinkingItem(ctx: AgentRenderContext, item: Extract<TranscriptItem, { type: "thinking" }>): string {

@@ -39,7 +39,8 @@ export function assistantTextPhase(textSignature?: string): AssistantTextPhase |
 }
 
 export type TranscriptRecord =
-  | { kind: "timing"; timing: TurnTimingSummary; timestamp: number }
+  | { kind: "runStart"; turnEntryId: string; startedAt: number; timestamp: number }
+  | { kind: "timing"; timing: TurnTimingSummary; turnEntryId?: string; outcome?: "completed" | "stopped"; timestamp: number }
   | { kind: "taskStart"; id: string; timestamp: number }
   | { kind: "user"; id: string; text: string; images: SessionImageRef[]; timestamp: number; rewindable?: boolean }
   | { kind: "assistant"; id: string; parts: AssistantPart[]; stopReason: StopReason; errorMessage?: string; timestamp: number }
@@ -99,6 +100,8 @@ interface TranscriptItemBase {
 
 export type WorkingTranscriptItem = TranscriptItemBase & {
   type: "working";
+  /** Initiating and steering entries whose activity belongs to this run. */
+  inputEntryIds?: string[];
   startedAt: number;
   completedAt?: number;
   stoppedAt?: number;
@@ -132,55 +135,71 @@ export function isFinalAssistantStopReason(reason: StopReason): boolean {
   return reason === "stop" || reason === "length" || reason === "deferred";
 }
 
-export function isFinalAssistantMessage(parts: ReadonlyArray<{ type: string; text?: string; textSignature?: string }>, stopReason: StopReason): boolean {
-  const textParts = parts.filter((part) => part.type === "text");
-  const hasPhasedText = textParts.some((part) => assistantTextPhase(part.textSignature) !== undefined);
-  const hasFinalText = textParts.some((part) => Boolean(part.text?.trim())
-    && (!hasPhasedText || assistantTextPhase(part.textSignature) === "final_answer"));
+type AssistantContentPart = { type: string; text?: string; textSignature?: string };
+
+/** Select final-answer content once for both streaming promotion and persisted history. */
+export function finalAssistantTextIndexes(parts: ReadonlyArray<AssistantContentPart>): number[] {
+  const phased = parts.some((part) => part.type === "text" && assistantTextPhase(part.textSignature) !== undefined);
+  return parts.flatMap((part, index) => part.type === "text"
+    && (!phased || assistantTextPhase(part.textSignature) === "final_answer") ? [index] : []);
+}
+
+export function isFinalAssistantMessage(parts: ReadonlyArray<AssistantContentPart>, stopReason: StopReason): boolean {
   return isFinalAssistantStopReason(stopReason)
-    && hasFinalText
-    && !parts.some((part) => part.type === "toolCall");
+    && !parts.some((part) => part.type === "toolCall")
+    && finalAssistantTextIndexes(parts).some((index) => Boolean(parts[index]!.text?.trim()));
 }
 
-export function finalAssistantText(parts: ReadonlyArray<{ type: string; text?: string; textSignature?: string }>): string {
-  const textParts = parts.filter((part) => part.type === "text");
-  const hasPhasedText = textParts.some((part) => assistantTextPhase(part.textSignature) !== undefined);
-  return textParts
-    .filter((part) => !hasPhasedText || assistantTextPhase(part.textSignature) === "final_answer")
-    .map((part) => part.text ?? "")
-    .join("");
+export function finalAssistantText(parts: ReadonlyArray<AssistantContentPart>): string {
+  return finalAssistantTextIndexes(parts).map((index) => parts[index]!.text ?? "").join("");
 }
 
-/** Convert persisted records into user turns with synthetic working sections. */
+/** Run markers keep steering in one block; older unmarked history retains its user boundaries. */
 export function buildTranscript(records: TranscriptRecord[]): TranscriptItem[] {
   const items: TranscriptItem[] = [];
   const tools = new Map<string, ToolView>();
+  const runStarts = new Set(records.filter((record) => record.kind === "runStart").map((record) => record.turnEntryId));
   let working: WorkingTranscriptItem | undefined;
+  let runScoped = false;
   let lastTimestamp = 0;
-  let lastWorkingActivityAt = 0;
 
-  const recordWorkingActivity = (timestamp: number): void => {
-    if (working) lastWorkingActivityAt = Math.max(working.startedAt, timestamp);
-  };
   const appendActivity = (item: TranscriptItem, timestamp: number): void => {
     item.timestamp = timestamp;
     (working?.items ?? items).push(item);
-    recordWorkingActivity(timestamp);
   };
   const stopWorking = (timestamp: number): void => {
     if (working && working.completedAt === undefined) working.stoppedAt = Math.max(working.startedAt, timestamp);
     working = undefined;
+    runScoped = false;
   };
 
   for (const [recordIndex, record] of records.entries()) {
     lastTimestamp = record.timestamp ?? lastTimestamp;
+    if (record.kind === "runStart") {
+      if (working?.key === `${record.turnEntryId}:working`) {
+        working.startedAt = record.startedAt;
+        runScoped = true;
+      }
+      continue;
+    }
     if (record.kind === "timing") {
-      const latestWorking = items.findLast((item) => item.type === "working");
-      if (latestWorking) latestWorking.timing = record.timing;
+      const target = items.findLast((item) => item.type === "working"
+        && (record.turnEntryId === undefined || item.key === `${record.turnEntryId}:working`));
+      if (target?.type === "working") {
+        target.timing = record.timing;
+        const endedAt = target.startedAt + record.timing.elapsedMs;
+        if (record.outcome === "stopped" || (record.outcome === undefined && target.stoppedAt !== undefined)) {
+          target.stoppedAt = endedAt;
+          target.completedAt = undefined;
+        } else {
+          target.completedAt = endedAt;
+          target.stoppedAt = undefined;
+        }
+        if (working === target) { working = undefined; runScoped = false; }
+      }
       continue;
     }
     if (record.kind === "user" || record.kind === "taskStart") {
-      stopWorking(record.timestamp);
       if (record.kind === "user") items.push({
         type: "user",
         timestamp: record.timestamp,
@@ -189,15 +208,23 @@ export function buildTranscript(records: TranscriptRecord[]): TranscriptItem[] {
         text: record.text,
         images: record.images,
       });
-      working = { type: "working", timestamp: record.timestamp, key: `${record.id}:working`, startedAt: record.timestamp, items: [] };
-      lastWorkingActivityAt = record.timestamp;
+      if (working && runScoped && !runStarts.has(record.id)) {
+        working.inputEntryIds!.push(record.id);
+        continue;
+      }
+      if (working) {
+        if (runScoped) working.stoppedAt = Math.max(working.startedAt, record.timestamp);
+        else working.completedAt = Math.max(working.startedAt, record.timestamp);
+      }
+      runScoped = false;
+      working = { type: "working", timestamp: record.timestamp, key: `${record.id}:working`, inputEntryIds: [record.id], startedAt: record.timestamp, items: [] };
       items.push(working);
       continue;
     }
 
     if (record.kind === "assistant") {
       const final = isFinalAssistantMessage(record.parts, record.stopReason);
-      const hasPhasedText = record.parts.some((part) => part.type === "text" && assistantTextPhase(part.textSignature) !== undefined);
+      const finalIndexes = new Set(final ? finalAssistantTextIndexes(record.parts) : []);
       let first = true;
       record.parts.forEach((part, index) => {
         const rewindEntryId = first ? record.id : undefined;
@@ -205,7 +232,7 @@ export function buildTranscript(records: TranscriptRecord[]): TranscriptItem[] {
           appendActivity({ type: "thinking", key: `${record.id}:thinking:${index}`, rewindEntryId, text: part.text }, record.timestamp);
           first = false;
         } else if (part.type === "text" && part.text.trim()) {
-          const finalPart = final && (!hasPhasedText || assistantTextPhase(part.textSignature) === "final_answer");
+          const finalPart = finalIndexes.has(index);
           const item: TranscriptItem = { type: "text", timestamp: record.timestamp, key: `${record.id}:text:${index}`, rewindEntryId, text: part.text, final: finalPart };
           if (finalPart) items.push(item);
           else appendActivity(item, record.timestamp);
@@ -218,12 +245,24 @@ export function buildTranscript(records: TranscriptRecord[]): TranscriptItem[] {
         }
       });
       if (final) {
-        if (working) working.completedAt = lastWorkingActivityAt;
-        working = undefined;
+        if (!runScoped) {
+          if (working) working.completedAt = Math.max(working.startedAt, record.timestamp);
+          working = undefined;
+        }
       } else {
         const errorText = assistantErrorText(record);
-        if (errorText) appendActivity({ type: "error", key: `${record.id}:${record.stopReason === "aborted" && !record.errorMessage ? "aborted" : "error"}`, text: errorText }, record.timestamp);
-        if (record.stopReason === "error" || record.stopReason === "aborted") stopWorking(record.timestamp);
+        const nextBoundary = record.stopReason === "error"
+          ? records.slice(recordIndex + 1).find((next) =>
+            next.kind === "assistant" || next.kind === "timing" || next.kind === "runStart"
+            || (!runScoped && (next.kind === "user" || next.kind === "taskStart")))
+          : undefined;
+        const retry = record.stopReason === "error" && nextBoundary?.kind === "assistant";
+        if (errorText) {
+          const error: TranscriptItem = { type: "error", key: `${record.id}:${record.stopReason === "aborted" && !record.errorMessage ? "aborted" : "error"}`, text: errorText, timestamp: record.timestamp };
+          if (retry) appendActivity(error, record.timestamp);
+          else items.push(error);
+        }
+        if (!retry && (record.stopReason === "error" || record.stopReason === "aborted")) stopWorking(record.timestamp);
       }
       continue;
     }
@@ -236,18 +275,18 @@ export function buildTranscript(records: TranscriptRecord[]): TranscriptItem[] {
         tool.details = record.details;
         tool.status = record.isError || toolDetailsIndicateError(record.details) ? "error" : "ok";
         if (tool.issuedAt && record.timestamp) tool.durationMs = Math.max(0, record.timestamp - tool.issuedAt);
-        recordWorkingActivity(record.timestamp);
       }
       continue;
     }
 
-    appendActivity({
+    items.push({
       type: "note",
+      timestamp: lastTimestamp,
       key: record.id ?? `note:${recordIndex}`,
       rewindEntryId: record.id,
       text: record.text,
       tone: record.tone,
-    }, lastTimestamp);
+    });
   }
   stopWorking(lastTimestamp);
   return items;

@@ -14,6 +14,7 @@ const cableIdentifierSchema = Type.Union([
   Type.Object({ channel: Type.Literal("workspace"), workspaceId: Type.String({ minLength: 1 }) }),
   Type.Object({ channel: Type.Literal("module"), name: Type.String({ minLength: 1 }), workspaceId: Type.String({ minLength: 1 }), params: Type.Record(Type.String(), Type.String()) }),
   Type.Object({ channel: Type.Literal("agent"), workspaceId: Type.String({ minLength: 1 }), conversationId: Type.String({ minLength: 1 }) }),
+  Type.Object({ channel: Type.Literal("agent-turn"), workspaceId: Type.String({ minLength: 1 }), conversationId: Type.String({ minLength: 1 }), turnId: Type.String({ minLength: 1 }), branchId: Type.String({ minLength: 1 }) }),
 ]);
 
 const subscriptionIdSchema = Type.String({ minLength: 1 });
@@ -90,6 +91,15 @@ export const CableTopics = {
   module(name: string, workspaceId: string, params: Record<string, string> = {}): CableIdentifier {
     return { channel: "module", name: requireNonEmpty(name, "channel name must not be empty"), workspaceId: requireNonEmpty(workspaceId, "workspace identifier must not be empty"), params };
   },
+  agentTurn(workspaceId: string, conversationId: string, turnId: string, branchId: string): CableIdentifier {
+    return {
+      channel: "agent-turn",
+      workspaceId: requireNonEmpty(workspaceId, "workspace identifier must not be empty"),
+      conversationId: requireNonEmpty(conversationId, "agent conversation identifier must not be empty"),
+      turnId: requireNonEmpty(turnId, "agent turn identifier must not be empty"),
+      branchId: requireNonEmpty(branchId, "agent branch identifier must not be empty"),
+    };
+  },
   agent(workspaceId: string, conversationId: string): CableIdentifier {
     return {
       channel: "agent",
@@ -104,6 +114,13 @@ export function serializeCableIdentifier(identifier: CableIdentifier): string {
     case "shell": return JSON.stringify(["shell"]);
     case "workspace": return JSON.stringify(["workspace", requireNonEmpty(identifier.workspaceId, "workspace identifier must not be empty")]);
     case "module": return JSON.stringify(["module", identifier.name, identifier.workspaceId, Object.entries(identifier.params).sort(([a], [b]) => a.localeCompare(b))]);
+    case "agent-turn": return JSON.stringify([
+      identifier.channel,
+      requireNonEmpty(identifier.workspaceId, "workspace identifier must not be empty"),
+      requireNonEmpty(identifier.conversationId, "agent conversation identifier must not be empty"),
+      requireNonEmpty(identifier.turnId, "agent turn identifier must not be empty"),
+      requireNonEmpty(identifier.branchId, "agent branch identifier must not be empty"),
+    ]);
     case "agent": return JSON.stringify([
       identifier.channel,
       requireNonEmpty(identifier.workspaceId, "workspace identifier must not be empty"),
