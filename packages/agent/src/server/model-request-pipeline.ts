@@ -15,7 +15,15 @@ export function attachModelRequestPipeline(session: any, createRequest: () => Ag
   // oxlint-disable-next-line anti-slop/no-unknown-parameters -- Provider payload is external input.
   session.agent.onPayload = async (input: unknown, model: { api: string }) => {
     const original = previousPayload ? await previousPayload(input, model) : input;
-    const payload = original ?? input;
+    const providerPayload = original ?? input;
+    // oxlint-disable-next-line anti-slop/no-runtime-typeof -- Validate the external SDK request object at its boundary before serialization.
+    if (providerPayload === null || typeof providerPayload !== "object" || Array.isArray(providerPayload)) {
+      throw new Error("Expected a provider request object.");
+    }
+    // Pi supplies SDK request objects, not JSON values: optional fields may be
+    // undefined. Give delegation the wire representation its JsonObject contract
+    // requires, using the same serialization semantics as the provider transport.
+    const payload: unknown = JSON.parse(JSON.stringify(providerPayload));
     if (!isJsonObject(payload)) throw new Error("Expected a provider request object.");
     const transformed = request?.payload ? await request.payload(payload, model) : payload;
     await request?.prepared?.(model);

@@ -90,3 +90,60 @@ test("preparation failures remain observable and do not return a provider payloa
     await expect(session.agent.onPayload({})).rejects.toThrow("could not persist delivery");
   } finally { detach(); }
 });
+
+test("SDK Responses payloads normalize optional undefined fields before delegation", async () => {
+  const sdkPayload = {
+    model: "gpt-5.6-luna",
+    input: [{ role: "user", content: [{ type: "input_text", text: "Hello", annotations: undefined }] }],
+    stream: true,
+    store: false,
+    prompt_cache_key: undefined,
+    prompt_cache_retention: undefined,
+    prompt_cache_options: undefined,
+    reasoning: { effort: "medium", summary: undefined },
+    tools: [{ type: "function", name: "read", description: undefined, parameters: { type: "object", properties: {} }, strict: false }],
+  };
+  const events: string[] = [];
+  const session = { agent: {
+    convertToLlm: async (messages: any[]) => messages,
+    onPayload: async (payload: any, _model: { api: string }) => {
+      events.push("previous");
+      payload.metadata = { source: "previous-hook", optional: undefined };
+      // Pi hooks may mutate the request and return undefined.
+    },
+  } };
+  const model = { api: "openai-responses" };
+  const detach = attachModelRequestPipeline(session, () => ({
+    payload(payload, receivedModel) {
+      events.push("delegation");
+      expect(receivedModel).toBe(model);
+      expect(payload).toEqual(JSON.parse(JSON.stringify(sdkPayload)));
+      expect(payload).not.toHaveProperty("prompt_cache_key");
+      return { ...payload, input: [{ role: "user", content: [{ type: "input_text", text: "Delegated message" }] }] };
+    },
+    prepared() { events.push("prepared"); },
+  }));
+  try {
+    await session.agent.convertToLlm([]);
+    const result = await session.agent.onPayload(sdkPayload, model);
+    expect(result).toEqual({
+      ...JSON.parse(JSON.stringify(sdkPayload)),
+      input: [{ role: "user", content: [{ type: "input_text", text: "Delegated message" }] }],
+    });
+    expect(events).toEqual(["previous", "delegation", "prepared"]);
+    expect(sdkPayload).toHaveProperty("prompt_cache_key");
+  } finally { detach(); }
+});
+
+test("non-object provider requests fail before delegation preparation", async () => {
+  let prepared = false;
+  const session = { agent: { convertToLlm: async (messages: any[]) => messages, onPayload: async (input: any) => input } };
+  const detach = attachModelRequestPipeline(session, () => ({ prepared() { prepared = true; } }));
+  try {
+    await session.agent.convertToLlm([]);
+    for (const input of [null, undefined, [], "request", 42]) {
+      await expect(session.agent.onPayload(input)).rejects.toThrow("Expected a provider request object.");
+    }
+    expect(prepared).toBe(false);
+  } finally { detach(); }
+});
