@@ -20,7 +20,7 @@ const workspaceCreatedResponseSchema = Type.Object({
   workspace: Type.Object({ id: Type.String(), url: Type.String(), phase: Type.Literal("starting") }),
 });
 const workspaceStatusResponseSchema = Type.Object({
-  workspace: Type.Object({ title: Type.String(), phase: Type.String() }),
+  workspace: Type.Object({ title: Type.String(), phase: Type.String(), url: Type.String() }),
 });
 const projectSummarySchema = Type.Object({ id: Type.String(), name: Type.String() });
 const projectResponseSchema = Type.Object({ project: projectSummarySchema });
@@ -98,6 +98,9 @@ describe("HTTP contracts", () => {
     expect(response.status).toBe(202);
     expect(response.headers.get("content-type")).toContain("application/json");
     expect(response.headers.get("location")).toBe(body.workspace.url);
+    expect(body.workspace.url).toBe(`/workspaces/${body.workspace.id}`);
+    expect(statusBody.workspace.url).toBe(body.workspace.url);
+    expect(new URL(body.workspace.url, "https://demoatelier-arm.tail67e2f4.ts.net/workspaces").protocol).toBe("https:");
     expect(statusBody.workspace).toMatchObject({ title: "Evaluation", phase: "starting" });
     expect(registry.get(body.workspace.id)?.init).toBeUndefined();
     expect(seen[0]?.id).toBe(body.workspace.id);

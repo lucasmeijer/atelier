@@ -68,7 +68,10 @@ The settings section is a registered settings contribution ID, such as `theme`, 
 
 ## Create and wait for a workspace
 
-Creation is asynchronous and returns `202 Accepted` immediately:
+Creation is asynchronous and returns `202 Accepted` immediately. The response’s
+`workspace.url` and `Location` header are origin-relative paths, like workspace
+detail URLs. Resolve them against the public request URL to preserve HTTPS
+when Atelier runs behind a TLS-terminating proxy:
 
 ```sh
 created=$(curl -sS -X POST http://localhost:3000/workspaces \

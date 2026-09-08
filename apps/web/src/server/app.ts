@@ -677,7 +677,7 @@ export function createWebApp(deps: WebAppDeps): WebApp {
     return { id, isFirstWorkspace };
   }
 
-  async function createWorkspaceEndpoint(url: URL, request: Request): Promise<Response> {
+  async function createWorkspaceEndpoint(request: Request): Promise<Response> {
     if (requestAcceptsJson(request)) {
       const body = await readWorkspaceCreateJson(request);
       const sourceType = stringField(body.source?.type, "source.type") ?? "empty";
@@ -701,14 +701,14 @@ export function createWebApp(deps: WebAppDeps): WebApp {
           attachmentDraft: stringField(agent?.attachmentDraft, "agent.attachmentDraft") ?? "",
         },
       });
-      const location = new URL(`/workspaces/${encodeURIComponent(id)}`, url).toString();
+      const location = `/workspaces/${encodeURIComponent(id)}`;
       return jsonResponse({ workspace: { id, phase: "starting", url: location } }, { status: 202, headers: { location } });
     }
 
     const { id } = await createWorkspaceFromCommand({ source: { type: "empty" } });
-    const location = new URL(`/workspaces/${encodeURIComponent(id)}`, url).toString();
+    const location = `/workspaces/${encodeURIComponent(id)}`;
     if (wantsTurboStream(request)) return turboStreamResponse(workspacePaneCollectionsTurboStream(await workspacePaneCollections("")), { headers: { location } });
-    return Response.redirect(location, 303);
+    return new Response(null, { status: 303, headers: { location } });
   }
 
   async function createAgentWorkspaceFromForm(request: Request, options: { project?: ProjectSummary } = {}): Promise<Response> {
@@ -1141,7 +1141,7 @@ export function createWebApp(deps: WebAppDeps): WebApp {
     if (url.pathname === "/settings" && request.method === "GET" && !wantsTurboStream(request)) return await surfacePage({ kind: "settings", section: url.searchParams.get("section") ?? undefined });
     if (url.pathname === "/settings/development" && request.method === "GET" && !wantsTurboStream(request)) return await surfacePage({ kind: "settings", section: undefined, development: true });
     if (url.pathname === "/workspaces" && request.method === "GET") return workspaceListEndpoint(request, url);
-    if (url.pathname === "/workspaces" && request.method === "POST") return await createWorkspaceEndpoint(url, request);
+    if (url.pathname === "/workspaces" && request.method === "POST") return await createWorkspaceEndpoint(request);
     if (url.pathname === "/workspaces/open-oldest-unread" && request.method === "POST") return openOldestAttentionWorkspaceEndpoint();
 
     const projectResponse = await projectRoutes.handle(request, url);
