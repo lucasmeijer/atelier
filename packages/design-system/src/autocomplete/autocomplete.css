@@ -1,2 +1,6 @@
 .autocomplete { position: static; width: 100%; max-width: none; max-height: min(360px, 48vh); }
 .autocomplete-empty { display: flex; min-height: 58px; align-items: center; justify-content: center; color: var(--text-muted); text-align: center; }
+
+/* The top-layer host owns scrolling and chrome; fetched results own the list. */
+.autocomplete-popover { padding: 0; }
+.autocomplete-popover > .autocomplete { max-height: none; border: 0; box-shadow: none; }

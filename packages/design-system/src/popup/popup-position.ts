@@ -1,12 +1,12 @@
 /// <reference lib="dom" />
 
-/** One positioning lifecycle for menus and enhanced selects, including fixed triggers
+/** One positioning lifecycle for menus, enhanced selects, and autocomplete, including fixed triggers
  * and the visual viewport when a phone keyboard or pinch zoom reduces usable space. */
 export class PopupPosition {
   private readonly viewport = window.visualViewport!;
   private readonly resize = new ResizeObserver(() => this.position());
 
-  constructor(private readonly trigger: HTMLButtonElement, private readonly menu: HTMLElement) {
+  constructor(private readonly trigger: HTMLElement, private readonly menu: HTMLElement) {
     menu.addEventListener("beforetoggle", this.prepare);
     menu.addEventListener("toggle", this.toggle);
   }

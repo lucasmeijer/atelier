@@ -22,6 +22,7 @@
     "./panel": "./src/panel/panel-html.ts",
     "./progress-button": "./src/progress-button/progress-button-html.ts",
     "./popup": "./src/popup/popup-html.ts",
+    "./popup/position": "./src/popup/popup-position.ts",
     "./popup/client": "./src/popup/popup-controller.ts",
     "./transient-feedback": "./src/transient-feedback/transient-feedback-html.ts",
     "./transient-feedback/client": "./src/transient-feedback/transient-feedback-controller.ts",

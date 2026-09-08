@@ -1,3 +1,4 @@
+import { PopupPosition } from "@atelier/design-system/popup/position";
 import { notifyInputListeners, setTextInputValue, type WorkspaceClientControllerConstructor as StimulusControllerConstructor } from "@atelier/shared";
 import { agentTreeOwnsMenu } from "./session-tree.ts";
 
@@ -36,6 +37,7 @@ export function createHtmlAutocompleteController(Controller: StimulusControllerC
     declare readonly urlValue: string;
     declare readonly inputTarget: HTMLInputElement | HTMLTextAreaElement;
     declare readonly menuTarget: HTMLElement;
+    private position: PopupPosition | undefined;
     private requestId = 0;
     private optionId = 0;
     private debounceTimer: number | undefined;
@@ -43,6 +45,7 @@ export function createHtmlAutocompleteController(Controller: StimulusControllerC
 
     connect(): void {
       this.form = this.inputTarget.closest("form");
+      if (this.menuTarget.hasAttribute("popover")) this.position = new PopupPosition(this.inputTarget, this.menuTarget);
       this.menuTarget.addEventListener("click", this.click);
       this.menuTarget.addEventListener("pointerdown", this.pointerdown);
       this.menuTarget.addEventListener("pointerover", this.pointerover);
@@ -53,6 +56,8 @@ export function createHtmlAutocompleteController(Controller: StimulusControllerC
     }
 
     disconnect(): void {
+      this.close();
+      this.position?.disconnect();
       this.menuTarget.removeEventListener("click", this.click);
       this.menuTarget.removeEventListener("pointerdown", this.pointerdown);
       this.menuTarget.removeEventListener("pointerover", this.pointerover);
@@ -60,7 +65,6 @@ export function createHtmlAutocompleteController(Controller: StimulusControllerC
       this.inputTarget.removeEventListener("blur", this.blur);
       this.form?.removeEventListener("submit", this.submitted);
       document.removeEventListener("selectionchange", this.selectionchange);
-      window.clearTimeout(this.debounceTimer);
     }
 
     input(): void {
@@ -128,7 +132,7 @@ export function createHtmlAutocompleteController(Controller: StimulusControllerC
       }
       if (autocomplete.loadingHtml && this.menuTarget.hidden) {
         this.menuTarget.innerHTML = autocomplete.loadingHtml;
-        this.menuTarget.hidden = false;
+        this.show();
       }
       const debounceMs = force ? 0 : request.debounceMs ?? 0;
       if (debounceMs === 0) {
@@ -203,14 +207,20 @@ export function createHtmlAutocompleteController(Controller: StimulusControllerC
         return;
       }
       this.menuTarget.innerHTML = html;
-      this.menuTarget.hidden = false;
+      this.show();
       const active = this.activeOption();
       if (active) this.activate(active, false);
+    }
+
+    private show(): void {
+      this.menuTarget.hidden = false;
+      if (this.position) this.menuTarget.showPopover();
     }
 
     private close(): void {
       this.requestId++;
       window.clearTimeout(this.debounceTimer);
+      if (this.position) this.menuTarget.hidePopover();
       this.menuTarget.hidden = true;
       this.inputTarget.removeAttribute("aria-activedescendant");
       this.menuTarget.replaceChildren();
