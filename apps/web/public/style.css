@@ -513,3 +513,11 @@ button.settings-link:disabled { opacity: .45; cursor: default; filter: none; }
 
 #fixed_shell_atelier_next_unread { position: relative; }
 #fixed_shell_atelier_next_unread:disabled > .status-dot { display: none; }
+
+/* Installation help composes shared dialog and controls. */
+.pwa-reminder-body { display: grid; gap: 16px; }
+.pwa-reminder-body ol { padding-inline-start: 24px; margin-bottom: 0; }
+.pwa-reminder-body p { margin: 0; }
+.pwa-reminder-body li + li { margin-top: 10px; }
+.pwa-reminder-guide { margin: 16px 0; }
+.pwa-reminder-guide svg { display: block; width: 100%; height: auto; }
