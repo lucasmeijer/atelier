@@ -24,7 +24,7 @@ export function transcriptActionItemHtml(label: ActionItemLabel, options: { disc
   });
 }
 
-export function renderMarkdownRow(ctx: AgentRenderContext, text: string, className = "agent-md"): string {
+export function renderMarkdownRow(ctx: AgentRenderContext, text: string, className: string): string {
   const body = markdown(ctx, text);
   return body ? transcriptRow(`<div class="${className}">${body}</div>`) : "";
 }

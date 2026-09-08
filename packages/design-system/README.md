@@ -22,6 +22,7 @@ Prefer consistency over feature-specific visual preservation.
 
 | Need | Catalogue id / public subpath | Authoritative interface |
 |---|---|---|
+| Rendered Markdown | `markdown` (CSS) | `.markdown` in [styles](src/markdown/markdown.css) |
 | Tokens, themes, spacing | `foundations` (CSS) | [role tokens and composition](src/design-system.css) |
 | Action, including icon-only | `button` | [ButtonOptions](src/button/button-html.ts), [content / variants](src/button/button-content.ts) |
 | Prominent navigation, optional icon-only comparison ring | `action-link` | [ActionLinkOptions](src/action-link/action-link-html.ts) |

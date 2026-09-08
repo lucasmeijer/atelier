@@ -1,0 +1,30 @@
+/* Shared typography for server-rendered Markdown, independent of its author. */
+.markdown { line-height: 1.6; }
+.markdown :is(h1, h2, h3, h4) { line-height: 1.3; letter-spacing: -.015em; }
+.markdown h1 { margin: 0 0 14px; font-size: 1.75em; }
+.markdown h2 { margin: 26px 0 10px; font-size: 1.35em; }
+.markdown h3 { margin: 20px 0 8px; font-size: 1.1em; }
+.markdown :is(p, ul, ol, blockquote) { margin: 0 0 var(--markdown-block-spacing, 12px); }
+.markdown p:has(+ p + hr) { margin-bottom: 6px; }
+.markdown :is(p, ul, ol):last-child { margin-bottom: 0; }
+.markdown :is(ul, ol) { padding-left: 1.35em; }
+.markdown table { width: 100%; border-collapse: collapse; font-size: .95em; }
+.markdown th, .markdown td { padding: 6px 8px; border: 1px solid var(--line); text-align: left; vertical-align: top; }
+.markdown th { background: var(--panel); font-weight: var(--weight-semibold); }
+.markdown tbody tr:nth-child(even) { background: color-mix(in srgb, var(--panel) 45%, transparent); }
+.markdown li { margin-bottom: 3px; }
+.markdown code { font-family: var(--font-mono); }
+.markdown hr { margin: 24px 0; border: 0; border-top: 1px solid var(--line-strong); }
+.markdown pre { background: color-mix(in srgb, var(--bg) 45%, #000 14%); border: 1px solid var(--line); color: var(--text-bright); border-radius: var(--radius-control); padding: 12px; overflow-x: auto; margin: 6px 0 12px; }
+.markdown pre code { display: block; background: transparent; border: 0; border-radius: 0; padding: 0; color: inherit; font-size: var(--text-code); line-height: var(--leading-standard); }
+.markdown blockquote { border-left: 1px solid var(--line-strong); padding-left: 8px; color: var(--text); }
+.markdown a { color: var(--accent); text-decoration: none; }
+.markdown a:hover { text-decoration: underline; }
+.markdown :not(pre) > code {
+  padding: .04em .2em;
+  color: var(--warning);
+  background: color-mix(in srgb, var(--warning) 8%, transparent);
+  border-radius: var(--radius-indicator);
+  font-size: .88em;
+  overflow-wrap: anywhere;
+}

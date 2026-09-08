@@ -10,6 +10,10 @@ export const designSystemStaticFiles = {
     url: new URL("./managed-list/managed-list.css", import.meta.url),
     contentType: "text/css; charset=utf-8",
   },
+  "/markdown.css": {
+    url: new URL("./markdown/markdown.css", import.meta.url),
+    contentType: "text/css; charset=utf-8",
+  },
   "/status.css": {
     url: new URL("./status/status.css", import.meta.url),
     contentType: "text/css; charset=utf-8",

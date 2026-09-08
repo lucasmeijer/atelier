@@ -30,6 +30,17 @@ export interface CatalogueEntry {
 }
 export const entries: CatalogueEntry[] = [
   {
+    id: "markdown",
+    title: "Markdown",
+    when: "Rendered Markdown in user and assistant messages, file previews, or other rich-text surfaces.",
+    contract: "Apply markdown to the rendered-content container. It styles semantic HTML without rendering or sanitizing it. Set --markdown-block-spacing to customize paragraph, list and blockquote spacing; the default is 12px. Enhanced code blocks, media and table-scroll wrappers remain owned by their feature.",
+    sources: ["markdown/markdown.css"],
+    examples: [{
+      title: "Shared typography · lists and nested content",
+      render: () => '<div class="markdown"><h3>Review checklist</h3><p>Run <code>bun run check</code> before continuing.</p><ol><li>Review the changes.<ul><li>Check list indentation.</li><li>Check wrapping on narrow screens.</li></ul></li><li>Report the result.</li></ol><blockquote><p>Shared formatting, regardless of author.</p></blockquote><pre><code>bun run check</code></pre><p><a href="#markdown">Markdown reference</a></p></div>',
+    }],
+  },
+  {
     id: "foundations",
     title: "Foundations & composition",
     when: "Role tokens and shared layout primitives, not a second set of component sizes.",

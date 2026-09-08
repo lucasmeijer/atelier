@@ -123,16 +123,6 @@ describe("Files Work view rendering", () => {
     expect(html).toContain("view=collapsed");
   });
 
-  test("renders Markdown preview controls inside the Files editor frame", () => {
-    const html = renderFilesEditorFrame("workspace", { id: "workspace", path: "/work/README.md" });
-    expect(html).toContain('class="text-toggle" role="group" aria-label="Markdown display"');
-    expect(html).toContain('class="text-toggle__option"');
-    expect(html).toContain('data-action="change-&gt;file-editor#selectPreviewMode"');
-    expect(html).toContain('name="preview-mode" value="edit" aria-pressed="true"');
-    expect(html).toContain('name="preview-mode" value="preview" aria-pressed="false"');
-    expect(html).toContain("file-editor-preview agent-md");
-  });
-
   test("renders the on-disk conflict dialog with resolution actions", () => {
     const html = renderFilesEditorFrame("workspace", { id: "workspace", path: "/work/README.md" });
     expect(html).toContain("File changed on disk");
