@@ -1,6 +1,6 @@
 import type { AgentWorkspaceParameters } from "@atelier/shared";
 import { getSupportedThinkingLevels } from "@earendil-works/pi-ai";
-import { createPiModelRuntime, getConfiguredAgentModels, getModelThinkingLevel, setActiveAgentModel, type ConfiguredAgentModel } from "./pi-config-models.ts";
+import { createPiModelRuntime, getConfiguredAgentModels, getModelThinkingLevel, setActiveAgentModel } from "./pi-config-models.ts";
 
 export interface ModelRef {
   provider: string;
@@ -53,23 +53,28 @@ export async function prepareNewWorkspaceAgentParameters(agent: AgentWorkspacePa
 }
 
 /** Omit current to select the saved default; null represents a session without a model. */
-export async function configuredModelOptionViews(current?: ModelRef | null, runtime?: Pick<Awaited<ReturnType<typeof createPiModelRuntime>>, "getAvailable">): Promise<AgentModelOptionView[]> {
+export async function configuredModelOptionViews(current?: ModelRef | null, runtime?: Pick<Awaited<ReturnType<typeof createPiModelRuntime>>, "getAvailable" | "checkAuth" | "getModel">): Promise<AgentModelOptionView[]> {
   runtime ??= await createPiModelRuntime();
-  const available = new Set((await runtime.getAvailable()).map((model) => `${model.provider}::${model.id}`));
-  return (await getConfiguredAgentModels()).map((model) => modelOptionView(model, available, current));
-}
-
-function modelOptionView(model: ConfiguredAgentModel, available: Set<string>, current?: ModelRef | null): AgentModelOptionView {
-  const key = `${model.provider}::${model.id}`;
-  const isAvailable = available.has(key);
-  return {
-    provider: model.provider,
-    id: model.id,
-    name: model.label,
-    selected: current === undefined ? Boolean(model.active) : current !== null && current.provider === model.provider && current.id === model.id,
-    available: isAvailable,
-    unavailableReason: isAvailable ? undefined : "Provider disconnected",
-  };
+  const available = new Set((await runtime.getAvailable()).map(modelRefValue));
+  const models = await getConfiguredAgentModels();
+  const providers = [...new Set(models.map((model) => model.provider))];
+  const auth = new Map(await Promise.all(providers.map(async (provider) =>
+    [provider, await runtime.checkAuth(provider)] as const,
+  )));
+  return models.map((model) => {
+    const isAvailable = available.has(modelRefValue(model));
+    return {
+      provider: model.provider,
+      id: model.id,
+      name: model.label,
+      selected: current === undefined ? Boolean(model.active) : current !== null && current.provider === model.provider && current.id === model.id,
+      available: isAvailable,
+      unavailableReason: isAvailable ? undefined
+        : !runtime.getModel(model.provider, model.id) ? "Model not found in provider catalog"
+        : !auth.get(model.provider) ? "Provider not connected"
+        : "Model unavailable for this account",
+    };
+  });
 }
 
 export async function launchComposerThinkingLevel(model: ModelRef | undefined): Promise<string | undefined> {
