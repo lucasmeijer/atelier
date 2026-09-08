@@ -47,9 +47,9 @@ function renderUserMessage(ctx: AgentRenderContext, user: { text: string; images
   return transcriptRow(`<div class="agent-user" data-agent-user-text="${escapeHtml(user.text)}"><div class="agent-user-bubble markdown">${markdown(ctx, user.text)}${images}</div></div>`);
 }
 
-function renderStreamingTextBody(ctx: AgentRenderContext, key: string, text: string): string {
+function renderStreamingTextBody(ctx: AgentRenderContext, key: string, text: string, className: string): string {
   const snapshot = renderStreamingMarkdownSnapshot(ctx.workspaceId, text);
-  return `<div class="markdown agent-itext-md agent-stream-markdown" id="${ids.itemText(ctx, key)}"><div id="${ids.itemTextStable(ctx, key)}">${snapshot.stableHtml}</div><div id="${ids.itemTextTail(ctx, key)}">${snapshot.tailHtml}</div></div>`;
+  return `<div class="${className} agent-stream-markdown" id="${ids.itemText(ctx, key)}"><div id="${ids.itemTextStable(ctx, key)}">${snapshot.stableHtml}</div><div id="${ids.itemTextTail(ctx, key)}">${snapshot.tailHtml}</div></div>`;
 }
 
 export function renderTranscriptItem(ctx: AgentRenderContext, item: TranscriptItem, options: { live?: boolean; open?: boolean } = {}): string {
@@ -58,10 +58,12 @@ export function renderTranscriptItem(ctx: AgentRenderContext, item: TranscriptIt
   let body = "";
   if (item.type === "user") body = renderUserMessage(ctx, item);
   else if (item.type === "thinking") body = renderThinkingItem(ctx, item);
-  else if (item.type === "text") body = item.live
-    ? transcriptRow(renderStreamingTextBody(ctx, item.key, item.text))
-    : renderMarkdownRow(ctx, item.text, item.final ? "markdown agent-final" : "markdown agent-itext-md");
-  else if (item.type === "tool") body = transcriptRow(renderToolCard(ctx, item.key, item.tool, { ...options, open: options.open || Boolean(ctx.revealTarget && (item.anchor === ctx.revealTarget || item.key === ctx.revealTarget)) }));
+  else if (item.type === "text") {
+    const className = item.final ? "markdown agent-final" : "markdown agent-itext-md";
+    body = item.live
+      ? transcriptRow(renderStreamingTextBody(ctx, item.key, item.text, className))
+      : renderMarkdownRow(ctx, item.text, className);
+  } else if (item.type === "tool") body = transcriptRow(renderToolCard(ctx, item.key, item.tool, { ...options, open: options.open || Boolean(ctx.revealTarget && (item.anchor === ctx.revealTarget || item.key === ctx.revealTarget)) }));
   else if (item.type === "extension") body = item.render(ctx);
   else if (item.type === "note") body = renderMarkdownRow(ctx, item.text, `agent-note ${escapeHtml(item.tone)}`);
   else body = transcriptRow(`<div class="agent-error">${escapeHtml(item.text)}</div>`);
