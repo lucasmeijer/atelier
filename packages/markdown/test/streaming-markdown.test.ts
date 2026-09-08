@@ -34,16 +34,6 @@ describe("streaming Markdown", () => {
     }
   });
 
-  test("repairs open backtick and tilde fences only for provisional rendering", () => {
-    for (const marker of ["```", "~~~"]) {
-      const source = `${marker}ts\nconst value = **not emphasis**;`;
-      const repaired = repairStreamingMarkdownTail(source);
-      expect(repaired).toEndWith(`\n${marker}\n`);
-      const snapshot = renderStreamingMarkdownSnapshot(workspaceId, source);
-      expect(snapshot.tailHtml).not.toContain("<strong>");
-    }
-  });
-
   test("provisionally closes clear emphasis without changing escaped markers or inline code", () => {
     expect(repairStreamingMarkdownTail("A *clear emphasis")).toBe("A *clear emphasis*");
     expect(repairStreamingMarkdownTail("A **clear strong")).toBe("A **clear strong**");

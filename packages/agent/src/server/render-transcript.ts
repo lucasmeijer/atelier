@@ -49,7 +49,7 @@ function renderUserMessage(ctx: AgentRenderContext, user: { text: string; images
 
 function renderStreamingTextBody(ctx: AgentRenderContext, key: string, text: string, className: string): string {
   const snapshot = renderStreamingMarkdownSnapshot(ctx.workspaceId, text);
-  return `<div class="${className} agent-stream-markdown" id="${ids.itemText(ctx, key)}"><div id="${ids.itemTextStable(ctx, key)}">${snapshot.stableHtml}</div><div id="${ids.itemTextTail(ctx, key)}">${snapshot.tailHtml}</div></div>`;
+  return `<div class="${className} agent-stream-markdown" data-controller="agent-streaming-text" id="${ids.itemText(ctx, key)}"><div id="${ids.itemTextStable(ctx, key)}">${snapshot.stableHtml}</div><div id="${ids.itemTextTail(ctx, key)}">${snapshot.tailHtml}</div></div>`;
 }
 
 export function renderTranscriptItem(ctx: AgentRenderContext, item: TranscriptItem, options: { live?: boolean; open?: boolean } = {}): string {

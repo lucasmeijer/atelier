@@ -29,12 +29,13 @@ export function agentConnectionShouldRun(logicallyVisible: boolean, documentVisi
 export function createAgentPaneController(Controller: StimulusControllerConstructor) {
   return class AgentPaneController extends Controller implements AgentPaneControllerInstance {
     static values = { workspaceId: String, conversationId: String };
-    static targets = ["transcript", "transcriptEnd", "input", "form", "sendStop"];
+    static targets = ["transcript", "transcriptContent", "transcriptEnd", "input", "form", "sendStop"];
     declare readonly element: HTMLElement;
     declare readonly application: StimulusApplication;
     declare readonly workspaceIdValue: string;
     declare readonly conversationIdValue: string;
     declare readonly transcriptTarget: HTMLElement;
+    declare readonly transcriptContentTarget: HTMLElement;
     declare readonly transcriptEndTarget: HTMLElement;
     declare readonly inputTarget: HTMLTextAreaElement;
     declare readonly formTarget: HTMLFormElement;
@@ -87,7 +88,8 @@ export function createAgentPaneController(Controller: StimulusControllerConstruc
       this.relinquishSoftwareKeyboardFocus();
     };
     connect(): void {
-      this.navigation = new TranscriptNavigation(this.transcriptTarget, this.transcriptEndTarget, this.element.querySelector<HTMLElement>(".composer")!);
+      this.navigation = new TranscriptNavigation(this.transcriptTarget, this.transcriptContentTarget, this.transcriptEndTarget, this.element.querySelector<HTMLElement>(".composer")!);
+      this.navigation.setStreaming(this.sendStopTarget.dataset.agentBusy === "true");
       this.element.dataset.agentConnectionActive = "false";
       this.element.addEventListener("agent:turn-reveal", this.turnRevealed);
       document.addEventListener("visibilitychange", this.onVisibilityChange);
@@ -281,12 +283,18 @@ export function createAgentPaneController(Controller: StimulusControllerConstruc
     autosize(): void {
       const input = this.inputTarget;
       const maxHeight = Number.parseFloat(getComputedStyle(input).getPropertyValue("--composer-input-max-height")) || 260;
+      // Measuring at auto height must not temporarily expand the transcript:
+      // that layout can clamp its scrollTop before the final height is restored.
+      const inputArea = input.parentElement!;
+      const previousAreaHeight = inputArea.style.height;
+      inputArea.style.height = getComputedStyle(inputArea).height;
       input.style.height = "auto";
       // Add a small buffer for fractional line-height/browser rounding so a
       // one-pixel overflow doesn't flash a scrollbar before the real limit.
       const nextHeight = Math.ceil(input.scrollHeight) + 2;
       input.style.height = `${Math.min(nextHeight, maxHeight)}px`;
       input.style.overflowY = nextHeight > maxHeight ? "auto" : "hidden";
+      inputArea.style.height = previousAreaHeight;
       this.navigation.layoutChanged();
       this.updateSendStopButton();
     }
@@ -298,6 +306,7 @@ export function createAgentPaneController(Controller: StimulusControllerConstruc
     updateSendStopButton(): void {
       const button = this.sendStopTarget;
       const busy = button.dataset.agentBusy === "true";
+      if (this.connected) this.navigation.setStreaming(busy);
       const action = agentComposerPrimaryAction(busy, this.inputTarget.value, this.formTarget.querySelectorAll('input[name="attachment"]').length);
       if (action === "abort") {
         setActivityButtonState(button, "active");

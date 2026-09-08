@@ -65,7 +65,9 @@ async function renderAgentPaneFrame(ctx: AgentRenderContext, agent: WorkspaceAge
       data-agent-pane-workspace-id-value="${escapeHtml(ctx.workspaceId)}"
       data-agent-pane-conversation-id-value="${escapeHtml(ctx.conversationId)}"
       ${agentAttachmentDropAttrs(uploadUrl)}>
-      <div class="agent-transcript" tabindex="0" role="region" aria-label="Agent transcript" id="${ids.transcript(ctx)}" data-agent-pane-target="transcript">${state.transcriptHtml}</div>
+      <div class="agent-transcript" tabindex="0" role="region" aria-label="Agent transcript" data-agent-pane-target="transcript">
+        <div class="agent-transcript-surface"><div class="agent-transcript-content" id="${ids.transcript(ctx)}" data-agent-pane-target="transcriptContent">${state.transcriptHtml}</div></div>
+      </div>
       ${await renderAgentPaneComposer({
         ctx,
         action: agentPath(ctx, "/messages"),
@@ -279,7 +281,7 @@ function renderTranscriptEndNavigation(): string {
     content: {
       kind: "icon-only",
       iconHtml: '<svg viewBox="0 0 20 20" aria-hidden="true"><path d="M4 16h12M10 4v9m-4-4 4 4 4-4"/></svg>',
-      label: "Jump to end of transcript",
+      label: "Follow latest",
     },
     attributesHtml: 'data-popular-button data-action="agent-pane#scrollToTranscriptEnd"',
   });

@@ -16,6 +16,7 @@ import { createAgentMermaidController } from "./mermaid-controller.ts";
 import { createAgentProxyController } from "./proxy-controller.ts";
 import { createAgentTermController } from "./terminal-controller.ts";
 import { createAgentThinkingController } from "./thinking-controller.ts";
+import { createAgentStreamingTextController } from "./streaming-text-controller.ts";
 import { createAgentLazyDetailController, createAgentTailFrameController } from "./transcript-detail-controllers.ts";
 
 export { agentConnectionShouldRun } from "./agent-pane.ts";
@@ -40,6 +41,7 @@ export const agentClientModule: WorkspaceClientModule = {
     application.register("agent-edit-diff", createAgentEditDiffController(Controller));
     application.register("agent-html-preview", createAgentHtmlPreviewController(Controller));
     application.register("agent-thinking", createAgentThinkingController(Controller));
+    application.register("agent-streaming-text", createAgentStreamingTextController(Controller));
     application.register("agent-tail-frame", createAgentTailFrameController(Controller));
     application.register("agent-lazy-detail", createAgentLazyDetailController(Controller));
     application.register("agent-mermaid", createAgentMermaidController(Controller));

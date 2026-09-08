@@ -38,7 +38,7 @@ export function streamingMarkdownStableBoundary(source: string): number {
     // A trailing space may become an indented continuation, not a blank line.
     // Wait on a final CR as well: the next delta may complete a CRLF pair.
     if (!terminated || (lineWithEnding.endsWith("\r") && offset === source.length)) continue;
-    if (line.trim() !== "" || fence) continue;
+    if (!/^[ \t]*$/.test(line) || fence) continue;
     const candidate = source.slice(boundary, lineStart);
     if (isIndependentCompletedBlock(candidate)) boundary = offset;
   }
@@ -46,12 +46,16 @@ export function streamingMarkdownStableBoundary(source: string): number {
 }
 
 function nextFence(open: Fence | undefined, line: string): Fence | undefined {
-  const match = line.match(/^ {0,3}(`{3,}|~{3,})(.*)$/);
+  const match = line.match(/^ {0,3}(`{3,}|~{3,})([\s\S]*)$/);
   if (!match) return open;
   const marker = match[1]![0];
   if (marker !== "`" && marker !== "~") throw new Error("fence pattern matched an unsupported marker");
-  if (!open) return { marker, size: match[1]!.length };
-  const closes = marker === open.marker && match[1]!.length >= open.size && !match[2]!.trim();
+  if (!open) {
+    // Backticks are forbidden in backtick-fence info, but legal for tilde fences.
+    if (marker === "`" && match[2]!.includes("`")) return undefined;
+    return { marker, size: match[1]!.length };
+  }
+  const closes = marker === open.marker && match[1]!.length >= open.size && /^[ \t]*$/.test(match[2]!);
   return closes ? undefined : open;
 }
 
@@ -62,7 +66,7 @@ function openFence(text: string): Fence | undefined {
 }
 
 function isIndependentCompletedBlock(block: string): boolean {
-  if (!block.trim()) return false;
+  if (/^[ \t\r\n]*$/.test(block)) return false;
   let fence: Fence | undefined;
   const outsideFenceLines: string[] = [];
   for (const line of block.replace(/\r\n?/g, "\n").split("\n")) {
@@ -77,14 +81,16 @@ function isIndependentCompletedBlock(block: string): boolean {
   // Deliberately conservative for literal brackets and inline links; fenced code
   // has no reference semantics and can still be committed independently.
   if (outsideFenceLines.some((line) => line.includes("["))) return false;
-  if (outsideFenceLines.some((line) => /^(?: {4}|\t| {0,3}(?:[-+*]|\d+[.)])\s| {0,3}>)/.test(line))) return false;
+  if (outsideFenceLines.some((line) => /^(?: {4}|\t| {0,3}(?:[-+*]|\d{1,9}[.)])(?:[ \t]|$)| {0,3}>)/.test(line))) return false;
   return !outsideFenceLines.some((line, index) => index > 0 && /^\s*\|?(?:\s*:?-+:?\s*\|)+\s*:?-+:?\s*\|?\s*$/.test(line));
 }
 
 /** Make only a temporary parsing copy of an incomplete mutable tail. */
 export function repairStreamingMarkdownTail(tail: string): string {
-  const fence = openFence(tail);
-  if (fence) return `${tail}${tail.endsWith("\n") ? "" : "\n"}${fence.marker.repeat(fence.size)}\n`;
+  // Markdown already closes fenced blocks at EOF, including inside containers.
+  // A synthetic unindented closer can instead open a new root-level code block.
+  // Leave open code untouched, including by the inline repairs below.
+  if (openFence(tail)) return tail;
 
   let repaired = tail;
   const dangling = repaired.match(/(!?)\[([^\]\n]*)\]\(([^)\s]*)$/);
@@ -108,14 +114,18 @@ export function repairStreamingMarkdownTail(tail: string): string {
 }
 
 function hasUnmatchedInlineBacktick(text: string): boolean {
-  let open = false;
-  let escaped = false;
-  for (const char of text) {
-    if (escaped) { escaped = false; continue; }
-    if (char === "\\") { escaped = true; continue; }
-    if (char === "`") open = !open;
+  let openingSize = 0;
+  for (let index = 0; index < text.length;) {
+    // Backslashes escape backticks in prose, but are literal inside code spans.
+    if (!openingSize && text[index] === "\\") { index += 2; continue; }
+    if (text[index] !== "`") { index++; continue; }
+    const start = index;
+    while (text[index] === "`") index++;
+    const size = index - start;
+    if (!openingSize) openingSize = size;
+    else if (size === openingSize) openingSize = 0;
   }
-  return open;
+  return openingSize !== 0;
 }
 
 export function renderStreamingMarkdownSnapshot(workspaceId: string, source: string): StreamingMarkdownSnapshot {

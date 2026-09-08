@@ -22,7 +22,12 @@
   padding-inline: var(--agent-inline-gutter);
   display: block; scrollbar-gutter: stable;
 }
-/* Keep the design-system scrollbar, but hide its thumb while idle. */
+/* The server updates content only. The surface protects the current viewport
+   during reflow; navigation releases excess minimum height as it becomes unused. */
+.agent-transcript-surface { display: flow-root; min-height: var(--agent-follow-floor, 0px); }
+.agent-transcript-content { display: flow-root; }
+.agent-transcript[data-following="true"] { overflow-anchor: none; }
+/* Reveal the design-system thumb for manual scrolling, not automatic follow. */
 .agent-transcript:not(.is-scrolling) { scrollbar-color: transparent transparent; }
 .agent-transcript:not(.is-scrolling)::-webkit-scrollbar-thumb { background-color: transparent; }
 /* The scroll region accepts keyboard navigation without outlining the entire pane. */
@@ -292,6 +297,11 @@
 .agent-working-items > .agent-item:has(.agent-tool) + .agent-item:has(.agent-tool) { margin-top: 2px; }
 .agent-itext-md { color: var(--text); }
 .agent-stream-markdown > div { display: contents; }
+.agent-stream-arrival { animation: agent-stream-arrive ease-out both; }
+@keyframes agent-stream-arrive { from { opacity: .25; } to { opacity: 1; } }
+@media (prefers-reduced-motion: reduce) {
+  .agent-stream-arrival { animation: none; }
+}
 /* display: contents preserves DOM ancestry: the last stable block is not the
    message's last block while the mutable tail has content. Keep its normal gap
    so committing the tail or finalizing cannot change already-visible spacing. */
