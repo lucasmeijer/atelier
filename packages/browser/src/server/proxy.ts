@@ -1,11 +1,10 @@
 import { inlineDesignSystemCss } from "@atelier/design-system/styles/server";
 import { panelHtml } from "@atelier/design-system/panel";
-import { escapeHtml } from "@atelier/shared";
+import { escapeHtml, type WorkspaceHttpAppBackend } from "@atelier/shared";
 import { workspacePortBackend } from "@atelier/workspace";
 import { nestedWorkspaceProxyRedirectHeader, publicWorkspaceAppOrigin, type WorkspaceAppHost } from "@atelier/proxy-ingress/server";
-import { getWorkspaceBrowserView, setWorkspaceBrowserTarget, type WorkspaceBrowserView } from "./state.ts";
-import type { WorkspaceHttpAppBackend } from "@atelier/shared";
-import { browserOriginParam, browserProxyUrl, stripBrowserProxyParams } from "../shared.ts";
+import { getWorkspaceBrowserView, setWorkspaceBrowserTarget } from "./state.ts";
+import { browserProxyUrl, browserRequestTarget, isWorkspaceLoopbackHost } from "../shared.ts";
 
 export function isBrowserWorkspaceApp(workspaceId: string, appKey: string): boolean {
   return Boolean(getWorkspaceBrowserView(workspaceId, appKey));
@@ -20,11 +19,11 @@ export async function patchBrowserWorkspaceAppResponse(app: WorkspaceAppHost, re
     return new Response(response.body, { status: response.status, statusText: response.statusText, headers });
   }
 
-  const requestUrl = new URL(request.url);
-  const requestTarget = browserRequestTarget(browserView, requestUrl);
-  const publicOrigin = publicWorkspaceAppOrigin(request);
   const location = headers.get("location");
-  if (location) headers.set("location", rewriteBrowserRedirect(app, requestUrl, requestTarget, location, publicOrigin));
+  if (location) {
+    const requestTarget = browserRequestTarget(browserView, new URL(request.url));
+    headers.set("location", rewriteBrowserRedirect(app, requestTarget, location, publicWorkspaceAppOrigin(request)));
+  }
 
   const contentType = headers.get("content-type")?.toLowerCase() ?? "";
   const plainTextError = response.status >= 400
@@ -72,23 +71,13 @@ export async function resolveBrowserWorkspaceAppBackend(app: WorkspaceAppHost, r
   if (!browserView) throw new Error(`unknown workspace app: ${app.appKey}`);
   if (!browserView.targetUrl) throw new Error(`Browser view has no target URL: ${app.appKey}`);
   const target = browserRequestTarget(browserView, requestUrl);
-  if (!isLoopbackHost(target.hostname)) throw new Error("External browser targets load directly and do not have a workspace proxy");
+  if (!isWorkspaceLoopbackHost(target.hostname)) throw new Error("External browser targets load directly and do not have a workspace proxy");
 
-  const containerPort = Number(target.port || defaultPortForProtocol(target.protocol));
+  const containerPort = Number(target.port || (target.protocol === "https:" ? 443 : 80));
   return await workspacePortBackend(app.workspaceId, containerPort, target.pathname + target.search, target.protocol);
 }
 
-function defaultPortForProtocol(protocol: string): number {
-  if (protocol === "https:") return 443;
-  return 80;
-}
-
-function isLoopbackHost(hostname: string): boolean {
-  const normalized = hostname.toLowerCase();
-  return normalized === "localhost" || normalized === "127.0.0.1" || normalized === "::1" || normalized === "[::1]" || normalized === "0.0.0.0";
-}
-
-function rewriteBrowserRedirect(app: WorkspaceAppHost, requestUrl: URL, requestTarget: URL, location: string, publicOrigin: string): string {
+function rewriteBrowserRedirect(app: WorkspaceAppHost, requestTarget: URL, location: string, publicOrigin: string): string {
   let redirectTarget: URL;
   try {
     redirectTarget = new URL(location, requestTarget);
@@ -98,25 +87,6 @@ function rewriteBrowserRedirect(app: WorkspaceAppHost, requestUrl: URL, requestT
   if (redirectTarget.protocol !== "http:" && redirectTarget.protocol !== "https:") return location;
 
   setWorkspaceBrowserTarget(app.workspaceId, app.appKey, redirectTarget.toString());
-  if (!isLoopbackHost(redirectTarget.hostname)) return redirectTarget.toString();
-  return browserProxyUrl(redirectTarget, publicOrigin).toString();
-}
-
-function browserRequestTarget(view: WorkspaceBrowserView, requestUrl: URL): URL {
-  const fallbackOrigin = new URL(view.targetUrl).origin;
-  const targetOrigin = parseBrowserOrigin(requestUrl.searchParams.get(browserOriginParam)) ?? fallbackOrigin;
-  const target = new URL(`${requestUrl.pathname}${requestUrl.search}`, targetOrigin);
-  stripBrowserProxyParams(target);
-  return target;
-}
-
-function parseBrowserOrigin(value: string | null): string | undefined {
-  if (!value) return undefined;
-  try {
-    const origin = new URL(value);
-    if (origin.protocol !== "http:" && origin.protocol !== "https:") return undefined;
-    return origin.origin;
-  } catch {
-    return undefined;
-  }
+  if (!isWorkspaceLoopbackHost(redirectTarget.hostname)) return redirectTarget.toString();
+  return browserProxyUrl(app.appKey, redirectTarget, publicOrigin).toString();
 }

@@ -4,7 +4,7 @@ import { buttonHtml } from "@atelier/design-system/button";
 import { buttonGroupHtml } from "@atelier/design-system/button-group";
 import { escapeHtml, type WorkspaceWorkViewPresentation } from "@atelier/shared";
 import { browserFrameId, type WorkspaceBrowserView } from "./state.ts";
-import { browserProxyUrl } from "../shared.ts";
+import { browserProxyUrl, isWorkspaceLoopbackHost } from "../shared.ts";
 
 export function browserWorkViewPresentation(view: WorkspaceBrowserView): WorkspaceWorkViewPresentation {
   return {
@@ -52,7 +52,7 @@ const workspacePreviewPermissions = [
 export function renderBrowserFrame(workspaceId: string, view: WorkspaceBrowserView): string {
   const target = view.targetUrl ? new URL(view.targetUrl) : undefined;
   const workspaceLocal = target ? isWorkspaceLoopbackHost(target.hostname) : false;
-  const proxy = target && workspaceLocal ? browserProxyUrl(target, "http://atelier.browser") : undefined;
+  const proxy = target && workspaceLocal ? browserProxyUrl(view.key, target, "http://atelier.browser") : undefined;
   const initialPath = proxy ? `${proxy.pathname}${proxy.search}${proxy.hash}` : "";
   const appKey = view.key;
   const frameControllerAttributes = target && workspaceLocal
@@ -108,9 +108,4 @@ export function renderBrowserFrame(workspaceId: string, view: WorkspaceBrowserVi
       </div>
     </div>
   </turbo-frame>`;
-}
-
-function isWorkspaceLoopbackHost(hostname: string): boolean {
-  const normalized = hostname.toLowerCase();
-  return normalized === "localhost" || normalized === "127.0.0.1" || normalized === "::1" || normalized === "[::1]" || normalized === "0.0.0.0";
 }

@@ -49,6 +49,8 @@ An Atelier development server in a workspace uses that workspace's nested Docker
 
 Browser-facing app identity is independent from an active listener. A stable canonical app link retains a logical browser-origin assignment while listeners and external publication are leased only while the app is active. Origin assignments are never transferred to another app, preventing stale addresses and browser storage from crossing app identities. In a nested Atelier, the inner ingress leases a local origin reachable through the surrounding workspace’s gateway and redirects through that workspace's canonical app route. The outer ingress then supplies the browser-reachable origin. This preserves root-relative URLs and WebSockets without keeping inactive listeners or externally published resources alive.
 
+Browser navigation carries its target origin in a query parameter scoped to the owning Browser view (`atelierBrowserOrigin.browser-<uuid>`). Each browser proxy reads and removes only its own parameter. Routing metadata for an inner Browser passes through the outer Browser unchanged, so an inner target port cannot retarget the surrounding workspace’s preview. Initial URLs and rewritten redirects use the same encoding.
+
 ## Workspace gateway
 
 A small Go binary, `/usr/local/bin/atelier-workspace-gateway`, runs as the workspace container's main process after initialization, under Docker's `--init` signal-forwarder and child-process reaper. It binds port **2999**, writes the startup readiness marker only after binding, and exits with the container. Stopping or restarting a workspace stops or restarts its gateway; gateway failure terminates the container rather than silently leaving previews broken. Docker's existing restart policy applies.

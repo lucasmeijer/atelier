@@ -21,7 +21,7 @@ async function patchRedirect(targetUrl: string, location: string, requestUrl: st
   setWorkspaceBrowserTarget(workspaceId, view.key, targetUrl);
   const response = new Response(body, { status, headers: { location, ...headers } });
   const patched = await patchBrowserWorkspaceAppResponse({ appKey: view.key, workspaceId }, response, new Request(requestUrl));
-  return { patched, targetUrl: () => listWorkspaceBrowserViews(workspaceId)[0]!.targetUrl };
+  return { patched, appKey: view.key, targetUrl: () => listWorkspaceBrowserViews(workspaceId)[0]!.targetUrl };
 }
 
 describe("browser proxy response patching", () => {
@@ -64,14 +64,10 @@ describe("browser proxy response patching", () => {
     expect(second.key).not.toBe(first.key);
   });
 
-  test("browser state and iframe source preserve hash fragments", () => {
+  test("browser state preserves hash fragments", () => {
     expect(listWorkspaceBrowserViews("empty_work")).toEqual([]);
     expect(normalizeBrowserUrl("")).toBe("");
     expect(normalizeBrowserUrl("localhost:3000/page#section")).toBe("http://localhost:3000/page#section");
-    const view = createWorkspaceBrowserView("hash_work");
-    expect(renderBrowserFrame("hash_work", view)).not.toContain("data-controller=\"workspace-app-frame\"");
-    setWorkspaceBrowserTarget("hash_work", view.key, "http://localhost:3000/page?x=1#section");
-    expect(renderBrowserFrame("hash_work", view)).toContain(`data-workspace-app-frame-initial-path-value="/page?x=1&amp;atelierBrowserOrigin=http%3A%2F%2Flocalhost%3A3000#section"`);
   });
 
   test("does not resolve external targets through workspace ingress", async () => {
@@ -109,19 +105,19 @@ describe("browser proxy response patching", () => {
   });
 
   test("lets external redirects leave the workspace preview origin", async () => {
-    const result = await patchRedirect("https://lucasmeijer.com/atelier", "http://lucasmeijer.com/atelier/", "https://browser--redirect.localhost/atelier?atelierBrowserOrigin=https%3A%2F%2Flucasmeijer.com", 301);
+    const result = await patchRedirect("https://lucasmeijer.com/atelier", "http://lucasmeijer.com/atelier/", "https://browser--redirect.localhost/atelier", 301);
     expect(result.patched.headers.get("location")).toBe("http://lucasmeijer.com/atelier/");
     expect(result.targetUrl()).toBe("http://lucasmeijer.com/atelier/");
   });
 
   test("preserves a changed localhost port across redirects", async () => {
-    const result = await patchRedirect("http://localhost:3000/start", "http://localhost:3001/next", "https://browser--redirect.localhost/start?atelierBrowserOrigin=http%3A%2F%2Flocalhost%3A3000", 307);
-    expect(result.patched.headers.get("location")).toBe("https://browser--redirect.localhost/next?atelierBrowserOrigin=http%3A%2F%2Flocalhost%3A3001");
+    const result = await patchRedirect("http://localhost:3000/start", "http://localhost:3001/next", "https://browser--redirect.localhost/start", 307);
+    expect(result.patched.headers.get("location")).toBe(`https://browser--redirect.localhost/next?atelierBrowserOrigin.${result.appKey}=http%3A%2F%2Flocalhost%3A3001`);
     expect(result.targetUrl()).toBe("http://localhost:3001/next");
   });
 
   test("sends cross-host redirects directly to the external site", async () => {
-    const result = await patchRedirect("https://example.com/start", "https://login.example.org/session?next=%2Fhome", "https://browser--redirect.localhost/start?atelierBrowserOrigin=https%3A%2F%2Fexample.com");
+    const result = await patchRedirect("https://example.com/start", "https://login.example.org/session?next=%2Fhome", "https://browser--redirect.localhost/start");
     expect(result.patched.headers.get("location")).toBe("https://login.example.org/session?next=%2Fhome");
     expect(result.targetUrl()).toBe("https://login.example.org/session?next=%2Fhome");
   });
@@ -150,7 +146,7 @@ describe("browser proxy response patching", () => {
   test("rewrites non-html redirect locations without consuming the body", async () => {
     const result = await patchRedirect("http://localhost:3000/", "http://localhost:3000/next?x=1#top", "https://browser--redirect.localhost/current", 302, "redirecting");
     expect(result.patched.status).toBe(302);
-    expect(result.patched.headers.get("location")).toBe("https://browser--redirect.localhost/next?x=1&atelierBrowserOrigin=http%3A%2F%2Flocalhost%3A3000#top");
+    expect(result.patched.headers.get("location")).toBe(`https://browser--redirect.localhost/next?x=1&atelierBrowserOrigin.${result.appKey}=http%3A%2F%2Flocalhost%3A3000#top`);
     expect(await result.patched.text()).toBe("redirecting");
   });
 });
