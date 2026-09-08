@@ -12,7 +12,7 @@ export interface DialogOptions {
   };
   /** Trusted, already-escaped decorative icon. */
   iconHtml: string;
-  /** Plain-text title caption. */
+  /** Plain-text title caption. Dialog owns its body-text typography; callers supply no heading styling. */
   titleCaption: string;
   /** Trusted, already-escaped body contents. */
   bodyHtml: string;

@@ -578,7 +578,7 @@ export const entries: CatalogueEntry[] = [
     title: "Dialog",
     when: "A focused task temporarily blocking page interaction. Not for small menus or ordinary navigation.",
     contract:
-      "Native dialog plus Panel. Open with showModal() in Stimulus or data-dialog-auto-show on server insertion. Escape and close dismiss; focus returns to opener. Provide titleCaption. Full-bleed is for regions owning layout, not a size variant.",
+      "Native dialog plus Panel. Open with showModal() in Stimulus or data-dialog-auto-show on server insertion. Escape and close dismiss; focus returns to opener. Provide titleCaption; the header and title always use regular body-text typography, owned by Dialog rather than callers. Full-bleed is for regions owning layout, not a size variant.",
     imports: { dialog: "dialogHtml", button: "buttonHtml", icons: "Icons" },
     examples: [
       {

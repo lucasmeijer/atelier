@@ -4,7 +4,9 @@
 .dialog:focus { outline: none; }
 .dialog[open] { display: flex; flex-direction: column; }
 .dialog > .panel { width: 100%; max-height: min(92dvh, 860px); border-color: var(--line-strong); box-shadow: var(--shadow); }
-.dialog__title,
+/* Dialog chrome uses body typography, including the title (not Panel’s semibold title). */
+.dialog > .panel > .panel__header,
+.dialog .dialog__title,
 .dialog > .panel > .panel__body { color: var(--text); font: var(--text-body)/var(--leading-standard) var(--font-sans); }
 .dialog__close-form { flex: 0 0 auto; margin: 0 0 0 auto; }
 @media (max-width: 700px), (pointer: coarse) { .dialog { width: calc(100vw - 16px); } }
