@@ -470,6 +470,9 @@ chown atelier:atelier /home/atelier /.atelier /var/lib/atelier
 if [ "$user_changed" = 1 ]; then
   find /home/atelier -mindepth 1 -maxdepth 1 ! -name .vscode -exec chown -R atelier:atelier {} +
   if [ -d /home/atelier/.vscode ]; then chown atelier:atelier /home/atelier/.vscode; fi
+  # VS Code writes its extensions manifest here, outside the home directory.
+  # Keep installed extensions writable after aligning the image user to the host.
+  if [ -d /opt/atelier/vscode-extensions ]; then chown -R atelier:atelier /opt/atelier/vscode-extensions; fi
 fi`;
 }
 

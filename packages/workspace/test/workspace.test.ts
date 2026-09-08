@@ -188,6 +188,16 @@ describe("core workspaces", () => {
     }
   });
 
+  test("default workspaces let the aligned user write VS Code extension metadata", async () => {
+    const id = await getReusableWorkspaceId();
+    const result = await execWorkspaceShell(id, `set -eu
+      git --version
+      manifest=$(mktemp /opt/atelier/vscode-extensions/atelier-write-check.XXXXXX)
+      printf '[]\\n' > "$manifest"
+      rm "$manifest"`, { user: "atelier" });
+    expect(result.exitCode, result.stdout + result.stderr).toBe(0);
+  });
+
   test("default workspaces include Compose and start a private Docker daemon", async () => {
     const id = await getReusableWorkspaceId();
     const info = await execWorkspaceCommand(id, ["docker", "info", "--format", "{{.Driver}}"]);
