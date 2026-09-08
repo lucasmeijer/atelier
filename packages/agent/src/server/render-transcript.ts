@@ -111,7 +111,7 @@ function renderWorkingTiming(section: Omit<WorkingTranscriptItem, "items">): str
     ? `${(timing.outputTokens / (timing.inferenceMs / 1000)).toFixed(1)} tps`
     : "tps unavailable";
   const toolDuration = formatDuration(timing.toolMs);
-  const toolsLabel = `${toolDuration} tools, `;
+  const toolsLabel = toolDuration === "0s" ? "" : `${toolDuration} tools, `;
   return ` <span class="agent-working-timing" title="Wall-clock tool wait (parallel calls counted once). Output-token count and tokens per inference second, including reported thinking tokens.">(${escapeHtml(toolsLabel)}${timing.usageComplete ? `${formatTokens(timing.outputTokens)} tok` : "tokens unavailable"} @ ${escapeHtml(rate)})</span>`;
 }
 
