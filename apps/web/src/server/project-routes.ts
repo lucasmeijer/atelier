@@ -12,7 +12,7 @@ import {
   deleteProject, deleteProjectEnvironmentVariable, deleteProjectSecret, deleteProjectSshKey,
   formatProjectSpec, listProjectEnvironmentVariables, listProjectSecrets,
   listProjectSshKeys, listProjects, parseProjectSpec, updateProject,
-  updateProjectEnvironmentVariable, updateProjectSecret,
+  updateProjectEnvironmentVariable, updateProjectSecret, setProjectDockerfile,
   type ProjectEnvironmentVariable, type ProjectSecretSummary, type ProjectSshKeySummary, type ProjectSummary,
 } from "@atelier/projects";
 import { domId, escapeHtml, providerBrandColor, providerBrandIconHtml, turboStreamResponse } from "@atelier/shared";
@@ -85,6 +85,31 @@ export function createProjectRoutes(deps: {
     return `<section class="project-configuration-list project-environment" id="${domId("project_environment", project.id)}"${revealSection(section, "environment")}>
       <div class="project-configuration-head"><h3>Environment variables</h3><p>These variables are added to every new workspace container created for this project.</p></div>
       ${projectConfigurationDisclosure("Configure environment variables", projectEnvironmentFields(project, environment), section === "environment")}
+    </section>`;
+  }
+
+  function projectDockerfileEditor(project: ProjectSummary, section?: ProjectSettingsSection): string {
+    const example = [
+      "FROM atelier-workspace",
+      "",
+      "# Build against PostgreSQL and connect to your development database",
+      "RUN apt-get update \\",
+      " && apt-get install -y --no-install-recommends \\",
+      "      libpq-dev \\",
+      "      postgresql-client \\",
+      " && rm -rf /var/lib/apt/lists/*",
+      "",
+      "WORKDIR /work",
+    ].join("\n");
+    const fields = `<div class="project-dockerfile-form">
+      <div class="project-configuration-head"><p>You may paste your dockerfile here or commit it at <code>.atelier/Dockerfile</code> so others can use it too.</p></div>
+      <form method="post" action="/projects/${encodeURIComponent(project.id)}/dockerfile" data-turbo="true" data-controller="settings-autosave" data-action="focusout->settings-autosave#saveWhenLeaving">
+        <textarea class="textarea" aria-label="Custom Dockerfile" name="dockerfile" rows="12" spellcheck="false" autocomplete="off" placeholder="${escapeHtml(example)}">${escapeHtml(project.dockerfile ?? "")}</textarea>
+      </form>
+    </div>`;
+    return `<section class="project-configuration-list" id="${domId("project_dockerfile", project.id)}"${revealSection(section, "dockerfile")}>
+      <div class="project-configuration-head"><h3>Custom dockerfile</h3><p>Use a custom dockerfile to make sure workspaces for your project start up with all their system dependencies ready to go.</p></div>
+      ${projectConfigurationDisclosure("Custom Dockerfile", fields, section === "dockerfile")}
     </section>`;
   }
 
@@ -164,12 +189,12 @@ export function createProjectRoutes(deps: {
     });
   }
 
-  type ProjectSettingsSection = "repository" | "secrets" | "ssh-keys" | "environment" | "danger";
+  type ProjectSettingsSection = "repository" | "secrets" | "ssh-keys" | "environment" | "dockerfile" | "danger";
 
   function parseProjectSettingsSection(value: string | undefined): ProjectSettingsSection | undefined {
     if (value === undefined) return undefined;
-    if (value === "repository" || value === "secrets" || value === "ssh-keys" || value === "environment" || value === "danger") return value;
-    throw invalidArguments("section must be one of: repository, secrets, ssh-keys, environment, danger");
+    if (value === "repository" || value === "secrets" || value === "ssh-keys" || value === "environment" || value === "dockerfile" || value === "danger") return value;
+    throw invalidArguments("section must be one of: repository, secrets, ssh-keys, environment, dockerfile, danger");
   }
 
   async function projectEditorFrame(project: ProjectSummary, section?: ProjectSettingsSection): Promise<string> {
@@ -178,7 +203,7 @@ export function createProjectRoutes(deps: {
       <div class="project-editor-page project-editor-detail-page">
         <div class="project-editor-detail-body">
           <section class="project-edit-section"${revealSection(section, "repository")}><form class="project-edit-form" aria-label="Repository" method="post" action="/projects/${encodeURIComponent(project.id)}" data-controller="settings-autosave" data-action="change->settings-autosave#save"><label class="project-edit-field"><span>Display name</span><input class="text-field" name="name" value="${escapeHtml(project.name)}" required></label><label class="project-edit-field"><span>Repository</span><input class="text-field" name="gitUrl" value="${escapeHtml(formatProjectSpec(project))}" required></label></form></section>
-          <div class="project-edit-config">${projectSecretEditor(project, secrets, section)}${projectSshKeyEditor(project, sshKeys, section)}${projectEnvironmentEditor(project, environment, section)}</div>
+          <div class="project-edit-config">${projectSecretEditor(project, secrets, section)}${projectSshKeyEditor(project, sshKeys, section)}${projectEnvironmentEditor(project, environment, section)}${projectDockerfileEditor(project, section)}</div>
           <section class="project-edit-danger-zone"${revealSection(section, "danger")}><h3>Danger zone</h3><div class="project-edit-danger">${projectDeleteControl(project.id)}</div></section>
         </div>
       </div>
@@ -337,6 +362,13 @@ export function createProjectRoutes(deps: {
     return json ? jsonResponse({ project }) : turboStreamResponse(paneStream);
   }
 
+  async function updateProjectDockerfileEndpoint(projectId: string, request: Request): Promise<Response> {
+    const json = requestAcceptsJson(request);
+    const dockerfile = json ? jsonString(await readJsonObject(request), "dockerfile") : String((await request.formData()).get("dockerfile") ?? "");
+    const result = await setProjectDockerfile(projectId, dockerfile);
+    return json ? jsonResponse(result) : turboStreamResponse("");
+  }
+
   async function renderProjectEnvironmentStreams(projectId: string): Promise<string> {
     const project = await projectById(projectId);
     return turboReplaceStream(domId("project_environment_fields", projectId), projectEnvironmentFields(project, await listProjectEnvironmentVariables(projectId)));
@@ -491,6 +523,7 @@ export function createProjectRoutes(deps: {
       return result ? result.slice(1).map(decodeURIComponent) : undefined;
     };
     let params: string[] | undefined;
+    if ((params = match(/^\/projects\/([^/]+)\/dockerfile$/)) && request.method === "POST") return await updateProjectDockerfileEndpoint(params[0]!, request);
     if ((params = match(/^\/projects\/([^/]+)\/editor$/)) && request.method === "GET") return response(await projectEditorFrame(await projectById(params[0]!)));
     if ((params = match(/^\/projects\/([^/]+)\/launch-composer$/)) && request.method === "GET") return response(await deps.renderLaunchComposer(await projectById(params[0]!)));
     if ((params = match(/^\/projects\/([^/]+)$/)) && request.method === "GET" && requestAcceptsJson(request)) return await projectDetailEndpoint(params[0]!);

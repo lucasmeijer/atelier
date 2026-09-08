@@ -225,7 +225,7 @@ let app: WebApp;
 const workspaceStartupOperations = {
   setRunning: setWorkspaceContainerRunning,
   checkGateway: checkWorkspaceGateway,
-  imageOutdated: workspaceImageOutdated,
+  imageOutdated: (id: string) => workspaceImageOutdated(id, undefined, atelierEvents),
   waitForContinue: (id: string, stepId: string) => app.waitForWorkspaceStartupContinue(id, stepId),
   step: (event: WorkspaceProvisionStepEvent) => atelierEvents.emit("workspace_provision_step", event),
 };

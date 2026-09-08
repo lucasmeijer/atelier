@@ -521,3 +521,6 @@ button.settings-link:disabled { opacity: .45; cursor: default; filter: none; }
 .pwa-reminder-body li + li { margin-top: 10px; }
 .pwa-reminder-guide { margin: 16px 0; }
 .pwa-reminder-guide svg { display: block; width: 100%; height: auto; }
+
+.project-dockerfile-form { display: grid; gap: 8px; }
+.project-dockerfile-form .textarea { font-family: var(--font-mono); line-height: var(--leading-standard); }

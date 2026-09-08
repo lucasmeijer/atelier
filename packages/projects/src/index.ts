@@ -9,6 +9,7 @@ export {
   projectNameFromGitUrl,
   projectWorkspaceInit,
   updateProject,
+  setProjectDockerfile,
   type AddProjectResult,
   type DeleteProjectResult,
   type GitProjectInitInstruction,

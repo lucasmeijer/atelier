@@ -1,3 +1,4 @@
+import type { WorkspaceImageConfigureEvent } from "./events.ts";
 import { cp, mkdir, readFile, rename, rm, writeFile } from "node:fs/promises";
 import { hostname } from "node:os";
 import { dirname, join } from "node:path";
@@ -547,7 +548,9 @@ export async function createWorkspace(options: CreateWorkspaceOptions = {}): Pro
     const carrierPlatform = activePlan.preloadDockerImages?.length ? await nativeLinuxDockerPlatform() : undefined;
     let imageResolution: WorkspaceImageResolution | undefined;
     if (!activePlan.image && !forkImage) {
-      imageResolution = await provisionStep(options.events, id, "workspace.image", "Resolve workspace image", () => resolveWorkspaceImageResolution({ workspaceId: id, events: options.events, sourcePath: source.worktreePath }));
+      const configuration: WorkspaceImageConfigureEvent = { init };
+      await options.events?.emit("workspace_image_configure", configuration);
+      imageResolution = await provisionStep(options.events, id, "workspace.image", "Resolve workspace image", () => resolveWorkspaceImageResolution({ workspaceId: id, events: options.events, sourcePath: source.worktreePath, dockerfile: configuration.dockerfile }));
       activePlan.image = imageResolution.image;
     } else {
       activePlan.image ??= forkImage;
@@ -638,20 +641,22 @@ export async function workspacePortBackend(id: string, port: number, pathAndSear
   return { kind: "http", target, gateway: await workspaceGateway(id) };
 }
 
-async function currentWorkspaceImageId(sourcePath: string): Promise<string | undefined> {
-  return await inspectWorkspaceImage({ sourcePath, preloadImages: (await readRepoWorkspaceManifest(sourcePath))?.docker?.preloadImages });
+async function currentWorkspaceImageId(sourcePath: string, dockerfile?: string): Promise<string | undefined> {
+  return await inspectWorkspaceImage({ sourcePath, dockerfile, preloadImages: (await readRepoWorkspaceManifest(sourcePath))?.docker?.preloadImages });
 }
 
-export async function workspaceImageOutdated(id: string, container = workspaceContainerName(id)): Promise<boolean> {
+export async function workspaceImageOutdated(id: string, container = workspaceContainerName(id), events?: AtelierEventBus): Promise<boolean> {
+  const configuration: WorkspaceImageConfigureEvent = { init: await readWorkspaceInit(getAtelierRuntimeContext(), id) };
+  await events?.emit("workspace_image_configure", configuration);
   const [expectedImageId, actualImage] = await Promise.all([
-    currentWorkspaceImageId(workspaceWorkHostPath(id)),
+    currentWorkspaceImageId(workspaceWorkHostPath(id), configuration.dockerfile),
     requireDocker(["inspect", "--format", "{{.Image}}", container]),
   ]);
   return expectedImageId === undefined || actualImage.stdout.trim() !== expectedImageId;
 }
 
 /** Discovery can skip image inspection so server startup only reads workspace identity. */
-export async function listWorkspaces(options: { inspectImages?: boolean } = {}): Promise<WorkspaceListResult> {
+export async function listWorkspaces(options: { inspectImages?: boolean; events?: AtelierEventBus } = {}): Promise<WorkspaceListResult> {
   const context = getAtelierRuntimeContext();
   const listed = await requireDocker(["ps", "-a", "--filter", `label=${workspaceTypeLabel}=workspace`, "--filter", `label=${namespaceLabel}=${namespace()}`, "--format", `{{.ID}}\t{{.Label "${workspaceIdLabel}"}}`]);
   const workspaces = await Promise.all(listed.stdout.trim().split(/\n+/).filter(Boolean).map(async (line) => {
@@ -661,7 +666,7 @@ export async function listWorkspaces(options: { inspectImages?: boolean } = {}):
       readParked(context, id),
       readWorkspaceInit(context, id),
       readTitle(context, id),
-      options.inspectImages === false ? false : workspaceImageOutdated(id, containerId),
+      options.inspectImages === false ? false : workspaceImageOutdated(id, containerId, options.events),
     ]);
     const workspace: WorkspaceListResult["workspaces"][number] = { id, title };
     if (parked) workspace.parked = parked;

@@ -47,7 +47,7 @@ Project settings has a browser-navigable surface that agents can pass directly t
 /projects/:projectId/settings?section=environment
 ```
 
-Supported sections are `repository`, `secrets`, `ssh-keys`, `environment`, and `danger`. Direct navigation renders the complete Atelier shell, opens Project settings, expands configurable sections when selected, and scrolls the selected section into view.
+Supported sections are `repository`, `secrets`, `ssh-keys`, `environment`, `dockerfile`, and `danger`. Direct navigation renders the complete Atelier shell, opens Project settings, expands configurable sections when selected, and scrolls the selected section into view.
 
 Use `GET /projects` with `Accept: application/json` to discover the project ID before constructing the presentation URL.
 

@@ -67,8 +67,14 @@ export interface WorkspacePlanPrepareEvent extends WorkspaceSourcePrepareEvent {
   plan: WorkspaceDockerPlan;
 }
 
+export interface WorkspaceImageConfigureEvent {
+  init?: WorkspaceInitInstruction;
+  dockerfile?: string;
+}
+
 declare module "@atelier/core" {
   interface AtelierEventMap {
+    workspace_image_configure: WorkspaceImageConfigureEvent;
     workspace_source_prepare: WorkspaceSourcePrepareEvent;
     workspace_plan_prepare: WorkspacePlanPrepareEvent;
     workspace_created: WorkspaceCreatedEvent;

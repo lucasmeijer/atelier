@@ -86,6 +86,7 @@ const projectRecordSchema = Type.Object({
   secrets: Type.Optional(Type.Array(storedProjectSecretSchema)),
   sshKeys: Type.Optional(Type.Array(storedProjectSshKeySchema)),
   environment: Type.Optional(Type.Array(projectEnvironmentVariableSchema)),
+  dockerfile: Type.Optional(Type.String()),
 });
 
 const projectStoreSchema = Type.Object({
@@ -166,6 +167,7 @@ function projectSummary(project: ProjectRecord): ProjectSummary {
     gitUrl: project.gitUrl,
     branch: project.branch,
     sessionShareKey: project.sessionShareKey,
+    dockerfile: project.dockerfile,
   };
 }
 
@@ -222,4 +224,16 @@ export function projectWorkspaceInit(project: ProjectSummary): WorkspaceInitInst
 
 export function isGitProjectInit(init: unknown): init is GitProjectInitInstruction {
   return Value.Check(gitProjectInitSchema, init);
+}
+
+export async function setProjectDockerfile(id: string, dockerfile: string, file = projectsFile()): Promise<UpdateProjectResult> {
+  if (dockerfile.trim() && dockerfile.split("\n")[0]!.trim() !== "FROM atelier-workspace") {
+    throw new AtelierCoreError("invalid_arguments", "Dockerfile must start with FROM atelier-workspace");
+  }
+  return await updateProjectStore(file, (store) => {
+    const project = findProjectRecord(store, id);
+    if (dockerfile.trim()) project.dockerfile = dockerfile;
+    else delete project.dockerfile;
+    return { project: projectSummary(project) };
+  });
 }

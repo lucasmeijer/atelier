@@ -32,6 +32,7 @@ export interface ResolveWorkspaceImageOptions {
   workspaceId?: string;
   events?: AtelierEventBus;
   sourcePath?: string;
+  dockerfile?: string;
   buildOutput?: "inherit";
 }
 
@@ -399,20 +400,29 @@ export async function prepareWorkspaceImageCarrier(options: { resolution: Worksp
   return { image: carrier.image, key: carrier.key, path: carrier.kind, initScripts: [dockerImagePreloadVerificationInitScript(options.preload.refs)] };
 }
 
-async function inspectWorkspaceImageResolution(options: Pick<ResolveWorkspaceImageOptions, "sourcePath"> = {}): Promise<WorkspaceImageResolution | undefined> {
+export async function workspaceDockerfile(sourcePath: string, override?: string): Promise<string> {
+  if (!override?.trim()) return join(sourcePath, ".atelier", "Dockerfile");
+  const dir = join(contextBaseDir(), "project-dockerfiles");
+  await mkdir(dir, { recursive: true });
+  const path = join(dir, `${createHash("sha256").update(override).digest("hex")}.Dockerfile`);
+  await writeFile(path, override);
+  return path;
+}
+
+async function inspectWorkspaceImageResolution(options: Pick<ResolveWorkspaceImageOptions, "sourcePath" | "dockerfile"> = {}): Promise<WorkspaceImageResolution | undefined> {
   const baseImage = await inspectDefaultWorkspaceImage();
   if (!baseImage) return undefined;
   if (!options.sourcePath) return { image: baseImage, defaultImage: baseImage };
 
-  const dockerfile = join(options.sourcePath, ".atelier", "Dockerfile");
+  const dockerfile = await workspaceDockerfile(options.sourcePath, options.dockerfile);
   if (!(await Bun.file(dockerfile).exists())) return { image: baseImage, defaultImage: baseImage };
 
   const metadata = await repoWorkspaceImageMetadata(dockerfile, baseImage);
   return await imageExists(metadata.tag) ? { image: metadata.tag, defaultImage: baseImage } : undefined;
 }
 
-export async function inspectWorkspaceImage(options: { sourcePath?: string; preloadImages?: string[] } = {}): Promise<string | undefined> {
-  const resolution = await inspectWorkspaceImageResolution({ sourcePath: options.sourcePath });
+export async function inspectWorkspaceImage(options: { sourcePath?: string; dockerfile?: string; preloadImages?: string[] } = {}): Promise<string | undefined> {
+  const resolution = await inspectWorkspaceImageResolution(options);
   if (!resolution) return undefined;
   if (!options.preloadImages?.length) return await dockerImageId(resolution.image);
 
@@ -428,7 +438,7 @@ export async function resolveWorkspaceImageResolution(options: ResolveWorkspaceI
   const baseImage = await ensureDefaultWorkspaceImage();
   if (!options.sourcePath) return { image: baseImage, defaultImage: baseImage };
 
-  const dockerfile = join(options.sourcePath, ".atelier", "Dockerfile");
+  const dockerfile = await workspaceDockerfile(options.sourcePath, options.dockerfile);
   if (!(await Bun.file(dockerfile).exists())) return { image: baseImage, defaultImage: baseImage };
 
   await tagAtelierWorkspaceBase(baseImage);

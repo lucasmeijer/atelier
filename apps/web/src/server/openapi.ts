@@ -21,7 +21,7 @@ const selectedWorkView = { name: "workView", in: "query", required: false, descr
 const projectId = { name: "projectId", in: "path", required: true, schema: { type: "string" } };
 const variableId = { name: "variableId", in: "path", required: true, schema: { type: "string" } };
 const secretId = { name: "secretId", in: "path", required: true, schema: { type: "string" } };
-const projectSettingsSection = { name: "section", in: "query", required: false, schema: { type: "string", enum: ["repository", "secrets", "ssh-keys", "environment", "danger"] } };
+const projectSettingsSection = { name: "section", in: "query", required: false, schema: { type: "string", enum: ["repository", "secrets", "ssh-keys", "environment", "dockerfile", "danger"] } };
 const settingsSection = { name: "section", in: "query", required: false, schema: { type: "string" } };
 const htmlSurfaceResponses = (description: string) => ({ "200": { description, content: { "text/html": { schema: { type: "string" } } } }, "400": errorResponse, "404": errorResponse });
 const agentConversationId = { name: "conversationId", in: "path", required: true, schema: { type: "string", format: "uuid" } };
@@ -29,7 +29,7 @@ const attentionTokens = { name: "attentionTokens", in: "query", required: true, 
 const jsonBody = (schema: TSchema) => ({ required: true, content: { "application/json": { schema } } });
 const emptyObjectSchema = { type: "object", additionalProperties: false };
 const workspaceIssuesSchema = { type: "array", items: { type: "object", required: ["kind", "message"], properties: { kind: { type: "string", enum: ["gateway", "image"] }, message: { type: "string" } }, additionalProperties: false } };
-const projectSummaryProperties = { id: { type: "string" }, name: { type: "string" }, gitUrl: { type: "string" }, branch: { type: ["string", "null"] }, sessionShareKey: { type: "string" } };
+const projectSummaryProperties = { id: { type: "string" }, name: { type: "string" }, gitUrl: { type: "string" }, branch: { type: ["string", "null"] }, sessionShareKey: { type: "string" }, dockerfile: { type: "string" } };
 const agentConversationSummarySchema = {
   type: "object",
   required: ["id", "title"],
@@ -88,6 +88,7 @@ export function atelierOpenApi(commands: WorkspaceModuleCommandHandler[], contri
         },
       },
       "/projects/{projectId}/workspaces/new": { get: { summary: "Present a new project workspace composer", parameters: [projectId], responses: htmlSurfaceResponses("Atelier with the project workspace composer open") } },
+      "/projects/{projectId}/dockerfile": { post: { summary: "Set the project workspace Dockerfile override", description: "Must start with FROM atelier-workspace. An empty string clears the override. Takes priority over .atelier/Dockerfile for new workspaces.", parameters: [projectId], requestBody: jsonBody({ type: "object", required: ["dockerfile"], properties: { dockerfile: { type: "string" } }, additionalProperties: false }), responses: jsonResponse("Dockerfile saved", { $ref: "#/components/schemas/ProjectEnvelope" }) } },
       "/projects/{projectId}/environment": { post: { summary: "Create a project environment variable", parameters: [projectId], requestBody: jsonBody({ $ref: "#/components/schemas/EnvironmentVariableInput" }), responses: jsonResponse("Environment variable created", { $ref: "#/components/schemas/EnvironmentVariableEnvelope" }) } },
       "/projects/{projectId}/environment/{variableId}": { post: { summary: "Update a project environment variable", parameters: [projectId, variableId], requestBody: jsonBody({ $ref: "#/components/schemas/EnvironmentVariableInput" }), responses: jsonResponse("Environment variable updated", { $ref: "#/components/schemas/EnvironmentVariableEnvelope" }) } },
       "/projects/{projectId}/environment/{variableId}/delete": { post: { summary: "Delete a project environment variable", parameters: [projectId, variableId], requestBody: jsonBody(emptyObjectSchema), responses: jsonResponse("Environment variable deleted", { type: "object", required: ["deleted", "environmentVariable"], properties: { deleted: { const: true }, environmentVariable: { $ref: "#/components/schemas/EnvironmentVariable" } } }) } },

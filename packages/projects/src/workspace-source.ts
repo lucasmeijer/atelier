@@ -20,7 +20,7 @@ import { runHostObservableCommand, tailTerminalText } from "@atelier/observable-
 import { Type, type Static } from "typebox";
 import { Value } from "typebox/value";
 import { projectEnvironment } from "./environment.ts";
-import { isGitProjectInit } from "./project.ts";
+import { listProjects, isGitProjectInit } from "./project.ts";
 
 export interface PreparedWorkspaceSource {
   workspaceId: string;
@@ -361,6 +361,12 @@ export async function prepareWorkspaceSource(options: { workspaceId: string; git
 }
 
 export function registerProjectWorkspaceInitEvents(events: AtelierEventBus): void {
+  events.on("workspace_image_configure", async (configuration) => {
+    if (!isGitProjectInit(configuration.init)) return;
+    const projectId = configuration.init.projectId;
+    const { projects } = await listProjects();
+    configuration.dockerfile = projects.find((project) => project.id === projectId)?.dockerfile;
+  });
   events.on("workspace_source_prepare", async ({ workspaceId, init, workHostPath }) => {
     if (!isGitProjectInit(init)) return;
     await prepareWorkspaceSource({ workspaceId, gitUrl: init.gitUrl, branch: init.branch, worktreePath: workHostPath, events });
