@@ -8,6 +8,9 @@ export type WorkspacePhase = "starting" | "ready" | "checking_delete" | "deletin
 
 export type WorkspaceDeletionState = Static<typeof workspaceDeletionStateSchema>;
 
+export type WorkspaceIssueKind = "gateway" | "image";
+export interface WorkspaceIssue { kind: WorkspaceIssueKind; message: string }
+
 export interface WorkspaceEntry {
   id: string;
   title: string | null;
@@ -16,13 +19,14 @@ export interface WorkspaceEntry {
   init: WorkspaceInitInstruction | undefined;
   parked: boolean;
   imageOutdated: boolean;
+  issues?: WorkspaceIssue[];
   deletion?: WorkspaceDeletionState;
   error?: string;
 }
 
 export interface WorkspaceRegistryCallbacks {
   /** A single workspace changed. viewKey is set when one view triggered the change. */
-  rowChanged?(entry: WorkspaceEntry, context: { viewKey?: string }): void;
+  rowChanged?(entry: WorkspaceEntry, context: { viewKey?: string; phaseChanged?: boolean }): void;
   /** A workspace's parked state changed and should be persisted. */
   parkedChanged?(entry: WorkspaceEntry): void;
   /** List membership or ordering changed. */
@@ -48,10 +52,10 @@ type WorkspacePhaseTransitions = { [Phase in WorkspacePhase]: WorkspacePhase[] }
 
 const allowedTransitions: WorkspacePhaseTransitions = {
   starting: ["ready", "deleting", "failed"],
-  ready: ["checking_delete", "deleting"],
+  ready: ["starting", "checking_delete", "deleting", "failed"],
   checking_delete: ["ready", "deleting", "failed"],
   deleting: ["failed"],
-  failed: ["ready", "checking_delete", "deleting"],
+  failed: ["starting", "ready", "checking_delete", "deleting"],
 };
 
 const workspaceTimestampsSchema = Type.Record(Type.String(), Type.Number());
@@ -120,13 +124,15 @@ export function createFileWorkspaceDeletionStore(path: string): WorkspaceDeletio
 
 export interface WorkspaceRegistry {
   setCallbacks(callbacks: WorkspaceRegistryCallbacks): void;
-  /** Seed from the containers Docker knows about. Restores recovery failures and persisted deletion state alongside ready entries. */
-  seed(workspaces: Array<{ id: string; title: string | null; parked?: boolean; init?: WorkspaceInitInstruction; imageOutdated?: boolean; recoveryError?: string }>): Promise<void>;
+  /** Seed from the containers Docker knows about. Restores persisted deletion state alongside ready entries. */
+  seed(workspaces: Array<{ id: string; title: string | null; parked?: boolean; init?: WorkspaceInitInstruction; imageOutdated?: boolean; starting?: boolean }>): Promise<void>;
   list(): WorkspaceEntry[];
   get(id: string): WorkspaceEntry | undefined;
   add(id: string, title?: string | null, init?: WorkspaceInitInstruction): WorkspaceEntry;
   setPhase(id: string, phase: WorkspacePhase, error?: string): void;
   setDeletion(id: string, deletion: WorkspaceDeletionState | undefined): void;
+  setIssue(id: string, kind: WorkspaceIssueKind, message?: string): void;
+  setImageOutdated(id: string, outdated: boolean): void;
   setTitle(id: string, title: string | null): void;
   setParked(id: string, parked: boolean): void;
   touch(id: string): void;
@@ -213,7 +219,7 @@ export function createWorkspaceRegistry(options: WorkspaceRegistryOptions = {}):
           workspaceDeletions[workspace.id] = deletion;
           persistedBlockedAssessment = true;
         }
-        const phase: WorkspacePhase = deletion?.status === "deleting" ? "deleting" : deletion?.status === "failed" ? "failed" : deletion ? "checking_delete" : workspace.recoveryError !== undefined ? "failed" : "ready";
+        const phase: WorkspacePhase = deletion?.status === "deleting" ? "deleting" : deletion?.status === "failed" ? "failed" : deletion ? "checking_delete" : workspace.starting ? "starting" : "ready";
         const entry: WorkspaceEntry = {
           id: workspace.id,
           title: workspace.title,
@@ -225,7 +231,6 @@ export function createWorkspaceRegistry(options: WorkspaceRegistryOptions = {}):
           deletion,
         };
         if (deletion?.status === "failed") entry.error = deletion.error;
-        else if (!deletion && workspace.recoveryError !== undefined) entry.error = workspace.recoveryError;
         entries.set(workspace.id, entry);
       }
       if (persistedBlockedAssessment) persistDeletions();
@@ -250,6 +255,20 @@ export function createWorkspaceRegistry(options: WorkspaceRegistryOptions = {}):
       return entry;
     },
 
+    setIssue(id, kind, message) {
+      const entry = requireEntry(id);
+      const issues = (entry.issues ?? []).filter((issue) => issue.kind !== kind);
+      if (message !== undefined) issues.push({ kind, message });
+      entry.issues = issues.length ? issues : undefined;
+      callbacks.rowChanged?.(entry, {});
+    },
+
+    setImageOutdated(id, outdated) {
+      const entry = requireEntry(id);
+      entry.imageOutdated = outdated;
+      callbacks.rowChanged?.(entry, {});
+    },
+
     setPhase(id, phase, error) {
       const entry = requireEntry(id);
       if (entry.phase === phase) return;
@@ -258,7 +277,7 @@ export function createWorkspaceRegistry(options: WorkspaceRegistryOptions = {}):
       }
       entry.phase = phase;
       entry.error = phase === "failed" ? error : undefined;
-      callbacks.rowChanged?.(entry, {});
+      callbacks.rowChanged?.(entry, { phaseChanged: true });
     },
 
     setDeletion(id, deletion) {

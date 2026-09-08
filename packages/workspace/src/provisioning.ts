@@ -19,6 +19,7 @@ export interface WorkspaceProvisionStepEvent {
   terminal?: WorkspaceProvisionTerminal;
   error?: string;
   awaitingContinue?: boolean;
+  continueLabel?: string;
 }
 
 declare module "@atelier/core" {

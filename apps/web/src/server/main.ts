@@ -1,4 +1,4 @@
-import { recoverWorkspaces } from "./workspace-recovery.ts";
+import { recoverWorkspaces, startWorkspaceGateway } from "./workspace-recovery.ts";
 import { designSystemCatalogueHtml } from "@atelier/design-system/catalogue";
 import { configureAgentDelegation } from "@atelier/agent/server";
 import { subagentsDelegation } from "@atelier/subagents/server";
@@ -10,7 +10,7 @@ import { Type } from "typebox";
 import { Value } from "typebox/value";
 import { createAtelierEventBus, getAtelierRuntimeContext } from "@atelier/core";
 import { attachHostObservableTerminal, observableTerminalCols, observableTerminalRows, type ObservableTerminalConnection } from "@atelier/observable-terminal/server";
-import { createWorkspace, deleteWorkspace, isWorkspaceRunning, listWorkspaces, resolveWorkspace, runWorkspaceProvisioningHooks, setWorkspaceContainerRunning, workspaceSetupProvisioningHook } from "@atelier/workspace";
+import { checkWorkspaceGateway, workspaceImageOutdated, createWorkspace, deleteWorkspace, isWorkspaceRunning, listWorkspaces, resolveWorkspace, runWorkspaceProvisioningHooks, setWorkspaceParked, setWorkspaceContainerRunning, workspaceSetupProvisioningHook, type WorkspaceProvisionStepEvent } from "@atelier/workspace";
 import { atelierName, CableTopics, escapeHtml, type WorkspaceAppBackend, type WorkspaceAppRef, type WorkspaceServerAppResolver, type WorkspaceServerProvisioningHook, type WorkspaceServerSocketHandler, type WorkspaceServerSocketSession } from "@atelier/shared";
 import {
   createFileOriginIdentityStore,
@@ -221,6 +221,13 @@ const registry = createWorkspaceRegistry({
   deletionStore: createFileWorkspaceDeletionStore(join(runtimeContext.atelierDataDir, "view-state", "workspace-deletions.json")),
 });
 let app: WebApp;
+const workspaceStartupOperations = {
+  setRunning: setWorkspaceContainerRunning,
+  checkGateway: checkWorkspaceGateway,
+  imageOutdated: workspaceImageOutdated,
+  waitForContinue: (id: string, stepId: string) => app.waitForWorkspaceStartupContinue(id, stepId),
+  step: (event: WorkspaceProvisionStepEvent) => atelierEvents.emit("workspace_provision_step", event),
+};
 const cableServer = createCableServer({ registry, channels: workspaceModules.flatMap((module) => module.cableChannels ?? []), events: atelierEvents, shellSnapshot: () => app.shellSnapshot() });
 
 app = createWebApp({
@@ -232,10 +239,18 @@ app = createWebApp({
   workspaceRemovedHandlers,
   async provisionWorkspace(id, options) {
     await createWorkspace({ id, events: atelierEvents, init: options?.init, context: options?.context });
+    await startWorkspaceGateway(id, registry, workspaceStartupOperations);
     await runWorkspaceProvisioningHooks(provisioningHooks, { workspaceId: id, creationContext: options?.context, events: atelierEvents, waitForContinue: options?.waitForContinue });
     await atelierEvents.emit("workspace_provision_step", { workspaceId: id, id: "workspace.integrations", label: "Run workspace startup integrations", status: "running" });
     await atelierEvents.emit("workspace_created", { workspaceId: id, init: options?.init, context: options?.context });
     await atelierEvents.emit("workspace_provision_step", { workspaceId: id, id: "workspace.integrations", label: "Run workspace startup integrations", status: "done" });
+  },
+  async persistWorkspaceParked(id, parked) {
+    await setWorkspaceParked(id, parked);
+    if (!parked) {
+      registry.setPhase(id, "starting");
+      resumeWorkspace(id);
+    }
   },
   destroyWorkspace: async (id) => {
     await workspaceIngress.stopWorkspace(id);
@@ -245,10 +260,9 @@ app = createWebApp({
 
 atelierEvents.on("workspace_user_activity", ({ workspaceId }) => registry.touch(workspaceId));
 atelierEvents.on("workspace_title_changed", ({ workspaceId, title }) => registry.setTitle(workspaceId, title || null));
-// Docker is the persistent truth for which workspaces exist. Restore each container to the state recorded by
-// park/unpark before modules initialize, then seed the registry so startup-time contributions have rows to attach to.
-const persistedWorkspaces = (await listWorkspaces()).workspaces;
-await recoverWorkspaces(persistedWorkspaces, registry, setWorkspaceContainerRunning);
+// Discover identity and project metadata before serving. Runtime health is checked in the background.
+const persistedWorkspaces = (await listWorkspaces({ inspectImages: false })).workspaces;
+await registry.seed(persistedWorkspaces.map((workspace) => ({ ...workspace, starting: !workspace.parked })));
 
 for (const module of workspaceModules) {
   await module.initialize?.({
@@ -507,3 +521,13 @@ void atelierEvents.emit("atelier_host_started", {
 }).catch((error) => console.error("Atelier startup handlers failed", error));
 
 console.log(`${atelierName} is available at ${process.env.ATELIER_PUBLIC_URL || displayUrl(hostname, serverPort)}`);
+
+void recoverWorkspaces(registry, workspaceStartupOperations).catch((error) => console.error("Workspace recovery failed", error));
+
+function resumeWorkspace(id: string): void {
+  const entry = registry.get(id);
+  if (!entry) return;
+  void startWorkspaceGateway(id, registry, workspaceStartupOperations).then(() => {
+    if (registry.get(id) === entry && !entry.deletion && !entry.parked) registry.setPhase(id, "ready");
+  }).catch((error) => console.error(`Workspace startup failed for ${id}`, error));
+}

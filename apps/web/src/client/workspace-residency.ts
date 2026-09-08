@@ -123,8 +123,14 @@ class WorkspaceResidencyController extends Controller<HTMLElement> {
     const workspaceId = resident.dataset.workspaceId;
     if (!workspaceId) return;
     if (this.preparationOwnedResidents.delete(resident)) return;
+    const operation = this.operations.get(workspaceId);
+    if (operation) {
+      operation.priority = "obsolete";
+      operation.abort.abort();
+      this.operations.delete(workspaceId);
+    }
     const preparationCleared = this.prepared.delete(workspaceId);
-    if (!this.operations.has(workspaceId) && this.workspaceIdFromLocation() === workspaceId && this.intendedWorkspaceId === workspaceId && !resident.classList.contains("visible")) {
+    if (this.workspaceIdFromLocation() === workspaceId && this.intendedWorkspaceId === workspaceId && !resident.classList.contains("visible")) {
       void this.selectWorkspace(workspaceId, location.href, "none");
     }
     if (this.residencyConnected && preparationCleared) this.reconcileResidents();

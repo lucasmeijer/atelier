@@ -128,7 +128,7 @@ async function inspectWorkspaceContainerImage(id: string): Promise<string> {
 
 async function waitForWorkspaceStartup(id: string): Promise<string> {
   const timeoutSeconds = Math.ceil(workspaceStartupTimeoutMs / 1000);
-  const result = await runDocker(["exec", "--user", "root", workspaceContainerName(id), "sh", "-lc", `deadline=$(( $(date +%s) + ${timeoutSeconds} )); while [ "$(date +%s)" -le "$deadline" ]; do if test -f /.atelier/ready && test "$(curl --noproxy '*' --silent --max-time 1 --output /dev/null --write-out '%{http_code}' http://127.0.0.1:${workspaceGatewayPort}/)" = 401; then cat /.atelier/startup.log; exit 0; fi; sleep 0.05; done; tail -n 120 /.atelier/startup.log; exit 1`]);
+  const result = await runDocker(["exec", "--user", "root", workspaceContainerName(id), "sh", "-lc", `deadline=$(( $(date +%s) + ${timeoutSeconds} )); while [ "$(date +%s)" -le "$deadline" ]; do if test -f /.atelier/ready; then cat /.atelier/startup.log; exit 0; fi; sleep 0.05; done; tail -n 120 /.atelier/startup.log; exit 1`]);
   const log = result.stdout.trim();
   if (result.exitCode === 0) return log;
   const output = result.stderr.trim();
@@ -639,20 +639,27 @@ async function currentWorkspaceImageId(sourcePath: string): Promise<string | und
   return await inspectWorkspaceImage({ sourcePath, preloadImages: (await readRepoWorkspaceManifest(sourcePath))?.docker?.preloadImages });
 }
 
-export async function listWorkspaces(): Promise<WorkspaceListResult> {
+export async function workspaceImageOutdated(id: string, container = workspaceContainerName(id)): Promise<boolean> {
+  const [expectedImageId, actualImage] = await Promise.all([
+    currentWorkspaceImageId(workspaceWorkHostPath(id)),
+    requireDocker(["inspect", "--format", "{{.Image}}", container]),
+  ]);
+  return expectedImageId === undefined || actualImage.stdout.trim() !== expectedImageId;
+}
+
+/** Discovery can skip image inspection so server startup only reads workspace identity. */
+export async function listWorkspaces(options: { inspectImages?: boolean } = {}): Promise<WorkspaceListResult> {
   const context = getAtelierRuntimeContext();
   const listed = await requireDocker(["ps", "-a", "--filter", `label=${workspaceTypeLabel}=workspace`, "--filter", `label=${namespaceLabel}=${namespace()}`, "--format", `{{.ID}}\t{{.Label "${workspaceIdLabel}"}}`]);
   const workspaces = await Promise.all(listed.stdout.trim().split(/\n+/).filter(Boolean).map(async (line) => {
     const [containerId, labelledId] = line.split("\t");
     const id = labelledId?.trim() || containerId!.slice(0, 8);
-    const [parked, init, title, expectedImageId, actualImage] = await Promise.all([
+    const [parked, init, title, imageOutdated] = await Promise.all([
       readParked(context, id),
       readWorkspaceInit(context, id),
       readTitle(context, id),
-      currentWorkspaceImageId(workspaceWorkHostPath(id)),
-      requireDocker(["inspect", "--format", "{{.Image}}", containerId!]),
+      options.inspectImages === false ? false : workspaceImageOutdated(id, containerId),
     ]);
-    const imageOutdated = expectedImageId === undefined || actualImage.stdout.trim() !== expectedImageId;
     const workspace: WorkspaceListResult["workspaces"][number] = { id, title };
     if (parked) workspace.parked = parked;
     if (init !== undefined) workspace.init = init;
@@ -703,7 +710,13 @@ async function updateWorkspaceContainerRunning(id: string, running: boolean): Pr
   const name = workspaceContainerName(id);
   await requireDocker(running ? ["start", name] : ["stop", "--time", "0", name]);
   workspaceGatewayCache.delete(workspaceGatewayCacheKey(id));
-  if (running) await waitForWorkspaceStartup(id);
+}
+
+/** Give the gateway 15 seconds to boot before reporting a recoverable startup failure. */
+export async function checkWorkspaceGateway(id: string): Promise<void> {
+  await workspaceGateway(id);
+  const result = await runDocker(["exec", "--user", "root", workspaceContainerName(id), "sh", "-lc", `deadline=$(( $(date +%s) + 15 )); while [ "$(date +%s)" -lt "$deadline" ]; do if test "$(curl --noproxy '*' --silent --max-time 1 --output /dev/null --write-out '%{http_code}' http://127.0.0.1:${workspaceGatewayPort}/)" = 401; then exit 0; fi; sleep 0.05; done; exit 1`]);
+  if (result.exitCode !== 0) throw new AtelierCoreError("workspace_gateway_unavailable", `Workspace gateway did not become ready within 15 seconds.${result.stderr.trim() ? `\n${result.stderr.trim()}` : ""}`);
 }
 
 export async function setWorkspaceContainerRunning(id: string, running: boolean): Promise<null> {

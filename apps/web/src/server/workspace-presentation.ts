@@ -29,6 +29,7 @@ export interface WorkspacePaneEntry {
   lastActivityAt?: number;
   busyViewKeys?: readonly string[];
   outdated?: boolean;
+  issues?: readonly { message: string }[];
 }
 
 export interface WorkspacePaneProject {
@@ -134,8 +135,10 @@ function renderWorkspaceRowStatus(workspace: WorkspacePaneEntry): string {
   if (workspace.attention) {
     return '<span class="workspace-attention-status fixed-shell-workspace-status action-item__status" aria-label="Attention"><i class="status-dot attention at-edge" aria-hidden="true"></i></span>';
   }
-  return workspace.outdated
-    ? workspaceStatusSlot('<i class="fixed-shell-workspace-warning" aria-label="Workspace created with an older version of Atelier" title="Some newer features may require a new workspace">⚠︎</i>')
+  const issues = (workspace.issues ?? []).map((issue) => issue.message);
+  if (workspace.outdated) issues.push("Workspace created with an older version of Atelier. Some newer features may require a new workspace.");
+  return issues.length
+    ? workspaceStatusSlot(`<i class="fixed-shell-workspace-warning" aria-label="${escapeHtml(issues.join("\n"))}" title="${escapeHtml(issues.join("\n"))}">⚠︎</i>`)
     : "";
 }
 

@@ -28,6 +28,7 @@ const agentConversationId = { name: "conversationId", in: "path", required: true
 const attentionTokens = { name: "attentionTokens", in: "query", required: true, description: "JSON object mapping every captured Agent, Work-view, and Workspace Attention key to its occurrence token.", schema: { type: "string" } };
 const jsonBody = (schema: TSchema) => ({ required: true, content: { "application/json": { schema } } });
 const emptyObjectSchema = { type: "object", additionalProperties: false };
+const workspaceIssuesSchema = { type: "array", items: { type: "object", required: ["kind", "message"], properties: { kind: { type: "string", enum: ["gateway", "image"] }, message: { type: "string" } }, additionalProperties: false } };
 const projectSummaryProperties = { id: { type: "string" }, name: { type: "string" }, gitUrl: { type: "string" }, branch: { type: ["string", "null"] }, sessionShareKey: { type: "string" } };
 const agentConversationSummarySchema = {
   type: "object",
@@ -165,12 +166,12 @@ export function atelierOpenApi(commands: WorkspaceModuleCommandHandler[], contri
           { type: "object", required: ["deleted", "blocked", "project"], properties: { deleted: { const: true }, blocked: { const: false }, project: { $ref: "#/components/schemas/ProjectSummary" } } },
           { type: "object", required: ["deleted", "blocked", "references"], properties: { deleted: { const: false }, blocked: { const: true }, references: { type: "array", items: { type: "object", required: ["workspaceId", "title"], properties: { workspaceId: { type: "string" }, title: { type: "string" } }, additionalProperties: false } } } },
         ] },
-        WorkspaceSummary: { type: "object", required: ["id", "title", "phase", "parked"], properties: { id: { type: "string" }, title: { type: "string" }, phase: { type: "string", enum: ["starting", "ready", "checking_delete", "deleting", "failed"] }, parked: { type: "boolean" }, projectId: { type: "string" } }, additionalProperties: false },
+        WorkspaceSummary: { type: "object", required: ["id", "title", "phase", "parked"], properties: { id: { type: "string" }, title: { type: "string" }, phase: { type: "string", enum: ["starting", "ready", "checking_delete", "deleting", "failed"] }, parked: { type: "boolean" }, projectId: { type: "string" }, issues: workspaceIssuesSchema }, additionalProperties: false },
         WorkspaceEnvelope: {
           type: "object",
           required: ["workspace"],
           properties: { workspace: { type: "object", required: ["id", "phase", "url"], properties: {
-            id: { type: "string" }, title: { type: "string" }, phase: { type: "string" }, url: { type: "string" }, error: { type: "string" },
+            id: { type: "string" }, title: { type: "string" }, phase: { type: "string" }, url: { type: "string" }, error: { type: "string" }, issues: workspaceIssuesSchema,
             agentConversations: { type: "array", items: { $ref: "#/components/schemas/AgentConversationSummary" } },
             workViews: { type: "array", items: { $ref: "#/components/schemas/PresentedWorkView" } },
             commands: { type: "array", items: { type: "object" } },

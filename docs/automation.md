@@ -91,6 +91,19 @@ while :; do
 done
 ```
 
+Existing workspaces are discovered before the server starts listening. Each active
+workspace then runs its startup checklist in the background with phase `starting`.
+Gateway readiness is a checklist step with a 15-second timeout. Failure pauses that
+workspace's startup and presents **Continue without gateway support**. The existing
+`POST /workspaces/:id/provisioning/continue` operation acknowledges this failure.
+Only then does the workspace become `ready`, retaining its gateway warning. Until
+startup completes, the workspace shows its checklist instead of its Agents or Work
+views. Atelier and other workspaces remain available throughout.
+
+The list and detail responses include optional `issues` entries with `kind` and
+`message`. Image inspection runs independently at Atelier startup. Gateway checks
+run again when a workspace is unparked or Atelier restarts; continuing does not permanently disable checks.
+
 A ready response advertises its `agentConversations`, typed `workViews`, and available `commands` with their `inputSchema`.
 
 ## Stage Agent conversations and Work views

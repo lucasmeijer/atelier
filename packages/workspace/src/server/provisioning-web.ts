@@ -17,6 +17,7 @@ export interface WorkspaceProvisionStep {
   terminal?: { kind: "host-tmux"; session: string };
   error?: string;
   awaitingContinue?: boolean;
+  continueLabel?: string;
   order: number;
 }
 
@@ -45,6 +46,7 @@ const workspaceCreationSeedSteps: WorkspaceProvisionSeedStep[] = [
   { id: "workspace.image", label: "Resolve workspace image" },
   { id: "workspace.container", label: "Start workspace container" },
   { id: "workspace.startup", label: "Wait for workspace startup" },
+  { id: "workspace.gateway", label: "Start workspace gateway" },
 ];
 
 const workspaceIntegrationSeedStep: WorkspaceProvisionSeedStep = { id: "workspace.integrations", label: "Run workspace startup integrations" };
@@ -59,6 +61,7 @@ const workspaceProvisionStepRanks = new Map([
   "workspace.image-carrier",
   "workspace.container",
   "workspace.startup",
+  "workspace.gateway",
   "workspace.setup",
   "workspace.agent",
   "workspace.integrations",
@@ -89,7 +92,7 @@ function renderProvisionStep(workspaceId: string, step: WorkspaceProvisionStep, 
   const error = step.error ? `<div class="provision-error">${escapeHtml(step.error)}</div>` : "";
   const detail = step.detail ? `<span class="r-sub provision-step-detail">${escapeHtml(step.detail)}</span>` : "";
   const continueAction = step.awaitingContinue
-    ? `<form class="provision-continue" method="post" action="/workspaces/${encodeURIComponent(workspaceId)}/provisioning/continue">${buttonHtml({ type: "submit", variant: "primary", content: { kind: "caption", caption: "Continue anyway" } })}</form>`
+    ? `<form class="provision-continue" method="post" action="/workspaces/${encodeURIComponent(workspaceId)}/provisioning/continue">${buttonHtml({ type: "submit", variant: "primary", content: { kind: "caption", caption: step.continueLabel ?? "Continue anyway" } })}</form>`
     : "";
   return `<li class="status-list__item provision-step"${stepStatusAttributes(step.status)}>${renderStatusMarker(step.status)}<div class="provision-step-content"><span class="provision-step-label">${escapeHtml(step.label)}</span>${detail}${activity}${output}${error}${continueAction}${childHtml ? `<ol class="status-list provision-children">${childHtml}</ol>` : ""}</div></li>`;
 }
@@ -126,6 +129,7 @@ export function createWorkspaceProvisioningStore(options: { onChange: (workspace
       terminal: event.terminal ?? existing?.terminal,
       error: event.error ?? existing?.error,
       awaitingContinue: event.awaitingContinue ?? existing?.awaitingContinue,
+      continueLabel: event.continueLabel ?? existing?.continueLabel,
       order: existing?.order ?? ++order,
     });
     options.onChange(event.workspaceId);

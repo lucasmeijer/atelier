@@ -97,6 +97,7 @@ export interface WebApp {
   shellSnapshot(): Promise<string>;
   deleteCurrentWorkspaceFromAgent(workspaceId: string, force: boolean): Promise<DeleteCurrentWorkspaceResult>;
   resumeWorkspaceDeletions(): void;
+  waitForWorkspaceStartupContinue(id: string, stepId: string): Promise<void>;
   presentWorkViewFromAgent(workspaceId: string, reference: WorkspaceWorkViewReference): Promise<void>;
   globalSidebarContributions: GlobalSidebarContributionRegistry;
 }
@@ -187,8 +188,8 @@ export function createWebApp(deps: WebAppDeps): WebApp {
     workspaceCommandModalHostId,
   });
 
-  function workspaceBootId(id: string): string {
-    return domId("workspace_boot", id);
+  function workspaceResidentId(id: string): string {
+    return domId("workspace_resident", id);
   }
 
   const globalSidebarContributionStore = new Map<string, string>();
@@ -227,6 +228,13 @@ export function createWebApp(deps: WebAppDeps): WebApp {
   registry.setCallbacks({
     rowChanged(entry, context) {
       broadcastWorkspacePaneCollections();
+      if (context.phaseChanged) {
+        if (entry.phase === "starting") {
+          provisioning.delete(entry.id);
+          broadcastWorkspaceBoot(entry.id);
+        } else if (entry.phase === "ready") void broadcastWorkspaceReady(entry.id);
+        else if (entry.phase === "failed") broadcastWorkspaceBoot(entry.id);
+      }
       if (context.viewKey) broadcastShell(workspacePreparationInvalidatedTurboStream(entry.id));
     },
     listChanged() {
@@ -361,6 +369,7 @@ export function createWebApp(deps: WebAppDeps): WebApp {
         lastActivityAt: entry.lastActivityAt,
         busyViewKeys: registry.busyViews(entry.id),
         outdated: entry.imageOutdated,
+        issues: entry.issues,
       };
       const attentionAt = registry.workspaceAttentionAt(entry.id);
       if (attentionAt !== undefined) pane.attentionAt = attentionAt;
@@ -444,7 +453,7 @@ export function createWebApp(deps: WebAppDeps): WebApp {
   async function workspaceDetailResidentHtml(id: string, options: { visible?: boolean } = {}): Promise<string> {
     const entry = requireWorkspace(id);
     const projectAttr = isGitProjectInit(entry.init) ? ` data-project-id="${escapeHtml(entry.init.projectId)}"` : "";
-    return `<div class="workspace-detail-resident ${options.visible ? "visible" : ""}" data-workspace-residency-target="resident" data-workspace-id="${escapeHtml(id)}"${projectAttr}>${await workspaceDetailContent(id)}</div>`;
+    return `<div class="workspace-detail-resident ${options.visible ? "visible" : ""}" id="${workspaceResidentId(id)}" data-workspace-residency-target="resident" data-workspace-id="${escapeHtml(id)}"${projectAttr}>${await workspaceDetailContent(id)}</div>`;
   }
 
   function workspaceBootResidentHtml(entry: WorkspaceEntry, options: { visible?: boolean } = {}): string {
@@ -452,13 +461,13 @@ export function createWebApp(deps: WebAppDeps): WebApp {
     const deleteAction = entry.phase === "failed" ? `<form class="fixed-shell-delete-workspace" data-action="turbo:submit-start->workspace-navigation#workspaceDeletionStarted" method="post" action="/workspaces/${encodeURIComponent(entry.id)}/delete">${deleteButton}</form>` : "";
     const inner = `${provisioning.render(entry.id, { failed: entry.phase === "failed", error: entry.error })}${deleteAction}`;
     const projectAttr = isGitProjectInit(entry.init) ? ` data-project-id="${escapeHtml(entry.init.projectId)}"` : "";
-    return `<div class="workspace-detail-resident workspace-boot ${options.visible ? "visible" : ""}" id="${workspaceBootId(entry.id)}" data-workspace-residency-target="resident" data-workspace-id="${escapeHtml(entry.id)}"${projectAttr}><div class="main"><div class="body"><div class="workspace-boot-content">${inner}</div></div></div>${renderMobileWorkspaceBar()}</div>`;
+    return `<div class="workspace-detail-resident workspace-boot ${options.visible ? "visible" : ""}" id="${workspaceResidentId(entry.id)}" data-workspace-residency-target="resident" data-workspace-id="${escapeHtml(entry.id)}"${projectAttr}><div class="main"><div class="body"><div class="workspace-boot-content">${inner}</div></div></div>${renderMobileWorkspaceBar()}</div>`;
   }
 
   function broadcastWorkspaceBoot(id: string): void {
     const entry = registry.get(id);
     if (!entry || (entry.phase !== "starting" && entry.phase !== "failed")) return;
-    broadcastShell(turboReplaceStream(workspaceBootId(id), workspaceBootResidentHtml(entry)));
+    broadcastShell(turboReplaceStream(workspaceResidentId(id), workspaceBootResidentHtml(entry)));
   }
 
   deps.events?.on("workspace_provision_step", (event) => provisioning.apply(event));
@@ -548,7 +557,7 @@ export function createWebApp(deps: WebAppDeps): WebApp {
 
   async function workspaceJson(id: string): Promise<Response> {
     const entry = requireWorkspace(id);
-    const workspace: Pick<WorkspaceEntry, "id" | "phase" | "parked" | "error"> & { title: string; url: string } = {
+    const workspace: Pick<WorkspaceEntry, "id" | "phase" | "parked" | "error" | "issues"> & { title: string; url: string } = {
       id: entry.id,
       title: workspaceTitle(entry),
       phase: entry.phase,
@@ -556,6 +565,7 @@ export function createWebApp(deps: WebAppDeps): WebApp {
       url: `/workspaces/${encodeURIComponent(entry.id)}`,
     };
     if (entry.error) workspace.error = entry.error;
+    if (entry.issues?.length) workspace.issues = entry.issues;
     if (entry.deletion || entry.parked || entry.phase !== "ready") return jsonResponse({ workspace });
 
     const { presentation, storedWorkViews, attachments } = await workspacePresentationBundle(id);
@@ -577,12 +587,13 @@ export function createWebApp(deps: WebAppDeps): WebApp {
   function workspaceListEndpoint(request: Request, url: URL): Response {
     if (!requestAcceptsJson(request)) return Response.redirect(new URL("/", url).toString(), 302);
     return jsonResponse({ workspaces: registry.list().map((entry) => {
-      const workspace: Pick<WorkspaceEntry, "id" | "phase" | "parked"> & { title: string; projectId?: string } = {
+      const workspace: Pick<WorkspaceEntry, "id" | "phase" | "parked" | "issues"> & { title: string; projectId?: string } = {
         id: entry.id,
         title: workspaceTitle(entry),
         phase: entry.phase,
         parked: entry.parked,
       };
+      if (entry.issues?.length) workspace.issues = entry.issues;
       if (isGitProjectInit(entry.init)) workspace.projectId = entry.init.projectId;
       return workspace;
     }) });
@@ -614,7 +625,6 @@ export function createWebApp(deps: WebAppDeps): WebApp {
         if (options.title) await setWorkspaceTitle(id, options.title);
         registry.setPhase(id, "ready");
         if (options.context?.agent && !options.context.agent.initialPrompt?.trim()) registry.markViewAttention(id, "workspace");
-        await broadcastWorkspaceReady(id);
       } catch (error) {
         provisioningContinuations.delete(id);
         const message = error instanceof Error ? error.message : String(error);
@@ -622,10 +632,6 @@ export function createWebApp(deps: WebAppDeps): WebApp {
         registry.setPhase(id, "failed", message);
         registry.markViewAttention(id, "workspace");
         provisioning.apply({ workspaceId: id, id: "workspace.failed", label: "Workspace creation failed", status: "failed", error: message });
-        const entry = registry.get(id);
-        // No "visible" class in broadcasts: each client shows the resident
-        // itself iff it is currently looking at this workspace.
-        if (entry) broadcastShell(turboReplaceStream(workspaceBootId(id), workspaceBootResidentHtml(entry)));
       }
     })();
   }
@@ -759,7 +765,7 @@ export function createWebApp(deps: WebAppDeps): WebApp {
     try {
       // No "visible" class in broadcasts: each client shows the resident
       // itself iff it is currently looking at this workspace.
-      broadcastShell(turboReplaceStream(workspaceBootId(id), await workspaceDetailResidentHtml(id)));
+      broadcastShell(turboReplaceStream(workspaceResidentId(id), await workspaceDetailResidentHtml(id)));
     } catch (error) {
       const message = error instanceof Error ? error.message : String(error);
       logError(`could not render workspace detail for ${id}: ${message}`);
@@ -780,7 +786,7 @@ export function createWebApp(deps: WebAppDeps): WebApp {
     const entry = requireWorkspace(id);
     if (!entry.deletion) throw new Error(`workspace ${id} has no deletion state`);
     const resident = `<div class="workspace-detail-resident" data-workspace-residency-target="resident" data-workspace-id="${escapeHtml(id)}">${deletionPresentation(entry, entry.deletion)}</div>`;
-    broadcastShell(`${deletionPresentationStream(entry, entry.deletion)}${turboReplaceStream(workspaceBootId(id), resident)}`);
+    broadcastShell(`${deletionPresentationStream(entry, entry.deletion)}${turboReplaceStream(workspaceResidentId(id), resident)}`);
   }
 
   function currentDeletionStream(id: string): string {
@@ -792,7 +798,7 @@ export function createWebApp(deps: WebAppDeps): WebApp {
     const pane = workspacePaneCollectionsTurboStream(await workspacePaneCollections(""));
     const entry = requireWorkspace(id);
     const resident = `<div class="workspace-detail-resident" data-workspace-residency-target="resident" data-workspace-id="${escapeHtml(id)}">${deletionPresentation(entry, state)}</div>`;
-    broadcastShell(`${pane}${deletionPresentationStream(entry, state)}${turboReplaceStream(workspaceBootId(id), resident)}`);
+    broadcastShell(`${pane}${deletionPresentationStream(entry, state)}${turboReplaceStream(workspaceResidentId(id), resident)}`);
   }
 
   async function forceDeleteAllWorkspacesFromSettings(): Promise<{ deleted: number; errors: string[] }> {
@@ -809,10 +815,9 @@ export function createWebApp(deps: WebAppDeps): WebApp {
     const pending = provisioningContinuations.get(id);
     if (entry.phase !== "starting" || !pending) throw new AtelierCoreError("workspace_not_ready", `workspace ${id} is not waiting for provisioning confirmation`);
     provisioningContinuations.delete(id);
-    provisioning.apply({ workspaceId: id, id: pending.stepId, status: "failed", detail: "Continuing despite this failure", awaitingContinue: false });
     pending.resolve();
     if (requestAcceptsJson(request)) return jsonResponse({ continued: true, stepId: pending.stepId });
-    return turboStreamResponse(turboReplaceStream(workspaceBootId(id), workspaceBootResidentHtml(entry)));
+    return turboStreamResponse("");
   }
 
   async function deleteWorkspaceEndpoint(id: string, request: Request): Promise<Response> {
@@ -1220,6 +1225,7 @@ export function createWebApp(deps: WebAppDeps): WebApp {
     shellSnapshot: async () => workspacePaneCollectionsTurboStream(await workspacePaneCollections("")),
     deleteCurrentWorkspaceFromAgent,
     resumeWorkspaceDeletions: deletion.resume,
+    waitForWorkspaceStartupContinue: waitForProvisioningContinue,
     presentWorkViewFromAgent,
     globalSidebarContributions,
     async fetch(request) {

@@ -1,6 +1,8 @@
 import { describe, expect, setDefaultTimeout, test, beforeAll, afterAll } from "bun:test";
-import { AtelierCoreError, createAtelierEventBus } from "@atelier/core";
+import { AtelierCoreError, atelierDataPath, getAtelierRuntimeContext, createAtelierEventBus } from "@atelier/core";
 import {
+  checkWorkspaceGateway,
+  setWorkspaceContainerRunning,
   createWorkspace,
   workspacePortBackend,
   deleteWorkspace,
@@ -136,6 +138,7 @@ describe("core workspaces", () => {
       expect(resumed.gateway!.url.toString()).toBe(gateway.url.toString());
       const liveBinding = await docker(["port", workspaceContainerName(id), `${workspaceGatewayPort}/tcp`]);
       expect(resumed.gateway!.url.host).toBe(liveBinding.stdout.trim());
+      await checkWorkspaceGateway(id);
       const resumedResponse = await fetch(new URL(resumed.target.pathname, resumed.gateway!.url), {
         proxy: resumed.gateway!.url.toString(),
         headers: {
@@ -272,6 +275,24 @@ docker compose run --rm app cat /data/message`);
       await docker(["image", "rm", preloadRef]);
     }
   });
+
+  test("discovery and container start are immediate; a missing gateway times out independently", async () => {
+    const id = generateWorkspaceId();
+    const image = await docker(["inspect", "--format", "{{.Image}}", workspaceContainerName(await getReusableWorkspaceId())]);
+    const created = await docker(["create", "--name", workspaceContainerName(id), "-p", `127.0.0.1::${workspaceGatewayPort}`,
+      "--label", "com.atelier.type=workspace", "--label", `com.atelier.namespace=${testNamespace}`,
+      "--label", `com.atelier.workspace-id=${id}`, image.stdout.trim(), "sleep", "infinity"]);
+    expect(created.exitCode).toBe(0);
+    expect((await listWorkspaces({ inspectImages: false })).workspaces).toContainEqual({ id, title: null });
+    await setWorkspaceContainerRunning(id, true);
+    await docker(["exec", workspaceContainerName(id), "mkdir", "-p", "/.atelier", "/work"]);
+    const running = await docker(["inspect", "--format", "{{.State.Running}}", workspaceContainerName(id)]);
+    expect(running.stdout.trim()).toBe("true");
+    await Bun.write(atelierDataPath(getAtelierRuntimeContext(), "workspaces", id, "gateway-token"), "test-token");
+    const startedAt = Date.now();
+    await expect(checkWorkspaceGateway(id)).rejects.toMatchObject({ code: "workspace_gateway_unavailable", message: "Workspace gateway did not become ready within 15 seconds." });
+    expect(Date.now() - startedAt).toBeGreaterThanOrEqual(14_000);
+  }, 25_000);
 
   test("setWorkspaceTitle sets the workspace title and listWorkspaces reflects it", async () => {
     const workspaceId = await getReusableWorkspaceId();
