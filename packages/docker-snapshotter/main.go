@@ -404,17 +404,33 @@ func listen(path string) net.Listener {
 	must(os.Chmod(path, 0600))
 	return l
 }
+func lockStore(root string) (*os.File, error) {
+	f, err := os.OpenFile(filepath.Join(root, "owner.lock"), os.O_CREATE|os.O_RDWR, 0600)
+	if err != nil {
+		return nil, err
+	}
+	if err := syscall.Flock(int(f.Fd()), syscall.LOCK_EX|syscall.LOCK_NB); err != nil {
+		f.Close()
+		return nil, fmt.Errorf("snapshotter store already owned: %w", err)
+	}
+	return f, nil
+}
+
 func main() {
 	root := flag.String("root", "", "absolute backend store")
 	dir := flag.String("socket-dir", "", "absolute socket directory")
 	clients := flag.String("clients", "", "comma separated fixed client IDs")
+	instance := flag.String("instance-id", fmt.Sprint(os.Getpid()), "readiness identity")
 	flag.Parse()
 	slog.SetDefault(slog.New(slog.NewJSONHandler(os.Stdout, nil)))
-	if !filepath.IsAbs(*root) || !filepath.IsAbs(*dir) || *clients == "" {
-		panic("root, socket-dir and clients required")
+	if !filepath.IsAbs(*root) || !filepath.IsAbs(*dir) {
+		panic("absolute root and socket-dir required")
 	}
 	must(os.MkdirAll(*root, 0700))
 	must(os.MkdirAll(*dir, 0700))
+	owner, e := lockStore(*root)
+	must(e)
+	defer owner.Close()
 	backend, e := overlay.NewSnapshotter(filepath.Join(*root, "overlayfs"))
 	must(e)
 	defer backend.Close()
@@ -425,7 +441,18 @@ func main() {
 		must(e)
 	}
 	servers := []*grpc.Server{}
-	for _, id := range strings.Split(*clients, ",") {
+	clientIDs := map[string]bool{}
+	if *clients != "" {
+		for _, id := range strings.Split(*clients, ",") {
+			clientIDs[id] = true
+		}
+	}
+	for id := range s.state.Clients {
+		if !s.state.Retired[id] {
+			clientIDs[id] = true
+		}
+	}
+	for id := range clientIDs {
 		if id == "" || strings.ContainsAny(id, "/\\.") {
 			panic("invalid client ID")
 		}
@@ -451,6 +478,9 @@ func main() {
 	}
 	s.save()
 	mux := http.NewServeMux()
+	mux.HandleFunc("GET /health", func(w http.ResponseWriter, r *http.Request) {
+		fmt.Fprint(w, *instance)
+	})
 	mux.HandleFunc("GET /state", func(w http.ResponseWriter, r *http.Request) {
 		s.Lock()
 		defer s.Unlock()
@@ -472,7 +502,7 @@ func main() {
 			must(e)
 		}
 	}()
-	slog.Info("ready", "root", *root, "socket_dir", *dir, "clients", *clients, "version", "containerd-v2.2.2")
+	slog.Info("ready", "root", *root, "socket_dir", *dir, "clients", clientIDs, "version", "containerd-v2.2.2")
 	stop := make(chan os.Signal, 1)
 	signal.Notify(stop, syscall.SIGTERM, syscall.SIGINT)
 	<-stop

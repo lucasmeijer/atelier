@@ -165,3 +165,24 @@ func TestPrivateCommittedInitReclaimed(t *testing.T) {
 		}
 	}
 }
+
+func TestExclusiveStoreOwnership(t *testing.T) {
+	root := t.TempDir()
+	first, err := lockStore(root)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer first.Close()
+	if second, err := lockStore(root); err == nil {
+		second.Close()
+		t.Fatal("two owners acquired the same store")
+	}
+	if err := first.Close(); err != nil {
+		t.Fatal(err)
+	}
+	next, err := lockStore(root)
+	if err != nil {
+		t.Fatal(err)
+	}
+	next.Close()
+}

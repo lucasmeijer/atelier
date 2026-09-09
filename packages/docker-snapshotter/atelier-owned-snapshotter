@@ -1,0 +1,49 @@
+#!/bin/bash
+# Run one installation-owned snapshotter alongside the unprivileged app command.
+set -euo pipefail
+runtime=$1
+socket_group=$2
+shift 2
+[[ "$runtime" = /* ]] || { echo 'snapshotter runtime path must be absolute' >&2; exit 1; }
+# Require dedicated persistent backing, never silently put the store in the app's layer.
+mountpoint -q "$runtime" || { echo "snapshotter runtime must be bind-mounted: $runtime" >&2; exit 1; }
+mkdir -p "$runtime/store" "$runtime/sockets"
+snapshotter_pid=''
+app_pid=''
+# Called by the EXIT trap.
+# shellcheck disable=SC2329
+cleanup() {
+  trap - EXIT TERM INT
+  if [ -n "$app_pid" ] && kill -0 "$app_pid" 2>/dev/null; then kill -TERM "$app_pid"; fi
+  if [ -n "$app_pid" ]; then wait "$app_pid" || true; fi
+  if [ -n "$snapshotter_pid" ] && kill -0 "$snapshotter_pid" 2>/dev/null; then kill -TERM "$snapshotter_pid"; fi
+  if [ -n "$snapshotter_pid" ]; then wait "$snapshotter_pid" || true; fi
+}
+trap 'cleanup' EXIT
+trap 'exit 143' TERM
+trap 'exit 130' INT
+instance="$(cat /proc/sys/kernel/random/uuid)"
+atelier-snapshotter --root "$runtime/store" --socket-dir "$runtime/sockets" --instance-id "$instance" &
+snapshotter_pid=$!
+deadline=$((SECONDS + 30))
+while true; do
+  kill -0 "$snapshotter_pid"
+  # Match this process, not an old listener left by another installation.
+  if response=$(curl --fail --silent --show-error --max-time 1 --unix-socket "$runtime/sockets/admin.sock" http://localhost/health 2>/dev/null) && [ "$response" = "$instance" ]; then break; fi
+  if [ "$SECONDS" -ge "$deadline" ]; then echo 'snapshotter readiness timed out' >&2; exit 1; fi
+  sleep .05
+done
+chgrp "$socket_group" "$runtime/sockets" "$runtime/sockets/admin.sock"
+chmod 750 "$runtime/sockets"
+chmod 660 "$runtime/sockets/admin.sock"
+"$@" &
+app_pid=$!
+set +e
+wait -n -p exited_pid "$snapshotter_pid" "$app_pid"
+status=$?
+set -e
+if [ "$exited_pid" = "$snapshotter_pid" ]; then
+  echo 'snapshotter exited while Atelier was running' >&2
+  exit 1
+fi
+exit "$status"

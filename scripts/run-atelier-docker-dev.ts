@@ -1,7 +1,7 @@
 #!/usr/bin/env bun
 
 import { homedir, platform } from "node:os";
-import { join } from "node:path";
+import { join, resolve } from "node:path";
 
 const usage = `Build and run Atelier in Docker for local development. On Linux the container uses host networking.
 
@@ -86,7 +86,7 @@ function parseArgs(args: string[]): Options {
       options.bind = takeValue(args, i, arg);
       i++;
     } else if (arg === "--data-dir") {
-      options.dataDir = takeValue(args, i, arg);
+      options.dataDir = resolve(takeValue(args, i, arg));
       i++;
     } else if (arg === "--no-build") {
       options.build = false;
@@ -137,14 +137,15 @@ const existing = unique([
 
 if (existing.length > 0) {
   console.log(`Stopping existing Atelier container(s): ${existing.join(", ")}`);
-  run(["docker", "rm", "-f", ...existing]);
+  run(["docker", "stop", "--time", "30", ...existing]);
+  run(["docker", "rm", ...existing]);
 }
 
 if (options.build) {
   run(["bun", "run", "scripts/build-atelier-image.ts", "--image", options.image, "--tag", options.tag]);
 }
 
-run(["mkdir", "-p", options.dataDir]);
+run(["mkdir", "-p", options.dataDir, `${options.dataDir}/docker-runtime`]);
 
 const runArgs = [
   "run",
@@ -152,6 +153,7 @@ const runArgs = [
   "--name", options.name,
   "--label", "com.atelier.type=server",
   "--init",
+  ...(useHostNetwork ? ["--privileged", "--mount", `type=bind,src=${options.dataDir}/docker-runtime,dst=${options.dataDir}/docker-runtime`] : []),
   ...(useHostNetwork ? ["--network", "host"] : ["-p", publish, "-p", proxyPublish]),
   "-v", "/var/run/docker.sock:/var/run/docker.sock",
   "--mount", `type=bind,src=${options.dataDir},dst=/data/atelier`,
@@ -159,6 +161,7 @@ const runArgs = [
   "--env", `ATELIER_DOCKER_HOST_DATA_DIR=${options.dataDir}`,
   ...(useHostNetwork ? ["--env", `PORT=${options.port}`, ...(options.bind ? ["--env", `HOST=${options.bind}`] : [])] : []),
   imageRef,
+  ...(useHostNetwork ? ["--own-snapshotter"] : []),
 ];
 
 console.log(`Starting Atelier container ${options.name}`);

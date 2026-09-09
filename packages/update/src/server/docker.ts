@@ -72,6 +72,7 @@ const dockerContainerInspectSchema = Type.Object({
       MaximumRetryCount: Type.Optional(Type.Number()),
     })),
     Init: Type.Optional(Type.Boolean()),
+    Privileged: Type.Optional(Type.Boolean()),
     CpuShares: Type.Optional(Type.Number()),
     MemoryReservation: Type.Optional(Type.Number()),
     OomScoreAdj: Type.Optional(Type.Number()),
@@ -279,6 +280,7 @@ export function replacementCreateArgs(inspect: DockerInspect, targetImage = insp
   const networkMode = inspect.HostConfig?.NetworkMode;
   if (networkMode) args.push("--network", networkMode);
   if (inspect.HostConfig?.Init) args.push("--init");
+  if (inspect.HostConfig?.Privileged) args.push("--privileged");
   if (inspect.HostConfig?.CpuShares) args.push("--cpu-shares", String(inspect.HostConfig.CpuShares));
   if (inspect.HostConfig?.MemoryReservation) args.push("--memory-reservation", String(inspect.HostConfig.MemoryReservation));
   if (inspect.HostConfig?.OomScoreAdj) args.push("--oom-score-adj", String(inspect.HostConfig.OomScoreAdj));

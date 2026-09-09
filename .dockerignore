@@ -10,3 +10,6 @@ node_modules
 apps/web/public/assets
 apps/web/public/assets-manifest.json
 apps/web/public/workspace.js.map
+
+# The adapter is rebuilt for the requested image platform.
+packages/docker-snapshotter/dist

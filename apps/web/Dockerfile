@@ -1,6 +1,16 @@
 FROM docker:29-cli AS docker-cli
 FROM oven/bun:1.4.0 AS bun-dist
 
+FROM --platform=$BUILDPLATFORM golang:1.25.1 AS snapshotter-build
+ARG TARGETOS
+ARG TARGETARCH
+WORKDIR /src
+COPY packages/docker-snapshotter/go.mod packages/docker-snapshotter/go.sum ./
+RUN go mod download
+COPY packages/docker-snapshotter/*.go ./
+RUN go test -count=1 ./... \
+ && CGO_ENABLED=0 GOOS=$TARGETOS GOARCH=$TARGETARCH go build -trimpath -o /out/atelier-snapshotter .
+
 FROM ubuntu:26.04 AS transcription-runtime
 ARG TARGETARCH
 ARG NEMO_SPEECH_VERSION=0.1.0
@@ -20,6 +30,7 @@ WORKDIR /app
 COPY package.json bun.lock bunfig.toml tsconfig.json ./
 COPY apps/web/package.json apps/web/package.json
 COPY packages/core/package.json packages/core/package.json
+COPY packages/docker-snapshotter/package.json packages/docker-snapshotter/package.json
 COPY packages/agent/package.json packages/agent/package.json
 COPY packages/design-system/package.json packages/design-system/package.json
 COPY packages/files/package.json packages/files/package.json
@@ -64,11 +75,14 @@ RUN --mount=type=cache,target=/var/cache/apt,sharing=locked \
       libcap2-bin \
       openssh-client \
       sudo \
+      util-linux \
       tmux
 
 COPY --from=bun-dist /usr/local/bin/bun /usr/local/bin/bun
 COPY --from=bun-dist /usr/local/bin/bunx /usr/local/bin/bunx
 RUN setcap cap_net_bind_service=+ep /usr/local/bin/bun
+COPY --from=snapshotter-build /out/atelier-snapshotter /usr/local/bin/atelier-snapshotter
+COPY --chmod=755 packages/docker-snapshotter/atelier-owned-snapshotter /usr/local/bin/atelier-owned-snapshotter
 COPY --from=docker-cli /usr/local/bin/docker /usr/local/bin/docker
 COPY --from=docker-cli /usr/local/libexec/docker/cli-plugins /usr/local/libexec/docker/cli-plugins
 COPY --from=transcription-runtime /opt/nemo-speech /opt/nemo-speech

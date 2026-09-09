@@ -49,3 +49,16 @@ test("replacement preflight propagates missing-image errors", async () => {
     ? { code: 0, stdout: "linux/arm64", stderr: "" }
     : { code: 1, stdout: "", stderr: "No such image" })).rejects.toThrow("No such image");
 });
+
+test("self-update preserves owned snapshotter deployment", async () => {
+  const { replacementCreateArgs } = await import("../../src/server/docker.ts");
+  const args = replacementCreateArgs({
+    Id: "server", Image: "old", Name: "/atelier",
+    Config: { Cmd: ["--own-snapshotter"], Env: ["ATELIER_DOCKER_HOST_DATA_DIR=/srv/atelier"] },
+    HostConfig: { Init: true, Privileged: true },
+    Mounts: [{ Type: "bind", Source: "/srv/atelier/docker-runtime", Destination: "/srv/atelier/docker-runtime", RW: true }],
+  }, "new");
+  expect(args).toContain("--privileged");
+  expect(args).toContain("type=bind,src=/srv/atelier/docker-runtime,dst=/srv/atelier/docker-runtime");
+  expect(args.slice(-2)).toEqual(["new", "--own-snapshotter"]);
+});

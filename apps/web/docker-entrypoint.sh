@@ -1,6 +1,13 @@
 #!/bin/sh
 set -eu
 
+own_snapshotter=0
+if [ "${1:-}" = --own-snapshotter ]; then
+  own_snapshotter=1
+  shift
+fi
+if [ "$#" -eq 0 ]; then set -- bun run apps/web/src/server/main.ts; fi
+
 atelier_uid=1000
 atelier_gid=1000
 
@@ -27,5 +34,10 @@ mkdir -p "$atelier_data_dir"
 printf '%s ALL=(root) NOPASSWD: /usr/local/bin/atelier-tailscale-serve-helper\n' "$atelier_user" >/etc/sudoers.d/atelier-tailscale-serve
 chmod 440 /etc/sudoers.d/atelier-tailscale-serve
 
-export HOME="$(getent passwd "$atelier_uid" | cut -d: -f6)"
+HOME="$(getent passwd "$atelier_uid" | cut -d: -f6)"
+export HOME
+if [ "$own_snapshotter" -eq 1 ]; then
+  runtime="${ATELIER_DOCKER_HOST_DATA_DIR:?owned snapshotter requires Docker-host data path}/docker-runtime"
+  exec /usr/local/bin/atelier-owned-snapshotter "$runtime" "$atelier_gid" gosu "$atelier_user" "$@"
+fi
 exec gosu "$atelier_user" "$@"

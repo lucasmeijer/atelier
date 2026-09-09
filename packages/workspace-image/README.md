@@ -39,7 +39,7 @@ A missing shared runtime fails startup rather than creating a separate cache.
 This path preserves private Docker state across workspace stop/start and does not
 change repository Dockerfiles. It requires privileged Linux with cgroup v2 and a
 prepared shared runtime. The installation owner must allocate the client identity,
-prepare storage mount propagation, choose nonoverlapping network ranges, and
+supply native filesystem-backed storage, choose nonoverlapping network ranges, and
 retire the client after workspace deletion. Those installation lifecycle actions
 are not wired up yet. Carrier preloading and shared startup cannot be combined.
 

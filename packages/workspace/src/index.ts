@@ -403,7 +403,7 @@ export const workspaceSetupProvisioningHook: WorkspaceServerProvisioningHook = {
 };
 
 function dockerMountArg(mount: WorkspaceDockerMount): string {
-  return [`type=${mount.type}`, `src=${mount.source}`, `dst=${mount.target}`, ...(mount.readonly ? ["readonly"] : []), ...(mount.propagation ? [`bind-propagation=${mount.propagation}`] : [])].join(",");
+  return [`type=${mount.type}`, `src=${mount.source}`, `dst=${mount.target}`, ...(mount.readonly ? ["readonly"] : [])].join(",");
 }
 
 function planEnvDockerArgs(env: Record<string, string>): string[] {

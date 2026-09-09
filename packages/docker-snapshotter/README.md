@@ -1,8 +1,30 @@
 # Workspace Docker snapshotter
 
-Experimental source, not yet deployed by Atelier or included in release builds.
-Workspace provisioning can consume an explicitly supplied shared runtime, but
-existing installations do not start this adapter automatically.
+The Atelier container image builds and includes this experimental adapter. The
+Linux installer and Linux Docker development launcher explicitly start an owned
+instance alongside the app. Workspace provisioning can consume a shared runtime,
+but automatic client registration and default shared-workspace activation are
+still outstanding.
+
+## Installation behavior
+
+- Root installations use the container entrypoint's `--own-snapshotter` option.
+  The app waits for that particular instance to become ready and continues to run
+  as an unprivileged user. The adapter runs as root in the same container.
+- Starting the image without that option does not create another adapter. Nested
+  installations must not accidentally become owners of a second cache; automatic
+  inherited-runtime discovery is not implemented yet.
+- Owned startup requires dedicated persistent backing at the same absolute path
+  seen by Docker. The installer supplies the bind mount and privileged execution.
+  No host shared-mount setup or additional systemd unit is required.
+- A second owner of the same store fails instead of replacing the first owner's
+  listener. Adapter failure causes Atelier to exit visibly. Normal shutdown stops
+  the app before stopping the adapter; restart restores non-retired client sockets.
+- The self-update installer contract has changed. Upgrading from the previous
+  contract requires rerunning the installer. Subsequent self-updates retain the
+  runtime mount, ownership option and privileged execution.
+- This step does not start a registry or BuildKit, allocate workspace clients, or
+  switch existing workspaces away from their current Docker stores.
 
 ## Observable behavior we care about
 
@@ -66,6 +88,7 @@ go test -count=1 ./...
 go build -o dist/docker-snapshotter .
 ```
 
-These non-UI tests cover scoped reuse, competing cold commits and private
-container-data reclamation. They do not run Docker or establish end-to-end
-compatibility. The Go checks are separate from the repository's Bun checks.
+These non-UI tests cover scoped reuse, competing cold commits, private data
+reclamation, exclusive ownership, readiness and restart of the adapter executable.
+They do not run Docker or establish end-to-end compatibility. The image build runs
+them before compiling the executable; they can also be run separately from Bun.

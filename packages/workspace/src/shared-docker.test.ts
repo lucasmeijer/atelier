@@ -34,7 +34,7 @@ test("provisioning supplies restartable socket mount, same-path backing and ephe
     expect(p.extraArgs).toEqual(["--privileged", "--tmpfs", "/run"]);
     expect(p.mounts).toEqual([
       { type: "bind", source: "/installation/sockets", target: "/run/atelier-snapshotter", readonly: true },
-      { type: "bind", source: runtime.snapshotterRoot, target: runtime.snapshotterRoot, propagation: "rslave" },
+      { type: "bind", source: runtime.snapshotterRoot, target: runtime.snapshotterRoot },
     ]);
     expect(p.containerFiles.map((file) => file.target)).toEqual(["/.atelier/containerd.toml", "/.atelier/docker-daemon.json"]);
     expect(await readFile(p.containerFiles[0]!.source, "utf8")).toBe(sharedDockerConfiguration(runtime).containerd);

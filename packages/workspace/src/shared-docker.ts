@@ -59,5 +59,7 @@ export async function prepareSharedDocker(plan: WorkspaceDockerPlan, directory: 
   plan.extraArgs.push("--tmpfs", "/run");
   // Bind the directory, not the socket inode, so a restarted adapter can reconnect.
   plan.mounts.push({ type: "bind", source: dirname(runtime.snapshotterSocket), target: config.socketDirectory, readonly: true });
-  plan.mounts.push({ type: "bind", source: runtime.snapshotterRoot, target: runtime.snapshotterRoot, propagation: "rslave" });
+  // This snapshotter shares files, not host-created submounts. A private bind
+  // survives host reboot without requiring a shared mount setup on the host.
+  plan.mounts.push({ type: "bind", source: runtime.snapshotterRoot, target: runtime.snapshotterRoot });
 }

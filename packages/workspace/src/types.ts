@@ -10,7 +10,6 @@ export interface WorkspaceDockerMount {
   source: string;
   target: string;
   readonly?: boolean;
-  propagation?: "rslave";
 }
 
 export interface WorkspaceDockerContainerFile {
