@@ -1,6 +1,5 @@
 import { createKeyedOperationQueue, type AtelierEventBus } from "@atelier/core";
 import { listWorkspaces, setWorkspaceTitle } from "@atelier/workspace";
-import { getProviderFastModel } from "./hardcoded-provider-knowledge.ts";
 import type { ModelRef } from "./model-state.ts";
 import { createPiModelRuntime } from "./pi-config-models.ts";
 import { listWorkspaceAgentConversations, setWorkspaceAgentConversationTitle, untitledAgentConversationTitle, type WorkspaceAgentConversationInfo } from "./session-store.ts";
@@ -77,11 +76,6 @@ export const setAgentSessionTitle = createAgentSessionTitleSetter({
   setWorkspaceTitle: async (workspaceId, title) => { await setWorkspaceTitle(workspaceId, title); },
 });
 
-function agentTitleModelFor(agentModel: ModelRef): ModelRef {
-  const fastModel = getProviderFastModel(agentModel.provider);
-  return { provider: agentModel.provider, id: fastModel?.id ?? agentModel.id };
-}
-
 interface AgentTitleSuggestionErrorDetails {
   stopReason?: string;
   diagnostics?: unknown;
@@ -101,7 +95,7 @@ function suggestAgentTitle(agent: WorkspaceAgentConversationInfo, userMessages: 
 
   pending.add(pendingKey);
   void (async () => {
-    const titleModelRef = options.agentModel ? agentTitleModelFor(options.agentModel) : undefined;
+    let titleModelRef = options.agentModel;
     try {
       if (options.onlyIfUnnamed && agent.title !== untitledAgentConversationTitle) return;
       if (!titleModelRef) {
@@ -109,11 +103,13 @@ function suggestAgentTitle(agent: WorkspaceAgentConversationInfo, userMessages: 
         return;
       }
       const runtime = await createPiModelRuntime();
-      const model = runtime.getModel(titleModelRef.provider, titleModelRef.id);
+      const model = runtime.getModels(titleModelRef.provider)
+        .toSorted((a, b) => a.cost.input - b.cost.input)[0];
       if (!model) {
-        logAgentTitleSuggestionError(agent, titleModelRef, "model is not available");
+        logAgentTitleSuggestionError(agent, titleModelRef, "provider has no models available");
         return;
       }
+      titleModelRef = { provider: model.provider, id: model.id };
       if (!(await runtime.checkAuth(model.provider))) {
         logAgentTitleSuggestionError(agent, titleModelRef, "model authentication is not configured");
         return;
