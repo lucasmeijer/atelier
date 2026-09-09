@@ -111,7 +111,7 @@ function renderWorkingTiming(section: Omit<WorkingTranscriptItem, "items">): str
   if (!section.timing) return "";
   const timing = section.timing;
   const rate = timing.usageComplete && timing.inferenceMs > 0
-    ? `${(timing.outputTokens / (timing.inferenceMs / 1000)).toFixed(1)} tps`
+    ? `${(timing.outputTokens / (timing.inferenceMs / 1000)).toFixed(0)} tps`
     : "tps unavailable";
   const toolDuration = formatDuration(timing.toolMs);
   const toolsLabel = toolDuration === "0s" ? "" : `${toolDuration} tools, `;
