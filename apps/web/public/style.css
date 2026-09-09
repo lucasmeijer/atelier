@@ -522,3 +522,57 @@ button.settings-link:disabled { opacity: .45; cursor: default; filter: none; }
 
 .project-dockerfile-form { display: grid; gap: 8px; }
 .project-dockerfile-form .textarea { font-family: var(--font-mono); line-height: var(--leading-standard); }
+
+/* A bare brand mark, not a standard action button. Keep native keyboard semantics. */
+.atelier-easter-egg { position: relative; display: inline-flex; flex: 0 0 auto; }
+.atelier-easter-egg__trigger { display: inline-flex; padding: 0; border: 0; background: none; color: inherit; font: inherit; cursor: pointer; }
+.atelier-easter-egg__trigger:focus-visible { outline: 2px solid var(--accent); outline-offset: 4px; border-radius: var(--radius-indicator); }
+.atelier-easter-egg__rest { display: inline-flex; }
+.atelier-easter-egg__actor { display: none; position: absolute; left: 50%; top: 50%; translate: -50% -50%; z-index: 1; pointer-events: none; }
+.atelier-easter-egg__traveler { display: block; width: 100%; height: 100%; }
+.atelier-easter-egg__performer { display: block; width: 100%; height: 100%; overflow: visible; transform-origin: 50% 90%; }
+.atelier-easter-egg__leg { transform-origin: 12px 7px; }
+.atelier-easter-egg__arms { transform-origin: 12px 14px; }
+.atelier-easter-egg__eyes { opacity: 0; }
+.atelier-easter-egg.is-playing .atelier-easter-egg__rest { visibility: hidden; }
+.atelier-easter-egg.is-playing .atelier-easter-egg__actor { display: block; }
+.atelier-easter-egg.is-playing .atelier-easter-egg__traveler { animation: atelier-easter-egg-journey 8.5s linear both; }
+.atelier-easter-egg.is-playing .atelier-easter-egg__performer { animation: atelier-easter-egg-showoff 8.5s both; }
+.atelier-easter-egg.is-playing .atelier-easter-egg__eyes { animation: atelier-easter-egg-eyes 8.5s both; }
+.atelier-easter-egg.is-playing .atelier-easter-egg__leg--left { animation: atelier-easter-egg-walk .32s infinite alternate; }
+.atelier-easter-egg.is-playing .atelier-easter-egg__leg--right { animation: atelier-easter-egg-walk .32s infinite alternate-reverse; }
+.atelier-easter-egg.is-playing .atelier-easter-egg__arms { animation: atelier-easter-egg-arms .32s infinite alternate; }
+@keyframes atelier-easter-egg-eyes {
+  0%, 8%, 94%, 100% { opacity: 0; }
+  12%, 90% { opacity: 1; }
+}
+@keyframes atelier-easter-egg-walk {
+  from { transform: rotate(-14deg); }
+  to { transform: rotate(14deg); }
+}
+@keyframes atelier-easter-egg-arms {
+  from { transform: rotate(-9deg); }
+  to { transform: rotate(9deg); }
+}
+@keyframes atelier-easter-egg-journey {
+  0%, 8%, 94%, 100% { transform: translate(0, 0); }
+  14%, 86% { transform: translate(calc(var(--atelier-easter-egg-distance) * .284), -12px); }
+  21%, 77% { transform: translate(calc(var(--atelier-easter-egg-distance) * .595), 11px); }
+  36%, 65% { transform: translate(var(--atelier-easter-egg-distance), 11px); }
+}
+@keyframes atelier-easter-egg-showoff {
+  0% { transform: scale(1); }
+  10% { transform: scale(1.5, .8); }
+  20%, 36% { transform: scale(1.5) rotate(8deg); }
+  42% { transform: scale(1.5) rotate(-18deg); }
+  49% { transform: translateY(-10px) scale(1.5) rotate(180deg); }
+  55% { transform: scale(1.5) rotate(360deg); }
+  59% { transform: scale(1.7, 1.1) rotate(380deg); }
+  65%, 88% { transform: scale(1.5) rotate(360deg); }
+  96%, 100% { transform: scale(1) rotate(360deg); }
+}
+@media (prefers-reduced-motion: reduce) {
+  .atelier-easter-egg.is-playing .atelier-easter-egg__actor { display: none; }
+  .atelier-easter-egg.is-playing .atelier-easter-egg__rest { visibility: visible; }
+  .atelier-easter-egg.is-playing .atelier-easter-egg__actor * { animation: none; }
+}
