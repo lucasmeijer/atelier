@@ -4,7 +4,7 @@ import { mkdir, readFile, writeFile } from "node:fs/promises";
 import { dirname } from "node:path";
 import { shellQuote } from "@atelier/core";
 import { execWorkspaceCommand, workspaceRoot } from "@atelier/workspace";
-import { createAgentSession, SessionManager, SettingsManager } from "@earendil-works/pi-coding-agent";
+import { createAgentSession, SessionManager, SettingsManager, type AgentSession } from "@earendil-works/pi-coding-agent";
 import { Type } from "typebox";
 import { Value } from "typebox/value";
 import { resolveNewWorkspaceAgentModel } from "./model-state.ts";
@@ -75,18 +75,25 @@ export async function createPiSession(agent: WorkspaceAgentConversationInfo, opt
   const serviceTiers = new AgentServiceTierState(sessionManager);
   const customTools = [...createWorkspaceAgentTools(agent.workspaceId, { events: options.events }), ...(preparation?.tools ?? [])];
   const inheritedModel = preparation?.model;
+  let promptSession: AgentSession | undefined;
   const { session } = await createAgentSession({
     cwd: workspaceRoot,
     agentDir: dirname(agent.path),
     modelRuntime: modelRuntimeWithServiceTiers(modelRuntime, serviceTiers),
     model: initial.model ?? (inheritedModel ? modelRuntime.getModel(inheritedModel.provider, inheritedModel.id) : undefined),
     thinkingLevel: initial.thinkingLevel ?? preparation?.thinkingLevel,
-    resourceLoader: createAtelierResourceLoader(agentsFiles, appendSystemPrompt, skillResources),
+    resourceLoader: createAtelierResourceLoader(agentsFiles, () => [
+      ...appendSystemPrompt,
+      ...(promptSession ? preparation?.modelPrompt?.(promptSession.model?.id, promptSession.thinkingLevel) ?? [] : []),
+    ], skillResources),
     customTools,
     tools: [...workspaceAgentToolNames(), ...(preparation?.tools ?? []).map((tool) => tool.name)],
     sessionManager,
     settingsManager: SettingsManager.inMemory(sessionSettings),
   });
+  promptSession = session;
+  // Rebuild using the effective (possibly restored or inherited) model, not defaults.
+  session.setActiveToolsByName(session.getActiveToolNames());
   let attachment: AgentSessionAttachment | undefined;
   let detachPipeline: (() => void) | undefined;
   const disposeDelegation = async () => {

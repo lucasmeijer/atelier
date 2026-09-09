@@ -532,12 +532,14 @@ export class RealAgentRuntime extends BaseAgentRuntime {
     this.ctx.model = this.currentModel();
     const remembered = await getModelThinkingLevel(provider, modelId);
     if (remembered && this.availableThinkingLevels().includes(remembered)) this.session.setThinkingLevel(remembered);
+    this.session.setActiveToolsByName(this.session.getActiveToolNames());
     await this.refreshStats();
   }
 
   async setThinkingLevel(level: string): Promise<void> {
     this.assertActive();
     this.session.setThinkingLevel(level);
+    this.session.setActiveToolsByName(this.session.getActiveToolNames());
     await this.refreshStats();
   }
 

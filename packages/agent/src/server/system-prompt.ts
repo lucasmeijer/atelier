@@ -45,7 +45,7 @@ interface AtelierAgentsFile {
 
 export function createAtelierResourceLoader(
   agentsFiles: AtelierAgentsFile[] = [],
-  appendSystemPrompt: string[] = [],
+  appendSystemPrompt: () => string[] = () => [],
   skillResources: { skills: Skill[]; diagnostics: ResourceDiagnostic[] } = { skills: [], diagnostics: [] },
 ): ResourceLoader {
   return {
@@ -56,7 +56,7 @@ export function createAtelierResourceLoader(
     getAgentsFiles: () => ({ agentsFiles }),
     getSystemPrompt: () => atelierSystemPrompt,
     getSystemPromptSource: () => undefined,
-    getAppendSystemPrompt: () => appendSystemPrompt,
+    getAppendSystemPrompt: appendSystemPrompt,
     getAppendSystemPromptSources: () => [],
     extendResources: () => {},
     reload: async () => {},

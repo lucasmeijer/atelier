@@ -30,6 +30,8 @@ export interface AgentDelegationTranscript {
 
 export interface AgentSessionPreparation {
   prompt?: string[];
+  /** Resolved after session restoration and refreshed when model/thinking changes. */
+  modelPrompt?(modelId: string | undefined, thinkingLevel: string): string[];
   tools?: ToolDefinition<any, any>[];
   outputSchemas?: ReadonlyMap<string, unknown>;
   model?: { provider: string; id: string };

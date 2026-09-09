@@ -1,6 +1,8 @@
 import { agentPath } from "./subagent-protocol.ts";
 import { randomUUID } from "node:crypto";
 
+export const maxConcurrentSubagents = 6;
+
 export type SubagentStatus = "starting" | "running" | "completed" | "interrupted" | "failed" | "closed";
 export interface SubagentRecord {
   id: string;
@@ -106,7 +108,7 @@ export class SubagentRuntime {
     const depth = (this.state.agents.find((agent) => agent.id === caller)?.depth ?? 0) + 1;
     if (depth > 3) throw new Error("Maximum subagent nesting depth is 3.");
     if (this.state.agents.some((agent) => agent.parentId === caller && agent.taskName === taskName)) throw new Error(`Task name already exists: ${taskName}. Use followup_task to reuse it.`);
-    if (this.state.agents.filter((agent) => agent.rootId === rootId && (agent.status === "starting" || agent.status === "running")).length >= 6) throw new Error("At most 6 concurrently running subagents per delegation tree. Wait for a task to finish before spawning another.");
+    if (this.state.agents.filter((agent) => agent.rootId === rootId && (agent.status === "starting" || agent.status === "running")).length >= maxConcurrentSubagents) throw new Error(`At most ${maxConcurrentSubagents} concurrently running subagents per delegation tree. Wait for a task to finish before spawning another.`);
     const agent: SubagentRecord = { id: randomUUID(), parentId: caller, rootId, taskName, task, depth, status: "starting", thinkingLevel: "off", forkTurns };
     // Reserve before awaiting: concurrent spawn calls share the same capacity and name checks.
     this.state.agents.push(agent);
@@ -179,7 +181,7 @@ export class SubagentRuntime {
     return await this.serialize(agent.id, async () => {
       if (agent.status === "closed") throw new Error("Agent is closed. Resume it first.");
       if (agent.status !== "running" && agent.status !== "starting") {
-        if (this.list(caller).filter((candidate) => candidate.status === "running" || candidate.status === "starting").length >= 6) throw new Error("At most 6 concurrently running subagents per delegation tree.");
+        if (this.list(caller).filter((candidate) => candidate.status === "running" || candidate.status === "starting").length >= maxConcurrentSubagents) throw new Error(`At most ${maxConcurrentSubagents} concurrently running subagents per delegation tree.`);
         agent.status = "starting";
         agent.result = undefined;
       }
