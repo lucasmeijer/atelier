@@ -2,12 +2,15 @@ function iconHtml(paths: string): string {
   return `<svg aria-hidden="true" viewBox="0 0 24 24" width="17" height="17" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round">${paths}</svg>`;
 }
 
+/** Canonical logo geometry in 24×24 user units, for embedding in an animated SVG scene. */
+export const atelierLogoPathsHtml = '<path d="M12 3v4M7.5 21 12 7l4.5 14M6 18h12M4 13c4 1.5 7.5 1.8 11 .8 2-.6 3.7-.6 5-.2"/>';
+
 /** Canonical decorative icons. Accessible names belong on the control or content that contains them. */
 export const Icons = {
   Agent: iconHtml('<path d="M9 4h6M12 4V2M6 8h12a2 2 0 0 1 2 2v7a2 2 0 0 1-2 2H6a2 2 0 0 1-2-2v-7a2 2 0 0 1 2-2z"/><circle cx="9" cy="13" r="1"/><circle cx="15" cy="13" r="1"/>'),
   Subagents: iconHtml('<path d="M7 5V3M5 3h4M3 7h8a1 1 0 0 1 1 1v6H3a1 1 0 0 1-1-1V8a1 1 0 0 1 1-1zM17 12v-2m-2 0h4M13 14h8a1 1 0 0 1 1 1v6a1 1 0 0 1-1 1h-8a1 1 0 0 1-1-1v-6a1 1 0 0 1 1-1z"/><path d="M5 10h.01M9 10h.01M15 18h.01M19 18h.01" stroke-width="2.6"/>'),
   ArrowDown: iconHtml('<path d="M12 4v16M6 14l6 6 6-6"/>'),
-  Atelier: iconHtml('<path d="M12 3v4M7.5 21 12 7l4.5 14M6 18h12M4 13c4 1.5 7.5 1.8 11 .8 2-.6 3.7-.6 5-.2"/>'),
+  Atelier: iconHtml(atelierLogoPathsHtml),
   Bell: iconHtml('<path d="M18 8a6 6 0 0 0-12 0c0 7-3 7-3 9h18c0-2-3-2-3-9M10 21h4"/>'),
   Browser: iconHtml('<circle cx="12" cy="12" r="9"/><path d="M3 12h18M12 3a15 15 0 0 1 0 18M12 3a15 15 0 0 0 0 18"/>'),
   Check: iconHtml('<path d="m5 12 4 4L19 6"/>'),

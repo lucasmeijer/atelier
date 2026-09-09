@@ -3,7 +3,7 @@ import { Controller } from "@hotwired/stimulus";
 export class AtelierEasterEggController extends Controller<HTMLElement> {
   static targets = ["rest", "actor"];
   declare readonly restTarget: HTMLElement;
-  declare readonly actorTarget: HTMLElement;
+  declare readonly actorTarget: SVGSVGElement;
 
   private readonly reducedMotion = matchMedia("(prefers-reduced-motion: reduce)");
   private readonly motionChanged = () => this.reset();
@@ -15,11 +15,8 @@ export class AtelierEasterEggController extends Controller<HTMLElement> {
   play(): void {
     if (this.reducedMotion.matches || this.element.classList.contains("is-playing")) return;
     const logo = this.restTarget.querySelector("svg")!.getBoundingClientRect();
-    const header = this.element.closest(".panel__header")!.getBoundingClientRect();
     this.actorTarget.style.width = `${logo.width}px`;
     this.actorTarget.style.height = `${logo.height}px`;
-    // Keep the excursion inside the header, including narrow Workspace panes.
-    this.element.style.setProperty("--atelier-easter-egg-distance", `${Math.max(0, Math.min(148, header.right - logo.right - 28))}px`);
     this.element.classList.add("is-playing");
   }
 
