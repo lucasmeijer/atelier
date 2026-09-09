@@ -313,6 +313,8 @@ export interface WorkspaceServerModuleContext {
     markViewAttention(workspaceId: string, viewKey: string, token?: number): number | undefined;
   };
   globalSidebarContributions: GlobalSidebarContributionRegistry;
+  /** Add a Work view without selecting it or requesting attention. */
+  createWorkView(workspaceId: string, reference: WorkspaceWorkViewReference): Promise<void>;
   presentWorkView(workspaceId: string, reference: WorkspaceWorkViewReference): Promise<void>;
   broadcastWorkspace(workspaceId: string, html: string): void;
   deleteCurrentWorkspace(workspaceId: string, force: boolean): Promise<DeleteCurrentWorkspaceResult>;

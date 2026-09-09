@@ -29,6 +29,11 @@ const coordinators = new Map<string, Promise<SubagentRuntime>>();
 const peers = new Map<string, SubagentPeer>();
 const sessions = new Map<string, any>();
 const loaded = new Map<string, SubagentRuntime>();
+const treeCreatedListeners = new Set<(workspaceId: string) => Promise<void>>();
+export function subscribeSubagentTreeCreated(listener: (workspaceId: string) => Promise<void>): () => void {
+  treeCreatedListeners.add(listener);
+  return () => { treeCreatedListeners.delete(listener); };
+}
 const listeners = new Set<(workspaceId: string) => void>();
 export function subagentSnapshot(workspaceId: string): SubagentState { return loaded.get(workspaceId)?.state ?? { agents: [], messages: [] }; }
 export function rootAgentStatus(workspaceId: string, rootId: string) {
@@ -79,10 +84,16 @@ export function getSubagents(workspaceId: string, events?: AtelierEventBus): Pro
           message.error = "Atelier restarted before transcript delivery was acknowledged. Inspect the transcript before resending.";
         }
       }
+      const rootsWithSubagents = new Set(state.agents.map((agent) => agent.rootId));
       const save = async (snapshot: SubagentState) => {
         await mkdir(dir, { recursive: true });
         await writeFile(`${path}.tmp`, JSON.stringify(snapshot, null, 2) + "\n");
         await rename(`${path}.tmp`, path);
+        for (const { rootId } of snapshot.agents) {
+          if (rootsWithSubagents.has(rootId)) continue;
+          for (const listener of treeCreatedListeners) await listener(workspaceId);
+          rootsWithSubagents.add(rootId);
+        }
         for (const listener of listeners) listener(workspaceId);
       };
       await save(state);

@@ -5,13 +5,16 @@ import { Value } from "typebox/value";
 import type { WorkspaceModule } from "@atelier/shared";
 import { listWorkspaceAgentConversations } from "@atelier/agent/server";
 export { subagentsDelegation } from "./delegation.ts";
-import { getSubagents } from "./subagents.ts";
+import { getSubagents, subscribeSubagentTreeCreated } from "./subagents.ts";
 import { subagentsWorkView, subagentsWorkViewAdapter, handleSubagentRequest, subscribeSubagentTree } from "./subagent-view.ts";
 import { subagentsOpenApiPaths } from "./openapi.ts";
 
 export const atelierServerModule: WorkspaceModule = {
   id: "subagents",
-  initialize: () => preserveLegacySubagentHistories(),
+  async initialize(context) {
+    await preserveLegacySubagentHistories();
+    subscribeSubagentTreeCreated((workspaceId) => context.createWorkView(workspaceId, { type: "subagents" }));
+  },
   staticFiles: { "/subagents.css": { url: new URL("../client/subagents.css", import.meta.url), contentType: "text/css; charset=utf-8" } },
   workViews: [subagentsWorkViewAdapter],
   openApiPaths: subagentsOpenApiPaths,

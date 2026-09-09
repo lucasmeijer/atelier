@@ -98,6 +98,7 @@ export interface WebApp {
   deleteCurrentWorkspaceFromAgent(workspaceId: string, force: boolean): Promise<DeleteCurrentWorkspaceResult>;
   resumeWorkspaceDeletions(): void;
   waitForWorkspaceStartupContinue(id: string, stepId: string): Promise<void>;
+  createWorkView(workspaceId: string, reference: WorkspaceWorkViewReference): Promise<void>;
   presentWorkViewFromAgent(workspaceId: string, reference: WorkspaceWorkViewReference): Promise<void>;
   globalSidebarContributions: GlobalSidebarContributionRegistry;
 }
@@ -956,14 +957,18 @@ export function createWebApp(deps: WebAppDeps): WebApp {
     return workViewPresentations(workspaceId, currentWorkViews, await presentationStore.listWorkViews(workspaceId));
   }
 
+  async function openAvailableWorkView(workspaceId: string, reference: WorkspaceWorkViewReference) {
+    const key = workViewKey(reference);
+    const attachments = await attachWorkspaceModules(workspaceId);
+    const contribution = attachments.flatMap((attachment) => attachment.workViews ?? []).find((view) => workViewKey(view.reference) === key);
+    if (!contribution) throw new AtelierCoreError("work_view_not_found", `Work view is not available: ${key}`);
+    const { opened } = await presentationStore.openWorkView(workspaceId, contribution.reference);
+    return { reference: contribution.reference, key, opened };
+  }
+
   async function openWorkspaceModuleWorkView(workspaceId: string, reference: WorkspaceWorkViewReference, request: Request): Promise<Response> {
     return await serializePresentationMutation(workspaceId, async () => {
-      const attachments = await attachWorkspaceModules(workspaceId);
-      const currentWorkViews = attachments.flatMap((attachment) => attachment.workViews ?? []);
-      const contribution = currentWorkViews.find((view) => workViewKey(view.reference) === workViewKey(reference));
-      if (!contribution) throw new AtelierCoreError("work_view_not_found", `Work view is not available: ${workViewKey(reference)}`);
-      const { opened } = await presentationStore.openWorkView(workspaceId, contribution.reference);
-      const key = workViewKey(contribution.reference);
+      const { opened, key } = await openAvailableWorkView(workspaceId, reference);
       const structural = opened ? openWorkViewTurboStream(workspaceId, await currentWorkPanePresentations(workspaceId), key) : "";
       return turboStreamResponse(deliverShellMutation(request, structural, presentWorkViewTurboStream(workspaceId, key)));
     });
@@ -974,11 +979,7 @@ export function createWebApp(deps: WebAppDeps): WebApp {
     let createdWorkView: WorkspaceWorkViewReference | undefined;
     let openedWorkView = false;
     if (result.createdWorkView) {
-      const metadata = await attachWorkspaceModules(workspaceId);
-      const contribution = metadata.flatMap((attachment) => attachment.workViews ?? []).find((view) => workViewKey(view.reference) === workViewKey(result.createdWorkView!));
-      if (!contribution) throw new AtelierCoreError("work_view_not_found", `Command ${commandId} created an unavailable Work view`);
-      createdWorkView = contribution.reference;
-      ({ opened: openedWorkView } = await presentationStore.openWorkView(workspaceId, createdWorkView));
+      ({ reference: createdWorkView, opened: openedWorkView } = await openAvailableWorkView(workspaceId, result.createdWorkView));
     }
     const presentation = createdWorkView || result.createdAgentConversationId ? await fixedWorkspacePresentation(workspaceId) : undefined;
     const structural = [
@@ -1040,15 +1041,18 @@ export function createWebApp(deps: WebAppDeps): WebApp {
     return await closeWorkViewEndpoint(workspaceId, JSON.stringify(body.reference), request);
   }
 
+  async function createWorkView(workspaceId: string, reference: WorkspaceWorkViewReference): Promise<void> {
+    await serializePresentationMutation(workspaceId, async () => {
+      const { opened, key } = await openAvailableWorkView(workspaceId, reference);
+      if (opened) broadcastShell(openWorkViewTurboStream(workspaceId, await currentWorkPanePresentations(workspaceId), key));
+    });
+  }
+
   async function presentWorkViewFromAgent(workspaceId: string, reference: WorkspaceWorkViewReference): Promise<void> {
     await serializePresentationMutation(workspaceId, async () => {
-      const attachments = await attachWorkspaceModules(workspaceId);
-      const contribution = attachments.flatMap((attachment) => attachment.workViews ?? []).find((view) => workViewKey(view.reference) === workViewKey(reference));
-      if (!contribution) throw new AtelierCoreError("work_view_not_found", `Work view is not available: ${workViewKey(reference)}`);
-      const { opened } = await presentationStore.openWorkView(workspaceId, contribution.reference);
+      const { opened, key, reference: availableReference } = await openAvailableWorkView(workspaceId, reference);
       registry.setParked(workspaceId, false);
-      const attentionSequence = await presentationStore.requestAttention(workspaceId, contribution.reference);
-      const key = workViewKey(contribution.reference);
+      const attentionSequence = await presentationStore.requestAttention(workspaceId, availableReference);
       registry.markViewAttention(workspaceId, key, attentionSequence);
       const workViews = await currentWorkPanePresentations(workspaceId);
       broadcastShell(workViewsTurboStream(workspaceId, workViews, { openedKey: opened ? key : undefined, selectKey: key, intendSelection: true }));
@@ -1245,6 +1249,7 @@ export function createWebApp(deps: WebAppDeps): WebApp {
     deleteCurrentWorkspaceFromAgent,
     resumeWorkspaceDeletions: deletion.resume,
     waitForWorkspaceStartupContinue: waitForProvisioningContinue,
+    createWorkView,
     presentWorkViewFromAgent,
     globalSidebarContributions,
     async fetch(request) {
