@@ -1,4 +1,4 @@
-// Experimental trusted-client adapter. Backend and index are not one crash-atomic transaction.
+// Trusted-client snapshotter with durable recovery of backend/index mutations.
 package main
 
 import (
@@ -57,19 +57,12 @@ type Client struct {
 }
 
 func (s *Store) save() {
-	b, e := json.MarshalIndent(s.state, "", "  ")
-	must(e)
-	must(os.WriteFile(s.path+".tmp", b, 0600))
-	must(os.Rename(s.path+".tmp", s.path))
+	must(durableJSON(s.path, s.state))
 }
 func must(e error) {
 	if e != nil {
 		panic(e)
 	}
-}
-func (s *Store) next() string {
-	s.state.Sequence++
-	return fmt.Sprintf("physical-%d", s.state.Sequence)
 }
 func clone(i snapshots.Info) snapshots.Info {
 	m := map[string]string{}
@@ -201,20 +194,21 @@ func (c *Client) create(ctx context.Context, k, p string, view bool, opts ...sna
 		slog.Info("reuse", "client", c.id, "key", k, "parent", p, "snapshot.ref", target, "backing", ch.Backing, "hit", true)
 		return nil, errdefs.ErrAlreadyExists
 	}
-	b := c.s.next()
-	c.s.save()
-	var m []mount.Mount
-	var e error
+	b := fmt.Sprintf("physical-%d", c.s.state.Sequence+1)
+	kind := "prepare"
 	if view {
-		m, e = c.s.backend.View(ctx, b, bp, opts...)
-	} else {
-		m, e = c.s.backend.Prepare(ctx, b, bp, opts...)
+		kind = "view"
 	}
+	if e := c.s.mutate(ctx, mutation{Kind: kind, Key: b, Parent: bp, Labels: i.Labels}, func() {
+		c.s.state.Sequence++
+		c.s.state.Clients[c.id][k] = Alias{i, b, target}
+	}); e != nil {
+		return nil, e
+	}
+	m, e := c.s.backend.Mounts(ctx, b)
 	if e != nil {
 		return nil, e
 	}
-	c.s.state.Clients[c.id][k] = Alias{i, b, target}
-	c.s.save()
 	slog.Info("create", "client", c.id, "key", k, "parent", p, "snapshot.ref", target, "backing", b, "hit", false)
 	return m, nil
 }
@@ -248,28 +242,27 @@ func (c *Client) Commit(ctx context.Context, name, key string, opts ...snapshots
 		}
 		bp = p.Backing
 	}
-	b := ""
+	b := fmt.Sprintf("physical-%d", c.s.state.Sequence+1)
+	op := mutation{Kind: "commit", Key: a.Backing, Name: b, Parent: bp, Labels: i.Labels}
 	if ch, ok := c.s.state.Chains[a.Target]; ok {
 		if ch.Parent != bp {
 			return errdefs.ErrFailedPrecondition
 		}
-		if e := c.s.backend.Remove(ctx, a.Backing); e != nil {
-			return e
-		}
 		b = ch.Backing
-	} else {
-		b = c.s.next()
-		c.s.save()
-		if e := c.s.backend.Commit(ctx, b, a.Backing, snapshots.WithLabels(i.Labels)); e != nil {
-			return e
-		}
-		if a.Target != "" {
-			c.s.state.Chains[a.Target] = Chain{b, bp}
-		}
+		op = mutation{Kind: "remove", Key: a.Backing}
 	}
-	delete(c.s.state.Clients[c.id], key)
-	c.s.state.Clients[c.id][name] = Alias{i, b, a.Target}
-	c.s.save()
+	if e := c.s.mutate(ctx, op, func() {
+		if op.Kind == "commit" {
+			c.s.state.Sequence++
+			if a.Target != "" {
+				c.s.state.Chains[a.Target] = Chain{b, bp}
+			}
+		}
+		delete(c.s.state.Clients[c.id], key)
+		c.s.state.Clients[c.id][name] = Alias{i, b, a.Target}
+	}); e != nil {
+		return e
+	}
 	slog.Info("commit", "client", c.id, "key", key, "name", name, "snapshot.ref", a.Target, "backing", b)
 	return nil
 }
@@ -287,13 +280,9 @@ func (c *Client) Remove(ctx context.Context, k string) error {
 			return errdefs.ErrFailedPrecondition
 		}
 	}
-	if !retained(a) {
-		if e := c.s.backend.Remove(ctx, a.Backing); e != nil {
-			return e
-		}
+	if e := c.s.removeAlias(ctx, c.id, k, a); e != nil {
+		return e
 	}
-	delete(c.s.state.Clients[c.id], k)
-	c.s.save()
 	slog.Info("remove", "client", c.id, "key", k, "backing", a.Backing, "retained", retained(a))
 	return nil
 }
@@ -362,14 +351,16 @@ func (s *Store) retire(ctx context.Context, id string) error {
 	defer s.Unlock()
 	// Tombstone even an unseen identity: retirement may overtake a timed-out
 	// registration request, which must not resurrect a deleted workspace later.
-	m := s.state.Clients[id]
+	s.state.Retired[id] = true
+	s.save()
+
 	// Remove leaves first: Docker's private committed init snapshot parents its
 	// writable container snapshot. Neither is shared immutable image backing.
-	for len(m) > 0 {
+	for len(s.state.Clients[id]) > 0 {
 		progress := false
-		for k, a := range m {
+		for k, a := range s.state.Clients[id] {
 			hasChild := false
-			for _, child := range m {
+			for _, child := range s.state.Clients[id] {
 				if child.Info.Parent == k {
 					hasChild = true
 					break
@@ -378,13 +369,9 @@ func (s *Store) retire(ctx context.Context, id string) error {
 			if hasChild {
 				continue
 			}
-			if !retained(a) {
-				if e := s.backend.Remove(ctx, a.Backing); e != nil {
-					return e
-				}
+			if e := s.removeAlias(ctx, id, k, a); e != nil {
+				return e
 			}
-			delete(m, k)
-			s.save()
 			progress = true
 		}
 		if !progress {
@@ -444,6 +431,7 @@ func main() {
 	} else if !os.IsNotExist(e) {
 		must(e)
 	}
+	must(s.restore(context.Background()))
 	var serviceLock sync.Mutex
 	servers := map[string]*grpc.Server{}
 	clientIDs := map[string]bool{}

@@ -107,7 +107,12 @@ Other limits:
 
 - Privileged, trusted Linux workspaces with one fixed ownership/unpack profile.
   Alternate UID/GID mappings and hostile-client isolation are not supported.
-- Graceful restart was exercised; recovery after an abrupt crash is not safe yet.
+- Abrupt snapshotter termination is recovered before client sockets become ready.
+  Completed snapshot mutations remain visible; interrupted mutations that did not
+  reach backend metadata leave the previous aliases intact. Interrupted client
+  retirement finishes on restart, without reclaiming other clients’ image layers.
+  Recovery does not repair corruption left by older, unjournaled versions or
+  guarantee application filesystem writes survive host power loss.
 - First publication of an image whose private Docker store lacks compressed blobs
   is still subject to the export limitation above. Images already known to the
   registry, including newly indexed build outputs, avoid that export. Older build
@@ -120,7 +125,7 @@ Other limits:
 - Concurrent cold requests can duplicate downloading and extraction work before
   retaining one completed copy.
 - Dynamic registration, normal deletion and failed-provision cleanup are integrated.
-  Reconciliation after an abrupt app crash still requires work; retained ownership
+  Workspace-level reconciliation after an abrupt app crash still requires work; retained ownership
   records allow deletion to be retried after the adapter becomes available.
 - Snapshot parent rebasing is unsupported. This is not a complete implementation
   of every snapshotter extension.
@@ -138,5 +143,10 @@ go build -o dist/docker-snapshotter .
 
 These non-UI tests cover scoped reuse, competing cold commits, private data
 reclamation, exclusive ownership, readiness and restart of the adapter executable.
-They do not run Docker or establish end-to-end compatibility. The image build runs
+Crash tests SIGKILL a subprocess before and after real backend prepare, view,
+commit, duplicate-layer commit, removal and retirement transactions, then reopen
+the store and verify aliases, ownership and repeated recovery. A bounded ARM64
+Docker probe also preserved a running container’s private writes across snapshotter
+SIGKILL/restart and retained metadata-only warm pulls. These checks do not establish
+full app crash recovery or end-to-end Docker compatibility. The image build runs
 them before compiling the executable; they can also be run separately from Bun.
