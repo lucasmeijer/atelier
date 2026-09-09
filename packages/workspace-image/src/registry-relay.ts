@@ -5,7 +5,9 @@ const hopHeaders = ["connection", "keep-alive", "proxy-authenticate", "proxy-aut
 /** The caller and its Docker daemon share a network namespace. Inherited
  * clients bridge their own loopback, not the installation owner's loopback. */
 export function createRegistryRelay(socket: string): Bun.Server<undefined> {
-  return Bun.serve({ hostname: "127.0.0.1", port: 0, async fetch(request) {
+  // Trusted loopback transport: Docker layers can exceed Bun's default 128 MiB
+  // request limit. Bodies are streamed to the registry, not buffered here.
+  return Bun.serve({ hostname: "127.0.0.1", port: 0, maxRequestBodySize: Number.MAX_SAFE_INTEGER, async fetch(request) {
     const url = new URL(request.url);
     const headers = new Headers(request.headers);
     for (const name of hopHeaders) headers.delete(name);
