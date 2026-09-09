@@ -17,7 +17,9 @@ import {
 import { actionLinkHtml } from "@atelier/design-system/action-link";
 import { buttonHtml } from "@atelier/design-system/button";
 import { Icons } from "@atelier/design-system/icons";
-import { isGitProjectInit, listProjects, projectWorkspaceInit, type ProjectSummary } from "@atelier/projects";
+import { warningBannerHtml } from "@atelier/design-system/warning-banner";
+import { workspaceWarnings, type WorkspaceWarning } from "./workspace-warnings.ts";
+import { getProjectConfiguration, type ProjectConfiguration, isGitProjectInit, listProjects, projectWorkspaceInit, type ProjectSummary } from "@atelier/projects";
 import { createWorkspacePresentationStore, generateWorkspaceId, listWorkspaces, setWorkspaceParked, setWorkspaceTitle, type WorkspaceCreationContext, type WorkspaceInitInstruction, type WorkspaceWorkViewReference, type WorkspaceWorkViewState } from "@atelier/workspace";
 import { createWorkspaceProvisioningStore } from "@atelier/workspace/server/provisioning";
 import {
@@ -184,6 +186,7 @@ export function createWebApp(deps: WebAppDeps): WebApp {
       .filter((entry) => isGitProjectInit(entry.init) && entry.init.projectId === projectId)
       .map((entry) => ({ workspaceId: entry.id, title: workspaceTitle(entry) })),
     refreshWorkspacePaneCollections,
+    refreshProjectWarnings,
     renderLaunchComposer: renderProjectLaunchComposerFrame,
     createAgentWorkspace: async (project, request) => await createAgentWorkspaceFromForm(request, { project }),
     workspaceCommandModalHostId,
@@ -236,6 +239,7 @@ export function createWebApp(deps: WebAppDeps): WebApp {
         } else if (entry.phase === "ready") void broadcastWorkspaceReady(entry.id);
         else if (entry.phase === "failed") broadcastWorkspaceBoot(entry.id);
       }
+      if (context.issuesChanged && entry.phase === "ready") void workspaceWarningStream(entry).then(broadcastShell);
       if (context.viewKey) broadcastShell(workspacePreparationInvalidatedTurboStream(entry.id));
     },
     listChanged() {
@@ -414,10 +418,24 @@ export function createWebApp(deps: WebAppDeps): WebApp {
     });
   }
 
+  interface WorkspaceWarningState {
+    warnings: WorkspaceWarning[];
+    dismissedWarnings: Record<string, string>;
+  }
+
+  async function workspaceWarningState(entry: WorkspaceEntry, project?: ProjectConfiguration): Promise<WorkspaceWarningState> {
+    const [configuration, dismissedWarnings] = await Promise.all([
+      project ?? (isGitProjectInit(entry.init) ? getProjectConfiguration(entry.init.projectId) : undefined),
+      presentationStore.dismissedWarnings(entry.id),
+    ]);
+    return { warnings: workspaceWarnings(entry, configuration), dismissedWarnings };
+  }
+
   async function workspacePresentationBundle(workspaceId: string): Promise<{
     presentation: FixedWorkspacePresentation;
     attachments: WorkspaceAttachment[];
     storedWorkViews: WorkspaceWorkViewState[];
+    warningState: WorkspaceWarningState;
   }> {
     const entry = requireWorkspace(workspaceId);
     const attachments = await attachWorkspaceModules(workspaceId);
@@ -428,6 +446,7 @@ export function createWebApp(deps: WebAppDeps): WebApp {
     const commands = attachments.flatMap((attachment) => attachment.commands ?? []).map((command) => ({
       id: command.id, label: command.surfaces?.ui?.label ?? command.label, description: command.description, scope: command.scope, placement: command.surfaces?.ui?.placement, iconHtml: command.surfaces?.ui?.iconHtml, binding: command.surfaces?.shortcut?.defaultBinding,
     }));
+    const warningState = await workspaceWarningState(entry);
     const presentation: FixedWorkspacePresentation = {
       workspace: { id: entry.id, title: workspaceTitle(entry) },
       agentConversations: agentConversations.map((conversation) => {
@@ -437,9 +456,43 @@ export function createWebApp(deps: WebAppDeps): WebApp {
       }),
       workViews: workViewPresentations(workspaceId, currentWorkViews, storedWorkViews),
       commands,
+      warningsHtml: workspaceWarningsHtml(entry.id, warningState),
       overlayHtml: attachments.flatMap((attachment) => attachment.overlayHtml ?? []),
     };
-    return { presentation, attachments, storedWorkViews };
+    return { presentation, attachments, storedWorkViews, warningState };
+  }
+
+  function workspaceWarningsHtml(workspaceId: string, { warnings, dismissedWarnings }: WorkspaceWarningState): string {
+    return warnings.filter((warning) => dismissedWarnings[warning.kind] !== warning.state).map((warning) => warningBannerHtml({
+      title: warning.title,
+      message: warning.message,
+      actionsHtml: warning.action ? actionLinkHtml({ href: warning.action.href, variant: "secondary", content: { kind: "caption", caption: warning.action.caption }, attributesHtml: 'data-turbo-stream="true"' }) : undefined,
+      dismiss: { action: `/workspaces/${encodeURIComponent(workspaceId)}/warnings/${encodeURIComponent(warning.kind)}/dismiss`, state: warning.state },
+    })).join("");
+  }
+
+  async function workspaceWarningStream(entry: WorkspaceEntry, project?: ProjectConfiguration): Promise<string> {
+    return turboUpdateStream(domId("workspace_warnings", entry.id), workspaceWarningsHtml(entry.id, await workspaceWarningState(entry, project)));
+  }
+
+  async function refreshProjectWarnings(projectId: string): Promise<string> {
+    const entries = registry.list().filter((entry) => entry.phase === "ready" && isGitProjectInit(entry.init) && entry.init.projectId === projectId);
+    const project = await getProjectConfiguration(projectId);
+    const stream = (await Promise.all(entries.map((entry) => workspaceWarningStream(entry, project)))).join("");
+    broadcastShell(stream);
+    return stream;
+  }
+
+  async function dismissWorkspaceWarning(id: string, kind: string, request: Request): Promise<Response> {
+    const entry = requireWorkspace(id);
+    const state = requestAcceptsJson(request) ? (await readJsonObject(request)).state : (await request.formData()).get("state");
+    const warningState = await workspaceWarningState(entry);
+    const warning = warningState.warnings.find((candidate) => candidate.kind === kind && candidate.state === state);
+    if (!warning) throw invalidArguments("warning is no longer current");
+    await presentationStore.dismissWarning(id, kind, warning.state);
+    const stream = await workspaceWarningStream(entry);
+    broadcastShell(stream);
+    return requestAcceptsJson(request) ? jsonResponse({ dismissed: true }) : turboStreamResponse(stream);
   }
 
   async function fixedWorkspacePresentation(workspaceId: string): Promise<FixedWorkspacePresentation> {
@@ -569,10 +622,11 @@ export function createWebApp(deps: WebAppDeps): WebApp {
     if (entry.issues?.length) workspace.issues = entry.issues;
     if (entry.deletion || entry.parked || entry.phase !== "ready") return jsonResponse({ workspace });
 
-    const { presentation, storedWorkViews, attachments } = await workspacePresentationBundle(id);
+    const { presentation, storedWorkViews, attachments, warningState } = await workspacePresentationBundle(id);
     const handlers = new Map(workspaceModuleCommands().map((handler) => [handler.id, handler]));
     return jsonResponse({ workspace: {
       ...workspace,
+      ...warningState,
       agentConversations: presentation.agentConversations.map(({ id, title }) => ({ id, title })),
       workViews: storedWorkViews.map((workView) => ({ key: workViewKey(workView.reference), ...workView })),
       commands: attachments.flatMap((attachment) => attachment.commands ?? []).filter((command) => handlers.has(command.id)).map((command) => ({
@@ -1234,6 +1288,7 @@ export function createWebApp(deps: WebAppDeps): WebApp {
     }
     if ((params = match(/^\/workspaces\/([^/]+)\/park$/)) && request.method === "POST") return parkWorkspaceEndpoint(params[0], true, request);
     if ((params = match(/^\/workspaces\/([^/]+)\/unpark$/)) && request.method === "POST") return parkWorkspaceEndpoint(params[0], false, request);
+    if ((params = match(/^\/workspaces\/([^/]+)\/warnings\/([^/]+)\/dismiss$/)) && request.method === "POST") return dismissWorkspaceWarning(params[0], params[1], request);
     if ((params = match(/^\/workspaces\/([^/]+)\/provisioning\/continue$/)) && request.method === "POST") return continueWorkspaceProvisioningEndpoint(params[0], request);
     if ((params = match(/^\/workspaces\/([^/]+)\/delete\/cancel$/)) && request.method === "POST") return await cancelWorkspaceDeletionEndpoint(params[0], request);
     if ((params = match(/^\/workspaces\/([^/]+)\/delete\/confirm$/)) && request.method === "POST") return await confirmWorkspaceDeletionEndpoint(params[0], request);

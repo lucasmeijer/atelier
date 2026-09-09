@@ -1,10 +1,23 @@
 import { randomUUID } from "node:crypto";
 import { AtelierCoreError } from "@atelier/core";
 import { decryptProjectValue, encryptProjectValue } from "./secret-crypto.ts";
-import { findProjectRecord, projectsFile, readProjectStore, updateProjectStore, type ProjectRecord, type ProjectSecretSummary, type StoredProjectSecret } from "./project.ts";
+import { findProjectRecord, projectSecretSummary, projectSecretSummaries, projectsFile, readProjectStore, updateProjectStore, type ProjectRecord, type ProjectSecretSummary, type StoredProjectSecret } from "./project.ts";
 
 export interface ProjectSecretPlaintext extends ProjectSecretSummary {
   secretValue: string;
+}
+
+export interface ProjectSecretInput {
+  envName: string;
+  hostPattern: string;
+  placeholder?: string;
+  annotation?: string;
+  optional?: boolean;
+  secretValue?: string;
+}
+
+export function secretNeedsValue(secret: ProjectSecretSummary): boolean {
+  return !secret.optional && !secret.configured;
 }
 
 function normalizeEnvName(value: string): string {
@@ -23,11 +36,6 @@ function normalizePlaceholder(value: string | undefined): string | undefined {
   return value?.trim() || undefined;
 }
 
-function summary(secret: StoredProjectSecret): ProjectSecretSummary {
-  const { encryptedSecret: _encryptedSecret, ...publicSecret } = secret;
-  return publicSecret;
-}
-
 function findProjectSecret(project: ProjectRecord, secretId: string): StoredProjectSecret {
   const secret = project.secrets?.find((candidate) => candidate.id === secretId);
   if (!secret) throw new AtelierCoreError("project_secret_not_found", `project secret not found: ${secretId}`);
@@ -40,30 +48,27 @@ function assertEnvNameAvailable(project: ProjectRecord, envName: string, exceptS
 
 export async function listProjectSecrets(projectId: string, file = projectsFile()): Promise<ProjectSecretSummary[]> {
   const project = findProjectRecord(await readProjectStore(file), projectId);
-  return [...(project.secrets ?? [])]
-    .sort((a, b) => a.envName.localeCompare(b.envName) || a.hostPattern.localeCompare(b.hostPattern))
-    .map(summary);
+  return projectSecretSummaries(project);
 }
 
-export async function createProjectSecret(projectId: string, values: { envName: string; hostPattern: string; placeholder?: string; secretValue: string }, file = projectsFile(), keyFile?: string): Promise<ProjectSecretSummary> {
+export async function createProjectSecret(projectId: string, values: ProjectSecretInput, file = projectsFile(), keyFile?: string): Promise<ProjectSecretSummary> {
   const envName = normalizeEnvName(values.envName);
   const hostPattern = normalizeHostPattern(values.hostPattern);
   const placeholder = normalizePlaceholder(values.placeholder);
   const secretValue = values.secretValue;
-  if (!secretValue) throw new AtelierCoreError("invalid_arguments", "SECRET is required");
   return await updateProjectStore(file, async (store) => {
     const project = findProjectRecord(store, projectId);
     project.secrets ??= [];
     assertEnvNameAvailable(project, envName);
     const now = new Date().toISOString();
     const id = randomUUID();
-    const stored: StoredProjectSecret = { id, projectId, envName, hostPattern, placeholder, encryptedSecret: await encryptProjectValue(projectId, id, secretValue, keyFile), createdAt: now, updatedAt: now };
-    project.secrets!.push(stored);
-    return summary(stored);
+    const stored: StoredProjectSecret = { id, projectId, envName, hostPattern, placeholder, annotation: values.annotation?.trim() ?? "", optional: values.optional ?? false, encryptedSecret: secretValue ? await encryptProjectValue(projectId, id, secretValue, keyFile) : undefined, createdAt: now, updatedAt: now };
+    project.secrets.push(stored);
+    return projectSecretSummary(stored);
   });
 }
 
-export async function updateProjectSecret(projectId: string, secretId: string, values: { envName: string; hostPattern: string; placeholder?: string; secretValue?: string }, file = projectsFile(), keyFile?: string): Promise<ProjectSecretSummary> {
+export async function updateProjectSecret(projectId: string, secretId: string, values: ProjectSecretInput, file = projectsFile(), keyFile?: string): Promise<ProjectSecretSummary> {
   const envName = normalizeEnvName(values.envName);
   const hostPattern = normalizeHostPattern(values.hostPattern);
   return await updateProjectStore(file, async (store) => {
@@ -77,9 +82,11 @@ export async function updateProjectSecret(projectId: string, secretId: string, v
       if (placeholder) secret.placeholder = placeholder;
       else delete secret.placeholder;
     }
+    if (values.annotation !== undefined) secret.annotation = values.annotation.trim();
+    if (values.optional !== undefined) secret.optional = values.optional;
     if (values.secretValue) secret.encryptedSecret = await encryptProjectValue(projectId, secretId, values.secretValue, keyFile);
     secret.updatedAt = new Date().toISOString();
-    return summary(secret);
+    return projectSecretSummary(secret);
   });
 }
 
@@ -88,11 +95,11 @@ export async function deleteProjectSecret(projectId: string, secretId: string, f
     const project = findProjectRecord(store, projectId);
     const secret = findProjectSecret(project, secretId);
     project.secrets = project.secrets!.filter((candidate) => candidate !== secret);
-    return summary(secret);
+    return projectSecretSummary(secret);
   });
 }
 
 export async function revealProjectSecrets(projectId: string, file = projectsFile(), keyFile?: string): Promise<ProjectSecretPlaintext[]> {
   const project = findProjectRecord(await readProjectStore(file), projectId);
-  return await Promise.all((project.secrets ?? []).map(async (secret) => ({ ...summary(secret), secretValue: await decryptProjectValue(secret.projectId, secret.id, secret.encryptedSecret, keyFile) })));
+  return await Promise.all((project.secrets ?? []).filter((secret) => secret.encryptedSecret).map(async (secret) => ({ ...projectSecretSummary(secret), secretValue: await decryptProjectValue(secret.projectId, secret.id, secret.encryptedSecret!, keyFile) })));
 }

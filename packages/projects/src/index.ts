@@ -2,6 +2,7 @@ export {
   addProject,
   deleteProject,
   formatProjectSpec,
+  getProjectConfiguration,
   isGitProjectInit,
   listProjects,
   parseProjectSpec,
@@ -13,6 +14,7 @@ export {
   type AddProjectResult,
   type DeleteProjectResult,
   type GitProjectInitInstruction,
+  type ProjectConfiguration,
   type ProjectEnvironmentVariable,
   type ProjectListResult,
   type ProjectSecretSummary,
@@ -41,6 +43,8 @@ export {
   listProjectSecrets,
   revealProjectSecrets,
   updateProjectSecret,
+  secretNeedsValue,
+  type ProjectSecretInput,
   type ProjectSecretPlaintext,
 } from "./secrets.ts";
 

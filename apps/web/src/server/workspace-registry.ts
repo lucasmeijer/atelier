@@ -26,7 +26,7 @@ export interface WorkspaceEntry {
 
 export interface WorkspaceRegistryCallbacks {
   /** A single workspace changed. viewKey is set when one view triggered the change. */
-  rowChanged?(entry: WorkspaceEntry, context: { viewKey?: string; phaseChanged?: boolean }): void;
+  rowChanged?(entry: WorkspaceEntry, context: { viewKey?: string; phaseChanged?: boolean; issuesChanged?: boolean }): void;
   /** A workspace's parked state changed and should be persisted. */
   parkedChanged?(entry: WorkspaceEntry): void;
   /** List membership or ordering changed. */
@@ -260,13 +260,13 @@ export function createWorkspaceRegistry(options: WorkspaceRegistryOptions = {}):
       const issues = (entry.issues ?? []).filter((issue) => issue.kind !== kind);
       if (message !== undefined) issues.push({ kind, message });
       entry.issues = issues.length ? issues : undefined;
-      callbacks.rowChanged?.(entry, {});
+      callbacks.rowChanged?.(entry, { issuesChanged: true });
     },
 
     setImageOutdated(id, outdated) {
       const entry = requireEntry(id);
       entry.imageOutdated = outdated;
-      callbacks.rowChanged?.(entry, {});
+      callbacks.rowChanged?.(entry, { issuesChanged: true });
     },
 
     setPhase(id, phase, error) {

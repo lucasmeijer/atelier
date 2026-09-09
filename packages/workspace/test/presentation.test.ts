@@ -54,6 +54,31 @@ describe("Workspace presentation", () => {
     await rm(dataDir, { recursive: true, force: true });
   });
 
+  test("warning dismissals persist by kind and state without changing Work views", async () => {
+    expect(await presentation.dismissedWarnings("workspace-1")).toEqual({});
+    await presentation.initialize("workspace-1", [{ type: "file", path: "/work/README.md" }]);
+    await Promise.all([
+      presentation.dismissWarning("workspace-1", "missing-secrets", "state-one"),
+      presentation.dismissWarning("workspace-1", "project-settings-changed", "revision-one"),
+    ]);
+    const restarted = createWorkspacePresentationStore({ dataDir, workViewContributions });
+    expect(await restarted.dismissedWarnings("workspace-1")).toEqual({ "missing-secrets": "state-one", "project-settings-changed": "revision-one" });
+    await restarted.dismissWarning("workspace-1", "missing-secrets", "state-two");
+    expect((await restarted.dismissedWarnings("workspace-1"))["missing-secrets"]).toBe("state-two");
+    expect(await restarted.listWorkViews("workspace-1")).toEqual([{ reference: { type: "file", path: "/work/README.md" }, attention: false }]);
+  });
+
+  test("dismissal before presentation initialization preserves later initial Work views", async () => {
+    await presentation.dismissWarning("workspace-1", "missing-secrets", "state-one");
+    const restarted = createWorkspacePresentationStore({ dataDir, workViewContributions });
+    await restarted.initialize("workspace-1", [{ type: "file", path: "/work/README.md" }]);
+    expect(await restarted.dismissedWarnings("workspace-1")).toEqual({ "missing-secrets": "state-one" });
+    expect(await restarted.listWorkViews("workspace-1")).toEqual([{ reference: { type: "file", path: "/work/README.md" }, attention: false }]);
+    await restarted.initialize("workspace-1", [{ type: "file", path: "/work/OTHER.md" }]);
+    expect(await restarted.listWorkViews("workspace-1")).toHaveLength(1);
+    expect((await restarted.listWorkViews("workspace-1"))[0]!.reference).toEqual({ type: "file", path: "/work/README.md" });
+  });
+
   test("persistent Work view state restores after a server restart", async () => {
     await presentation.initialize("workspace-1", [
       { type: "terminal", terminalId: "terminal-1", ownership: "owned" },

@@ -2,6 +2,7 @@ import type { StaticFileContribution } from "@atelier/shared";
 
 /** Mount these logical URLs; the host may fingerprint them and rewrite CSS imports. */
 export const designSystemStaticFiles = {
+  "/warning-banner.css": { url: new URL("./warning-banner/warning-banner.css", import.meta.url), contentType: "text/css; charset=utf-8" },
   "/text-entry.css": {
     url: new URL("./text-entry/text-entry.css", import.meta.url),
     contentType: "text/css; charset=utf-8",

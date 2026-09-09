@@ -1,3 +1,4 @@
+import type { ToggleChangeEvent } from "@atelier/design-system/toggle/client";
 import { Controller } from "@hotwired/stimulus";
 import { showTransientFeedback } from "@atelier/design-system/transient-feedback/client";
 import { copyTextToClipboard } from "@atelier/shared";
@@ -110,6 +111,22 @@ class OAuthFlowController extends Controller<HTMLElement> {
 }
 
 class SettingsAutosaveController extends Controller<HTMLFormElement> {
+  private savedValues = "";
+  private pending?: Promise<boolean>;
+
+  connect(): void {
+    this.savedValues = this.values();
+  }
+
+  private values(): string {
+    return JSON.stringify([...new FormData(this.element).entries()]);
+  }
+
+  toggleChanged(event: ToggleChangeEvent): void {
+    this.element.querySelector<HTMLInputElement>(`input[type="hidden"][name="${CSS.escape(event.detail.name)}"]`)!.value = event.detail.value;
+    if (this.element.checkValidity()) void this.save();
+  }
+
   submit(event: Event): void {
     event.preventDefault();
     void this.save();
@@ -122,13 +139,69 @@ class SettingsAutosaveController extends Controller<HTMLFormElement> {
     void this.save();
   }
 
-  async save(): Promise<void> {
-    const response = await fetch(this.element.action, {
-      method: this.element.method || "POST",
-      body: new FormData(this.element),
-      headers: { Accept: "text/vnd.turbo-stream.html" },
-    });
-    window.Turbo?.renderStreamMessage(await response.text());
+  save(): Promise<boolean> {
+    // Every caller joins the same drain. Only its owner starts requests or clears pending.
+    return this.pending ??= Promise.resolve().then(() => this.drain()).finally(() => { this.pending = undefined; });
+  }
+
+  private async drain(): Promise<boolean> {
+    while (this.element.isConnected) {
+      const data = new FormData(this.element);
+      const values = JSON.stringify([...data.entries()]);
+      if (values === this.savedValues) return true;
+      if (!this.element.reportValidity()) return false;
+      if (!await this.persist(data, values)) return false;
+    }
+    return true;
+  }
+
+  private async persist(data: FormData, values: string): Promise<boolean> {
+    this.dispatch("saving");
+    try {
+      const response = await fetch(this.element.action, {
+        method: this.element.method || "POST",
+        body: data,
+        headers: { Accept: "text/vnd.turbo-stream.html" },
+      });
+      const html = await response.text();
+      if (response.ok) this.savedValues = values;
+      this.dispatch(response.ok ? "saved" : "failed");
+      window.Turbo!.renderStreamMessage(html);
+      return response.ok;
+    } catch (error) {
+      this.dispatch("failed");
+      throw error;
+    }
+  }
+}
+
+class ProjectSettingsController extends Controller<HTMLDialogElement> {
+  static targets = ["status", "confirm"];
+  declare readonly statusTarget: HTMLElement;
+  declare readonly confirmTarget: HTMLButtonElement;
+
+  saving(): void { this.statusTarget.textContent = "Saving…"; }
+  saved(): void { this.statusTarget.textContent = "✓ Changes saved."; }
+  failed(): void { this.statusTarget.textContent = "Changes could not be saved. Please try again."; }
+
+  async complete(): Promise<void> {
+    this.confirmTarget.disabled = true;
+    try {
+      const controllers = [...this.element.querySelectorAll<HTMLFormElement>('form[data-controller~="settings-autosave"]')].map((form) => {
+        const controller = this.application.getControllerForElementAndIdentifier(form, "settings-autosave");
+        if (!(controller instanceof SettingsAutosaveController)) throw new Error("Settings autosave controller is not connected");
+        return controller;
+      });
+      for (const controller of controllers) {
+        if (!await controller.save()) {
+          this.statusTarget.textContent = "Please check your changes before closing.";
+          return;
+        }
+      }
+      this.element.close();
+    } finally {
+      this.confirmTarget.disabled = false;
+    }
   }
 }
 
@@ -368,6 +441,7 @@ export function registerWorkspaceSettingsControllers(): void {
     "oauth-flow": OAuthFlowController,
     "git-identity": GitIdentityController,
     "settings-autosave": SettingsAutosaveController,
+    "project-settings": ProjectSettingsController,
     "settings-prefetch": SettingsPrefetchController,
     "server-filter": ServerFilterController,
     "model-catalogue": ModelCatalogueController,

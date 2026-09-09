@@ -1,8 +1,11 @@
+import { workspaceWarnings } from "../src/server/workspace-warnings.ts";
 import { afterEach, beforeEach, describe, expect, test } from "bun:test";
 import { Type } from "typebox";
 import { Value } from "typebox/value";
 import {
   addProject,
+  createProjectEnvironmentVariable,
+  getProjectConfiguration,
   isGitProjectInit,
   listProjects,
   projectWorkspaceInit,
@@ -37,6 +40,9 @@ const projectSecretSummarySchema = Type.Object({
   envName: Type.String(),
   hostPattern: Type.String(),
   placeholder: Type.Optional(Type.String()),
+  annotation: Type.String(),
+  optional: Type.Boolean(),
+  configured: Type.Boolean(),
   createdAt: Type.String(),
   updatedAt: Type.String(),
 }, { additionalProperties: false });
@@ -52,6 +58,7 @@ const projectDetailResponseSchema = Type.Object({
     gitUrl: Type.String(),
     branch: Type.Union([Type.String(), Type.Null()]),
     sessionShareKey: Type.String(),
+    configurationFingerprint: Type.String(),
     environment: Type.Array(environmentVariableSchema),
     secrets: Type.Array(projectSecretSummarySchema),
   }, { additionalProperties: false }),
@@ -197,6 +204,23 @@ describe("HTTP contracts", () => {
     expect(Value.Parse(deletedProjectEnvironmentVariableResponseSchema, await deletedEnvironmentResponse.json()).deleted).toBe(true);
   });
 
+  test("project secret JSON supports missing values and editable requirement metadata", async () => {
+    const { app, registry } = createTestApp();
+    await registry.seed([]);
+    const project = (await addProject("https://github.com/org/requirements.git")).project;
+    const path = `/projects/${project.id}/secrets`;
+    const values = { envName: "TOKEN", hostPattern: "api.example.com", annotation: "Integration tests" };
+    const response = await app.fetch(postJson(path, values));
+    expect(response.status).toBe(200);
+    const { secret } = Value.Parse(projectSecretResponseSchema, await response.json());
+    expect(secret).toMatchObject({ annotation: "Integration tests", optional: false, configured: false });
+    const updated = await app.fetch(postJson(`${path}/${secret.id}`, { ...values, optional: true, annotation: "Report uploads" }));
+    expect(Value.Parse(projectSecretResponseSchema, await updated.json()).secret).toMatchObject({ annotation: "Report uploads", optional: true, configured: false });
+    const invalid = await app.fetch(postJson(`${path}/${secret.id}`, { ...values, optional: "false" }));
+    expect(invalid.status).toBe(400);
+    expect(await revealProjectSecrets(project.id)).toEqual([]);
+  });
+
   test("project JSON routes return structured errors for malformed and invalid bodies", async () => {
     const { app, registry } = createTestApp();
     await registry.seed([]);
@@ -230,6 +254,24 @@ describe("HTTP contracts", () => {
     });
     expect(deletedResponse.status).toBe(200);
     expect((await listProjects()).projects).toEqual([first]);
+  });
+
+  test("warning acknowledgements require current state and do not hide later configuration changes", async () => {
+    const { project } = await addProject("https://github.com/org/warnings.git");
+    const { app, registry } = createTestApp();
+    await registry.seed([{ id: "abc12345", title: "Warnings", init: projectWorkspaceInit(project) }]);
+    await createProjectEnvironmentVariable(project.id, { name: "REGION", value: "eu" });
+    const schema = Type.Object({ workspace: Type.Object({ warnings: Type.Array(Type.Object({ kind: Type.String(), state: Type.String() })), dismissedWarnings: Type.Record(Type.String(), Type.String()) }) });
+    const status = async () => Value.Parse(schema, await (await app.fetch(new Request("http://test.local/workspaces/abc12345", { headers: { accept: "application/json" } }))).json()).workspace;
+    // Dismiss directly, without first constructing the workspace presentation through GET.
+    const warning = workspaceWarnings(registry.get("abc12345")!, await getProjectConfiguration(project.id))[0]!;
+    const path = `/workspaces/abc12345/warnings/${warning.kind}/dismiss`;
+    expect((await app.fetch(postJson(path, { state: "stale" }))).status).toBe(400);
+    expect(await (await app.fetch(postJson(path, { state: warning.state }))).json()).toEqual({ dismissed: true });
+    expect((await status()).dismissedWarnings[warning.kind]).toBe(warning.state);
+    await createProjectEnvironmentVariable(project.id, { name: "MODE", value: "test" });
+    expect((await status()).warnings[0]!.state).not.toBe(warning.state);
+    expect((await app.fetch(postJson(path, { state: warning.state }))).status).toBe(400);
   });
 
   test("lists workspace summaries as JSON while browser requests redirect", async () => {
