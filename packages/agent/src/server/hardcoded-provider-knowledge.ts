@@ -12,12 +12,13 @@ interface ProviderKnowledgeRegistry {
 }
 
 const hardcodedPopularModels: readonly (ProviderModelReference & { provider: string })[] = [
-  { provider: "openai-codex", id: "gpt-5.6-sol" },
+  { provider: "openai-codex", id: "gpt-6-astra" },
   { provider: "openai-codex", id: "gpt-5.6-terra" },
   { provider: "openai-codex", id: "gpt-5.6-luna" },
   { provider: "anthropic", id: "claude-fable-5" },
   { provider: "anthropic", id: "claude-opus-5" },
   { provider: "anthropic", id: "claude-opus-4-8" },
+  { provider: "github-copilot", id: "gpt-6-astra" },
   { provider: "openai", id: "gpt-5.6-sol" },
   { provider: "xai", id: "grok-4.6" },
 ];
