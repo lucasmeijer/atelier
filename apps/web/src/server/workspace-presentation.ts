@@ -357,7 +357,7 @@ function renderAgentNavigation(presentation: WorkspacePresentation): string {
   } else {
     const agent = presentation.agentConversations[0];
     const title = agent && agent.title !== untitledAgentConversationTitle ? agent.title : presentation.workspace.title;
-    conversations = `<div class="fixed-shell-workspace-title"><span class="fixed-shell-agent-icon">${Icons.Agent}</span><strong>${escapeHtml(title)}</strong></div>`;
+    conversations = `<div class="fixed-shell-workspace-title" ${fullscreenViewAttributes(agent!.id, title)} data-atelier-fullscreen-pane-header-value="true"><span class="fixed-shell-agent-icon">${Icons.Agent}</span><strong>${escapeHtml(title)}</strong></div>`;
   }
   const agentActions = (presentation.commands ?? []).filter((command) => command.placement === "agent-action").map((command) => {
     const button = buttonHtml({ type: "submit", variant: "secondary", content: { kind: "icon-only", iconHtml: Icons.Plus, label: command.label } });

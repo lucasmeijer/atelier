@@ -163,6 +163,10 @@ export class TranscriptNavigation {
         this.transcript.scrollTop = target
           ? this.transcript.scrollTop + target.getBoundingClientRect().top - this.transcript.getBoundingClientRect().top
           : 0;
+      } else if (!this.following && geometry.contentEnd < this.transcript.scrollTop + geometry.threshold) {
+        // A wider pane (for example fullscreen) can reflow the entire transcript
+        // above a paused viewport. Do not protect an empty viewport with reserve.
+        this.transcript.scrollTop = geometry.latestTop;
       } else if (this.following) {
         // Follow visible content, not scrollHeight (which includes our reserve).
         // Hysteresis lets several new lines use the room before another scroll.
