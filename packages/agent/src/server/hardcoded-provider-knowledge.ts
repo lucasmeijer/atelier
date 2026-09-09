@@ -30,7 +30,7 @@ const hardcodedProviderKnowledge: ProviderKnowledgeRegistry = {
   },
   "openai-codex": {
     apiKeyExample: "sk-proj-abc123def456...",
-    fastModel: { id: "gpt-5.4-mini" },
+    fastModel: { id: "gpt-5.6-luna" },
   },
   anthropic: {
     apiKeyExample: "sk-ant-api03-abc123def456...",
