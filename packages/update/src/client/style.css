@@ -3,5 +3,7 @@
 .update-sidebar-row p { flex: 1; margin: 0; font: var(--text-body)/var(--leading-standard) var(--font-sans); }
 .update-sidebar-row form, .update-settings-control form { display: flex; margin: 0; }
 .update-sidebar-row form { flex: none; }
-.update-settings-control { min-height: 55px; display: flex; align-items: center; justify-content: space-between; padding-block: 14px; }
+.update-settings-control { min-height: 55px; display: flex; align-items: center; justify-content: space-between; gap: 16px; flex-wrap: wrap; padding-block: 14px; }
 .update-restart-error { height: auto; white-space: normal; text-align: left; }
+
+.update-settings-actions { display: flex; align-items: center; flex-wrap: wrap; gap: 12px; }

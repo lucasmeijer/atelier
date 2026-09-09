@@ -6,7 +6,7 @@ export const releaseChannelSchema = Type.Union([Type.Literal("stable"), Type.Lit
 
 export type ReleaseChannel = Static<typeof releaseChannelSchema>;
 
-export function isReleaseChannel(value: string | undefined): value is ReleaseChannel {
+export function isReleaseChannel(value: unknown): value is ReleaseChannel {
   return Value.Check(releaseChannelSchema, value);
 }
 

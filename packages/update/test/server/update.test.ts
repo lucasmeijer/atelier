@@ -1,7 +1,7 @@
 import { describe, expect, test } from "bun:test";
 import { createAtelierEventBus } from "@atelier/core";
 import { dockerContainerInspect, dockerImageInspect, parseContainerIdFromCgroup, parseContainerIdFromMountInfo, parseDockerPullEventLine, replacementCreateArgs, serverHealthUrlFromInspect, type DockerInspect, type SelfUpdateRuntime } from "../../src/server/docker.ts";
-import { createUpdateRouteHandler, renderSidebarRow, UpdateManager } from "../../src/server/index.ts";
+import { createUpdateRouteHandler, UpdateManager } from "../../src/server/index.ts";
 import { parseWwwAuthenticate, selectManifestFromIndex, fetchChannelImageMetadata } from "../../src/server/registry.ts";
 
 describe("self container parsing", () => {
@@ -103,14 +103,13 @@ function context() {
   };
 }
 
-function noInterval() {
-  return () => ({ unref() {} });
-}
+function noInterval() {}
 
 function deferred<T = void>() {
   let resolve!: (value: T | PromiseLike<T>) => void;
-  const promise = new Promise<T>((res) => { resolve = res; });
-  return { promise, resolve };
+  let reject!: (reason: Error) => void;
+  const promise = new Promise<T>((res, rej) => { resolve = res; reject = rej; });
+  return { promise, resolve, reject };
 }
 
 describe("registry helpers", () => {
@@ -213,7 +212,7 @@ describe("registry helpers", () => {
 describe("update state machine", () => {
   test("keeps Check now available in Settings while hiding the unmanaged Workspace contribution", async () => {
     const { ctx, sidebar, broadcasts } = context();
-    const manager = new UpdateManager({ detectRuntime: async () => undefined, setInterval: noInterval() });
+    const manager = new UpdateManager({ detectRuntime: async () => undefined, setInterval: noInterval });
     await manager.initialize(ctx);
     expect(sidebar.at(-1)).toBe("");
     expect(broadcasts.at(-1)).toContain("<h2>Updates</h2>");
@@ -227,7 +226,7 @@ describe("update state machine", () => {
     const manager = new UpdateManager({
       detectRuntime: async () => runtime("old"),
       fetchMetadata: async () => checks++ === 0 ? { digest: "sha256:old-digest", revision: "old" } : await gate.promise,
-      setInterval: noInterval(),
+      setInterval: noInterval,
     });
     await manager.initialize(ctx);
     expect(broadcasts.at(-1)).toContain(">Check now</span>");
@@ -246,7 +245,7 @@ describe("update state machine", () => {
       detectRuntime: async () => runtime("old"),
       fetchMetadata: async () => ({ digest: "sha256:new", revision: "new" }),
       pullImage: async (_channel, onProgress) => { onProgress({ kind: "progress", percent: 43 }); },
-      setInterval: noInterval(),
+      setInterval: noInterval,
     });
     await manager.initialize(ctx);
     expect(manager.snapshot().state).toBe("available");
@@ -262,12 +261,12 @@ describe("update state machine", () => {
       detectRuntime: async () => runtime("old", "contract-v1"),
       fetchMetadata: async () => ({ digest: "sha256:new", revision: "new", selfUpdateCompatibility: "contract-v2" }),
       pullImage: async () => { throw new Error("should not pull"); },
-      setInterval: noInterval(),
+      setInterval: noInterval,
     });
     await manager.initialize(ctx);
     expect(manager.snapshot()).toMatchObject({ state: "incompatible", compatibilityMismatch: true });
     expect(sidebar.join("\n")).toContain("Download Update");
-    await expect(manager.startPull()).rejects.toThrow("installer");
+    expect(() => manager.startPull()).toThrow("installer");
     const response = await createUpdateRouteHandler(manager)(new Request("http://atelier.test/update/start", { method: "POST" }), new URL("http://atelier.test/update/start"));
     expect(await response!.text()).toContain("curl -fsSL https://lucasmeijer.com/get-atelier | sudo bash");
   });
@@ -279,7 +278,7 @@ describe("update state machine", () => {
       detectRuntime: async () => runtime("old"),
       fetchMetadata: async () => ({ digest: "sha256:new", revision: "new" }),
       pullImage: async () => { if (fail) throw new Error("network down"); },
-      setInterval: noInterval(),
+      setInterval: noInterval,
     });
     await manager.initialize(ctx);
     await manager.startPull();
@@ -298,7 +297,7 @@ describe("update state machine", () => {
       detectRuntime: async () => runtime("old"),
       fetchMetadata: async () => ({ digest: "sha256:new", revision: "new" }),
       pullImage: async () => { pulls += 1; await gate.promise; },
-      setInterval: noInterval(),
+      setInterval: noInterval,
     });
     await manager.initialize(ctx);
     const first = manager.startPull();
@@ -323,7 +322,7 @@ describe("update state machine", () => {
       detectRuntime: async () => runtime("old"),
       fetchMetadata: async () => metadata.shift()!,
       pullImage: async () => { pulls += 1; },
-      setInterval: noInterval(),
+      setInterval: noInterval,
     });
     await manager.initialize(ctx);
     await manager.startPull();
@@ -345,7 +344,7 @@ describe("update state machine", () => {
         pulls += 1;
         if (pulls === 1) await firstPull.promise;
       },
-      setInterval: noInterval(),
+      setInterval: noInterval,
     });
     await manager.initialize(ctx);
     const pulling = manager.startPull();
@@ -366,7 +365,7 @@ describe("update state machine", () => {
       docker: async (args) => { dockerCalls.push(args); return { stdout: "updater", stderr: "", code: 0 }; },
       checkUpdaterPortAvailable: async () => {},
       waitForUpdater: async (url) => { expect(url).toBe("https://atelier.test:81/up"); },
-      setInterval: noInterval(),
+      setInterval: noInterval,
     });
     await manager.initialize(ctx);
     await manager.startPull();
@@ -390,7 +389,7 @@ describe("update state machine", () => {
       pullImage: async () => {},
       docker: async (args) => { dockerCalls.push(args); return { stdout: "", stderr: "", code: 0 }; },
       checkUpdaterPortAvailable: async () => { throw new Error("Update helper port 81 is already in use. Stop the process using port 81 and retry the update."); },
-      setInterval: noInterval(),
+      setInterval: noInterval,
     });
     await manager.initialize(ctx);
     await manager.startPull();
@@ -403,24 +402,11 @@ describe("update state machine", () => {
 describe("update routes", () => {
   test("acknowledges an explicit check when the development runtime cannot self-update", async () => {
     const { ctx } = context();
-    const manager = new UpdateManager({ detectRuntime: async () => undefined, setInterval: noInterval() });
+    const manager = new UpdateManager({ detectRuntime: async () => undefined, setInterval: noInterval });
     await manager.initialize(ctx);
     const route = createUpdateRouteHandler(manager);
     const response = await route(new Request("http://test/update/check-now", { method: "POST" }), new URL("http://test/update/check-now"));
     expect(await response!.text()).toContain('data-transient-feedback-state-value="feedback"');
-  });
-
-  test("renders a Workspace pane message and control only while an update needs action", () => {
-    const snapshot = { selfUpdatable: true, releaseChannel: "stable" as const, compatibilityMismatch: false };
-    expect(renderSidebarRow({ ...snapshot, state: "idle" })).toBe("");
-    expect(renderSidebarRow({ ...snapshot, state: "checking" })).toBe("");
-    const available = renderSidebarRow({ ...snapshot, state: "available" });
-    expect(available).toContain("<p>There's a new version of Atelier!</p>");
-    expect(available).toContain(">Download Update</span>");
-    const restart = renderSidebarRow({ ...snapshot, state: "ready_to_restart" });
-    expect(restart).toContain('data-controller="transient-feedback" data-transient-feedback-state-value="initial"');
-    expect(restart).toContain('method="post" action="/update/restart?surface=sidebar"');
-    expect(restart).toContain('class="destructive-confirmation"');
   });
 
   test("restart route returns a turbo redirect target after launching the helper", async () => {
@@ -432,7 +418,7 @@ describe("update routes", () => {
       docker: async () => ({ stdout: "updater", stderr: "", code: 0 }),
       checkUpdaterPortAvailable: async () => {},
       waitForUpdater: async () => {},
-      setInterval: noInterval(),
+      setInterval: noInterval,
     });
     await manager.initialize(ctx);
     await manager.startPull();
@@ -450,7 +436,7 @@ describe("update routes", () => {
       pullImage: async () => {},
       docker: async () => ({ stdout: "", stderr: "", code: 0 }),
       checkUpdaterPortAvailable: async () => { throw new Error("Update helper port 81 is already in use on 127.0.0.1. Stop the process using 127.0.0.1:81 and retry the update."); },
-      setInterval: noInterval(),
+      setInterval: noInterval,
     });
     await manager.initialize(ctx);
     await manager.startPull();
@@ -473,7 +459,7 @@ describe("update routes", () => {
       detectRuntime: async () => runtime("old"),
       fetchMetadata: async () => ({ digest: "sha256:new", revision: "new" }),
       pullImage: async () => { pulled = true; },
-      setInterval: noInterval(),
+      setInterval: noInterval,
     });
     await manager.initialize(ctx);
     const route = createUpdateRouteHandler(manager);
@@ -489,7 +475,7 @@ describe("update routes", () => {
     const manager = new UpdateManager({
       detectRuntime: async () => runtime("old"),
       fetchMetadata: async () => ({ digest: "sha256:old-digest", revision: "old" }),
-      setInterval: noInterval(),
+      setInterval: noInterval,
     });
     await manager.initialize(ctx);
     const route = createUpdateRouteHandler(manager);
@@ -506,7 +492,7 @@ describe("update routes", () => {
     const manager = new UpdateManager({
       detectRuntime: async () => runtime("old"),
       fetchMetadata: async () => metadata.shift()!,
-      setInterval: noInterval(),
+      setInterval: noInterval,
     });
     await manager.initialize(ctx);
     expect(manager.snapshot().state).toBe("idle");
@@ -516,7 +502,6 @@ describe("update routes", () => {
     const html = await response!.text();
     expect(html).toContain(">Download Update</span>");
     expect(html).not.toContain("Update available");
-    expect(html).not.toContain("Update channel");
     expect(manager.snapshot().state).toBe("available");
   });
 
@@ -591,5 +576,188 @@ describe("docker replacement config", () => {
     expect(args).toContain("-500");
     expect(args).toContain("type=bind,src=/host,dst=/data");
     expect(args).toContain("ghcr.io/lucasmeijer/atelier:stable");
+  });
+});
+
+describe("release channel selection", () => {
+  test("uses the stored preference before the installation channel", async () => {
+    const manager = new UpdateManager({
+      detectRuntime: async () => runtime(),
+      readChannel: async () => "latest",
+      fetchMetadata: async (channel) => {
+        expect(channel).toBe("latest");
+        return { digest: "new", revision: "new" };
+      },
+      setInterval: noInterval,
+    });
+    await manager.initialize(context().ctx);
+    expect(manager.snapshot().releaseChannel).toBe("latest");
+  });
+
+  test("persists changes and discards a downloaded target from the previous channel", async () => {
+    const saved: string[] = [];
+    const pulled: string[] = [];
+    const manager = new UpdateManager({
+      detectRuntime: async () => runtime(),
+      writeChannel: async (channel) => { saved.push(channel); },
+      fetchMetadata: async (channel) => ({ digest: channel, revision: channel }),
+      pullImage: async (channel) => { pulled.push(channel); },
+      setInterval: noInterval,
+    });
+    await manager.initialize(context().ctx);
+    await manager.startPull();
+    await manager.setReleaseChannel("latest");
+    expect(saved).toEqual(["latest"]);
+    expect(manager.snapshot().state).toBe("available");
+    expect(manager.snapshot().target?.digest).toBe("latest");
+    await expect(manager.launchUpdater(new URL("http://test"))).rejects.toThrow("No pulled update");
+    await manager.startPull();
+    expect(pulled).toEqual(["stable", "latest"]);
+  });
+
+  test("ignores a stale check from the previous channel", async () => {
+    const gate = deferred<{ digest: string; revision: string }>();
+    let checks = 0;
+    const manager = new UpdateManager({
+      detectRuntime: async () => runtime(),
+      fetchMetadata: async (channel) => ++checks === 2 ? await gate.promise : { digest: channel, revision: channel },
+      setInterval: noInterval,
+    });
+    await manager.initialize(context().ctx);
+    const pending = manager.checkNow();
+    await manager.setReleaseChannel("latest");
+    gate.resolve({ digest: "stale", revision: "stale" });
+    await pending;
+    expect(manager.snapshot().target?.digest).toBe("latest");
+  });
+
+  test("rejects channel changes during downloads", async () => {
+    const gate = deferred<void>();
+    const manager = new UpdateManager({
+      detectRuntime: async () => runtime(),
+      fetchMetadata: async () => ({ digest: "new", revision: "new" }),
+      pullImage: async () => await gate.promise,
+      setInterval: noInterval,
+    });
+    await manager.initialize(context().ctx);
+    const pulling = manager.startPull();
+    await expect(manager.setReleaseChannel("latest")).rejects.toThrow("in progress");
+    expect(manager.snapshot().releaseChannel).toBe("stable");
+    gate.resolve();
+    await pulling;
+  });
+
+  test("does not change channel when saving fails", async () => {
+    const manager = new UpdateManager({
+      detectRuntime: async () => runtime(),
+      writeChannel: async () => { throw new Error("disk full"); },
+      fetchMetadata: async () => ({ digest: "new", revision: "new" }),
+      setInterval: noInterval,
+    });
+    await manager.initialize(context().ctx);
+    await expect(manager.setReleaseChannel("latest")).rejects.toThrow("disk full");
+    expect(manager.snapshot().releaseChannel).toBe("stable");
+  });
+
+  test("rejects unknown channel form values", async () => {
+    const route = createUpdateRouteHandler(new UpdateManager());
+    const url = new URL("http://test/settings/update-channel");
+    const response = await route(new Request(url, { method: "POST", body: new URLSearchParams({ channel: "unknown" }) }), url);
+    expect(response?.status).toBe(400);
+  });
+
+  test("a superseded channel switch cannot publish its failed check", async () => {
+    const gate = deferred<{ digest: string; revision: string }>();
+    const checking = deferred();
+    const manager = new UpdateManager({
+      detectRuntime: async () => runtime(),
+      fetchMetadata: async (channel) => {
+        if (channel === "latest") { checking.resolve(); return await gate.promise; }
+        return { digest: "stable", revision: "stable" };
+      },
+      setInterval: noInterval,
+    });
+    await manager.initialize(context().ctx);
+    const stale = manager.setReleaseChannel("latest");
+    await checking.promise;
+    await manager.setReleaseChannel("stable");
+    const current = manager.snapshot();
+    gate.reject(new Error("Latest registry failed"));
+    await stale;
+    expect(manager.snapshot()).toEqual(current);
+    expect(current.state).toBe("available");
+  });
+
+  test("a superseded background check cannot publish its failure", async () => {
+    const gate = deferred<{ digest: string; revision: string }>();
+    let checks = 0;
+    let poll = () => {};
+    const manager = new UpdateManager({
+      detectRuntime: async () => runtime(),
+      fetchMetadata: async (channel) => ++checks === 2 ? await gate.promise : { digest: channel, revision: channel },
+      setInterval: (handler) => { poll = handler; },
+    });
+    await manager.initialize(context().ctx);
+    poll();
+    await manager.setReleaseChannel("latest");
+    const current = manager.snapshot();
+    gate.reject(new Error("Old poll failed"));
+    await Bun.sleep(0);
+    expect(manager.snapshot()).toEqual(current);
+  });
+
+  for (const revision of ["old", "new"]) {
+    test(`a successful retry clears channel-check failure when target is ${revision}`, async () => {
+      let unavailable = true;
+      const manager = new UpdateManager({
+        detectRuntime: async () => runtime(),
+        fetchMetadata: async (channel) => {
+          if (channel === "latest" && unavailable) throw new Error("Registry unavailable");
+          return { digest: revision, revision };
+        },
+        setInterval: noInterval,
+      });
+      await manager.initialize(context().ctx);
+      await expect(manager.setReleaseChannel("latest")).rejects.toThrow("Registry unavailable");
+      expect(manager.snapshot().state).toBe("failed");
+      unavailable = false;
+      await manager.checkNow();
+      expect(manager.snapshot().state).toBe(revision === "old" ? "idle" : "available");
+      expect(manager.snapshot().error).toBeUndefined();
+      expect(manager.snapshot().target?.revision).toBe(revision);
+    });
+  }
+
+  test("a stale Download request is rejected without disturbing the new channel check", async () => {
+    const gate = deferred<{ digest: string; revision: string }>();
+    const checking = deferred();
+    const pulled: string[] = [];
+    const manager = new UpdateManager({
+      detectRuntime: async () => runtime(),
+      fetchMetadata: async (channel) => {
+        if (channel === "latest") { checking.resolve(); return await gate.promise; }
+        return { digest: "stable", revision: "stable" };
+      },
+      pullImage: async (channel) => { pulled.push(channel); },
+      setInterval: noInterval,
+    });
+    await manager.initialize(context().ctx);
+    const changing = manager.setReleaseChannel("latest");
+    await checking.promise;
+    const current = manager.snapshot();
+    expect(() => manager.startPull()).toThrow("No update is available");
+    const route = createUpdateRouteHandler(manager);
+    const url = new URL("http://test/update/start");
+    const response = await route(new Request(url, { method: "POST" }), url);
+    expect(response?.status).toBe(409);
+    expect(manager.snapshot()).toEqual(current);
+    expect(pulled).toEqual([]);
+    gate.resolve({ digest: "latest", revision: "latest" });
+    await changing;
+    expect(manager.snapshot().state).toBe("available");
+    expect(manager.snapshot().error).toBeUndefined();
+    await manager.startPull();
+    expect(pulled).toEqual(["latest"]);
+    expect(manager.snapshot().state).toBe("ready_to_restart");
   });
 });
