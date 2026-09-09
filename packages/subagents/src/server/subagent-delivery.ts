@@ -1,7 +1,7 @@
 import { Type, type Static } from "typebox";
 import { Value } from "typebox/value";
 import { messageEnvelope } from "./subagent-protocol.ts";
-import type { SubagentMessage, SubagentState } from "./subagent-runtime.ts";
+import { unreadMessageCount, type SubagentMessage, type SubagentState } from "./subagent-runtime.ts";
 
 export const subagentDeliveryType = "subagent_model_delivery";
 const persistedDeliverySchema = Type.Object({
@@ -33,7 +33,7 @@ export function modelDeliveryBatch(state: SubagentState, recipient: string, incl
   for (const message of messages) delivered.add(message.id);
   return {
     turnEntryId, duringActivity, format,
-    remaining: state.messages.filter((message) => message.to === recipient && ["task", "message", "completion"].includes(message.kind) && message.delivery !== "failed" && !delivered.has(message.id)).length,
+    remaining: unreadMessageCount(state, recipient, delivered),
     messages: messages.map((message) => ({ id: message.id, recipient: message.to, immediate: message.dispatchMode === "immediate", envelope: messageEnvelope(state, message) })),
   };
 }

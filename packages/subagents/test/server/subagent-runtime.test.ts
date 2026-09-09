@@ -235,7 +235,7 @@ describe("persisted incoming dispatch decisions", () => {
     const { runtime, snapshots } = harness();
     const child = await runtime.spawn("parent", "explain", "Task");
     const message = runtime.state.messages[0];
-    await runtime.dispatching(message.id, triggerTurn, streaming);
+    await runtime.dispatching(message.id, triggerTurn, streaming, new Set());
     await runtime.delivered(message.id);
     await runtime.finished(child.id, "Done", "completed");
     expect(runtime.state.messages[0]).toMatchObject({ dispatchMode: mode, dispatchReason: reason, delivery: "delivered" });
@@ -250,13 +250,13 @@ describe("persisted incoming dispatch decisions", () => {
     // The harness bypasses session dispatch, so receipt wakes the wait. Dispatch
     // classification in a real peer must occur before that wake boundary.
     await waiting;
-    await runtime.dispatching(message.id, false, true);
+    await runtime.dispatching(message.id, false, true, new Set());
     expect(runtime.state.messages.find((entry) => entry.id === message.id)!.dispatchReason).toBe("working");
 
     drain("parent");
     const nextWait = runtime.wait("parent", 1000);
     await Promise.resolve();
-    await runtime.dispatching(message.id, false, true);
+    await runtime.dispatching(message.id, false, true, new Set());
     expect(runtime.state.messages.find((entry) => entry.id === message.id)!.dispatchReason).toBe("waiting");
     steer("parent");
     await nextWait;
@@ -327,4 +327,22 @@ describe("wait observes pending input, not wait history", () => {
     expect(await waiting).toEqual({ timed_out: false, interrupted: false });
     expect(await runtime.wait("root", 1)).toEqual({ timed_out: false, interrupted: false });
   });
+});
+
+test("queued arrivals snapshot unread mail rather than transcript delivery status", async () => {
+  const { runtime, snapshots } = harness();
+  const child = await runtime.spawn("parent", "review", "Task");
+  const task = runtime.state.messages[0]!;
+  const first = await runtime.send("parent", child.id, "First update");
+  await runtime.dispatching(first.id, false, false, new Set([task.id]));
+  expect(runtime.state.messages.find((message) => message.id === first.id)!.queueSizeOnArrival).toBe(1);
+  const second = await runtime.send("parent", child.id, "Second update");
+  await runtime.dispatching(second.id, false, true, new Set([task.id]));
+  expect(snapshots.at(-1)!.messages.find((message) => message.id === second.id)!.queueSizeOnArrival).toBe(2);
+  const third = await runtime.send("parent", child.id, "After first read");
+  await runtime.dispatching(third.id, false, true, new Set([task.id, first.id]));
+  expect(runtime.state.messages.find((message) => message.id === third.id)!.queueSizeOnArrival).toBe(2);
+  expect(runtime.state.messages.find((message) => message.id === first.id)!.queueSizeOnArrival).toBe(1);
+  await runtime.dispatching(task.id, true, false, new Set());
+  expect(task.queueSizeOnArrival).toBeUndefined();
 });

@@ -30,6 +30,7 @@ export interface SubagentMessage {
   toolCallId?: string;
   dispatchMode?: "immediate" | "queued";
   dispatchReason?: SubagentDispatchReason;
+  queueSizeOnArrival?: number;
 }
 export interface SubagentState { agents: SubagentRecord[]; messages: SubagentMessage[] }
 export type SubagentInputActivity = "steer" | "mailbox";
@@ -155,11 +156,12 @@ export class SubagentRuntime {
     }
   }
 
-  async dispatching(id: string, triggerTurn: boolean, streaming: boolean): Promise<void> {
+  async dispatching(id: string, triggerTurn: boolean, streaming: boolean, readMessageIds: ReadonlySet<string>): Promise<void> {
     const message = this.state.messages.find((candidate) => candidate.id === id);
     if (!message) throw new Error(`Unknown subagent message: ${id}`);
     message.dispatchMode = triggerTurn && !streaming ? "immediate" : "queued";
     message.dispatchReason = streaming ? (this.waiters.has(message.to) ? "waiting" : "working") : triggerTurn ? "idle-task" : "idle-message";
+    if (message.dispatchMode === "queued") message.queueSizeOnArrival = unreadMessageCount(this.state, message.to, readMessageIds);
     await this.persist();
   }
 
@@ -268,4 +270,9 @@ export class SubagentRuntime {
     await Promise.all([...this.operations.values()]);
     await this.writes;
   }
+}
+
+/** Messages awaiting their first prepared model request, including mail already in context. */
+export function unreadMessageCount(state: SubagentState, recipient: string, readMessageIds: ReadonlySet<string>): number {
+  return state.messages.filter((message) => message.to === recipient && ["task", "message", "completion"].includes(message.kind) && message.delivery !== "failed" && !readMessageIds.has(message.id)).length;
 }

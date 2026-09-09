@@ -719,8 +719,8 @@ export abstract class BaseAgentRuntime implements WorkspaceAgentRuntime {
       for (const timer of this.live.terminalTimers.values()) clearTimeout(timer);
       if (outcome === "completed") this.live.working.completedAt = Date.now();
       else this.live.working.stoppedAt = Date.now();
-      this.stream(turboStream("replace", ids.itemSummaryContent(this.ctx, this.live.working.key), renderWorkingSummary(this.ctx, this.live.working), { method: "morph" }));
-      const turn = this.liveWorkingSection(this.live);
+      const turn = this.decorateTranscript([this.liveWorkingSection(this.live)]).find((item) => item.type === "working")!;
+      this.stream(turboStream("replace", ids.itemSummaryContent(this.ctx, turn.key), renderWorkingSummary(this.ctx, turn), { method: "morph" }));
       this.streamTurn(turboStream("update", ids.workingItems(this.ctx, turn.key), renderWorkingContent(this.ctx, turn)));
     }
     this.live = undefined;
@@ -728,39 +728,43 @@ export abstract class BaseAgentRuntime implements WorkspaceAgentRuntime {
 
   protected decorateTranscript(items: TranscriptItem[]): TranscriptItem[] { return items; }
 
-  private contributedRows = new Map<string, ContributedRow>();
+  private contributions = { rows: new Map<string, ContributedRow>(), summaries: new Map<string, string>() };
 
-  private contributedRowsForDisplay(): Map<string, ContributedRow> {
-    const result = new Map<string, ContributedRow>();
+  private contributionsForDisplay() {
+    const rows = new Map<string, ContributedRow>();
+    const summaries = new Map<string, string>();
     const visit = (items: TranscriptItem[], parent: string, turnId?: string) => {
       for (const [index, item] of items.entries()) {
-        if (item.type === "working") visit(item.items, ids.workingItems(this.ctx, item.key), item.key);
+        if (item.type === "working") {
+          summaries.set(ids.itemSummaryContent(this.ctx, item.key), renderWorkingSummary(this.ctx, item));
+          visit(item.items, ids.workingItems(this.ctx, item.key), item.key);
+        }
         if (item.type !== "extension") continue;
-        result.set(ids.item(this.ctx, item.key), {
+        rows.set(ids.item(this.ctx, item.key), {
           html: renderTranscriptItem(this.ctx, item), parent, turnId,
           next: items[index + 1] ? ids.item(this.ctx, items[index + 1]!.key) : undefined,
         });
       }
     };
     visit(this.itemsForDisplay(), ids.transcript(this.ctx));
-    return result;
+    return { rows, summaries };
   }
 
   protected captureContributedRows(): void {
-    this.contributedRows = this.contributedRowsForDisplay();
+    this.contributions = this.contributionsForDisplay();
   }
 
-  /** Reconcile only contributed rows. Host text/tool streaming remains authoritative. */
+  /** Reconcile contributed rows and run summaries without replacing host text/tool streams. */
   protected refreshContributedRows(): void {
-    const current = this.contributedRowsForDisplay();
+    const current = this.contributionsForDisplay();
     const updates = new Map<string | undefined, string>();
     const append = (turnId: string | undefined, html: string): void => { updates.set(turnId, (updates.get(turnId) ?? "") + html); };
-    for (const [id, previous] of this.contributedRows) {
-      if (!current.has(id)) append(previous.turnId, turboStream("remove", id));
+    for (const [id, previous] of this.contributions.rows) {
+      if (!current.rows.has(id)) append(previous.turnId, turboStream("remove", id));
     }
     // Insert backwards so a new row's next sibling already exists.
-    for (const [id, item] of [...current].reverse()) {
-      const previous = this.contributedRows.get(id);
+    for (const [id, item] of [...current.rows].reverse()) {
+      const previous = this.contributions.rows.get(id);
       const moved = previous !== undefined && (previous.parent !== item.parent || previous.next !== item.next);
       if (previous?.html === item.html && !moved) continue;
       if (moved) append(previous.turnId, turboStream("remove", id));
@@ -769,7 +773,10 @@ export abstract class BaseAgentRuntime implements WorkspaceAgentRuntime {
         ? turboStream("replace", id, item.html)
         : item.next ? turboStream("before", item.next, item.html) : turboStream("append", item.parent, item.html));
     }
-    this.contributedRows = current;
+    for (const [id, html] of current.summaries) {
+      if (this.contributions.summaries.get(id) !== html) append(undefined, turboStream("replace", id, html, { method: "morph" }));
+    }
+    this.contributions = current;
     for (const [turnId, html] of updates) {
       if (turnId) this.streamTurn(html, undefined, turnId);
       else this.stream(html);

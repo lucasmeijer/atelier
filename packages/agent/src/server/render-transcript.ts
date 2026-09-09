@@ -102,7 +102,7 @@ export function renderWorkingSummary(ctx: AgentRenderContext, section: Omit<Work
     attributesHtml: active ? `data-controller="agent-elapsed" data-agent-elapsed-since-value="${section.startedAt}" data-agent-elapsed-prefix-value="Working for "` : undefined,
     textAttributesHtml: active ? 'data-agent-elapsed-target="time"' : undefined,
   }, {
-    disclosure: true, leadingHtml: status, trailingHtml: active ? "" : renderWorkingTiming(section),
+    disclosure: true, leadingHtml: status, trailingHtml: `${active ? "" : renderWorkingTiming(section)}${section.unreadQueueCount ? `<span class="agent-working-timing">${section.unreadQueueCount} unread ${section.unreadQueueCount === 1 ? "message" : "messages"} in queue</span>` : ""}`,
     summaryId: ids.itemSummaryContent(ctx, section.key),
   });
 }

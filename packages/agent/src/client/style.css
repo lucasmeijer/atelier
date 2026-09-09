@@ -288,9 +288,12 @@
 .agent-item:has(.agent-final) { margin-top: .5rem; margin-bottom: .75rem; }
 .agent-working { width: 100%; margin: 2px 0; }
 .agent-working > summary.action-item { width: fit-content; max-width: 100%; }
+/* Keep the run label readable; secondary statistics yield space first. */
+.agent-working > summary > .action-item__content { flex: 0 0 auto; }
+.agent-working > summary > .action-item__metadata { flex: 0 1 auto; min-width: 0; overflow: hidden; }
 .agent-working > summary, .agent-tool > summary { list-style: none; cursor: pointer; }
 .agent-working > summary::-webkit-details-marker, .agent-tool > summary::-webkit-details-marker { display: none; }
-.agent-working-timing { color: var(--text-muted); }
+.agent-working-timing { min-width: 0; overflow: hidden; white-space: nowrap; text-overflow: ellipsis; color: var(--text-muted); }
 .agent-working-empty { margin: 4px 0; color: var(--text-muted); }
 .agent-working-items { margin: 2px 0 4px; }
 .agent-working-items > .agent-item + .agent-item { margin-top: 8px; }

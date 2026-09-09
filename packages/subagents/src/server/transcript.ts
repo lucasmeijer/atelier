@@ -18,16 +18,25 @@ export class SubagentTranscript implements AgentDelegationTranscript {
     const state = subagentSnapshot(this.workspaceId);
     const own = state.agents.find((agent) => agent.id === this.conversationId);
     const branch = this.session.sessionManager.getBranch();
+    const deliveries = branch.filter((entry: any) => entry.type === "custom" && entry.customType === subagentDeliveryType)
+      .map((entry: any) => ({ id: entry.id, timestamp: Date.parse(entry.timestamp), batch: parseSubagentDelivery(entry.data, state.messages) }));
+    const readMessageIds = new Set<string>();
     const immediate = new Map<string, { envelope: string; format: "agent_message" | "user" }>();
-    for (const entry of branch.filter((entry: any) => entry.type === "custom" && entry.customType === subagentDeliveryType)) {
-      const batch = parseSubagentDelivery(entry.data, state.messages);
-      for (const message of batch.messages) if (message.immediate) immediate.set(message.id, { envelope: message.envelope, format: batch.format ?? "agent_message" });
+    for (const { batch } of deliveries) {
+      for (const message of batch.messages) {
+        readMessageIds.add(message.id);
+        if (message.immediate) immediate.set(message.id, { envelope: message.envelope, format: batch.format ?? "agent_message" });
+      }
     }
     const inheritedIds = new Set(branch.filter((entry: any) => entry.type === "custom_message" && entry.customType === "subagent").map((entry: any) => entry.details?.subagentMessageId));
-    const messages = state.messages.filter((message) => (message.to === this.conversationId || inheritedIds.has(message.id)) && ["task", "message", "completion"].includes(message.kind)).map((message) => communicationItem({
-      key: `communication:${message.id}`, text: message.text, anchor: message.id,
-      timestamp: Date.parse(message.timestamp),
-      communication: { id: message.id, rootId: own?.rootId ?? this.conversationId, agentId: message.from, path: agentPath(state, message.from), kind: message.kind, delivery: message.delivery, dispatchMode: message.dispatchMode, dispatchReason: message.dispatchReason, deliveredEnvelope: immediate.get(message.id)?.envelope, deliveredFormat: immediate.get(message.id)?.format },
+    const additions: AgentTranscriptAddition[] = state.messages.filter((message) => (message.to === this.conversationId || inheritedIds.has(message.id)) && ["task", "message", "completion"].includes(message.kind)).map((message) => ({
+      unread: message.to === this.conversationId && message.delivery !== "failed" && !readMessageIds.has(message.id),
+      placement: message.dispatchReason === "working" || message.dispatchReason === "waiting" ? { relation: "during-activity" as const } : undefined,
+      item: communicationItem({
+        key: `communication:${message.id}`, text: message.text, anchor: message.id,
+        timestamp: Date.parse(message.timestamp),
+        communication: { id: message.id, agentId: message.from, path: agentPath(state, message.from), kind: message.kind, delivery: message.delivery, dispatchMode: message.dispatchMode, dispatchReason: message.dispatchReason, queueSizeOnArrival: message.queueSizeOnArrival, immediateRead: immediate.get(message.id) },
+      }),
     }));
     const anchors: AgentTranscriptAnchor[] = [];
     for (const message of state.messages.filter((message) => message.from === this.conversationId)) {
@@ -37,11 +46,11 @@ export class SubagentTranscript implements AgentDelegationTranscript {
         if (message.text.startsWith("[completed] ")) anchors.push({ anchor: message.id, target: { finalText: message.text.slice("[completed] ".length), completedAt: Date.parse(message.timestamp) } });
       }
     }
-    const additions: AgentTranscriptAddition[] = messages.map((item) => ({ item }));
-    for (const entry of branch.filter((entry: any) => entry.type === "custom" && entry.customType === subagentDeliveryType)) {
-      const batch = queuedModelDelivery(parseSubagentDelivery(entry.data, state.messages));
+    for (const entry of deliveries) {
+      const batch = queuedModelDelivery(entry.batch);
       if (!batch) continue;
-      const item = communicationItem({ key: entry.id, timestamp: Date.parse(entry.timestamp), text: "", modelDelivery: batch });
+      const source = batch.messages.length === 1 ? state.messages.find((message) => message.id === batch.messages[0]!.id)! : undefined;
+      const item = communicationItem({ key: entry.id, timestamp: entry.timestamp, modelDelivery: batch, queuedSource: source ? { path: agentPath(state, source.from), kind: source.kind } : undefined });
       additions.push({ item, placement: { turnEntryId: batch.turnEntryId, relation: batch.duringActivity ? "during-turn" : "before-turn" } });
     }
     const boundary = branch.find((entry: any) => entry.type === "custom" && entry.customType === inheritedContextEntryType);
@@ -49,5 +58,4 @@ export class SubagentTranscript implements AgentDelegationTranscript {
       boundaryEntryId: boundary.id, source: agentPath(state, own!.parentId),
     } };
   }
-
 }

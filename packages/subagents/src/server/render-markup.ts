@@ -5,9 +5,9 @@ export function communicationCardHtml(rows: Array<{ label: string; html: string 
   return `<div class="agent-tool-detail"><table class="agent-communication-table"><tbody>${rows.map((row) => `<tr><th scope="row">${escapeHtml(row.label)}</th><td>${row.html}</td></tr>`).join("")}</tbody></table></div>`;
 }
 
-export function communicationTraceHtml(ctx: AgentRenderContext, agentId: string, messageId: string, label: string, path: string): string {
+export function communicationTraceHtml(ctx: AgentRenderContext, agentId: string, messageId: string, label: string): string {
   const query = new URLSearchParams({ child: agentId, message: messageId });
-  return `<a href="/workspaces/${encodeURIComponent(ctx.workspaceId)}/subagents/reveal?${escapeHtml(query.toString())}" data-turbo="false" class="agent-trace-link">${escapeHtml(label)}${path ? ` · ${escapeHtml(path)}` : ""}</a>`;
+  return `<a href="/workspaces/${encodeURIComponent(ctx.workspaceId)}/subagents/reveal?${escapeHtml(query.toString())}" data-turbo="false" class="agent-trace-link">${escapeHtml(label)}</a>`;
 }
 
 export function communicationEnvelopeHtml(envelope: string): string {

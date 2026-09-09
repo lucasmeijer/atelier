@@ -22,6 +22,7 @@ const recordSchema = Type.Object({
 const stateSchema = Type.Object({ agents: Type.Array(recordSchema), messages: Type.Array(Type.Object({
   id: Type.String(), from: Type.String(), to: Type.String(), text: Type.String(), timestamp: Type.String(),
   kind: Type.Union([Type.Literal("task"), Type.Literal("message"), Type.Literal("completion"), Type.Literal("interrupt"), Type.Literal("close"), Type.Literal("resume")]),
+  queueSizeOnArrival: Type.Optional(Type.Integer({ minimum: 0 })),
   delivery: Type.Union([Type.Literal("queued"), Type.Literal("delivered"), Type.Literal("failed")]), error: Type.Optional(Type.String()), toolCallId: Type.Optional(Type.String()), dispatchMode: Type.Optional(Type.Union([Type.Literal("immediate"), Type.Literal("queued")])), dispatchReason: Type.Optional(Type.Union([Type.Literal("idle-task"), Type.Literal("idle-message"), Type.Literal("working"), Type.Literal("waiting")])),
 })) });
 const coordinators = new Map<string, Promise<SubagentRuntime>>();
@@ -127,7 +128,8 @@ export function bindSubagentSession(workspaceId: string, id: string, session: an
       const immediate = triggerTurn && !streaming;
       pendingMail.add(message.id);
       try {
-        await Promise.all([coordinator.dispatching(message.id, triggerTurn, streaming), (async () => {
+        const readMessageIds = new Set<string>(session.sessionManager.getBranch().filter((entry: any) => entry.type === "custom" && entry.customType === subagentDeliveryType).flatMap((entry: any) => parseSubagentDelivery(entry.data, coordinator.state.messages).messages.map((message) => message.id)));
+        await Promise.all([coordinator.dispatching(message.id, triggerTurn, streaming, readMessageIds), (async () => {
           const custom = { customType: "subagent", content: messageEnvelope(coordinator.state, message), display: true, details: { subagentMessageId: message.id, kind: message.kind } };
           if (!immediate) {
             await session.sendCustomMessage(custom, { triggerTurn: streaming ? undefined : false, deliverAs: "steer" });

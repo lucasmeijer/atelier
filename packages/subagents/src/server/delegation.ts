@@ -25,7 +25,7 @@ const communicationTool: AgentToolPresentation = {
     const target = message ? agentPath(state, message.to) : String(args?.target ?? args?.task_name ?? "");
     return communicationCardHtml([
       { label: "Body", html: `<div class="agent-communication-body">${escapeHtml(String(args?.message ?? ""))}</div>` },
-      { label: "Recipient", html: message ? communicationTraceHtml(ctx, message.to, message.id, "Find message recipient", target) : escapeHtml(target) },
+      { label: "Recipient", html: message ? communicationTraceHtml(ctx, message.to, message.id, `Find message recipient · ${target}`) : escapeHtml(target) },
       ...(tool.status === "error" ? [{ label: "Error", html: `<div class="agent-error">${escapeHtml(tool.resultText ?? "")}</div>` }] : []),
     ]);
   },
