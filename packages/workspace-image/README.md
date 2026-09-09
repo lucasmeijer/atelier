@@ -17,7 +17,7 @@ packages/vscode/workspace-image.json
 
 The default workspace image is built from Atelier's package `workspace-image.json` files. It includes Docker CLI/daemon packages, Compose, Buildx, and `fuse-overlayfs`. Every workspace starts its own private nested Docker daemon automatically, without repository configuration. Without a shared runtime, the daemon uses `fuse-overlayfs` so inner image builds do not depend on kernel OverlayFS mounts inside the outer container's filesystem. Owned Linux installations use the shared-runtime startup described below. It stops with the workspace container and starts again when the workspace resumes. Image preloading is an optional optimization, independent of daemon startup.
 
-In local development, `bun run web` writes a temporary Docker build context under `/tmp`, ensures the deterministic local image tag exists before starting the dev server, and only builds when that image tag is missing from Docker. After Atelier builds a default, repository, or carrier image, it starts a non-blocking Docker prune for older unused Atelier images of the same kind. Images created after that build began are excluded, and Docker retains images referenced by containers.
+In local development, `bun run web` writes a temporary Docker build context under `/tmp`, ensures the deterministic local image tag exists before starting the dev server, and only builds when that image tag is missing from Docker (unless the existing explicit no-cache setting is enabled). This also applies to shared runtimes: a preloaded default is reused by both the dev launcher and its server without another build, publication or pull. Repository Dockerfiles still re-solve their current context. After Atelier builds a default, repository, or carrier image, it starts a non-blocking Docker prune for older unused Atelier images of the same kind. Images created after that build began are excluded, and Docker retains images referenced by containers.
 
 When publishing Atelier with `bun run image:publish`, the publish script also builds and pushes the corresponding default workspace image to:
 
@@ -36,9 +36,8 @@ missing or invalid declared runtime fails visibly; it does not fall back to FUSE
 Installations without a shared connection retain the original startup path.
 
 Each workspace receives a fresh client identity and passes the same installation
-connection to nested Atelier processes. The Linux Docker development launcher
-forwards that connection when running inside a workspace instead of starting a
-second adapter. Nesting uses distinct network ranges, with a current limit of 11
+connection to nested Atelier processes. Atelier running from source inside a
+workspace inherits that connection instead of starting a second adapter. Nesting uses distinct network ranges, with a current limit of 11
 private-runtime levels.
 
 Parking preserves the registration and private Docker state. Deletion removes the

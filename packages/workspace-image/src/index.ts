@@ -229,7 +229,7 @@ async function inspectDefaultWorkspaceImage(): Promise<string | undefined> {
 }
 
 async function ensureBuiltImage(contextDir: string, dockerfile: string, metadata: WorkspaceImageMetadata, kind: BuiltWorkspaceImageKind, options: ResolveWorkspaceImageOptions = {}): Promise<string> {
-  if (await imageExists(metadata.tag)) return metadata.tag;
+  if (process.env.ATELIER_WORKSPACE_IMAGE_NO_CACHE !== "1" && await imageExists(metadata.tag)) return metadata.tag;
   const task = startBuildTask(metadata.tag, metadata.modules, kind, dockerfile, contextDir, options);
   await waitForBuildTask(task, options);
   return metadata.tag;
@@ -243,6 +243,9 @@ async function resolveDefaultWorkspaceImage(options: ResolveWorkspaceImageOption
     await pullImage(descriptor.image, options);
     return descriptor.image;
   }
+  // Generated defaults are content-tagged. Both the dev launcher and its server
+  // must reuse a preloaded tag instead of independently solving the same image.
+  if (process.env.ATELIER_WORKSPACE_IMAGE_NO_CACHE !== "1" && await imageExists(descriptor.image)) return descriptor.image;
   const connection = await readDockerRuntimeConnection();
   if (connection?.buildServices) {
     const { contextDir, metadata } = descriptor.build;
