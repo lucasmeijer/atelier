@@ -23,7 +23,7 @@ trap 'cleanup' EXIT
 trap 'exit 143' TERM
 trap 'exit 130' INT
 instance="$(cat /proc/sys/kernel/random/uuid)"
-atelier-snapshotter --root "$runtime/store" --socket-dir "$runtime/sockets" --instance-id "$instance" &
+atelier-snapshotter --root "$runtime/store" --socket-dir "$runtime/sockets" --instance-id "$instance" --connection-file /.atelier/docker-runtime.json &
 snapshotter_pid=$!
 deadline=$((SECONDS + 30))
 while true; do
@@ -33,9 +33,11 @@ while true; do
   if [ "$SECONDS" -ge "$deadline" ]; then echo 'snapshotter readiness timed out' >&2; exit 1; fi
   sleep .05
 done
-chgrp "$socket_group" "$runtime/sockets" "$runtime/sockets/admin.sock"
-chmod 750 "$runtime/sockets"
-chmod 660 "$runtime/sockets/admin.sock"
+chgrp "$socket_group" "$runtime" "$runtime/sockets" "$runtime/sockets/admin.sock"
+chmod 750 "$runtime"
+# Trusted nested workspace users may have different host-aligned UIDs/GIDs.
+chmod 755 "$runtime/sockets"
+chmod 666 "$runtime/sockets/admin.sock"
 "$@" &
 app_pid=$!
 set +e

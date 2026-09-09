@@ -9,6 +9,7 @@ import (
 	"os"
 	"os/exec"
 	"path/filepath"
+	"strings"
 	"syscall"
 	"testing"
 	"time"
@@ -92,8 +93,42 @@ func TestDaemonReadinessAndRestoredClients(t *testing.T) {
 	}
 	stop(empty)
 
-	first := start("first", "--clients", "a,b")
+	first := start("first", "--connection-file", filepath.Join(root, "connection.json"))
 	ready("first")
+	descriptor, err := os.ReadFile(filepath.Join(root, "connection.json"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !strings.Contains(string(descriptor), `"depth":0`) {
+		t.Fatal("missing root connection", string(descriptor))
+	}
+	for _, id := range []string{"a", "b", "b"} {
+		req, err := http.NewRequest(http.MethodPost, "http://localhost/register?client="+id, nil)
+		if err != nil {
+			t.Fatal(err)
+		}
+		res, err := client.Do(req)
+		if err != nil {
+			t.Fatal(err)
+		}
+		res.Body.Close()
+		if res.StatusCode != 204 {
+			t.Fatal(res.Status)
+		}
+	}
+	invalid, err := http.NewRequest(http.MethodPost, "http://localhost/register?client=../escape", nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+	bad, err := client.Do(invalid)
+	if err != nil {
+		t.Fatal(err)
+	}
+	bad.Body.Close()
+	if bad.StatusCode != 400 {
+		t.Fatal("invalid identity accepted")
+	}
+
 	request, err := http.NewRequest(http.MethodPost, "http://localhost/retire?client=a", nil)
 	if err != nil {
 		t.Fatal(err)
@@ -105,6 +140,38 @@ func TestDaemonReadinessAndRestoredClients(t *testing.T) {
 	response.Body.Close()
 	if response.StatusCode != http.StatusNoContent {
 		t.Fatal(response.Status)
+	}
+	if _, err := os.Stat(filepath.Join(socketDir, "a.sock")); !os.IsNotExist(err) {
+		t.Fatal("retired socket remains", err)
+	}
+	reuse, err := http.NewRequest(http.MethodPost, "http://localhost/register?client=a", nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+	rejected, err := client.Do(reuse)
+	if err != nil {
+		t.Fatal(err)
+	}
+	rejected.Body.Close()
+	if rejected.StatusCode != 409 {
+		t.Fatal("retired identity reused")
+	}
+	for _, operation := range []struct {
+		path   string
+		status int
+	}{{"retire", 204}, {"register", 409}} {
+		req, err := http.NewRequest(http.MethodPost, "http://localhost/"+operation.path+"?client=never-registered", nil)
+		if err != nil {
+			t.Fatal(err)
+		}
+		res, err := client.Do(req)
+		if err != nil {
+			t.Fatal(err)
+		}
+		res.Body.Close()
+		if res.StatusCode != operation.status {
+			t.Fatal("late registration was not excluded", res.Status)
+		}
 	}
 	stop(first)
 

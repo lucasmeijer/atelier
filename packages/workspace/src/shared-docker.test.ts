@@ -17,7 +17,7 @@ function plan(): WorkspaceDockerPlan {
 
 test("private Docker selects its private containerd and the supplied shared snapshotter", () => {
   const config = sharedDockerConfiguration(runtime);
-  expect(config.containerd).toContain('address = "/run/atelier-snapshotter/workspace-a.sock"');
+  expect(config.containerd).toContain('address = "/installation/sockets/workspace-a.sock"');
   const docker = JSON.parse(config.docker);
   expect(docker.containerd).toBe("/run/containerd/containerd.sock");
   expect(docker["storage-driver"]).toBe("shared-overlay");
@@ -33,7 +33,7 @@ test("provisioning supplies restartable socket mount, same-path backing and ephe
     await prepareSharedDocker(p, directory);
     expect(p.extraArgs).toEqual(["--privileged", "--tmpfs", "/run"]);
     expect(p.mounts).toEqual([
-      { type: "bind", source: "/installation/sockets", target: "/run/atelier-snapshotter", readonly: true },
+      { type: "bind", source: "/installation/sockets", target: "/installation/sockets", readonly: true },
       { type: "bind", source: runtime.snapshotterRoot, target: runtime.snapshotterRoot },
     ]);
     expect(p.containerFiles.map((file) => file.target)).toEqual(["/.atelier/containerd.toml", "/.atelier/docker-daemon.json"]);
@@ -47,11 +47,4 @@ test("invalid shared paths fail instead of selecting a private cache", () => {
   for (const snapshotterRoot of ["relative", "/storage,readonly", "/storage\ninvalid"]) {
     expect(() => sharedDockerConfiguration({ ...runtime, snapshotterRoot })).toThrow("shared Docker paths");
   }
-});
-
-test("carrier preload cannot silently replace a shared runtime", async () => {
-  const p = plan();
-  p.preloadDockerImages = ["ubuntu:24.04"];
-  await expect(prepareSharedDocker(p, "/unused")).rejects.toThrow("carrier preloading");
-  expect(p.mounts).toEqual([]);
 });

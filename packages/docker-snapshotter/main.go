@@ -12,6 +12,7 @@ import (
 	"os"
 	"os/signal"
 	"path/filepath"
+	"regexp"
 	"strings"
 	"sync"
 	"syscall"
@@ -29,6 +30,8 @@ import (
 )
 
 const refLabel = "containerd.io/snapshot.ref"
+
+var clientPattern = regexp.MustCompile(`^[a-zA-Z0-9_-]{1,48}$`)
 
 type Alias struct {
 	Info    snapshots.Info
@@ -357,10 +360,9 @@ func (c *Client) Close() error { return nil }
 func (s *Store) retire(ctx context.Context, id string) error {
 	s.Lock()
 	defer s.Unlock()
-	m, ok := s.state.Clients[id]
-	if !ok {
-		return errdefs.ErrNotFound
-	}
+	// Tombstone even an unseen identity: retirement may overtake a timed-out
+	// registration request, which must not resurrect a deleted workspace later.
+	m := s.state.Clients[id]
 	// Remove leaves first: Docker's private committed init snapshot parents its
 	// writable container snapshot. Neither is shared immutable image backing.
 	for len(m) > 0 {
@@ -420,6 +422,7 @@ func main() {
 	root := flag.String("root", "", "absolute backend store")
 	dir := flag.String("socket-dir", "", "absolute socket directory")
 	clients := flag.String("clients", "", "comma separated fixed client IDs")
+	connectionFile := flag.String("connection-file", "", "publish installation connection descriptor")
 	instance := flag.String("instance-id", fmt.Sprint(os.Getpid()), "readiness identity")
 	flag.Parse()
 	slog.SetDefault(slog.New(slog.NewJSONHandler(os.Stdout, nil)))
@@ -440,7 +443,8 @@ func main() {
 	} else if !os.IsNotExist(e) {
 		must(e)
 	}
-	servers := []*grpc.Server{}
+	var serviceLock sync.Mutex
+	servers := map[string]*grpc.Server{}
 	clientIDs := map[string]bool{}
 	if *clients != "" {
 		for _, id := range strings.Split(*clients, ",") {
@@ -452,9 +456,17 @@ func main() {
 			clientIDs[id] = true
 		}
 	}
-	for id := range clientIDs {
-		if id == "" || strings.ContainsAny(id, "/\\.") {
-			panic("invalid client ID")
+	register := func(id string) error {
+		if !clientPattern.MatchString(id) || len(filepath.Join(*dir, id+".sock")) >= 108 {
+			return errdefs.ErrInvalidArgument
+		}
+		s.Lock()
+		defer s.Unlock()
+		if s.state.Retired[id] {
+			return errdefs.ErrFailedPrecondition
+		}
+		if servers[id] != nil {
+			return nil
 		}
 		if s.state.Clients[id] == nil {
 			s.state.Clients[id] = map[string]Alias{}
@@ -473,8 +485,19 @@ func main() {
 		}))
 		api.RegisterSnapshotsServer(g, snapshotservice.FromSnapshotter(&Client{s, id}))
 		l := listen(filepath.Join(*dir, id+".sock"))
-		go func() { must(g.Serve(l)) }()
-		servers = append(servers, g)
+		go func() {
+			if err := g.Serve(l); err != nil && err != grpc.ErrServerStopped {
+				panic(err)
+			}
+		}()
+		servers[id] = g
+		s.save()
+		slog.Info("client-ready", "client", id)
+		return nil
+	}
+
+	for id := range clientIDs {
+		must(register(id))
 	}
 	s.save()
 	mux := http.NewServeMux()
@@ -487,13 +510,47 @@ func main() {
 		w.Header().Set("Content-Type", "application/json")
 		must(json.NewEncoder(w).Encode(s.state))
 	})
-	mux.HandleFunc("POST /retire", func(w http.ResponseWriter, r *http.Request) {
-		if e := s.retire(r.Context(), r.URL.Query().Get("client")); e != nil {
-			http.Error(w, e.Error(), 500)
+	mux.HandleFunc("POST /register", func(w http.ResponseWriter, r *http.Request) {
+		serviceLock.Lock()
+		defer serviceLock.Unlock()
+		if err := register(r.URL.Query().Get("client")); err != nil {
+			status := http.StatusInternalServerError
+			if errdefs.IsInvalidArgument(err) {
+				status = http.StatusBadRequest
+			}
+			if errdefs.IsFailedPrecondition(err) {
+				status = http.StatusConflict
+			}
+			http.Error(w, err.Error(), status)
 			return
+		}
+		w.WriteHeader(http.StatusNoContent)
+	})
+	mux.HandleFunc("POST /retire", func(w http.ResponseWriter, r *http.Request) {
+		serviceLock.Lock()
+		defer serviceLock.Unlock()
+		id := r.URL.Query().Get("client")
+		if !clientPattern.MatchString(id) {
+			http.Error(w, "invalid client identity", http.StatusBadRequest)
+			return
+		}
+		if e := s.retire(r.Context(), id); e != nil {
+			http.Error(w, e.Error(), http.StatusInternalServerError)
+			return
+		}
+		if server := servers[id]; server != nil {
+			server.Stop()
+			delete(servers, id)
 		}
 		w.WriteHeader(204)
 	})
+	if *connectionFile != "" {
+		descriptor, err := json.Marshal(map[string]any{"version": 1, "adminSocket": filepath.Join(*dir, "admin.sock"), "snapshotterRoot": *root, "socketDirectory": *dir, "depth": 0})
+		must(err)
+		must(os.MkdirAll(filepath.Dir(*connectionFile), 0755))
+		must(os.WriteFile(*connectionFile+".tmp", descriptor, 0644))
+		must(os.Rename(*connectionFile+".tmp", *connectionFile))
+	}
 	admin := &http.Server{Handler: mux}
 	al := listen(filepath.Join(*dir, "admin.sock"))
 	go func() {
@@ -502,12 +559,15 @@ func main() {
 			must(e)
 		}
 	}()
+
 	slog.Info("ready", "root", *root, "socket_dir", *dir, "clients", clientIDs, "version", "containerd-v2.2.2")
 	stop := make(chan os.Signal, 1)
 	signal.Notify(stop, syscall.SIGTERM, syscall.SIGINT)
 	<-stop
+	must(admin.Shutdown(context.Background()))
+	serviceLock.Lock()
 	for _, g := range servers {
 		g.GracefulStop()
 	}
-	must(admin.Close())
+	serviceLock.Unlock()
 }

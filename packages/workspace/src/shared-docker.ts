@@ -1,4 +1,4 @@
-import { basename, dirname, isAbsolute, join } from "node:path";
+import { dirname, isAbsolute, join } from "node:path";
 import { mkdir, writeFile } from "node:fs/promises";
 import type { WorkspaceDockerPlan } from "./types.ts";
 
@@ -15,7 +15,7 @@ export function sharedDockerConfiguration(runtime: SharedDockerRuntime) {
   for (const path of [runtime.snapshotterSocket, runtime.snapshotterRoot]) {
     if (!isAbsolute(path) || /[\n\r,]/.test(path)) throw new Error("shared Docker paths must be absolute and contain no commas or newlines");
   }
-  const socketDirectory = "/run/atelier-snapshotter";
+  const socketDirectory = dirname(runtime.snapshotterSocket);
   return {
     socketDirectory,
     containerd: `version = 3
@@ -26,7 +26,7 @@ disabled_plugins = ["io.containerd.cri.v1.images", "io.containerd.cri.v1.runtime
   address = "/run/containerd/containerd.sock"
 [proxy_plugins.shared-overlay]
   type = "snapshot"
-  address = ${JSON.stringify(join(socketDirectory, basename(runtime.snapshotterSocket)))}
+  address = ${JSON.stringify(runtime.snapshotterSocket)}
 `,
     docker: JSON.stringify({
       hosts: ["unix:///run/docker.sock"],
@@ -47,7 +47,6 @@ disabled_plugins = ["io.containerd.cri.v1.images", "io.containerd.cri.v1.runtime
 
 export async function prepareSharedDocker(plan: WorkspaceDockerPlan, directory: string): Promise<void> {
   const runtime = plan.sharedDocker!;
-  if (plan.preloadDockerImages?.length) throw new Error("shared Docker does not support carrier preloading; image prewarming must be integrated separately");
   const config = sharedDockerConfiguration(runtime);
   await mkdir(directory, { recursive: true });
   for (const [name, content] of [["containerd.toml", config.containerd], ["docker-daemon.json", config.docker]] as const) {

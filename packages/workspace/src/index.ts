@@ -8,6 +8,7 @@ import { isWorkspaceAppPort, workspaceGatewayPort, type WorkspaceGateway, type W
 import { ensureDefaultWorkspaceImage, inspectWorkspaceImage, nativeLinuxDockerPlatform, nestedDockerDaemonInitScript, prepareWorkspaceImageCarrier, resolveDockerImagePreload, resolveWorkspaceImageResolution, type WorkspaceImageResolution } from "@atelier/workspace-image";
 import { Type } from "typebox";
 import { Value } from "typebox/value";
+import { readDockerRuntimeConnection, registerWorkspaceDocker, retireWorkspaceDocker } from "./docker-runtime.ts";
 import { prepareSharedDocker } from "./shared-docker.ts";
 export type { SharedDockerRuntime } from "./shared-docker.ts";
 import { seedConfigInstallScript } from "./startup-scripts.ts";
@@ -548,7 +549,11 @@ export async function createWorkspace(options: CreateWorkspaceOptions = {}): Pro
       await applyRepoWorkspaceManifest(source.worktreePath, activePlan);
       await options.events?.emit("workspace_plan_prepare", { workspaceId: id, init, context, workHostPath: source.worktreePath, workContainerPath: workspaceRoot, plan: activePlan });
     });
-    const carrierPlatform = activePlan.preloadDockerImages?.length ? await nativeLinuxDockerPlatform() : undefined;
+    const sharedConnection = await readDockerRuntimeConnection();
+    if (sharedConnection) {
+      await provisionStep(options.events, id, "workspace.docker-runtime", "Register private Docker runtime", () => registerWorkspaceDocker(activePlan, atelierDataPath(getAtelierRuntimeContext(), "workspaces", id, "docker-runtime"), sharedConnection));
+    }
+    const carrierPlatform = !activePlan.sharedDocker && activePlan.preloadDockerImages?.length ? await nativeLinuxDockerPlatform() : undefined;
     let imageResolution: WorkspaceImageResolution | undefined;
     if (!activePlan.image && !forkImage) {
       const configuration: WorkspaceImageConfigureEvent = { init };
@@ -563,6 +568,11 @@ export async function createWorkspace(options: CreateWorkspaceOptions = {}): Pro
       await prepareSharedDocker(activePlan, atelierDataPath(getAtelierRuntimeContext(), "workspaces", id, "docker-runtime"));
     } else {
       activePlan.initScripts.push(nestedDockerDaemonInitScript());
+    }
+    if (activePlan.sharedDocker && activePlan.preloadDockerImages?.length) {
+      const resolution = imageResolution ?? { image: activePlan.image!, defaultImage: activePlan.preloadDockerImages.includes("default-atelier-workspace-image") ? await ensureDefaultWorkspaceImage() : activePlan.image! };
+      const preload = await provisionStep(options.events, id, "workspace.docker-images", "Resolve Docker image prewarming", () => resolveDockerImagePreload({ specs: activePlan.preloadDockerImages!, workspaceResolution: resolution, events: options.events, workspaceId: id }));
+      activePlan.initScripts.unshift(...preload.images.map((image) => [`docker pull ${shellQuote(image.sourceRef)}`, ...image.aliases.map((alias) => `docker tag ${shellQuote(image.sourceRef)} ${shellQuote(alias)}`)].join("\n")));
     }
     if (activePlan.preloadDockerImages?.length && imageResolution && carrierPlatform) {
       const preload = await provisionStep(options.events, id, "workspace.docker-images", "Resolve nested Docker images", () => resolveDockerImagePreload({ specs: activePlan.preloadDockerImages!, workspaceResolution: imageResolution, events: options.events, workspaceId: id }), { output: (result) => result.images.map((image) => `${image.sourceRef} ${image.imageId}${image.aliases.length ? `\n  aliases: ${image.aliases.join(", ")}` : ""}`).join("\n") });
@@ -600,9 +610,15 @@ export async function createWorkspace(options: CreateWorkspaceOptions = {}): Pro
     });
     await provisionStep(options.events, id, "workspace.startup", "Wait for workspace startup", () => waitForWorkspaceStartup(id), { output: (log) => log });
   } catch (error) {
-    await runDocker(["rm", "-f", workspaceContainerName(id)]).catch(() => undefined);
-    await Promise.all((plan?.cleanup ?? []).map((cleanup) => Promise.resolve(cleanup()).catch(() => undefined)));
-    await deleteWorkspaceWorkDir(id).catch(() => undefined);
+    try {
+      const removed = await runDocker(["rm", "-f", workspaceContainerName(id)]);
+      if (removed.exitCode !== 0 && !removed.stderr.includes("No such container")) throw new Error(removed.stderr.trim() || "could not remove failed workspace container");
+      await retireWorkspaceDocker(atelierDataPath(getAtelierRuntimeContext(), "workspaces", id, "docker-runtime"));
+      await Promise.all((plan?.cleanup ?? []).map((cleanup) => cleanup()));
+      await deleteWorkspaceWorkDir(id);
+    } catch (cleanupError) {
+      throw new AggregateError([error, cleanupError], `workspace ${id} provisioning and cleanup failed; ownership records retained`);
+    }
     throw error;
   }
   return { id };
@@ -649,7 +665,7 @@ export async function workspacePortBackend(id: string, port: number, pathAndSear
 }
 
 async function currentWorkspaceImageId(sourcePath: string, dockerfile?: string): Promise<string | undefined> {
-  return await inspectWorkspaceImage({ sourcePath, dockerfile, preloadImages: (await readRepoWorkspaceManifest(sourcePath))?.docker?.preloadImages });
+  return await inspectWorkspaceImage({ sourcePath, dockerfile, preloadImages: await readDockerRuntimeConnection() ? undefined : (await readRepoWorkspaceManifest(sourcePath))?.docker?.preloadImages });
 }
 
 export async function workspaceImageOutdated(id: string, container = workspaceContainerName(id), events?: AtelierEventBus): Promise<boolean> {
@@ -701,6 +717,7 @@ export async function deleteWorkspace(id: string, options: DeleteWorkspaceOption
     if (issues.length > 0) throw new AtelierCoreError("workspace_delete_blocked", formatDeleteBlockedMessage(id, issues), { workspaceId: id, issues });
   }
   if (containerExists) await requireDocker(["rm", "-f", workspaceContainerName(id)]);
+  await retireWorkspaceDocker(atelierDataPath(getAtelierRuntimeContext(), "workspaces", id, "docker-runtime"));
   await retireWorkspaceId(id);
   workspaceGatewayCache.delete(workspaceGatewayCacheKey(id));
   await options.events?.emit("workspace_deleted", { workspaceId: id });

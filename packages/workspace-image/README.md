@@ -27,26 +27,29 @@ ghcr.io/lucasmeijer/atelier-workspace:<hash>
 
 The Atelier app image is built with that exact default workspace image reference baked into `/app/.atelier-default-workspace-image`.
 
-## Shared-runtime workspace startup (integration in progress)
+## Shared-runtime workspace startup
 
-The default image also includes a supervised private Docker/containerd startup
-command. When the installation supplies `WorkspaceDockerPlan.sharedDocker`,
-provisioning selects that command and supplies the workspace-specific runtime
-configuration and mounts. Docker and containerd become ready before the workspace
-startup command runs. If either daemon fails, the workspace exits with an error.
-A missing shared runtime fails startup rather than creating a separate cache.
+In an installation with a shared Docker connection, new workspaces automatically
+register a private runtime and use the supervised Docker/containerd startup command
+in the default image. Docker becomes ready before workspace startup continues. A
+missing or invalid declared runtime fails visibly; it does not fall back to FUSE.
+Installations without a shared connection retain the original startup path.
 
-This path preserves private Docker state across workspace stop/start and does not
-change repository Dockerfiles. It requires privileged Linux with cgroup v2 and a
-prepared shared runtime. The installation owner must allocate the client identity,
-supply native filesystem-backed storage, choose nonoverlapping network ranges, and
-retire the client after workspace deletion. Those installation lifecycle actions
-are not wired up yet. Carrier preloading and shared startup cannot be combined.
+Each workspace receives a fresh client identity and passes the same installation
+connection to nested Atelier processes. The Linux Docker development launcher
+forwards that connection when running inside a workspace instead of starting a
+second adapter. Nesting uses distinct network ranges, with a current limit of 11
+private-runtime levels.
 
-Existing installations still use the private FUSE startup described above until
-an installation supplies the shared runtime; there is no automatic conversion of
-existing Docker stores. No repository setting or new environment variable enables
-this path.
+Parking preserves the registration and private Docker state. Deletion removes the
+container before retiring its client. Failed provisioning also retires the client;
+if cleanup fails, its ownership record is retained for a later forced deletion
+rather than discarded. Existing workspace stores are not converted.
+
+Declared image preloads use ordinary pulls and aliases in the shared runtime, not
+carrier images. References must be pullable; locally built, unpublished images need
+the still-pending shared builder/registry integration. No repository setting or new
+environment variable is required to select the shared runtime.
 
 ## Repository Dockerfile
 

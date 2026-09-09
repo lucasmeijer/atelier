@@ -2,9 +2,8 @@
 
 The Atelier container image builds and includes this experimental adapter. The
 Linux installer and Linux Docker development launcher explicitly start an owned
-instance alongside the app. Workspace provisioning can consume a shared runtime,
-but automatic client registration and default shared-workspace activation are
-still outstanding.
+instance alongside the app. New workspaces automatically register their private
+runtimes with that installation; existing workspace stores are not converted.
 
 ## Installation behavior
 
@@ -12,8 +11,9 @@ still outstanding.
   The app waits for that particular instance to become ready and continues to run
   as an unprivileged user. The adapter runs as root in the same container.
 - Starting the image without that option does not create another adapter. Nested
-  installations must not accidentally become owners of a second cache; automatic
-  inherited-runtime discovery is not implemented yet.
+  installations use the connection supplied by their containing workspace. The
+  Docker development launcher forwards its connection and mounts instead of
+  starting another owner.
 - Owned startup requires dedicated persistent backing at the same absolute path
   seen by Docker. The installer supplies the bind mount and privileged execution.
   No host shared-mount setup or additional systemd unit is required.
@@ -23,8 +23,14 @@ still outstanding.
 - The self-update installer contract has changed. Upgrading from the previous
   contract requires rerunning the installer. Subsequent self-updates retain the
   runtime mount, ownership option and privileged execution.
-- This step does not start a registry or BuildKit, allocate workspace clients, or
-  switch existing workspaces away from their current Docker stores.
+- Workspace creation records a fresh client identity before registering it. The
+  same request is idempotent; retirement cannot be undone by a late registration.
+  Deletion and failed provisioning retire their client after removing the container.
+  Cleanup errors preserve the record rather than losing track of retained data.
+- Unix administrative access is trusted within the mounts supplied to workspaces,
+  including users with different host-aligned UIDs. It is not a hostile-tenant seam.
+- Registry and BuildKit ownership are still pending. Existing workspaces are not
+  switched away from their current Docker stores.
 
 ## Observable behavior we care about
 
@@ -72,8 +78,9 @@ Other limits:
   not implemented. Private container layers are reclaimed on normal cleanup.
 - Concurrent cold requests can duplicate downloading and extraction work before
   retaining one completed copy.
-- Client identities are allocated at startup. Dynamic workspace registration and
-  automatic cleanup after failed provisioning are not integrated.
+- Dynamic registration, normal deletion and failed-provision cleanup are integrated.
+  Reconciliation after an abrupt app crash still requires work; retained ownership
+  records allow deletion to be retried after the adapter becomes available.
 - Snapshot parent rebasing is unsupported. This is not a complete implementation
   of every snapshotter extension.
 - Compose as a whole, Docker Desktop, other runtime versions/platforms and

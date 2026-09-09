@@ -1,5 +1,6 @@
 #!/usr/bin/env bun
 
+import { inheritedDockerMountArgs, readDockerRuntimeConnection } from "../packages/workspace/src/docker-runtime.ts";
 import { homedir, platform } from "node:os";
 import { join, resolve } from "node:path";
 
@@ -126,6 +127,8 @@ function unique(values: string[]): string[] {
 const options = parseArgs(process.argv.slice(2));
 const imageRef = `${options.image}:${options.tag}`;
 const useHostNetwork = platform() === "linux";
+const inheritedDocker = await readDockerRuntimeConnection();
+const ownSnapshotter = useHostNetwork && !inheritedDocker;
 const publish = options.bind ? `${options.bind}:${options.port}:3000` : `${options.port}:3000`;
 const proxyPublish = options.bind ? `${options.bind}:41000-41999:41000-41999` : "41000-41999:41000-41999";
 
@@ -153,7 +156,8 @@ const runArgs = [
   "--name", options.name,
   "--label", "com.atelier.type=server",
   "--init",
-  ...(useHostNetwork ? ["--privileged", "--mount", `type=bind,src=${options.dataDir}/docker-runtime,dst=${options.dataDir}/docker-runtime`] : []),
+  ...(ownSnapshotter ? ["--privileged", "--mount", `type=bind,src=${options.dataDir}/docker-runtime,dst=${options.dataDir}/docker-runtime`] : []),
+  ...(inheritedDocker ? ["--privileged", ...inheritedDockerMountArgs(inheritedDocker)] : []),
   ...(useHostNetwork ? ["--network", "host"] : ["-p", publish, "-p", proxyPublish]),
   "-v", "/var/run/docker.sock:/var/run/docker.sock",
   "--mount", `type=bind,src=${options.dataDir},dst=/data/atelier`,
@@ -161,7 +165,7 @@ const runArgs = [
   "--env", `ATELIER_DOCKER_HOST_DATA_DIR=${options.dataDir}`,
   ...(useHostNetwork ? ["--env", `PORT=${options.port}`, ...(options.bind ? ["--env", `HOST=${options.bind}`] : [])] : []),
   imageRef,
-  ...(useHostNetwork ? ["--own-snapshotter"] : []),
+  ...(ownSnapshotter ? ["--own-snapshotter"] : []),
 ];
 
 console.log(`Starting Atelier container ${options.name}`);
