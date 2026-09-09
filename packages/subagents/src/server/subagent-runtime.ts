@@ -136,7 +136,8 @@ export class SubagentRuntime {
 
   private async deliver(from: string, to: string, kind: SubagentMessage["kind"], text: string, triggerTurn: boolean, signal?: AbortSignal, toolCallId?: string): Promise<SubagentMessage> {
     if (this.stopping) throw new Error("Workspace is shutting down.");
-    if (!text.trim()) throw new Error("message must not be empty.");
+    // Like Codex, completion reports may carry no assistant text.
+    if (kind !== "completion" && !text.trim()) throw new Error("message must not be empty.");
     const message: SubagentMessage = { id: randomUUID(), from, to, kind, text, timestamp: new Date().toISOString(), delivery: "queued", toolCallId };
     this.state.messages.push(message);
     await this.persist();

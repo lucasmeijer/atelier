@@ -20,6 +20,13 @@ describe("pinned Codex V2 plaintext protocol", () => {
     expect(messageEnvelope(state, { ...message, kind: "completion", text: "Done." })).toBe("Message Type: FINAL_ANSWER\nTask name: /root\nSender: /root/review\nPayload:\nDone.");
   });
 
+  test.each(["", " \n\t"])("blank completion %j retains the FINAL_ANSWER envelope", (text) => {
+    const completion = { ...message, kind: "completion" as const, text };
+    const envelope = `Message Type: FINAL_ANSWER\nTask name: /root\nSender: /root/review\nPayload:\n${text}`;
+    expect(messageEnvelope(state, completion)).toBe(envelope);
+    expect(modelMessage(state, completion).content).toEqual([{ type: "input_text", text: envelope }]);
+  });
+
   test("emits the native AgentMessage input item, not a user or assistant role message", () => {
     expect(modelMessage(state, message)).toEqual({ type: "agent_message", author: "/root/review", recipient: "/root", content: [{ type: "input_text", text: "Message Type: MESSAGE\nTask name: /root\nSender: /root/review\nPayload:\nProgress <one> & two" }] });
     const bridge = new SubagentModelInput();
