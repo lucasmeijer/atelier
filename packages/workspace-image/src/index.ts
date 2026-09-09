@@ -10,11 +10,12 @@ import { parseWorkspaceImageMetadata, type WorkspaceImageMetadata } from "./meta
 import { pruneSupersededWorkspaceImages, workspaceImageKindLabel, type WorkspaceImageKind } from "./prune.ts";
 import { dockerImageStoreQueue, workspaceImageStoreWaitReporter } from "./image-store-queue.ts";
 import { readDockerRuntimeConnection } from "./runtime-connection.ts";
-import { buildSharedWorkspaceImage, sharedWorkspaceImageTag } from "./shared-build.ts";
+import { buildSharedWorkspaceImage, sharedWorkspaceImageTag, type SharedWorkspaceBuild } from "./shared-build.ts";
 import { dockerServerPlatform, nativeImageExists as imageExists } from "./local-images.ts";
 
 export * from "./carrier.ts";
 export * from "./runtime-connection.ts";
+export { prepareSharedImagePreload } from "./shared-preload.ts";
 
 type BuiltWorkspaceImageKind = Exclude<WorkspaceImageKind, "carrier">;
 
@@ -171,6 +172,22 @@ async function waitForBuildTask(task: WorkspaceImageBuildTask, options: ResolveW
   }
 }
 
+async function runSharedImageBuild(build: SharedWorkspaceBuild, metadata: WorkspaceImageMetadata, options: ResolveWorkspaceImageOptions): Promise<string> {
+  const task: WorkspaceImageBuildTask = { tag: metadata.tag, modules: metadata.modules, output: "", promise: Promise.resolve() };
+  await emitImageStep(options.events, options.workspaceId, task, "running");
+  try {
+    const image = await dockerImageStoreQueue.run({ label: `Building workspace image ${metadata.tag}`, onWait: workspaceImageStoreWaitReporter({ events: options.events, workspaceId: options.workspaceId, parentId: "workspace.image" }) }, () => buildSharedWorkspaceImage({
+      ...build, noCache: process.env.ATELIER_WORKSPACE_IMAGE_NO_CACHE === "1",
+      onOutput: async (chunk) => { appendOutput(task, chunk); if (options.buildOutput === "inherit") process.stderr.write(chunk); await emitImageStep(options.events, options.workspaceId, task, "running"); },
+    }));
+    await emitImageStep(options.events, options.workspaceId, task, "done");
+    return image;
+  } catch (error) {
+    await emitImageStep(options.events, options.workspaceId, task, "failed", String(error));
+    throw error;
+  }
+}
+
 function generateContext(contextDir: string): void {
   const root = repoRoot();
   const script = join(root, "packages/workspace-image/scripts/build-context.mjs");
@@ -224,6 +241,14 @@ async function resolveDefaultWorkspaceImage(options: ResolveWorkspaceImageOption
   const descriptor = await defaultWorkspaceImageDescriptor();
   if (!descriptor.build) {
     await pullImage(descriptor.image, options);
+    return descriptor.image;
+  }
+  const connection = await readDockerRuntimeConnection();
+  if (connection?.buildServices) {
+    const { contextDir, metadata } = descriptor.build;
+    const dockerfile = join(contextDir, "Dockerfile");
+    await runSharedImageBuild({ kind: "default", connection, sourcePath: contextDir, dockerfile, originalDockerfile: dockerfile, tag: metadata.tag }, metadata, options);
+    // Preserve the generated content tag used by default-image aliases and builds.
     return descriptor.image;
   }
   return await ensureBuiltImage(descriptor.build.contextDir, join(descriptor.build.contextDir, "Dockerfile"), descriptor.build.metadata, "default", options);
@@ -451,20 +476,8 @@ export async function resolveWorkspaceImageResolution(options: ResolveWorkspaceI
   if (connection?.buildServices) {
     const sourcePath = options.sourcePath;
     metadata.tag = sharedWorkspaceImageTag(metadata.tag, sourcePath);
-    const task: WorkspaceImageBuildTask = { tag: metadata.tag, modules: metadata.modules, output: "", promise: Promise.resolve() };
-    await emitImageStep(options.events, options.workspaceId, task, "running");
-    try {
-      const image = await dockerImageStoreQueue.run({ label: `Building workspace image ${metadata.tag}`, onWait: workspaceImageStoreWaitReporter({ events: options.events, workspaceId: options.workspaceId, parentId: "workspace.image" }) }, () => buildSharedWorkspaceImage({
-        connection, sourcePath, dockerfile: buildDockerfile, originalDockerfile: dockerfile, baseImage, tag: metadata.tag,
-        noCache: process.env.ATELIER_WORKSPACE_IMAGE_NO_CACHE === "1",
-        onOutput: async (chunk) => { appendOutput(task, chunk); if (options.buildOutput === "inherit") process.stderr.write(chunk); await emitImageStep(options.events, options.workspaceId, task, "running"); },
-      }));
-      await emitImageStep(options.events, options.workspaceId, task, "done");
-      return { image, defaultImage: baseImage };
-    } catch (error) {
-      await emitImageStep(options.events, options.workspaceId, task, "failed", String(error));
-      throw error;
-    }
+    const image = await runSharedImageBuild({ kind: "repository", connection, sourcePath, dockerfile: buildDockerfile, originalDockerfile: dockerfile, baseImage, tag: metadata.tag }, metadata, options);
+    return { image, defaultImage: baseImage };
   }
   await tagAtelierWorkspaceBase(baseImage);
   const image = await ensureBuiltImage(options.sourcePath, buildDockerfile, metadata, "repository", options);

@@ -47,8 +47,16 @@ runtimes with that installation; existing workspace stores are not converted.
   selects the actual base image, including locally built bases. Each build solves
   the current context instead of trusting an existing Dockerfile-derived tag.
   Dockerfile-specific ignore rules take precedence over the context .dockerignore.
-- Default workspace-image generation and declared image preloads still use their
-  previous paths. Existing workspaces keep their current Docker stores.
+- Runtime default-image generation uses the shared builder too, preserving its
+  generated tag. Pre-baked image pulls and the standalone release-image scripts
+  remain unchanged. Existing workspaces keep their current Docker stores.
+- Tagged/local preload images are published before startup and pulled by digest
+  through the workspace's inherited socket, with their requested aliases restored.
+  Explicit upstream digest references retain their original pull path so their
+  manifest identity is not changed by platform-filtered republication.
+- Published build outputs can be reused and preloaded by metadata-only private
+  clients without exporting their missing compressed blobs again. Concurrent
+  same-process publications share one push and temporary-tag lifetime.
 
 ## Observable behavior we care about
 
@@ -100,8 +108,10 @@ Other limits:
 - Privileged, trusted Linux workspaces with one fixed ownership/unpack profile.
   Alternate UID/GID mappings and hostile-client isolation are not supported.
 - Graceful restart was exercised; recovery after an abrupt crash is not safe yet.
-- Publishing a base whose private Docker store lacks compressed blobs is still
-  subject to the export limitation above, unless it is already in the registry.
+- First publication of an image whose private Docker store lacks compressed blobs
+  is still subject to the export limitation above. Images already known to the
+  registry, including newly indexed build outputs, avoid that export. Older build
+  outputs can acquire the index by being solved again through the shared builder.
 - The existing image-outdated check does not detect arbitrary COPY-input edits;
   actual repository builds do re-solve those inputs. Shared-mode creator images
   are not automatically pruned while they may be awaiting container creation.

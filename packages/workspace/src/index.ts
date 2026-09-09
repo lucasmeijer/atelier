@@ -5,7 +5,7 @@ import { dirname, join } from "node:path";
 import { AtelierCoreError, atelierDataPath, createProcessFileLock, dockerHostAtelierDataPath, getAtelierRuntimeContext, gitHubCredentialHelperShellBody, invalidArguments, isJsonObject, requireDocker, runDocker, runDockerBuffer, shellQuote, type AtelierEventBus, type CommandInput, type JsonObject } from "@atelier/core";
 import { runHostObservableCommand, stripTerminalControls, tailTerminalText } from "@atelier/observable-terminal/server";
 import { isWorkspaceAppPort, workspaceGatewayPort, type WorkspaceGateway, type WorkspaceHttpAppBackend, type WorkspaceServerProvisioningHook } from "@atelier/shared";
-import { ensureDefaultWorkspaceImage, inspectWorkspaceImage, nativeLinuxDockerPlatform, nestedDockerDaemonInitScript, prepareWorkspaceImageCarrier, resolveDockerImagePreload, resolveWorkspaceImageResolution, type WorkspaceImageResolution } from "@atelier/workspace-image";
+import { ensureDefaultWorkspaceImage, inspectWorkspaceImage, nativeLinuxDockerPlatform, nestedDockerDaemonInitScript, prepareWorkspaceImageCarrier, prepareSharedImagePreload, resolveDockerImagePreload, resolveWorkspaceImageResolution, type WorkspaceImageResolution } from "@atelier/workspace-image";
 import { Type } from "typebox";
 import { Value } from "typebox/value";
 import { readDockerRuntimeConnection, registerWorkspaceDocker, retireWorkspaceDocker } from "./docker-runtime.ts";
@@ -572,7 +572,13 @@ export async function createWorkspace(options: CreateWorkspaceOptions = {}): Pro
     if (activePlan.sharedDocker && activePlan.preloadDockerImages?.length) {
       const resolution = imageResolution ?? { image: activePlan.image!, defaultImage: activePlan.preloadDockerImages.includes("default-atelier-workspace-image") ? await ensureDefaultWorkspaceImage() : activePlan.image! };
       const preload = await provisionStep(options.events, id, "workspace.docker-images", "Resolve Docker image prewarming", () => resolveDockerImagePreload({ specs: activePlan.preloadDockerImages!, workspaceResolution: resolution, events: options.events, workspaceId: id }));
-      activePlan.initScripts.unshift(...preload.images.map((image) => [`docker pull ${shellQuote(image.sourceRef)}`, ...image.aliases.map((alias) => `docker tag ${shellQuote(image.sourceRef)} ${shellQuote(alias)}`)].join("\n")));
+      if (sharedConnection?.buildServices) {
+        const sharedPreload = await provisionStep(options.events, id, "workspace.docker-publish", "Publish Docker preloads", () => prepareSharedImagePreload(sharedConnection, preload));
+        activePlan.containerFiles.push(...sharedPreload.containerFiles);
+        activePlan.initScripts.unshift(...sharedPreload.initScripts);
+      } else {
+        activePlan.initScripts.unshift(...preload.images.map((image) => [`docker pull ${shellQuote(image.sourceRef)}`, ...image.aliases.map((alias) => `docker tag ${shellQuote(image.sourceRef)} ${shellQuote(alias)}`)].join("\n")));
+      }
     }
     if (activePlan.preloadDockerImages?.length && imageResolution && carrierPlatform) {
       const preload = await provisionStep(options.events, id, "workspace.docker-images", "Resolve nested Docker images", () => resolveDockerImagePreload({ specs: activePlan.preloadDockerImages!, workspaceResolution: imageResolution, events: options.events, workspaceId: id }), { output: (result) => result.images.map((image) => `${image.sourceRef} ${image.imageId}${image.aliases.length ? `\n  aliases: ${image.aliases.join(", ")}` : ""}`).join("\n") });

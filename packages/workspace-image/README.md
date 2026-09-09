@@ -15,7 +15,7 @@ packages/vscode/workspace-image.json
 
 ## Default image
 
-The default workspace image is built from Atelier's package `workspace-image.json` files. It includes Docker CLI/daemon packages, Compose, Buildx, and `fuse-overlayfs`. Every workspace starts its own private nested Docker daemon automatically, without repository configuration. The daemon uses `fuse-overlayfs` so inner image builds do not depend on kernel OverlayFS mounts inside the outer container's filesystem. It stops with the workspace container and starts again when the workspace resumes. Image preloading is an optional optimization, independent of daemon startup.
+The default workspace image is built from Atelier's package `workspace-image.json` files. It includes Docker CLI/daemon packages, Compose, Buildx, and `fuse-overlayfs`. Every workspace starts its own private nested Docker daemon automatically, without repository configuration. Without a shared runtime, the daemon uses `fuse-overlayfs` so inner image builds do not depend on kernel OverlayFS mounts inside the outer container's filesystem. Owned Linux installations use the shared-runtime startup described below. It stops with the workspace container and starts again when the workspace resumes. Image preloading is an optional optimization, independent of daemon startup.
 
 In local development, `bun run web` writes a temporary Docker build context under `/tmp`, ensures the deterministic local image tag exists before starting the dev server, and only builds when that image tag is missing from Docker. After Atelier builds a default, repository, or carrier image, it starts a non-blocking Docker prune for older unused Atelier images of the same kind. Images created after that build began are excluded, and Docker retains images referenced by containers.
 
@@ -46,10 +46,21 @@ container before retiring its client. Failed provisioning also retires the clien
 if cleanup fails, its ownership record is retained for a later forced deletion
 rather than discarded. Existing workspace stores are not converted.
 
-Declared image preloads use ordinary pulls and aliases in the shared runtime, not
-carrier images. References must be pullable; locally built, unpublished images need
-the still-pending shared builder/registry integration. No repository setting or new
-environment variable is required to select the shared runtime.
+Shared-registry preloads publish the selected tagged or local images before
+workspace startup, then pull their exact registry digests through the inherited
+socket and install the requested aliases. Locally built, unpublished images work;
+moving a source tag after selection does not change the preloaded image. These
+pulls finish before user initialization scripts run. No carrier image is generated.
+
+Explicit upstream `repository@digest` references retain their original pull path
+and identity: republishing a platform-filtered index can change its digest. Such
+references must remain reachable with the workspace's upstream credentials.
+
+When the runtime generates a default image, it now uses the same shared builder
+and registry as repository images, while retaining the generated default tag and
+aliases. Already-baked default image references are still pulled normally. The
+standalone `image:build` / `image:publish` release pipeline remains unchanged.
+No new environment variable is required.
 
 Shared installations build repository Dockerfiles with their shared BuildKit worker
 and publish/pull the result by digest. The current build context is always solved,
@@ -101,9 +112,9 @@ Repositories can request images for their private Docker daemon:
 }
 ```
 
-Values are exact Docker references. `default-atelier-workspace-image` is reserved and resolves to the exact default image selected by the outer Atelier process; Atelier also installs its deterministic `atelier-workspace:<hash>` alias. Invalid or unpullable references fail provisioning. Duplicate declarations are deduplicated internally.
+Values are exact Docker references. `default-atelier-workspace-image` is reserved and resolves to the exact default image selected by the outer Atelier process; Atelier also installs its deterministic `atelier-workspace:<hash>` alias. Invalid or unavailable references fail provisioning; shared-registry mode also accepts images already built in the creator's Docker store. Duplicate declarations are deduplicated internally.
 
-On a native Linux Docker Engine, Atelier builds or reuses a deterministic **carrier image on demand** the first time a matching workspace is created: the normal workspace image plus a cleanly stopped, `fuse-overlayfs`-backed `/var/lib/docker`. Every carrier is execution-tested after commit. Each workspace receives an independent writable container layer; Atelier never shares a mutable daemon store between workspaces. Carrier identity includes the outer base, platform, format version, refs, aliases, and resolved image IDs, so mutable tags and incompatible workspace versions produce cache misses rather than incorrect reuse.
+Without a shared runtime, on a native Linux Docker Engine, Atelier builds or reuses a deterministic **carrier image on demand** the first time a matching workspace is created: the normal workspace image plus a cleanly stopped, `fuse-overlayfs`-backed `/var/lib/docker`. Every carrier is execution-tested after commit. Each workspace receives an independent writable container layer; Atelier never shares a mutable daemon store between workspaces. Carrier identity includes the outer base, platform, format version, refs, aliases, and resolved image IDs, so mutable tags and incompatible workspace versions produce cache misses rather than incorrect reuse.
 
 Docker Desktop and non-Linux Docker Engines are explicitly excluded even when Atelier itself runs in a Linux container. On those platforms `docker.preloadImages` does nothing: Atelier does not resolve or pull the requested nested images, mount an archive, or run `docker load`. Carrier-backed preloading is a native-Linux-only feature. The normal private daemon still starts on Docker Desktop, with an initially empty image store. Some LinuxKit kernels reject `security.capability` reads on FUSE executables, causing inner containers to fail with `exec ...: invalid argument`; the build/run integration test therefore runs on native Linux. Daemon startup and Compose installation are tested on both platforms.
 
