@@ -8,6 +8,8 @@ import { isWorkspaceAppPort, workspaceGatewayPort, type WorkspaceGateway, type W
 import { ensureDefaultWorkspaceImage, inspectWorkspaceImage, nativeLinuxDockerPlatform, nestedDockerDaemonInitScript, prepareWorkspaceImageCarrier, resolveDockerImagePreload, resolveWorkspaceImageResolution, type WorkspaceImageResolution } from "@atelier/workspace-image";
 import { Type } from "typebox";
 import { Value } from "typebox/value";
+import { prepareSharedDocker } from "./shared-docker.ts";
+export type { SharedDockerRuntime } from "./shared-docker.ts";
 import { seedConfigInstallScript } from "./startup-scripts.ts";
 import type { WorkspaceCreationContext, WorkspaceDockerMount, WorkspaceDockerPlan, WorkspaceInitInstruction } from "./types.ts";
 export type { WorkspaceCreationContext, WorkspaceDockerMount, WorkspaceDockerPlan, WorkspaceInitInstruction, WorkspaceInitInstructionMap } from "./types.ts";
@@ -401,7 +403,7 @@ export const workspaceSetupProvisioningHook: WorkspaceServerProvisioningHook = {
 };
 
 function dockerMountArg(mount: WorkspaceDockerMount): string {
-  return [`type=${mount.type}`, `src=${mount.source}`, `dst=${mount.target}`, ...(mount.readonly ? ["readonly"] : [])].join(",");
+  return [`type=${mount.type}`, `src=${mount.source}`, `dst=${mount.target}`, ...(mount.readonly ? ["readonly"] : []), ...(mount.propagation ? [`bind-propagation=${mount.propagation}`] : [])].join(",");
 }
 
 function planEnvDockerArgs(env: Record<string, string>): string[] {
@@ -421,6 +423,7 @@ function workspaceCreateDockerArgs(container: string, image: string, publishHost
     ...plan.mounts.flatMap((mount) => ["--mount", dockerMountArg(mount)]),
     "--user", "root",
     image,
+    ...(plan.sharedDocker ? ["bash", "/usr/local/bin/atelier-workspace-docker"] : []),
     "sh", "-lc", workspaceInitScript(plan),
   ];
 }
@@ -556,7 +559,11 @@ export async function createWorkspace(options: CreateWorkspaceOptions = {}): Pro
       activePlan.image ??= forkImage;
       if (forkImage && carrierPlatform) imageResolution = { image: forkImage, defaultImage: await ensureDefaultWorkspaceImage() };
     }
-    activePlan.initScripts.push(nestedDockerDaemonInitScript());
+    if (activePlan.sharedDocker) {
+      await prepareSharedDocker(activePlan, atelierDataPath(getAtelierRuntimeContext(), "workspaces", id, "docker-runtime"));
+    } else {
+      activePlan.initScripts.push(nestedDockerDaemonInitScript());
+    }
     if (activePlan.preloadDockerImages?.length && imageResolution && carrierPlatform) {
       const preload = await provisionStep(options.events, id, "workspace.docker-images", "Resolve nested Docker images", () => resolveDockerImagePreload({ specs: activePlan.preloadDockerImages!, workspaceResolution: imageResolution, events: options.events, workspaceId: id }), { output: (result) => result.images.map((image) => `${image.sourceRef} ${image.imageId}${image.aliases.length ? `\n  aliases: ${image.aliases.join(", ")}` : ""}`).join("\n") });
       let carrierProgress = "";

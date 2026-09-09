@@ -1,3 +1,4 @@
+import type { SharedDockerRuntime } from "./shared-docker.ts";
 export type { WorkspaceCreationContext } from "@atelier/shared";
 
 export interface WorkspaceInitInstructionMap {}
@@ -9,6 +10,7 @@ export interface WorkspaceDockerMount {
   source: string;
   target: string;
   readonly?: boolean;
+  propagation?: "rslave";
 }
 
 export interface WorkspaceDockerContainerFile {
@@ -18,6 +20,7 @@ export interface WorkspaceDockerContainerFile {
 
 export interface WorkspaceDockerPlan {
   image?: string;
+  sharedDocker?: SharedDockerRuntime;
   labels: Record<string, string>;
   env: Record<string, string>;
   mounts: WorkspaceDockerMount[];

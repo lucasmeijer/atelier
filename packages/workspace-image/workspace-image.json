@@ -8,6 +8,7 @@
     "clang",
     "cmake",
     "cmatrix",
+    "containerd",
     "curl",
     "dnsutils",
     "docker-buildx",
@@ -62,6 +63,7 @@
     "zip"
   ],
   "files": [
+    { "from": "rootfs/usr/local/bin/atelier-workspace-docker", "to": "/usr/local/bin/atelier-workspace-docker", "mode": "0755" },
     { "from": "rootfs/usr/local/bin/chromium", "to": "/usr/local/bin/chromium", "mode": "0755", "afterRun": true }
   ],
   "run": [

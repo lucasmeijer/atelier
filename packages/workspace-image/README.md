@@ -27,6 +27,27 @@ ghcr.io/lucasmeijer/atelier-workspace:<hash>
 
 The Atelier app image is built with that exact default workspace image reference baked into `/app/.atelier-default-workspace-image`.
 
+## Shared-runtime workspace startup (integration in progress)
+
+The default image also includes a supervised private Docker/containerd startup
+command. When the installation supplies `WorkspaceDockerPlan.sharedDocker`,
+provisioning selects that command and supplies the workspace-specific runtime
+configuration and mounts. Docker and containerd become ready before the workspace
+startup command runs. If either daemon fails, the workspace exits with an error.
+A missing shared runtime fails startup rather than creating a separate cache.
+
+This path preserves private Docker state across workspace stop/start and does not
+change repository Dockerfiles. It requires privileged Linux with cgroup v2 and a
+prepared shared runtime. The installation owner must allocate the client identity,
+prepare storage mount propagation, choose nonoverlapping network ranges, and
+retire the client after workspace deletion. Those installation lifecycle actions
+are not wired up yet. Carrier preloading and shared startup cannot be combined.
+
+Existing installations still use the private FUSE startup described above until
+an installation supplies the shared runtime; there is no automatic conversion of
+existing Docker stores. No repository setting or new environment variable enables
+this path.
+
 ## Repository Dockerfile
 
 If a workspace repo has `.atelier/Dockerfile`, Atelier builds a local derived image on demand. The Dockerfile must start with:
