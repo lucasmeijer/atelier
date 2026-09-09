@@ -93,7 +93,7 @@ func TestDaemonReadinessAndRestoredClients(t *testing.T) {
 	}
 	stop(empty)
 
-	first := start("first", "--connection-file", filepath.Join(root, "connection.json"))
+	first := start("first", "--connection-file", filepath.Join(root, "connection.json"), "--build-services")
 	ready("first")
 	descriptor, err := os.ReadFile(filepath.Join(root, "connection.json"))
 	if err != nil {
@@ -101,6 +101,11 @@ func TestDaemonReadinessAndRestoredClients(t *testing.T) {
 	}
 	if !strings.Contains(string(descriptor), `"depth":0`) {
 		t.Fatal("missing root connection", string(descriptor))
+	}
+	for _, name := range []string{"buildkit", "registry"} {
+		if !strings.Contains(string(descriptor), filepath.Join(socketDir, name+".sock")) {
+			t.Fatal("missing build service connection", string(descriptor))
+		}
 	}
 	for _, id := range []string{"a", "b", "b"} {
 		req, err := http.NewRequest(http.MethodPost, "http://localhost/register?client="+id, nil)

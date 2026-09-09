@@ -1,13 +1,5 @@
 # Atelier Docker image
 
-Build and restart a local development Atelier container from the repository root:
-
-```sh
-bun run docker:dev
-```
-
-On Linux this stops any existing Atelier server container, builds `atelier:latest`, and starts an attached host-networked container named `atelier` on <http://127.0.0.1:3000>. Press Ctrl-C to stop and remove the container. Docker-run Atelier uses the default namespace/data path; host-run Atelier is isolated under the `host` namespace and `atelier-host` data path.
-
 Build only a local Atelier runtime image:
 
 ```sh
@@ -19,9 +11,6 @@ By default the script builds `atelier:<git-description>` and `atelier:latest` fr
 Useful options:
 
 ```sh
-bun run docker:dev -- --bind 127.0.0.1 --port 3000
-bun run docker:dev -- --bind "$(tailscale ip -4)" --port 80
-bun run docker:dev -- --detach
 bun run image:build -- --image ghcr.io/example/atelier --tag v0.1.0 --latest
 bun run image:build -- --tag dev --workspace --progress plain
 bun run image:build -- --tag dev --no-cache --progress plain
@@ -39,7 +28,7 @@ The Linux installer requires cgroup v2, systemd, Docker's systemd cgroup driver,
 
 The Atelier server receives a 1 GiB memory reservation, increased CPU weight, and a reduced OOM score. Its workspace-slice label and server resource settings survive self-update. The hard aggregate memory and CPU limits are what keep runaway workspace workloads from consuming the capacity reserved for Atelier and the host; the scheduling weights improve responsiveness during contention.
 
-These guarantees are installed by `scripts/install.sh`. Ad-hoc `docker run` and `bun run docker:dev` launches do not create host cgroups and therefore do not provide the production resource guarantees.
+These guarantees are installed by `scripts/install.sh`. Ad-hoc `docker run` launches do not create host cgroups and therefore do not provide the production resource guarantees.
 
 The resulting container expects access to Docker so it can create Atelier workspace containers. Its entrypoint starts as root, grants the fixed container user `1000:1000` access to the mounted Docker socket, prepares the Atelier data directory, and then runs Atelier as that fixed user. Docker-run workspace containers use the same numeric uid/gid and the `default` namespace. Workspace app ports are published on the Docker host loopback. The Atelier container must run with host networking on Linux so Atelier and host-run Atelier both reach workspace apps at `127.0.0.1:<published-port>`. See [workspace networking](./workspace-networking.md) for the reasoning and experiments behind this model.
 

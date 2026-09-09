@@ -1,5 +1,7 @@
 FROM docker:29-cli AS docker-cli
 FROM oven/bun:1.4.0 AS bun-dist
+FROM moby/buildkit:v0.32.2 AS buildkit-dist
+FROM registry:2.8.3 AS registry-dist
 
 FROM --platform=$BUILDPLATFORM golang:1.25.1 AS snapshotter-build
 ARG TARGETOS
@@ -10,6 +12,12 @@ RUN go mod download
 COPY packages/docker-snapshotter/*.go ./
 RUN go test -count=1 ./... \
  && CGO_ENABLED=0 GOOS=$TARGETOS GOARCH=$TARGETARCH go build -trimpath -o /out/atelier-snapshotter .
+
+FROM scratch AS docker-infrastructure
+COPY --from=snapshotter-build /out/atelier-snapshotter /usr/local/bin/atelier-snapshotter
+COPY --from=buildkit-dist /usr/bin/buildkitd /usr/bin/buildctl /usr/bin/buildkit-runc /usr/local/bin/
+COPY --from=registry-dist /bin/registry /usr/local/bin/atelier-registry
+COPY --chmod=755 packages/docker-snapshotter/atelier-owned-snapshotter /usr/local/bin/atelier-owned-snapshotter
 
 FROM ubuntu:26.04 AS transcription-runtime
 ARG TARGETARCH
@@ -81,8 +89,7 @@ RUN --mount=type=cache,target=/var/cache/apt,sharing=locked \
 COPY --from=bun-dist /usr/local/bin/bun /usr/local/bin/bun
 COPY --from=bun-dist /usr/local/bin/bunx /usr/local/bin/bunx
 RUN setcap cap_net_bind_service=+ep /usr/local/bin/bun
-COPY --from=snapshotter-build /out/atelier-snapshotter /usr/local/bin/atelier-snapshotter
-COPY --chmod=755 packages/docker-snapshotter/atelier-owned-snapshotter /usr/local/bin/atelier-owned-snapshotter
+COPY --from=docker-infrastructure /usr/local/bin/ /usr/local/bin/
 COPY --from=docker-cli /usr/local/bin/docker /usr/local/bin/docker
 COPY --from=docker-cli /usr/local/libexec/docker/cli-plugins /usr/local/libexec/docker/cli-plugins
 COPY --from=transcription-runtime /opt/nemo-speech /opt/nemo-speech

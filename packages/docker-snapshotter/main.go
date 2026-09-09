@@ -423,6 +423,7 @@ func main() {
 	dir := flag.String("socket-dir", "", "absolute socket directory")
 	clients := flag.String("clients", "", "comma separated fixed client IDs")
 	connectionFile := flag.String("connection-file", "", "publish installation connection descriptor")
+	buildServices := flag.Bool("build-services", false, "advertise installation-owned BuildKit and registry sockets")
 	instance := flag.String("instance-id", fmt.Sprint(os.Getpid()), "readiness identity")
 	flag.Parse()
 	slog.SetDefault(slog.New(slog.NewJSONHandler(os.Stdout, nil)))
@@ -545,7 +546,11 @@ func main() {
 		w.WriteHeader(204)
 	})
 	if *connectionFile != "" {
-		descriptor, err := json.Marshal(map[string]any{"version": 1, "adminSocket": filepath.Join(*dir, "admin.sock"), "snapshotterRoot": *root, "socketDirectory": *dir, "depth": 0})
+		connection := map[string]any{"version": 1, "adminSocket": filepath.Join(*dir, "admin.sock"), "snapshotterRoot": *root, "socketDirectory": *dir, "depth": 0}
+		if *buildServices {
+			connection["buildServices"] = map[string]string{"buildkitSocket": filepath.Join(*dir, "buildkit.sock"), "registrySocket": filepath.Join(*dir, "registry.sock")}
+		}
+		descriptor, err := json.Marshal(connection)
 		must(err)
 		must(os.MkdirAll(filepath.Dir(*connectionFile), 0755))
 		must(os.WriteFile(*connectionFile+".tmp", descriptor, 0644))

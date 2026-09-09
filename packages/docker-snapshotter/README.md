@@ -1,25 +1,29 @@
 # Workspace Docker snapshotter
 
-The Atelier container image builds and includes this experimental adapter. The
-Linux installer and Linux Docker development launcher explicitly start an owned
-instance alongside the app. New workspaces automatically register their private
+The Atelier container image includes the experimental snapshotter, BuildKit and
+local registry. The Linux installer starts
+one installation-owned instance of each alongside the app. New workspaces automatically register their private
 runtimes with that installation; existing workspace stores are not converted.
 
 ## Installation behavior
 
 - Root installations use the container entrypoint's `--own-snapshotter` option.
-  The app waits for that particular instance to become ready and continues to run
-  as an unprivileged user. The adapter runs as root in the same container.
+  The app waits for the snapshotter, registry and a BuildKit worker to become ready
+  and continues to run as an unprivileged user. Services run as root in the same
+  container; no sibling service containers are launched.
 - Starting the image without that option does not create another adapter. Nested
   installations use the connection supplied by their containing workspace. The
-  Docker development launcher forwards its connection and mounts instead of
-  starting another owner.
+  containing workspace supplies the connection and socket mounts. An explicitly
+  independent installation must instead supply its own persistent runtime mount
+  and the ownership option.
 - Owned startup requires dedicated persistent backing at the same absolute path
   seen by Docker. The installer supplies the bind mount and privileged execution.
   No host shared-mount setup or additional systemd unit is required.
 - A second owner of the same store fails instead of replacing the first owner's
-  listener. Adapter failure causes Atelier to exit visibly. Normal shutdown stops
-  the app before stopping the adapter; restart restores non-retired client sockets.
+  listeners. Ownership covers the whole stack until all its services have stopped.
+  Failure of any owned service stops the app and its remaining services visibly.
+  Normal shutdown stops the app, builder, registry and snapshotter in that order;
+  the app's exit status is preserved. Restart restores non-retired client sockets.
 - The self-update installer contract has changed. Upgrading from the previous
   contract requires rerunning the installer. Subsequent self-updates retain the
   runtime mount, ownership option and privileged execution.
@@ -29,8 +33,14 @@ runtimes with that installation; existing workspace stores are not converted.
   Cleanup errors preserve the record rather than losing track of retained data.
 - Unix administrative access is trusted within the mounts supplied to workspaces,
   including users with different host-aligned UIDs. It is not a hostile-tenant seam.
-- Registry and BuildKit ownership are still pending. Existing workspaces are not
-  switched away from their current Docker stores.
+- Builder cache and registry data persist in the existing installation runtime
+  mount. Their Unix sockets travel with the inherited connection; their storage
+  directories are not mounted into workspaces. No new host TCP port is exposed.
+- BuildKit has its own cache, separate from shared image-runtime layers. Direct builds
+  can reuse that cache across clients and root-container restarts; changed COPY
+  inputs invalidate their dependent build steps.
+- Automatic build/push/pull routing and publishing workspace images through these
+  services are not wired yet. Existing workspaces keep their current Docker stores.
 
 ## Observable behavior we care about
 
@@ -68,6 +78,11 @@ The last export requirement is **not met**: `docker save` and `docker load` both
 reported success for an incomplete archive, but running the imported image failed.
 Pushing to another repository in the same registry worked; this does not establish
 export to an unrelated registry or offline portability.
+
+A bounded root-owned service check also exercised registry blob persistence,
+BuildKit cache reuse after restart, COPY invalidation, unprivileged clients using
+only inherited sockets, concurrent independent owners, duplicate-owner rejection
+and app shutdown after each service's failure. It did not run a full nested app.
 
 Other limits:
 

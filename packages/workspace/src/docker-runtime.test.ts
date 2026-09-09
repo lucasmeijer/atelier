@@ -11,7 +11,7 @@ function plan(): WorkspaceDockerPlan {
 test("registration is recorded before dispatch, forwarded to nested workspaces and retired from disk", async () => {
   const dir = await mkdtemp(join(tmpdir(), "docker-runtime-"));
   const calls: string[] = [];
-  const connection: DockerRuntimeConnection = { version: 1, adminSocket: join(dir, "admin.sock"), socketDirectory: dir, snapshotterRoot: join(dir, "store"), depth: 0 };
+  const connection: DockerRuntimeConnection = { version: 1, adminSocket: join(dir, "admin.sock"), socketDirectory: dir, snapshotterRoot: join(dir, "store"), depth: 0, buildServices: { buildkitSocket: join(dir, "buildkit.sock"), registrySocket: join(dir, "registry.sock") } };
   const metadata = join(dir, "workspace");
   const server = Bun.serve({ unix: connection.adminSocket, async fetch(req) {
     const url = new URL(req.url);
@@ -62,4 +62,14 @@ test("failed registration can retire an identity not received by the adapter", a
     await expect(registerWorkspaceDocker(plan(), join(dir, "ws"), connection)).rejects.toThrow("snapshotter register failed");
     await retireWorkspaceDocker(join(dir, "ws"));
   } finally { await server.stop(true); await rm(dir, { recursive: true }); }
+});
+
+
+test("build services must travel through the inherited socket directory", async () => {
+  const dir = await mkdtemp(join(tmpdir(), "docker-runtime-"));
+  try {
+    const path = join(dir, "connection.json");
+    await writeFile(path, JSON.stringify({ version: 1, adminSocket: join(dir, "admin.sock"), socketDirectory: dir, snapshotterRoot: join(dir, "store"), depth: 0, buildServices: { buildkitSocket: "/elsewhere/buildkit.sock", registrySocket: join(dir, "registry.sock") } }));
+    await expect(readDockerRuntimeConnection(path)).rejects.toThrow("invalid shared Docker build service sockets");
+  } finally { await rm(dir, { recursive: true }); }
 });

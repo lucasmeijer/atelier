@@ -9,6 +9,7 @@ const absolutePath = Type.String({ pattern: "^/[^\\r\\n,]*$" });
 const connectionSchema = Type.Object({
   version: Type.Literal(1), adminSocket: absolutePath, snapshotterRoot: absolutePath,
   socketDirectory: absolutePath, depth: Type.Integer({ minimum: 0, maximum: 11 }),
+  buildServices: Type.Optional(Type.Object({ buildkitSocket: absolutePath, registrySocket: absolutePath })),
 });
 export type DockerRuntimeConnection = Static<typeof connectionSchema>;
 const registrationSchema = Type.Object({ clientId: Type.String({ pattern: "^[a-f0-9]{24}$" }), connection: connectionSchema });
@@ -25,6 +26,7 @@ export async function readDockerRuntimeConnection(path = dockerRuntimeConnection
   if (text === undefined) return undefined;
   const connection = Value.Parse(connectionSchema, JSON.parse(text));
   if (connection.adminSocket !== join(connection.socketDirectory, "admin.sock")) throw new Error("invalid shared Docker administrative socket");
+  if (connection.buildServices && (connection.buildServices.buildkitSocket !== join(connection.socketDirectory, "buildkit.sock") || connection.buildServices.registrySocket !== join(connection.socketDirectory, "registry.sock"))) throw new Error("invalid shared Docker build service sockets");
   return connection;
 }
 async function request(connection: DockerRuntimeConnection, operation: "register" | "retire", clientId: string): Promise<void> {
