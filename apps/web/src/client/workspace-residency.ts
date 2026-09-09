@@ -10,7 +10,7 @@ const workspaceBusyViewsSchema = Type.Array(Type.String());
 const workspaceAttentionTokensSchema = Type.Record(Type.String(), Type.Integer({ minimum: 1 }));
 
 interface WorkspaceSurfacePreparationController {
-  prepareIntendedSurfaces(options?: { authoritativeReload?: boolean }): Promise<void>;
+  prepareIntendedSurfaces(): Promise<void>;
   selectedAgentId(): string;
 }
 
@@ -41,6 +41,7 @@ class WorkspaceResidencyController extends Controller<HTMLElement> {
   private intendedWorkspaceId?: string;
   private readonly prepared = new Set<string>();
   private readonly requestedPreparationAt = new Map<string, number>();
+  // Scheduling epochs reject obsolete preparations; frame freshness owns content reloads.
   private readonly generations = new Map<string, number>();
   private readonly operations = new Map<string, WorkspacePreparationOperation>();
   private readonly preparationOwnedResidents = new WeakSet<HTMLElement>();
@@ -239,7 +240,7 @@ class WorkspaceResidencyController extends Controller<HTMLElement> {
     if (operation.priority === "background" && controller && this.selectedAgentIsWorking(operation.workspaceId, controller.selectedAgentId())) {
       return { resident, prepared: false };
     }
-    await controller?.prepareIntendedSurfaces({ authoritativeReload: operation.generation > 0 });
+    await controller?.prepareIntendedSurfaces();
     const prepared = this.preparationIsCurrent(operation);
     if (prepared) this.prepared.add(operation.workspaceId);
     return { resident, prepared };
@@ -486,8 +487,8 @@ class WorkspaceResidencyController extends Controller<HTMLElement> {
     const title = row?.getAttribute("title") ?? workspaceId;
     this.loadingTargets.forEach((loading) => {
       loading.hidden = false;
-      const pad = loading.querySelector<HTMLElement>(".pad");
-      if (pad) pad.innerHTML = `<span class="status-spinner"></span> Loading ${escapeHtml(title)}…`;
+      const status = loading.querySelector<HTMLElement>(".workspace-detail-loading-status");
+      if (status) status.innerHTML = `<span class="status-spinner"></span> Loading ${escapeHtml(title)}…`;
     });
   }
 
@@ -497,8 +498,8 @@ class WorkspaceResidencyController extends Controller<HTMLElement> {
     this.emptyTargets.forEach((empty) => { empty.hidden = true; });
     this.loadingTargets.forEach((loading) => {
       loading.hidden = false;
-      const pad = loading.querySelector<HTMLElement>(".pad");
-      if (pad) pad.innerHTML = `<p>Could not load workspace: ${escapeHtml(message)}</p>${buttonHtml({
+      const status = loading.querySelector<HTMLElement>(".workspace-detail-loading-status");
+      if (status) status.innerHTML = `<p>Could not load workspace: ${escapeHtml(message)}</p>${buttonHtml({
         type: "button",
         variant: "primary",
         content: { kind: "caption", caption: "Retry" },

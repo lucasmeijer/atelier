@@ -4,7 +4,7 @@ import { workspaceAgentSelectionEvent } from "@atelier/shared";
 import { atelierCableConnectionHeader, phoneLayoutMediaQuery, type WorkspaceClientApplication, type WorkspaceClientControllerConstructor, type WorkspaceClientSurfaceVisibilityContext } from "@atelier/shared";
 import { Type, type Static } from "typebox";
 import { Value } from "typebox/value";
-import { hydrateWorkViewFrame } from "./work-view-hydration.ts";
+import { frameFreshness } from "./frame-freshness.ts";
 
 type PresentationPane = HTMLElement & { dataset: DOMStringMap & { workspacePaneRole?: string; workspacePaneId?: string; workspaceLogicallyVisible?: string } };
 const phoneDestinationSchema = Type.Union([
@@ -48,61 +48,6 @@ interface TurboLike {
 
 const visiblePresentationPanes = new WeakSet<HTMLElement>();
 const agentPaneWidthStorageKey = "atelier:agent-pane-width";
-
-type HydratableTurboFrame = HTMLElement & {
-  readonly complete: boolean;
-  loading: "eager" | "lazy";
-  loaded: Promise<void>;
-  reload(): Promise<void>;
-};
-
-const hydratedAgentFrames = new WeakSet<HydratableTurboFrame>();
-const attemptedAgentFrames = new WeakSet<HydratableTurboFrame>();
-const invalidatedAgentFrames = new WeakSet<HydratableTurboFrame>();
-const suspendedAgentFrames = new WeakSet<HydratableTurboFrame>();
-const pendingAgentHydrations = new WeakMap<HydratableTurboFrame, Promise<void>>();
-
-async function loadAgentFrameInitially(frame: HydratableTurboFrame): Promise<void> {
-  await new Promise<void>((resolve) => setTimeout(resolve, 0));
-  if (frame.hasAttribute("complete")) return;
-  if (frame.complete) frame.loading = "eager";
-  await frame.loaded;
-}
-
-function hydrateAgentFrame(element: HTMLElement, options: { authoritativeReload?: boolean } = {}): Promise<void> {
-  // SAFETY: This helper is called only for Atelier-rendered Turbo Frame hydration targets.
-  const frame = element as HydratableTurboFrame;
-  if (options.authoritativeReload) invalidatedAgentFrames.add(frame);
-  if (invalidatedAgentFrames.has(frame)) suspendedAgentFrames.add(frame);
-  const pending = pendingAgentHydrations.get(frame);
-  if (pending) {
-    return invalidatedAgentFrames.has(frame)
-      ? pending.then(() => new Promise<void>((resolve) => window.setTimeout(resolve, 0))).then(() => hydrateAgentFrame(frame))
-      : pending;
-  }
-  const authoritativeReload = invalidatedAgentFrames.delete(frame);
-  const hydrated = hydratedAgentFrames.has(frame) || frame.hasAttribute("complete");
-  if (hydrated && !authoritativeReload) {
-    hydratedAgentFrames.add(frame);
-    return Promise.resolve();
-  }
-  const retry = attemptedAgentFrames.has(frame) || hydrated;
-  attemptedAgentFrames.add(frame);
-  hydratedAgentFrames.delete(frame);
-  if (hydrated && frame.loading === "lazy") frame.loading = "eager";
-  const hydration = (retry ? frame.reload() : loadAgentFrameInitially(frame))
-    .then(() => { hydratedAgentFrames.add(frame); })
-    .catch((error) => {
-      if (authoritativeReload) invalidatedAgentFrames.add(frame);
-      throw error;
-    })
-    .finally(() => {
-    pendingAgentHydrations.delete(frame);
-    if (!invalidatedAgentFrames.has(frame)) suspendedAgentFrames.delete(frame);
-  });
-  pendingAgentHydrations.set(frame, hydration);
-  return hydration;
-}
 
 function storedNavigation(storage: Storage, key: string): StoredPersonalNavigation | undefined {
   const value = storage.getItem(key);
@@ -170,8 +115,6 @@ export function createWorkspacePresentationController(
     private moreOpen = false;
     private mobileNavigationLayoutFrame?: number;
     private draggedWorkKey?: string;
-    private readonly invalidatedAgentGenerations = new Map<string, number>();
-    private readonly invalidatedAgentReloads = new Map<string, Promise<void>>();
 
     connect(): void {
       this.state = this.restoreState();
@@ -225,15 +168,17 @@ export function createWorkspacePresentationController(
       this.presentationChanged();
     }
 
-    invalidateAgentFrame(conversationId: string): void {
-      const pane = this.element.querySelector<PresentationPane>(`[data-workspace-pane-role="agent"][data-workspace-pane-id="${CSS.escape(conversationId)}"]`);
-      const frame = pane?.querySelector<HTMLElement>("turbo-frame[data-agent-body-hydration][src]");
-      if (!pane || !frame) return;
-      // SAFETY: The selector matches only Atelier-rendered Agent Turbo Frame hydration targets.
-      const hydratableFrame = frame as HydratableTurboFrame;
-      if (pane.dataset.workspaceLogicallyVisible === "true" && visiblePresentationPanes.has(pane)) return;
-      this.invalidatedAgentGenerations.set(conversationId, (this.invalidatedAgentGenerations.get(conversationId) ?? 0) + 1);
-      invalidatedAgentFrames.add(hydratableFrame);
+    invalidatePreparation(conversationId?: string): void {
+      this.element.querySelectorAll<PresentationPane>("[data-workspace-pane-role='agent']").forEach((pane) => {
+        if (conversationId && pane.dataset.workspacePaneId !== conversationId) return;
+        // Visible Agents already receive authoritative live updates.
+        if (pane.dataset.workspaceLogicallyVisible === "true" && visiblePresentationPanes.has(pane)) return;
+        const frame = pane.querySelector<HTMLElement>("turbo-frame[data-agent-body-hydration][src]");
+        if (frame) frameFreshness(frame).invalidate();
+      });
+      if (!conversationId) {
+        this.element.querySelectorAll<HTMLElement>("turbo-frame[data-work-view-hydration][src]").forEach((frame) => frameFreshness(frame).invalidate());
+      }
     }
 
     selectWorkViewSuccessor(closedKey: string, successorKey?: string): void {
@@ -272,14 +217,14 @@ export function createWorkspacePresentationController(
       this.applyState({ emit: true });
     }
 
-    async prepareIntendedSurfaces(options: { authoritativeReload?: boolean } = {}): Promise<void> {
+    async prepareIntendedSurfaces(): Promise<void> {
       this.normalizeState();
       this.applyState({ emit: false });
       const agentFrame = this.element.querySelector<HTMLElement>(`[data-workspace-pane-role="agent"][data-workspace-pane-id="${CSS.escape(this.state.activeAgentId!)}"] turbo-frame[data-agent-body-hydration][src]`);
-      if (agentFrame) await hydrateAgentFrame(agentFrame, options);
+      if (agentFrame) await frameFreshness(agentFrame).ensureFresh();
       if (!this.state.workPaneVisible || !this.state.activeWorkViewKey) return;
       const workFrame = this.element.querySelector<HTMLElement>(`[data-workspace-pane-role="work"][data-workspace-pane-id="${CSS.escape(this.state.activeWorkViewKey)}"] turbo-frame[data-work-view-hydration][src]`);
-      if (workFrame) await hydrateWorkViewFrame(workFrame, options);
+      if (workFrame) await frameFreshness(workFrame).ensureFresh();
       await this.initializeEmbeddedWorkSurface();
     }
 
@@ -287,19 +232,31 @@ export function createWorkspacePresentationController(
       return this.state.activeAgentId!;
     }
 
+    bodyMissing(event: Event): void {
+      if (event.target !== event.currentTarget) return;
+      // Let Turbo settle loaded instead of throwing from its unawaited response
+      // handler. Freshness rejects the missing render through our load-error UI.
+      event.preventDefault();
+    }
+
+    bodyRendered(event: Event): void {
+      // Nested transcript and file frames must not confirm the enclosing surface.
+      if (event.target !== event.currentTarget) return;
+      // SAFETY: Turbo emits frame-render after rendering, with its FetchResponse.
+      const { fetchResponse } = (event as CustomEvent<{ fetchResponse: { succeeded: boolean } }>).detail;
+      // SAFETY: This action is attached directly to an Atelier hydration Turbo Frame.
+      frameFreshness(event.currentTarget as HTMLElement).rendered(fetchResponse.succeeded);
+    }
+
     agentBodyLoaded(event: Event): void {
       // Nested transcript Turbo Frames bubble the same event through the body Frame.
       if (event.target !== event.currentTarget) return;
       // SAFETY: The action is attached directly to the server-rendered Agent Turbo Frame.
       const frame = event.currentTarget as HTMLElement;
-      // SAFETY: The action target is the same Atelier-rendered Turbo Frame accepted by hydrateAgentFrame.
-      hydratedAgentFrames.add(frame as HydratableTurboFrame);
       const pane = frame.closest<PresentationPane>("[data-workspace-pane-role='agent']");
       requestAnimationFrame(() => {
         if (pane?.dataset.workspaceLogicallyVisible !== "true") return;
-        if (pane.dataset.workspacePaneId && this.invalidatedAgentGenerations.has(pane.dataset.workspacePaneId)) return;
-        // SAFETY: The action target is the same Atelier-rendered Turbo Frame accepted by hydrateAgentFrame.
-        if (suspendedAgentFrames.has(frame as HydratableTurboFrame)) return;
+        if (!frameFreshness(frame).isFresh) return;
         if (visiblePresentationPanes.has(pane)) {
           // The stable pane survives a Turbo Frame reload, but its Agent controller does not.
           // Re-deliver logical visibility after Stimulus connects the reconstructed body.
@@ -624,33 +581,17 @@ export function createWorkspacePresentationController(
 
     private emitVisible(pane: PresentationPane): void {
       if (visiblePresentationPanes.has(pane)) return;
-      if (pane.dataset.workspacePaneRole === "agent") {
-        const frame = pane.querySelector<HTMLElement>("turbo-frame[data-agent-body-hydration][src]");
-        const conversationId = pane.dataset.workspacePaneId;
-        if (frame && conversationId && this.invalidatedAgentGenerations.has(conversationId)) {
-          // SAFETY: The selector matches only Atelier-rendered Agent Turbo Frame hydration targets.
-          this.reloadInvalidatedAgentPane(pane, frame as HydratableTurboFrame);
-          return;
-        }
-        // SAFETY: The selector matches only Atelier-rendered Agent Turbo Frame hydration targets.
-        if (frame && (invalidatedAgentFrames.has(frame as HydratableTurboFrame) || suspendedAgentFrames.has(frame as HydratableTurboFrame) || pendingAgentHydrations.has(frame as HydratableTurboFrame) || (!frame.hasAttribute("complete") && !hydratedAgentFrames.has(frame as HydratableTurboFrame)))) {
-          void hydrateAgentFrame(frame)
-            .then(() => { if (pane.dataset.workspaceLogicallyVisible === "true") this.emitVisible(pane); })
-            .catch((error) => console.error("Could not hydrate Agent", error));
-          return;
-        }
-      }
-      if (pane.dataset.workspacePaneRole === "work") {
-        const frame = pane.querySelector<HTMLElement>("turbo-frame[data-work-view-hydration][src]");
-        if (frame && !frame.hasAttribute("complete")) {
-          void hydrateWorkViewFrame(frame).catch((error) => console.error("Could not hydrate Work view", error));
-          return;
-        }
+      const frame = pane.querySelector<HTMLElement>("turbo-frame[data-agent-body-hydration][src], turbo-frame[data-work-view-hydration][src]");
+      if (frame && !frameFreshness(frame).isFresh) {
+        void frameFreshness(frame).ensureFresh()
+          .then(() => { if (pane.dataset.workspaceLogicallyVisible === "true") this.emitVisible(pane); })
+          .catch((error) => console.error("Could not prepare workspace surface", error));
+        return;
       }
       visiblePresentationPanes.add(pane);
       if (pane.dataset.workspacePaneRole === "work") {
         const frame = pane.querySelector<HTMLElement>("turbo-frame[data-work-view-hydration][src]");
-        if (frame) void hydrateWorkViewFrame(frame).then(() => this.initializeEmbeddedWorkSurface()).catch((error) => console.error("Could not hydrate Work view", error));
+        if (frame) void frameFreshness(frame).ensureFresh().then(() => this.initializeEmbeddedWorkSurface()).catch((error) => console.error("Could not hydrate Work view", error));
       }
       pane.querySelectorAll<HTMLIFrameElement>('[data-controller~="workspace-app-frame"]').forEach((frame) => {
         // SAFETY: The server-rendered DOM and connected controller contract establish this element shape.
@@ -660,27 +601,6 @@ export function createWorkspacePresentationController(
       lifecycle.becomeVisible(this.lifecycleContext(pane));
       if (pane.dataset.workspacePaneRole === "work") this.finishVisibleWorkViewPreparation();
       pane.dispatchEvent(new CustomEvent("atelier:workspace-pane-visible", { bubbles: true, detail: { role: pane.dataset.workspacePaneRole, id: pane.dataset.workspacePaneId } }));
-    }
-
-    private reloadInvalidatedAgentPane(pane: PresentationPane, frame: HydratableTurboFrame): void {
-      const conversationId = pane.dataset.workspacePaneId!;
-      if (this.invalidatedAgentReloads.has(conversationId)) return;
-      const reload = (async () => {
-        while (true) {
-          const generation = this.invalidatedAgentGenerations.get(conversationId)!;
-          invalidatedAgentFrames.add(frame);
-          suspendedAgentFrames.add(frame);
-          await hydrateAgentFrame(frame, { authoritativeReload: true });
-          if (this.invalidatedAgentGenerations.get(conversationId) === generation) {
-            this.invalidatedAgentGenerations.delete(conversationId);
-            return;
-          }
-        }
-      })().finally(() => this.invalidatedAgentReloads.delete(conversationId));
-      this.invalidatedAgentReloads.set(conversationId, reload);
-      void reload
-        .then(() => { if (pane.dataset.workspaceLogicallyVisible === "true") this.emitVisible(pane); })
-        .catch((error) => console.error("Could not reload invalidated Agent", error));
     }
 
     private finishVisibleWorkViewPreparation(): void {
@@ -799,7 +719,7 @@ export function installWorkspacePresentationTurboStream(Turbo: TurboLike, applic
     selectWorkViewSuccessor(closedKey: string, successorKey?: string): void;
     presentWorkView(key: string): void;
     intendWorkView(key: string): void;
-    invalidateAgentFrame(conversationId: string): void;
+    invalidatePreparation(conversationId?: string): void;
     presentationChanged(): void;
   }
   const controllerFor = (target: HTMLElement, workspaceId: string): PresentationActions | null => {
@@ -871,7 +791,7 @@ export function installWorkspacePresentationTurboStream(Turbo: TurboLike, applic
     const conversationId = this.dataset.conversationId;
     for (const target of this.targetElements) {
       const controller = controllerFor(target, workspaceId);
-      if (conversationId) controller?.invalidateAgentFrame(conversationId);
+      controller?.invalidatePreparation(conversationId);
       controller?.presentationChanged();
     }
     document.dispatchEvent(new CustomEvent("atelier:workspace-preparation-invalidated", { detail: { workspaceId } }));
