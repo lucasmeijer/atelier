@@ -2,12 +2,18 @@ import { mkdir, mkdtemp, rm, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { dirname, join, posix } from "node:path";
 import { execWorkspaceCommand, workspaceRoot } from "@atelier/workspace";
+import { escapeHtml } from "@atelier/shared";
 import {
   createSyntheticSourceInfo,
   loadSkills,
+  stripFrontmatter,
   type ResourceDiagnostic,
   type Skill,
 } from "@earendil-works/pi-coding-agent";
+
+interface WorkspaceSkill extends Skill {
+  body: string;
+}
 
 interface WorkspaceSkillFile {
   path: string;
@@ -52,7 +58,8 @@ function workspaceDiagnostic(snapshotRoot: string, diagnostic: ResourceDiagnosti
 }
 
 /** Use Pi's skill parser and validation against files copied from a workspace container. */
-export async function workspaceSkillsFromFiles(files: WorkspaceSkillFile[]): Promise<{ skills: Skill[]; diagnostics: ResourceDiagnostic[] }> {
+export async function workspaceSkillsFromFiles(files: WorkspaceSkillFile[]): Promise<{ skills: WorkspaceSkill[]; diagnostics: ResourceDiagnostic[] }> {
+  const contents = new Map(files.map((file) => [file.path, file.content]));
   const snapshotRoot = await mkdtemp(join(tmpdir(), "atelier-skills-"));
   try {
     const paths: string[] = [];
@@ -74,6 +81,7 @@ export async function workspaceSkillsFromFiles(files: WorkspaceSkillFile[]): Pro
         const baseDir = posix.dirname(filePath);
         return {
           ...skill,
+          body: stripFrontmatter(contents.get(filePath)!).trim(),
           filePath,
           baseDir,
           sourceInfo: createSyntheticSourceInfo(filePath, { source: "local", scope: "project", baseDir }),
@@ -87,7 +95,7 @@ export async function workspaceSkillsFromFiles(files: WorkspaceSkillFile[]): Pro
 }
 
 /** Discover Agent Skills without assuming the Atelier server can mount the workspace filesystem. */
-export async function loadWorkspaceSkills(workspaceId: string): Promise<{ skills: Skill[]; diagnostics: ResourceDiagnostic[] }> {
+export async function loadWorkspaceSkills(workspaceId: string): Promise<{ skills: WorkspaceSkill[]; diagnostics: ResourceDiagnostic[] }> {
   const script = `set -eu
 for root in ${skillRoots.map((root) => `'${root}'`).join(" ")}; do
   test -d "$root" || continue
@@ -104,4 +112,21 @@ done`;
     files.push({ path: fields[index], content: Buffer.from(fields[index + 1], "base64").toString("utf8") });
   }
   return workspaceSkillsFromFiles(files);
+}
+
+/** Resolve explicit invocations in the workspace, before Pi can read server-local paths. */
+export async function expandWorkspaceSkillCommand(
+  workspaceId: string,
+  text: string,
+  load: typeof loadWorkspaceSkills = loadWorkspaceSkills,
+): Promise<string> {
+  const match = text.trim().match(/^\/skill:(\S*)(?:\s+([\s\S]*))?$/);
+  if (!match) return text;
+  const name = match[1];
+  const { skills } = await load(workspaceId);
+  const skill = skills.find((candidate) => candidate.name === name);
+  if (!skill) throw new Error(`Unknown or invalid workspace skill: ${name || "(missing name)"}`);
+  const block = `<skill name="${escapeHtml(skill.name)}" location="${escapeHtml(skill.filePath)}">\nReferences are relative to ${skill.baseDir}.\n\n${skill.body}\n</skill>`;
+  const args = match[2]?.trim();
+  return args ? `${block}\n\n${args}` : block;
 }

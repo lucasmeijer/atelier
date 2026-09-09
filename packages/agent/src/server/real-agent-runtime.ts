@@ -22,6 +22,7 @@ import type { RewindMode, SubmitOptions, WorkspaceAgentRuntime, WorkspaceAgentRu
 import { AgentServiceTierState, supportsFastMode, type AgentServiceTier } from "./service-tier.ts";
 import { recordsFromSessionEntries, sessionContentImages } from "./session-records.ts";
 import { replaceWorkspaceAgentSession, type WorkspaceAgentConversationInfo } from "./session-store.ts";
+import { expandWorkspaceSkillCommand } from "./skills.ts";
 import { renderAgentSessionTree, updateAgentSessionTreeLabel, type TreeFilterMode } from "./session-tree.ts";
 import {
   assistantErrorText,
@@ -422,10 +423,12 @@ export class RealAgentRuntime extends BaseAgentRuntime {
     this.assertActive();
     const trimmed = text.trim();
     const noteLines = options.attachmentNotes ?? [];
-    const fullText = noteLines.length > 0 ? `${trimmed}\n\n${noteLines.join("\n")}` : trimmed;
+    const submittedText = noteLines.length > 0 ? `${trimmed}\n\n${noteLines.join("\n")}` : trimmed;
     const images = (options.images ?? []).map((image) => ({ type: "image" as const, data: image.data, mimeType: image.mimeType }));
-    if (!fullText.trim() && images.length === 0) return;
+    if (!submittedText.trim() && images.length === 0) return;
     if (this.summarizing) throw new Error("Wait for branch summarization to finish before sending another prompt.");
+
+    const fullText = await expandWorkspaceSkillCommand(this.workspaceId, submittedText);
 
     if (this.session.isStreaming) {
       const key = `pending-user:${crypto.randomUUID()}`;
