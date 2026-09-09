@@ -10,12 +10,14 @@ export type AgentTranscriptAnchor = {
   target: { toolCallId: string } | { finalText: string; completedAt: number };
 };
 
-/** Additive data only. The adapter never receives or rewrites host transcript items.
+/** Declarative data only. The adapter never receives or rewrites host transcript items.
  * Anchors are resolved by the host for snapshots, lazy details and reveal requests;
  * they do not replace live tool/text DOM while it is streaming. */
 export interface AgentTranscriptSnapshot {
   rows: AgentTranscriptAddition[];
   anchors: AgentTranscriptAnchor[];
+  /** Entries before this persisted marker are copied context; entries after it are local activity. */
+  inheritedContext?: { boundaryEntryId: string; source: string };
 }
 
 export function applyTranscriptContributions(items: TranscriptItem[], snapshot: AgentTranscriptSnapshot): TranscriptItem[] {

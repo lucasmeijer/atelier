@@ -56,7 +56,10 @@ export function renderTranscriptItem(ctx: AgentRenderContext, item: TranscriptIt
   if (item.type === "working") return renderWorkingSection(ctx, item);
   const id = ids.item(ctx, item.key);
   let body = "";
-  if (item.type === "user") body = renderUserMessage(ctx, item);
+  if (item.type === "inherited-context") {
+    const label = `Inherited context from ${item.source} · ${item.messageCount} ${item.messageCount === 1 ? "message" : "messages"} · filtered`;
+    body = transcriptRow(`<details data-controller="agent-lazy-detail" data-action="toggle->agent-lazy-detail#load">${transcriptActionItemHtml({ kind: "text", text: label }, { disclosure: true })}${lazyTranscriptItemFrame(ctx, item.key)}</details>`);
+  } else if (item.type === "user") body = renderUserMessage(ctx, item);
   else if (item.type === "thinking") body = renderThinkingItem(ctx, item);
   else if (item.type === "text") {
     const className = item.final ? "markdown agent-final" : "markdown agent-itext-md";
@@ -124,6 +127,7 @@ export function renderTranscriptItemDetailFrame(ctx: AgentRenderContext, item: T
   const frameId = ids.detailFrame(ctx, item.key);
   let html = "";
   if (item.type === "working") html = renderWorkingItems(ctx, item);
+  else if (item.type === "inherited-context") html = `<div class="agent-inherited-content"><p class="agent-inherited-explanation">Copied from ${escapeHtml(item.source)} at spawn time. Only selected user messages, final assistant text, and context summaries are retained; tool activity, reasoning, and intermediate messages are omitted.</p>${item.items.map((child) => renderTranscriptItem(ctx, child)).join("")}</div>`;
   else if (item.type === "tool") html = renderToolDetail(ctx, item.key, item.tool, options.count ?? 100);
   return `<turbo-frame id="${frameId}">${html}</turbo-frame>`;
 }

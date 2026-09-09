@@ -1,5 +1,5 @@
 import { openSubagentHistory, subagentHistoryDirectory } from "./history-store.ts";
-import { selectForkHistory } from "./fork-history.ts";
+import { inheritedContextEntryType, selectForkHistory } from "./fork-history.ts";
 import type { AgentSessionAttachment } from "@atelier/agent/server";
 import { modelDeliveryBatch, parseSubagentDelivery, subagentDeliveryType } from "./subagent-delivery.ts";
 import { finalAssistantText } from "@atelier/agent/server";
@@ -45,11 +45,13 @@ export function forkSubagentHistory(workspaceId: string, child: SubagentRecord, 
   if (!child.forkTurns || child.forkTurns === "none" || manager.getBranch().length) return;
   const parent = sessions.get(`${workspaceId}:${child.parentId}`);
   if (!parent) throw new Error("Parent session must be loaded before forking.");
-  for (const message of selectForkHistory(parent.messages, child.forkTurns)) {
+  const history = selectForkHistory(parent.messages, child.forkTurns);
+  for (const message of history) {
     if (message.role === "compactionSummary") manager.appendCompaction(message.summary, manager.getLeafId() ?? "", message.tokensBefore);
     else if (message.role === "branchSummary") manager.branchWithSummary(manager.getLeafId(), message.summary);
     else manager.appendMessage(message);
   }
+  if (history.length) manager.appendCustomEntry(inheritedContextEntryType);
 }
 
 export async function subagentConversation(workspaceId: string, agent: SubagentRecord): Promise<WorkspaceAgentConversationInfo> {

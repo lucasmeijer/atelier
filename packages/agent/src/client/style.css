@@ -394,3 +394,12 @@
     max-width: none;
   }
 }
+
+/* Copied context remains readable, but visually separate from this agent's activity. */
+.agent-inherited-content {
+  margin: 8px 0 16px 12px;
+  padding-inline-start: 16px;
+  border-inline-start: 2px solid var(--line);
+}
+.agent-inherited-explanation { margin: 0 0 16px; color: var(--text-muted); }
+.agent-inherited-content > .agent-item + .agent-item { margin-top: 12px; }

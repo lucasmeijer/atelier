@@ -4,6 +4,9 @@ import type { AgentSession } from "@earendil-works/pi-coding-agent";
 import { contentText } from "@earendil-works/pi-ai";
 import { parseForkTurns } from "./subagent-protocol.ts";
 
+/** Everything before this payload-free session marker is inherited context. */
+export const inheritedContextEntryType = "atelier.subagent.inherited-context";
+
 type SessionMessage = AgentSession["messages"][number];
 
 /** Codex 574a36f: truncate_rollout_to_last_n_fork_turns, then keep_forked_rollout_item.

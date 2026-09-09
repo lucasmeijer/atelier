@@ -1,7 +1,7 @@
 import { describe, expect, test } from "bun:test";
 import { SessionManager, type AgentSession } from "@earendil-works/pi-coding-agent";
 import type { AssistantMessage, TextContent, ThinkingContent, ToolCall } from "@earendil-works/pi-ai";
-import { selectForkHistory } from "../../src/server/fork-history.ts";
+import { inheritedContextEntryType, selectForkHistory } from "../../src/server/fork-history.ts";
 import { bindSubagentSession, forkSubagentHistory } from "../../src/server/subagents.ts";
 import { SubagentRuntime } from "../../src/server/subagent-runtime.ts";
 
@@ -78,9 +78,27 @@ describe("Codex fork-history selection and filtering", () => {
       forkSubagentHistory("filter-seeding", child, manager);
       expect(manager.buildSessionContext().messages).toEqual([history[0], final, history[4]]);
       const branch = manager.getBranch();
+      expect(branch.at(-1)).toMatchObject({ type: "custom", customType: inheritedContextEntryType, data: undefined });
       forkSubagentHistory("filter-seeding", child, manager);
       expect(manager.getBranch()).toEqual(branch);
+      const localId = manager.appendMessage(user("Subagent-local input"));
+      const updated = manager.getBranch();
+      const boundary = updated.findIndex((entry) => entry.type === "custom" && entry.customType === inheritedContextEntryType);
+      expect(updated.slice(0, boundary)).toEqual(branch.slice(0, -1));
+      expect(updated.slice(boundary + 1).map((entry) => entry.id)).toEqual([localId]);
     } finally { attachment.dispose(); }
+  });
+  test("no inherited messages means no boundary marker", () => {
+    for (const forkTurns of ["none", "1", "all"]) {
+      const child = { id: "child", parentId: "root", rootId: "root", taskName: "preview", task: "Preview", depth: 1, thinkingLevel: "off", status: "completed" as const, forkTurns };
+      const coordinator = new SubagentRuntime({ agents: [child], messages: [] }, { async save() {}, async peer() { throw new Error("No inference needed"); } });
+      const attachment = bindSubagentSession("empty-fork", "root", { messages: [], subscribe: () => () => {} }, coordinator);
+      try {
+        const manager = SessionManager.inMemory();
+        forkSubagentHistory("empty-fork", child, manager);
+        expect(manager.getBranch()).toEqual([]);
+      } finally { attachment.dispose(); }
+    }
   });
   test("effective compacted context is seeded using child-local summary entries", () => {
     const child = { id: "child", parentId: "root", rootId: "root", taskName: "review", task: "Review", depth: 1, thinkingLevel: "off", status: "completed" as const, forkTurns: "all" };
@@ -95,7 +113,7 @@ describe("Codex fork-history selection and filtering", () => {
     const manager = SessionManager.inMemory();
     try {
       forkSubagentHistory("compacted-filter-seeding", child, manager);
-      expect(manager.getBranch().map((entry) => entry.type)).toEqual(["compaction", "message", "message", "branch_summary"]);
+      expect(manager.getBranch().map((entry) => entry.type)).toEqual(["compaction", "message", "message", "branch_summary", "custom"]);
       expect(manager.buildSessionContext().messages.map((message) => message.role)).toEqual(["compactionSummary", "user", "assistant", "branchSummary"]);
       expect(manager.buildSessionContext().messages[1]).toEqual(user("Retained task"));
       expect(selectForkHistory(parent.buildSessionContext().messages, "1").map((message) => message.role)).toEqual(["user", "assistant", "branchSummary"]);

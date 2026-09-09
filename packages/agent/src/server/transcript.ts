@@ -113,6 +113,7 @@ export type WorkingTranscriptItem = TranscriptItemBase & {
 export type TranscriptItem =
   | (TranscriptItemBase & { type: "extension"; render(ctx: AgentRenderContext): string })
   | (TranscriptItemBase & { type: "user"; text: string; images: SessionImageRef[] })
+  | (TranscriptItemBase & { type: "inherited-context"; source: string; messageCount: number; items: TranscriptItem[] })
   | WorkingTranscriptItem
   | (TranscriptItemBase & { type: "thinking"; text: string; live?: boolean })
   | (TranscriptItemBase & { type: "text"; text: string; final: boolean; live?: boolean })
@@ -123,7 +124,7 @@ export type TranscriptItem =
 export function findTranscriptItem(items: TranscriptItem[], key: string): TranscriptItem | undefined {
   for (const item of items) {
     if (item.key === key) return item;
-    if (item.type === "working") {
+    if (item.type === "working" || item.type === "inherited-context") {
       const nested = findTranscriptItem(item.items, key);
       if (nested) return nested;
     }

@@ -1,7 +1,7 @@
 import { applyTranscriptContributions } from "./transcript-contributions.ts";
 import { isJsonObject } from "@atelier/core";
 import { contentText, type UserMessage } from "@earendil-works/pi-ai";
-import type { CompactionEntry } from "@earendil-works/pi-coding-agent";
+import type { CompactionEntry, SessionEntry } from "@earendil-works/pi-coding-agent";
 import { BaseAgentRuntime } from "./base-agent-runtime.ts";
 import { collectCacheMisses, detectCacheMiss } from "./cache-miss.ts";
 import { turboStream } from "./html.ts";
@@ -32,6 +32,7 @@ import {
   isToolViewDetails,
   type SessionImageRef,
   type TranscriptItem,
+  type TranscriptRecord,
 } from "./transcript.ts";
 
 import { TurnTiming, turnStartEntryType, turnTimingEntryType } from "./turn-timing.ts";
@@ -156,7 +157,21 @@ export class RealAgentRuntime extends BaseAgentRuntime {
   protected canonicalItems(leafId?: string): TranscriptItem[] {
     const entries = this.session.sessionManager.getBranch(leafId);
     const cacheMisses = collectCacheMisses(entries, this.session.modelRuntime);
-    return buildTranscript(recordsFromSessionEntries(entries, cacheMisses));
+    const inherited = this.delegation.transcript?.snapshot().inheritedContext;
+    const boundary = entries.findIndex((entry: SessionEntry) => entry.id === inherited?.boundaryEntryId);
+    // No inheritance, or a historical branch ending before the marker.
+    if (boundary < 0) return buildTranscript(recordsFromSessionEntries(entries, cacheMisses));
+    const copied = entries.slice(0, boundary);
+    const activity = buildTranscript(recordsFromSessionEntries(entries.slice(boundary + 1), cacheMisses));
+    const records: TranscriptRecord[] = copied.flatMap((entry: SessionEntry): TranscriptRecord[] => {
+      if (entry.type === "compaction" || entry.type === "branch_summary") return [{ kind: "note", id: entry.id, text: entry.summary, tone: "summary", timestamp: Date.parse(entry.timestamp) }];
+      return recordsFromSessionEntries([entry]);
+    });
+    // Copied messages are context, not completed or pending turns of this agent.
+    const items = records.flatMap((record) => buildTranscript([record]))
+      .filter((item) => item.type !== "working")
+      .map((item) => ({ ...item, rewindEntryId: undefined }));
+    return [{ type: "inherited-context", key: inherited!.boundaryEntryId, timestamp: 0, source: inherited!.source, messageCount: copied.length, items }, ...activity];
   }
 
   private latestCompactionEntry(): CompactionEntry | undefined {
