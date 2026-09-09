@@ -501,9 +501,18 @@ func main() {
 		must(register(id))
 	}
 	s.save()
+	registryAddress := ""
 	mux := http.NewServeMux()
 	mux.HandleFunc("GET /health", func(w http.ResponseWriter, r *http.Request) {
 		fmt.Fprint(w, *instance)
+	})
+	mux.HandleFunc("GET /build-services", func(w http.ResponseWriter, r *http.Request) {
+		if !*buildServices {
+			http.NotFound(w, r)
+			return
+		}
+		w.Header().Set("Content-Type", "application/json")
+		must(json.NewEncoder(w).Encode(map[string]string{"registryAddress": registryAddress}))
 	})
 	mux.HandleFunc("GET /state", func(w http.ResponseWriter, r *http.Request) {
 		s.Lock()
@@ -545,6 +554,17 @@ func main() {
 		}
 		w.WriteHeader(204)
 	})
+	if *buildServices {
+		server, listener, err := registryBridge(*root, filepath.Join(*dir, "registry.sock"))
+		must(err)
+		registryAddress = listener.Addr().String()
+		defer server.Close()
+		go func() {
+			if err := server.Serve(listener); err != http.ErrServerClosed {
+				must(err)
+			}
+		}()
+	}
 	if *connectionFile != "" {
 		connection := map[string]any{"version": 1, "adminSocket": filepath.Join(*dir, "admin.sock"), "snapshotterRoot": *root, "socketDirectory": *dir, "depth": 0}
 		if *buildServices {

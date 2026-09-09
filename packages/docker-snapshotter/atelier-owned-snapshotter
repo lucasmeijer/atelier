@@ -69,7 +69,12 @@ rm -f "$runtime/sockets/registry.sock" "$runtime/sockets/buildkit.sock"
 umask 022
 atelier-registry serve "$runtime/registry.yml" &
 registry_pid=$!
-buildkitd --addr "unix://$runtime/sockets/buildkit.sock" --root "$runtime/buildkit" \
+registry_address="$(cat "$runtime/store/registry-address")"
+cat > "$runtime/buildkit.toml" <<EOF
+[registry."$registry_address"]
+  http = true
+EOF
+buildkitd --config "$runtime/buildkit.toml" --addr "unix://$runtime/sockets/buildkit.sock" --root "$runtime/buildkit" \
   --oci-worker=true --containerd-worker=false --oci-worker-net=host &
 buildkit_pid=$!
 

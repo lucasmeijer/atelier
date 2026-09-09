@@ -35,12 +35,20 @@ runtimes with that installation; existing workspace stores are not converted.
   including users with different host-aligned UIDs. It is not a hostile-tenant seam.
 - Builder cache and registry data persist in the existing installation runtime
   mount. Their Unix sockets travel with the inherited connection; their storage
-  directories are not mounted into workspaces. No new host TCP port is exposed.
+  directories are not mounted into workspaces. The builder uses a loopback-only
+  registry bridge with a stable, automatically assigned port; no public registry
+  port is exposed. Creators bridge their own loopback to the inherited socket and
+  must share a network namespace with their Docker daemon (as installed).
 - BuildKit has its own cache, separate from shared image-runtime layers. Direct builds
   can reuse that cache across clients and root-container restarts; changed COPY
   inputs invalidate their dependent build steps.
-- Automatic build/push/pull routing and publishing workspace images through these
-  services are not wired yet. Existing workspaces keep their current Docker stores.
+- Repository Dockerfiles now build through shared BuildKit, publish by digest and
+  pull that exact result into the creator's Docker daemon. `FROM atelier-workspace`
+  selects the actual base image, including locally built bases. Each build solves
+  the current context instead of trusting an existing Dockerfile-derived tag.
+  Dockerfile-specific ignore rules take precedence over the context .dockerignore.
+- Default workspace-image generation and declared image preloads still use their
+  previous paths. Existing workspaces keep their current Docker stores.
 
 ## Observable behavior we care about
 
@@ -82,13 +90,21 @@ export to an unrelated registry or offline portability.
 A bounded root-owned service check also exercised registry blob persistence,
 BuildKit cache reuse after restart, COPY invalidation, unprivileged clients using
 only inherited sockets, concurrent independent owners, duplicate-owner rejection
-and app shutdown after each service's failure. It did not run a full nested app.
+and app shutdown after each service's failure. A later repository-build check used
+both a root creator and a workspace-local creator, verifying digest identity,
+COPY invalidation, ignored-input reuse and an unpublished local base. It did not
+run a full nested app.
 
 Other limits:
 
 - Privileged, trusted Linux workspaces with one fixed ownership/unpack profile.
   Alternate UID/GID mappings and hostile-client isolation are not supported.
 - Graceful restart was exercised; recovery after an abrupt crash is not safe yet.
+- Publishing a base whose private Docker store lacks compressed blobs is still
+  subject to the export limitation above, unless it is already in the registry.
+- The existing image-outdated check does not detect arbitrary COPY-input edits;
+  actual repository builds do re-solve those inputs. Shared-mode creator images
+  are not automatically pruned while they may be awaiting container creation.
 - Cached image layers are retained indefinitely. Disk budgets and eviction are
   not implemented. Private container layers are reclaimed on normal cleanup.
 - Concurrent cold requests can duplicate downloading and extraction work before

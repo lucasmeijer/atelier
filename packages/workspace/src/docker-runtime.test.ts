@@ -2,7 +2,7 @@ import { expect, test } from "bun:test";
 import { mkdtemp, readFile, rm, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
-import { dockerRuntimeConnectionPath, inheritedDockerMountArgs, readDockerRuntimeConnection, registerWorkspaceDocker, retireWorkspaceDocker, type DockerRuntimeConnection } from "./docker-runtime.ts";
+import { dockerRuntimeConnectionPath, readDockerRuntimeConnection, registerWorkspaceDocker, retireWorkspaceDocker, type DockerRuntimeConnection } from "./docker-runtime.ts";
 import type { WorkspaceDockerPlan } from "./types.ts";
 
 function plan(): WorkspaceDockerPlan {
@@ -28,7 +28,6 @@ test("registration is recorded before dispatch, forwarded to nested workspaces a
     expect(p.containerFiles[0]!.target).toBe(dockerRuntimeConnectionPath);
     const nested = await readDockerRuntimeConnection(p.containerFiles[0]!.source);
     expect(nested).toEqual({ ...connection, depth: 1 });
-    expect(inheritedDockerMountArgs(nested!)).toContain(`type=bind,src=${dir},dst=${dir},readonly`);
     await retireWorkspaceDocker(metadata);
     expect(calls).toEqual(["/register", "/retire"]);
     const first = JSON.parse(await readFile(join(metadata, "registration.json"), "utf8"));

@@ -102,6 +102,15 @@ func TestDaemonReadinessAndRestoredClients(t *testing.T) {
 	if !strings.Contains(string(descriptor), `"depth":0`) {
 		t.Fatal("missing root connection", string(descriptor))
 	}
+	discovery, err := client.Get("http://localhost/build-services")
+	if err != nil {
+		t.Fatal(err)
+	}
+	live, err := io.ReadAll(discovery.Body)
+	discovery.Body.Close()
+	if err != nil || discovery.StatusCode != 200 || !strings.Contains(string(live), `"registryAddress":"127.0.0.1:`) {
+		t.Fatal("missing live registry transport", string(live), err)
+	}
 	for _, name := range []string{"buildkit", "registry"} {
 		if !strings.Contains(string(descriptor), filepath.Join(socketDir, name+".sock")) {
 			t.Fatal("missing build service connection", string(descriptor))

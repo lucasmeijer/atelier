@@ -51,6 +51,14 @@ carrier images. References must be pullable; locally built, unpublished images n
 the still-pending shared builder/registry integration. No repository setting or new
 environment variable is required to select the shared runtime.
 
+Shared installations build repository Dockerfiles with their shared BuildKit worker
+and publish/pull the result by digest. The current build context is always solved,
+so changing COPY inputs cannot be hidden by an existing image tag. Both the context
+`.dockerignore` and Dockerfile-specific ignore files are respected. The selected
+`atelier-workspace` base is published once from the creator's Docker store; local
+image names are not assumed to exist in the standalone builder. Native nested
+creators need the `buildctl` client included in new default workspace images.
+
 ## Repository Dockerfile
 
 If a workspace repo has `.atelier/Dockerfile`, Atelier builds a local derived image on demand. The Dockerfile must start with:
