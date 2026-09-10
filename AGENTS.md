@@ -2,6 +2,7 @@
 
 Do not write UI tests. Follow the [UI testing policy](docs/ui-testing-policy.md).
 
+- Do not add documentation files unless explicitly requested.
 - When working on the web app, prefer server-rendered HTML over client-rendered UI.
 - Prefer Turbo Frames and Turbo Streams for webpage/server interactions whenever possible.
 - Have endpoints return server-rendered HTML or `text/vnd.turbo-stream.html` responses instead of JSON that client JavaScript turns into DOM.

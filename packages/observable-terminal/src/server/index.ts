@@ -25,7 +25,6 @@ export {
   attachHostObservableTerminal,
   attachObservableTerminal,
   buildAttachArgs,
-  buildHostAttachArgs,
   type HostObservableTerminalAttachOptions,
   type ObservableTerminalAttachOptions,
   type ObservableTerminalConnection,

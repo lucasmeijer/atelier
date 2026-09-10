@@ -61,8 +61,13 @@ describe("observable terminal normalization", () => {
 
   test("builds readonly fixed-size attach arguments", () => {
     const args = buildAttachArgs({ containerName: "atelier-ws", session: "s", cols: 120, rows: 30, readonly: true, fixedSize: true });
-    expect(args).toContain("resize-window");
-    expect(args).toContain("attach-session");
-    expect(args).toContain("-r");
+    expect(args).toContain("-i");
+    expect(args).not.toContain("-it");
+    const bridge = JSON.parse(args.at(-1)!);
+    expect(bridge.args).toContain("resize-window");
+    expect(bridge.args).toContain("attach-session");
+    expect(bridge.args).toContain("-r");
+    expect(bridge.cols).toBe(120);
+    expect(bridge.rows).toBe(30);
   });
 });
