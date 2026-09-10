@@ -18,6 +18,7 @@ export function sharedDockerConfiguration(runtime: SharedDockerRuntime) {
   const socketDirectory = dirname(runtime.snapshotterSocket);
   return {
     socketDirectory,
+    sharedSocket: `${runtime.snapshotterSocket}\n`,
     containerd: `version = 3
 root = "/var/lib/containerd"
 state = "/run/containerd"
@@ -34,7 +35,7 @@ disabled_plugins = ["io.containerd.cri.v1.images", "io.containerd.cri.v1.runtime
   default = ["shared-diff", "walking"]
 [proxy_plugins.shared-overlay]
   type = "snapshot"
-  address = ${JSON.stringify(runtime.snapshotterSocket)}
+  address = "/run/containerd/atelier-snapshotter.sock"
 `,
     docker: JSON.stringify({
       hosts: ["unix:///run/docker.sock"],
@@ -57,7 +58,7 @@ export async function prepareSharedDocker(plan: WorkspaceDockerPlan, directory: 
   const runtime = plan.sharedDocker!;
   const config = sharedDockerConfiguration(runtime);
   await mkdir(directory, { recursive: true });
-  for (const [name, content] of [["containerd.toml", config.containerd], ["docker-daemon.json", config.docker]] as const) {
+  for (const [name, content] of [["containerd.toml", config.containerd], ["docker-daemon.json", config.docker], ["shared-snapshotter-socket", config.sharedSocket]] as const) {
     const source = join(directory, name);
     await writeFile(source, content);
     plan.containerFiles.push({ source, target: `/.atelier/${name}` });

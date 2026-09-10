@@ -1,5 +1,8 @@
 # Shared Docker portability check
 
+This records the original portable implementation. The local coordinator
+now avoids temporary warm snapshots while retaining complete content registration.
+
 ## Fix
 
 The previous snapshotter returned `AlreadyExists` during `Prepare` when another

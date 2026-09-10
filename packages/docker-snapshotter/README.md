@@ -54,14 +54,22 @@ runtimes with that installation; existing workspace stores are not converted.
   through the workspace's inherited socket, with their requested aliases restored.
   Explicit upstream digest references retain their original pull path so their
   manifest identity is not changed by platform-filtered republication.
-- Private containerd instances use installation-owned content and diff services
+- Private containerd instances use a supervised workspace-local snapshot coordinator
+  and installation-owned content and diff services
   through their existing client socket. Image names, metadata, containers and
   volumes remain private. Immutable compressed blobs are retained centrally;
   client pruning cannot delete another client's export data. Unfinished uploads
   are client-scoped and reclaimed on retirement, including interrupted retirement.
-- Pulls register all image blobs before reusing an unpacked chain. The shared diff
-  service skips extraction only for a previously verified blob and matching parent
-  chain. This preserves warm reuse without creating unexportable images.
+- On verified warm hits, the local coordinator registers the exact requested
+  compressed blob through the running private containerd, protects it with active
+  manifest leases, then asks the shared snapshotter to adopt retained backing.
+  Only then does it return AlreadyExists. No physical temporary image snapshot is
+  allocated. Lookup does not create aliases; adoption rechecks content, ancestry
+  and retirement under the shared lock.
+- Cold or unverified representations retain the ordinary prepare/acquire/apply/
+  commit path. The shared diff service can still skip extraction after content
+  acquisition. Content/diff services, shared alias ownership and recovery remain
+  installation-owned; writable snapshots remain private to each client.
 - Published build outputs can be reused and preloaded by metadata-only private
   clients without publishing their compressed blobs again. Concurrent
   same-process publications share one push and temporary-tag lifetime.
@@ -91,7 +99,10 @@ runtimes with that installation; existing workspace stores are not converted.
   successful export/import while producing an unusable image is not acceptable.
 
 The [performance scenario matrix](PERFORMANCE.md) defines the corresponding
-measurement boundaries and metrics, including concurrent warm creation.
+measurement boundaries and metrics, including concurrent warm creation. The
+local-coordinator comparison measured 23% lower warm
+creation latency and 57% lower eight-way per-client latency versus the portable
+physical-snapshot path, with zero temporary warm image snapshots.
 
 ## Current evidence and limits
 
@@ -131,7 +142,8 @@ Other limits:
   Recovery does not repair corruption left by older, unjournaled versions or
   guarantee application filesystem writes survive host power loss.
 - Existing experimental workspace stores/configurations are not migrated. Recreate
-  those workspaces to select the shared content/diff plugins. This does not repair
+  those workspaces with the new default image to select the local snapshot proxy.
+  The new installation binary must be deployed with the new workspace image. This does not repair
   incomplete archives or image metadata produced by the older early-reuse path.
 - The existing image-outdated check does not detect arbitrary COPY-input edits;
   actual repository builds do re-solve those inputs. Shared-mode creator images

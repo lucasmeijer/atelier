@@ -1,5 +1,8 @@
 # Portability fix: before/after performance
 
+Historical regression baseline. The subsequent local coordinator removes the
+physical temporary warm snapshots measured below.
+
 2026-09-10 · supplied ARM64 SSH host · Docker/buildx harness, not full Atelier app startup.
 
 ## Verdict

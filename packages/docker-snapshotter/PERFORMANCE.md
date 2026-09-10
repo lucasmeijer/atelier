@@ -58,3 +58,8 @@ The [2026-09-10 portability-fix comparison](PERFORMANCE-RESULTS.md) measures col
 warm, deletion, COPY changes, nesting, 4-/8-way concurrency, restart, park/resume,
 concurrent cold misses and export. It identifies a substantial warm/concurrent
 regression despite retaining zero warm layer downloads and extraction.
+
+The local-coordinator comparison repeats the controlled
+ARM64 matrix against that portable baseline: warm creation improves 23% and
+eight-way client latency improves 57%, with zero physical temporary warm image
+snapshots and complete portable content.

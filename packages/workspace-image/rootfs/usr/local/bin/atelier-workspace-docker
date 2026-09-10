@@ -23,7 +23,7 @@ prepare_cgroups() {
 prepare_cgroups
 mount --make-rshared /
 mkdir -p /run/containerd /run/docker /var/lib/containerd /var/lib/docker /.atelier
-containerd_pid='' docker_pid='' workspace_pid=''
+snapshotter_pid='' containerd_pid='' docker_pid='' workspace_pid=''
 # Called by the EXIT trap.
 # shellcheck disable=SC2329
 cleanup() {
@@ -36,14 +36,19 @@ cleanup() {
   done
   if [ -n "$containerd_pid" ] && kill -0 "$containerd_pid" 2>/dev/null; then kill -TERM "$containerd_pid"; fi
   if [ -n "$containerd_pid" ]; then wait "$containerd_pid" || true; fi
+  if [ -n "$snapshotter_pid" ] && kill -0 "$snapshotter_pid" 2>/dev/null; then kill -TERM "$snapshotter_pid"; fi
+  if [ -n "$snapshotter_pid" ]; then wait "$snapshotter_pid" || true; fi
 }
 trap 'cleanup' EXIT
 trap 'exit 143' TERM
 trap 'exit 130' INT
+IFS= read -r shared_socket < /.atelier/shared-snapshotter-socket
+atelier-snapshotter --local-socket /run/containerd/atelier-snapshotter.sock --shared-socket "$shared_socket" > /.atelier/snapshotter.log 2>&1 &
+snapshotter_pid=$!
 containerd --config /.atelier/containerd.toml > /.atelier/containerd.log 2>&1 &
 containerd_pid=$!
 for _ in $(seq 1 300); do
-  kill -0 "$containerd_pid"
+  kill -0 "$snapshotter_pid" "$containerd_pid"
   if ctr --address /run/containerd/containerd.sock version >/dev/null 2>&1; then break; fi
   sleep .1
 done
@@ -56,7 +61,7 @@ ctr --address /run/containerd/containerd.sock --timeout 10s --namespace moby sna
 dockerd --config-file /.atelier/docker-daemon.json > /.atelier/dockerd.log 2>&1 &
 docker_pid=$!
 for _ in $(seq 1 300); do
-  kill -0 "$containerd_pid" "$docker_pid"
+  kill -0 "$snapshotter_pid" "$containerd_pid" "$docker_pid"
   if docker info >/dev/null 2>&1; then break; fi
   sleep .1
 done
@@ -65,13 +70,13 @@ driver="$(docker info --format '{{.Driver}}')"
 "$@" &
 workspace_pid=$!
 set +e
-wait -n "$containerd_pid" "$docker_pid" "$workspace_pid"
+wait -n "$snapshotter_pid" "$containerd_pid" "$docker_pid" "$workspace_pid"
 status=$?
 set -e
 # A daemon exiting successfully is still a failed workspace runtime.
 if kill -0 "$workspace_pid" 2>/dev/null; then
   echo 'private Docker runtime exited while workspace was running' >&2
-  cat /.atelier/containerd.log /.atelier/dockerd.log >&2
+  cat /.atelier/snapshotter.log /.atelier/containerd.log /.atelier/dockerd.log >&2
   exit 1
 fi
 exit "$status"

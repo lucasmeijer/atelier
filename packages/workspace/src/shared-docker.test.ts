@@ -15,7 +15,7 @@ function plan(): WorkspaceDockerPlan {
   return { sharedDocker: runtime, labels: {}, env: {}, mounts: [], publishes: [], extraArgs: [], initScripts: [], containerFiles: [], cleanup: [] };
 }
 
-test("private Docker selects its private containerd and the supplied shared snapshotter", () => {
+test("private Docker selects its private containerd and the supervised local snapshotter", () => {
   const config = sharedDockerConfiguration(runtime);
   expect(config.containerd).toContain('address = "/installation/sockets/workspace-a.sock"');
   expect(config.containerd).toContain('"io.containerd.content.v1.content"');
@@ -23,6 +23,8 @@ test("private Docker selects its private containerd and the supplied shared snap
   expect(config.containerd).toContain('type = "content"');
   expect(config.containerd).toContain('[proxy_plugins.shared-diff]');
   expect(config.containerd).toContain('default = ["shared-diff", "walking"]');
+  expect(config.containerd).toContain('[proxy_plugins.shared-overlay]\n  type = "snapshot"\n  address = "/run/containerd/atelier-snapshotter.sock"');
+  expect(config.sharedSocket).toBe(`${runtime.snapshotterSocket}\n`);
   const docker = JSON.parse(config.docker);
   expect(docker.containerd).toBe("/run/containerd/containerd.sock");
   expect(docker["storage-driver"]).toBe("shared-overlay");
@@ -41,7 +43,7 @@ test("provisioning supplies restartable socket mount, same-path backing and ephe
       { type: "bind", source: "/installation/sockets", target: "/installation/sockets", readonly: true },
       { type: "bind", source: runtime.snapshotterRoot, target: runtime.snapshotterRoot },
     ]);
-    expect(p.containerFiles.map((file) => file.target)).toEqual(["/.atelier/containerd.toml", "/.atelier/docker-daemon.json"]);
+    expect(p.containerFiles.map((file) => file.target)).toEqual(["/.atelier/containerd.toml", "/.atelier/docker-daemon.json", "/.atelier/shared-snapshotter-socket"]);
     expect(await readFile(p.containerFiles[0]!.source, "utf8")).toBe(sharedDockerConfiguration(runtime).containerd);
   } finally {
     await rm(directory, { recursive: true });

@@ -395,6 +395,9 @@ func lockStore(root string) (*os.File, error) {
 }
 
 func main() {
+	localSocket := flag.String("local-socket", "", "run workspace-local coordinator on this socket")
+	sharedSocket := flag.String("shared-socket", "", "installation client socket for local coordinator")
+	containerdSocket := flag.String("containerd-socket", "/run/containerd/containerd.sock", "private containerd callback socket")
 	root := flag.String("root", "", "absolute backend store")
 	dir := flag.String("socket-dir", "", "absolute socket directory")
 	clients := flag.String("clients", "", "comma separated fixed client IDs")
@@ -403,6 +406,15 @@ func main() {
 	instance := flag.String("instance-id", fmt.Sprint(os.Getpid()), "readiness identity")
 	flag.Parse()
 	slog.SetDefault(slog.New(slog.NewJSONHandler(os.Stdout, nil)))
+	if *localSocket != "" {
+		for _, path := range []string{*localSocket, *sharedSocket, *containerdSocket} {
+			if !filepath.IsAbs(path) {
+				panic("absolute coordinator socket paths required")
+			}
+		}
+		runLocal(*sharedSocket, *containerdSocket, *localSocket)
+		return
+	}
 	if !filepath.IsAbs(*root) || !filepath.IsAbs(*dir) {
 		panic("absolute root and socket-dir required")
 	}
@@ -469,6 +481,7 @@ func main() {
 			return e
 		}))
 		api.RegisterSnapshotsServer(g, snapshotservice.FromSnapshotter(&Client{s, id}))
+		registerWarm(g, &sharedWarm{client: &Client{s, id}, blobs: blobs})
 		contentapi.RegisterContentServer(g, contentserver.New(&clientContent{Store: blobs.Store, prefix: id + "/"}))
 		diffapi.RegisterDiffServer(g, &sharedDiff{client: &Client{s, id}, blobs: blobs})
 		l := listen(filepath.Join(*dir, id+".sock"))

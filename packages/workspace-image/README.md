@@ -30,8 +30,12 @@ The Atelier app image is built with that exact default workspace image reference
 ## Shared-runtime workspace startup
 
 In an installation with a shared Docker connection, new workspaces automatically
-register a private runtime and use the supervised Docker/containerd startup command
-in the default image. Docker becomes ready before workspace startup continues. A
+register a private runtime and use the supervised local snapshotter/containerd/
+Docker startup command in the default image. The default image compiles
+`atelier-snapshotter` in a separate Go build stage; its source is part of the
+image's content identity. The local listener starts before containerd without
+waiting for its callback socket. Containerd's snapshot proxy points locally;
+content and diff proxies still point to the installation's client socket. Docker becomes ready before workspace startup continues. A
 missing or invalid declared runtime fails visibly; it does not fall back to FUSE.
 Installations without a shared connection retain the original startup path.
 

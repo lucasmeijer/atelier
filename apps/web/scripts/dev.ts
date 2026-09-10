@@ -2,7 +2,6 @@ import { createHash } from "node:crypto";
 import { watch } from "node:fs";
 import { lstat, readdir, readFile, rename, rm } from "node:fs/promises";
 import { join, relative, resolve, sep } from "node:path";
-import { ensureDefaultWorkspaceImage } from "@atelier/workspace-image";
 
 const cwd = resolve(new URL("..", import.meta.url).pathname);
 const repoRoot = resolve(cwd, "../..");
@@ -137,6 +136,8 @@ function isWorkspaceImageInputChange(path: string): boolean {
   if (!rel) return false;
   return rel.endsWith(`${sep}workspace-image.json`)
     || rel.startsWith(`workspace-image${sep}scripts${sep}`)
+    || rel.startsWith(`workspace-image${sep}rootfs${sep}`)
+    || (rel.startsWith(`docker-snapshotter${sep}`) && /\.(go|mod|sum)$/.test(rel) && rel.split(sep).length === 2)
     || rel.includes(`${sep}workspace-image${sep}`);
 }
 
@@ -159,6 +160,11 @@ async function workspaceImageInputFiles(): Promise<string[]> {
     const imageFiles = join(dir, "workspace-image");
     if (await Bun.file(imageFiles).exists()) await collectFiles(imageFiles, files);
   }
+  const snapshotter = join(packagesDir, "docker-snapshotter");
+  for (const name of await readdir(snapshotter)) {
+    if (/\.(go|mod|sum)$/.test(name)) files.push(join(snapshotter, name));
+  }
+  await collectFiles(join(packagesDir, "workspace-image", "rootfs"), files);
   const scripts = join(packagesDir, "workspace-image", "scripts");
   if (await Bun.file(scripts).exists()) await collectFiles(scripts, files);
   return files.sort();
@@ -187,7 +193,11 @@ async function ensureWorkspaceImage(): Promise<void> {
       const inputHash = await workspaceImageInputSignature();
       if (workspaceImageInputHash === inputHash) continue;
       console.log("[workspace-image] ensuring default workspace image…");
-      console.log(`[workspace-image] ready: ${await ensureDefaultWorkspaceImage({ buildOutput: "inherit" })}`);
+      // The resolver caches its generated descriptor and completed build in a
+      // process. A fresh invocation must see changed image inputs, not that cache.
+      const ensure = Bun.spawn(["bun", "-e", 'import { ensureDefaultWorkspaceImage } from "@atelier/workspace-image"; console.log("[workspace-image] ready: " + await ensureDefaultWorkspaceImage({ buildOutput: "inherit" }));'], { cwd, stdout: "inherit", stderr: "inherit" });
+      const code = await ensure.exited;
+      if (code !== 0) throw new Error(`workspace image preparation failed (${code})`);
       workspaceImageInputHash = inputHash;
     } while (workspaceImageDirty);
   } finally {
