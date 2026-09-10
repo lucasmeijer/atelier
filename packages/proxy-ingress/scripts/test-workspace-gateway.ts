@@ -99,6 +99,12 @@ async function exerciseIngress(gatewayUrl: string, token: string) {
     const Socket = WebSocket as typeof WebSocket & (new (url: string, options: Bun.WebSocketOptions) => WebSocket);
     const socket = new Socket(`${origin.replace("http:", "ws:")}/socket`, { proxy: "", protocols: ["echo"], headers: { cookie: "session=app", authorization: "Bearer app-token", origin } });
     socket.binaryType = "arraybuffer";
+    // Several full 800×900 RGBA frames exercise desktop-sized binary traffic,
+    // not just tiny terminal messages. These are protocol bytes, not UI tests.
+    const framebuffer = new Uint8Array(800 * 900 * 4).fill(0xa5);
+    framebuffer[0] = 0;
+    framebuffer[framebuffer.length - 1] = 255;
+    const binaryStartedAt = performance.now();
     await new Promise<void>((resolve, reject) => {
       const timer = setTimeout(() => { socket.close(); reject(new Error("WebSocket timeout")); }, 4000);
       let messages = 0;
@@ -106,15 +112,22 @@ async function exerciseIngress(gatewayUrl: string, token: string) {
       socket.addEventListener("error", () => { clearTimeout(timer); reject(new Error("WebSocket failed")); });
       socket.addEventListener("message", event => {
         try {
-          if (messages++ === 0) { assert.equal(event.data, "text"); socket.send(new Uint8Array([0, 128, 255])); }
-          else { assert.deepEqual(new Uint8Array(event.data), new Uint8Array([0, 128, 255])); socket.close(4001, "done"); }
+          messages += 1;
+          if (messages === 1) { assert.equal(event.data, "text"); socket.send(new Uint8Array([0, 128, 255])); }
+          else if (messages === 2) { assert.deepEqual(new Uint8Array(event.data), new Uint8Array([0, 128, 255])); socket.send(framebuffer); }
+          else {
+            assert.deepEqual(new Uint8Array(event.data), framebuffer);
+            if (messages < 7) socket.send(framebuffer);
+            else socket.close(4001, "done");
+          }
         } catch (error) { clearTimeout(timer); socket.close(); reject(error); }
       });
       socket.addEventListener("close", event => {
         clearTimeout(timer);
-        try { assert.equal(messages, 2); assert.equal(event.code, 4001); assert.equal(event.reason, "done"); resolve(); } catch (error) { reject(error); }
+        try { assert.equal(messages, 7); assert.equal(event.code, 4001); assert.equal(event.reason, "done"); resolve(); } catch (error) { reject(error); }
       });
     });
+    console.log(`PASS: five 800×900 RGBA binary frames round-tripped through ingress + gateway in ${Math.round(performance.now() - binaryStartedAt)} ms`);
     assert.equal(appRequests, 5);
     const denied = await request(gatewayUrl, { headers: { "x-atelier-gateway-port": String(app.port), "x-atelier-gateway-protocol": "http" } });
     assert.equal(denied.status, 401);

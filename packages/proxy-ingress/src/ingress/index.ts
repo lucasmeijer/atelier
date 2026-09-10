@@ -3,7 +3,7 @@ import { backendTransport } from "./backend-transport.ts";
 import type { ServerWebSocket } from "bun";
 import { workspaceGatewayErrorHeader, stripHopByHopHeaders, workspaceProxyUrl, type WorkspaceAppBackend, type WorkspaceAppRef, type WorkspaceHttpAppBackend } from "@atelier/shared";
 import { createMemoryOriginIdentityStore, type OriginIdentityStore } from "./origin-identity.ts";
-import { closeWebSocket } from "./websocket.ts";
+import { closeWebSocket, maxSocketBufferedBytes, forwardToUpstream } from "./websocket.ts";
 import {
   defaultPublicOriginPortRange,
   publicOriginPortRangeFromEnv,
@@ -199,6 +199,10 @@ export function createWorkspaceIngress(options: WorkspaceIngressOptions): Worksp
             return await dispatchRequest(lease, request);
           },
           websocket: {
+            // RFB is an ordered byte stream: disconnect slow consumers rather
+            // than drop updates or let a desktop exhaust ingress memory.
+            backpressureLimit: maxSocketBufferedBytes,
+            closeOnBackpressureLimit: true,
             open: openAppSocket,
             message: handleAppSocketMessage,
             close: closeAppSocket,
@@ -556,14 +560,20 @@ async function openUpstreamSocket(target: string, headers: Headers, protocols: s
 function openAppSocket(ws: ServerWebSocket<AppSocketData>): void {
   ws.data.lease.activeConnections += 1;
   ws.data.lease.lastUsedAt = Date.now();
-  ws.data.upstream.addEventListener("message", (event: MessageEvent<string | ArrayBuffer>) => ws.send(event.data));
+  ws.data.upstream.addEventListener("message", (event: MessageEvent<string | ArrayBuffer>) => {
+    const bytes = event.data instanceof ArrayBuffer ? event.data.byteLength : event.data.length;
+    if (ws.send(event.data) === 0 && bytes > 0) {
+      ws.close(1013, "Workspace stream consumer is too slow");
+      ws.data.upstream.close(1013, "Workspace stream consumer is too slow");
+    }
+  });
   ws.data.upstream.addEventListener("close", (event: CloseEvent) => closeWebSocket(ws, event.code, event.reason));
   ws.data.upstream.addEventListener("error", () => ws.close(1011, "Upstream WebSocket failed"));
 }
 
 function handleAppSocketMessage(ws: ServerWebSocket<AppSocketData>, message: string | Buffer): void {
-  const payload = Buffer.isBuffer(message) ? new Uint8Array(message).slice().buffer : message;
-  ws.data.upstream.send(payload);
+  const payload = Buffer.isBuffer(message) ? new Uint8Array(message).buffer : message;
+  forwardToUpstream(ws.data.upstream, ws, payload);
 }
 
 function closeAppSocket(ws: ServerWebSocket<AppSocketData>, code: number, reason: string): void {

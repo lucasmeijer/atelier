@@ -1,0 +1,29 @@
+{
+  "aptPackages": [
+    "openbox",
+    "x11-utils",
+    "x11vnc",
+    "xauth",
+    "xvfb",
+    "websockify",
+    "libgtk-3-0t64",
+    "dbus-daemon",
+    "libglib2.0-bin"
+  ],
+  "files": [
+    {
+      "from": "workspace-image/atelier-desktop.py",
+      "to": "/usr/local/bin/atelier-desktop",
+      "mode": "0755",
+      "afterRun": true
+    },
+    {
+      "from": "workspace-image/openbox.xml",
+      "to": "/opt/atelier/desktop/openbox.xml",
+      "afterRun": true
+    }
+  ],
+  "run": [
+    "glib-compile-schemas /usr/share/glib-2.0/schemas"
+  ]
+}

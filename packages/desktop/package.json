@@ -1,0 +1,19 @@
+{
+  "name": "@atelier/desktop",
+  "private": true,
+  "type": "module",
+  "exports": {
+    "./server": "./src/server/index.ts",
+    "./client": "./src/client/index.ts"
+  },
+  "dependencies": {
+    "@atelier/agent": "workspace:*",
+    "@atelier/core": "workspace:*",
+    "@atelier/design-system": "workspace:*",
+    "@atelier/shared": "workspace:*",
+    "@atelier/workspace": "workspace:*",
+    "@hotwired/stimulus": "3.2.2",
+    "@novnc/novnc": "1.7.0",
+    "typebox": "^1.0.57"
+  }
+}
