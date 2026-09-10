@@ -1,3 +1,4 @@
+import { copyButtonHtml } from "@atelier/design-system/copy-button";
 import { buttonHtml } from "@atelier/design-system/button";
 import { domId, escapeHtml } from "@atelier/shared";
 import { terminalViewKey } from "../shared.ts";
@@ -22,9 +23,24 @@ function renderTerminalAccessoryBar(): string {
 export function renderTerminalPane(workspaceId: string, terminal: WorkspaceTerminal): string {
   return `<section id="${domId("terminal_pane", workspaceId, terminal.id)}" class="terminal-work-view" data-work-view-source="${escapeHtml(terminalViewKey(terminal.id))}">
     <div class="terminal-pane" data-controller="terminal-pane" data-action="focusin->terminal-pane#syncViewportHeight" data-terminal-pane-workspace-id-value="${escapeHtml(workspaceId)}" data-terminal-pane-id-value="${escapeHtml(terminal.id)}" data-terminal-id="${escapeHtml(terminal.id)}">
-      <div class="observable-terminal-host" tabindex="0" data-action="touchstart->terminal-pane#startTerminalTouch:passive touchmove->terminal-pane#moveTerminalTouch:passive touchcancel->terminal-pane#cancelTerminalTouch touchend->terminal-pane#finishTerminalTouch:!passive">
+      <div class="observable-terminal-host" tabindex="0" data-action="pointerdown->terminal-pane#dragPointer:capture
+        pointermove->terminal-pane#dragPointer:capture
+        pointerup->terminal-pane#dragPointer:capture
+        pointercancel->terminal-pane#dragPointer:capture
+        lostpointercapture->terminal-pane#dragPointer:capture
+        keydown->terminal-pane#allowNativePaste:capture
+        touchstart->terminal-pane#startTerminalTouch:passive
+        touchmove->terminal-pane#moveTerminalTouch:passive
+        touchcancel->terminal-pane#cancelTerminalTouch
+        touchend->terminal-pane#finishTerminalTouch:!passive">
         <div class="terminal-loading" role="status" aria-label="Loading terminal"><span class="activity-spinner" aria-hidden="true"></span></div>
       </div>
+      <div class="terminal-clipboard-bar" role="toolbar" aria-label="Terminal clipboard">
+        <span class="terminal-selection-hint">Drag to select · Shift+drag for app mouse input</span>
+        ${copyButtonHtml({ label: "Copy selected terminal text", caption: "Copy", attributesHtml: 'data-action="mousedown->terminal-pane#preserveTerminalFocus click->terminal-pane#copySelection"' })}
+        ${buttonHtml({ type: "button", variant: "secondary", content: { kind: "caption", caption: "Paste" }, attributesHtml: 'data-action="mousedown->terminal-pane#preserveTerminalFocus click->terminal-pane#pasteClipboard"' })}
+      </div>
+      <span class="terminal-clipboard-status" role="status" data-terminal-pane-target="clipboardStatus"></span>
       ${renderTerminalAccessoryBar()}
     </div>
   </section>`;

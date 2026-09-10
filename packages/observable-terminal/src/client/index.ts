@@ -1,6 +1,6 @@
 /// <reference lib="dom" />
 
-import { createTerminal, type TerminalTheme } from "@gespenst/core";
+import { createTerminal, KeyModifiers, type TerminalTheme } from "@gespenst/core";
 import { encodeObservableTerminalMessage } from "../shared/index.ts";
 
 declare const ATELIER_GHOSTTY_WASM_URL: string;
@@ -62,6 +62,9 @@ export interface ObservableTerminalViewer {
   focus(): void;
   refresh(): void;
   sendInput(data: string): void;
+  getSelection(): Promise<string>;
+  dragPointer(event: PointerEvent, action: "press" | "motion" | "release", select: boolean): void;
+  paste(text: string): void;
   setTheme(theme: ObservableTerminalTheme): void;
 }
 
@@ -193,6 +196,26 @@ export async function createObservableTerminalViewer(options: ObservableTerminal
       void term.setTheme(term.theme);
     },
     sendInput,
+    getSelection: () => term.getSelection(),
+    dragPointer: (event, action, select) => {
+      const bounds = term.element.getBoundingClientRect();
+      const scale = Math.max(1, globalThis.devicePixelRatio || 1);
+      term.sendPointer({
+        action,
+        button: "left",
+        x: (event.clientX - bounds.left) * scale,
+        y: (event.clientY - bounds.top) * scale,
+        anyButtonPressed: action !== "release",
+        forceSelection: select,
+        rectangle: event.altKey,
+        // Shift chooses application mouse input, not an application modifier.
+        modifiers: (event.ctrlKey ? KeyModifiers.control : 0)
+          | (event.altKey ? KeyModifiers.alt : 0)
+          | (event.metaKey ? KeyModifiers.meta : 0),
+        timeMs: event.timeStamp,
+      });
+    },
+    paste: (text) => term.paste(text),
     setTheme: (nextTheme) => void term.setTheme(nextTheme),
     dispose: () => {
       disposed = true;
