@@ -209,6 +209,20 @@ Other limits:
   and in-progress unpack references. Parked clients count as used; referenced storage may exceed
   the target without blocking pulls. Compressed blobs, registry publications and BuildKit cache
   are outside this collector. Private container layers are reclaimed on normal cleanup.
+- Shared compressed content has its own 10 GB (decimal) soft target. Blob acquisition
+  and commit durably pin content to the client, including metadata-only warm reuse.
+  Pins survive Docker pruning and parking; subtree retirement releases them after
+  client services stop. Unowned blobs expire after seven days, with younger unowned
+  blobs removed oldest-first if still over target. Pinned blobs and unfinished uploads
+  are protected even above target. Existing blobs are initially pinned to every surviving
+  pre-policy client until those clients retire. GC runs at startup, after commits/retirement
+  and every 15 minutes. `GET /content/storage` and `POST /content/gc` expose fresh
+  payload-byte accounting (including unfinished uploads), the policy and durable cleanup
+  failures. Settings → System health reports these separately from unpacked layers.
+  `content/ownership.json` persists pins, last-owner-release times, retirement tombstones
+  and the last GC failure. Downgrading the owner to a pre-policy binary and later
+  re-upgrading the same store is unsupported: old binaries do not maintain pins,
+  which can leave missing ownership records or stale pins and unsafe later eviction.
 - The administrative Unix socket exposes `GET /storage` for fresh measurements and `POST /gc`
   for immediate target-based collection. Both report `usedBytes`, `unusedBytes`, `totalBytes`,
   `targetBytes`, `measuredAt`, and optional `gcFailure` (`message`, `at`); GC also reports

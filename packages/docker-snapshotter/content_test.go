@@ -18,8 +18,8 @@ func TestContentRetentionAndPrivateIngests(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	a := &clientContent{Store: b, prefix: "A/"}
-	c := &clientContent{Store: b, prefix: "B/"}
+	a := &clientContent{blobStore: b, prefix: "A/"}
+	c := &clientContent{blobStore: b, prefix: "B/"}
 	payload := []byte("portable content")
 	desc := ocispec.Descriptor{Digest: digest.FromBytes(payload), Size: int64(len(payload))}
 	if err := content.WriteBlob(ctx, a, "image", bytes.NewReader(payload), desc); err != nil {
@@ -73,7 +73,7 @@ func TestContentRetentionAndPrivateIngests(t *testing.T) {
 	if err := reopened.retire(ctx, "A"); err != nil {
 		t.Fatal(err)
 	}
-	if _, err := (&clientContent{Store: reopened, prefix: "B/"}).Status(ctx, "partial"); err != nil {
+	if _, err := (&clientContent{blobStore: reopened, prefix: "B/"}).Status(ctx, "partial"); err != nil {
 		t.Fatal(err)
 	}
 }

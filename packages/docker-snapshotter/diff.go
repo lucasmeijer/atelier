@@ -95,6 +95,10 @@ func (d *sharedDiff) cachedApply(ctx context.Context, desc ocispec.Descriptor, m
 	if !found {
 		return ocispec.Descriptor{}, false, errdefs.ErrNotImplemented
 	}
+	// Cold extraction and warm reuse both need a durable content pin.
+	if _, err := (&clientContent{blobStore: d.blobs, prefix: d.client.id + "/"}).Info(ctx, desc.Digest); err != nil {
+		return ocispec.Descriptor{}, false, err
+	}
 	d.blobs.Lock()
 	cacheKey := diffCacheKey(desc)
 	applied, known := d.blobs.applied[cacheKey]
@@ -115,10 +119,6 @@ func (d *sharedDiff) cachedApply(ctx context.Context, desc ocispec.Descriptor, m
 	}
 	retained, exists := s.state.Chains[alias.Target]
 	if exists && retained.Parent == bp && chain.String() == alias.Target {
-		// Missing blobs must never yield successful reuse.
-		if _, err := d.blobs.Info(ctx, desc.Digest); err != nil {
-			return ocispec.Descriptor{}, false, err
-		}
 		slog.Info("reuse", "client", d.client.id, "snapshot.ref", alias.Target, "blob", desc.Digest)
 		return applied, true, nil
 	}

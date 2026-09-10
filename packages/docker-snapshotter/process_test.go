@@ -3,6 +3,7 @@ package main
 import (
 	"bytes"
 	"context"
+	"encoding/json"
 	"flag"
 	"github.com/containerd/containerd/v2/core/content"
 	"github.com/containerd/containerd/v2/core/content/proxy"
@@ -219,6 +220,22 @@ func TestDaemonReadinessAndRestoredClients(t *testing.T) {
 			t.Fatal("late registration was not excluded", res.Status)
 		}
 	}
+	readContentStorage := func() ContentStorageStats {
+		t.Helper()
+		res, err := client.Get("http://localhost/content/storage")
+		if err != nil {
+			t.Fatal(err)
+		}
+		defer res.Body.Close()
+		var stats ContentStorageStats
+		if err := json.NewDecoder(res.Body).Decode(&stats); err != nil {
+			t.Fatal(err)
+		}
+		return stats
+	}
+	if stats := readContentStorage(); stats.PinnedBytes != 0 || stats.ReclaimableBytes != blob.Size {
+		t.Fatalf("retirement did not release content pins: %+v", stats)
+	}
 	stop(first)
 
 	restarted := start("restarted")
@@ -236,6 +253,9 @@ func TestDaemonReadinessAndRestoredClients(t *testing.T) {
 	if err != nil || !bytes.Equal(data, payload) {
 		t.Fatalf("shared content lost after retirement/restart: %q %v", data, err)
 	}
+	if stats := readContentStorage(); stats.PinnedBytes != blob.Size || stats.ReclaimableBytes != 0 {
+		t.Fatalf("read after restart did not acquire content pin: %+v", stats)
+	}
 	statuses, err := cb.ListStatuses(ctx, "ref==interrupted")
 	if err != nil || len(statuses) != 1 {
 		t.Fatalf("other client's upload lost: %+v %v", statuses, err)
@@ -245,7 +265,7 @@ func TestDaemonReadinessAndRestoredClients(t *testing.T) {
 		t.Fatal(err)
 	}
 	for _, id := range []string{"a", "child", "grandchild"} {
-		statuses, err = (&clientContent{Store: allBlobs, prefix: id + "/"}).ListStatuses(ctx)
+		statuses, err = (&clientContent{blobStore: allBlobs, prefix: id + "/"}).ListStatuses(ctx)
 		if err != nil || len(statuses) != 0 {
 			t.Fatalf("retired subtree upload retained for %s: %+v %v", id, statuses, err)
 		}

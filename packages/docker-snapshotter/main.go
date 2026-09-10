@@ -443,7 +443,13 @@ func main() {
 		must(e)
 	}
 	must(s.restore(context.Background()))
-	blobs, e := openBlobs(filepath.Join(*root, "content"))
+	var legacyClients []string
+	for id := range s.state.Clients {
+		if !s.state.Retired[id] {
+			legacyClients = append(legacyClients, id)
+		}
+	}
+	blobs, e := openBlobs(filepath.Join(*root, "content"), legacyClients...)
 	must(e)
 	for id, retired := range s.state.Retired {
 		if retired {
@@ -490,7 +496,7 @@ func main() {
 		api.RegisterSnapshotsServer(g, snapshotservice.FromSnapshotter(&Client{s, id}))
 		registerWarm(g, &sharedWarm{client: &Client{s, id}, blobs: blobs})
 		registerImageLayers(g, &Client{s, id})
-		contentapi.RegisterContentServer(g, contentserver.New(&clientContent{Store: blobs.Store, prefix: id + "/"}))
+		contentapi.RegisterContentServer(g, contentserver.New(&clientContent{blobStore: blobs, prefix: id + "/"}))
 		diffapi.RegisterDiffServer(g, &sharedDiff{client: &Client{s, id}, blobs: blobs})
 		l := listen(filepath.Join(*dir, id+".sock"))
 		go func() {
@@ -514,6 +520,9 @@ func main() {
 	defer stopLayerGC()
 	mux := http.NewServeMux()
 	s.registerStorageAPI(mux)
+	blobs.registerContentStorageAPI(mux)
+	stopContentGC := blobs.startContentGC()
+	defer stopContentGC()
 	mux.HandleFunc("GET /health", func(w http.ResponseWriter, r *http.Request) {
 		fmt.Fprint(w, *instance)
 	})

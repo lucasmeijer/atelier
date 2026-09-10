@@ -18,9 +18,9 @@ import (
 
 // Docker keeps its metadata/GC database private. The underlying immutable blobs
 // are installation-owned, like retained snapshot chains: one client's GC must
-// never remove another client's content. No cache eviction policy exists yet.
+// never remove another client's content. Pins are released only on retirement.
 type clientContent struct {
-	content.Store
+	*blobStore
 	prefix string
 }
 
@@ -35,11 +35,25 @@ func (c *clientContent) Writer(ctx context.Context, opts ...content.WriterOpt) (
 	if o.Ref == "" {
 		return nil, errdefs.ErrInvalidArgument
 	}
+	c.Lock()
+	defer c.Unlock()
+	if c.ownership.Retired[c.id()] {
+		return nil, errdefs.ErrFailedPrecondition
+	}
+	if o.Desc.Digest != "" {
+		if _, err := c.Store.Info(ctx, o.Desc.Digest); err == nil {
+			if err := c.pin(o.Desc.Digest); err != nil {
+				return nil, err
+			}
+		} else if !errdefs.IsNotFound(err) {
+			return nil, err
+		}
+	}
 	w, err := c.Store.Writer(ctx, content.WithRef(c.prefix+o.Ref), content.WithDescriptor(o.Desc))
 	if err != nil {
 		return nil, err
 	}
-	return &clientWriter{Writer: w, ref: o.Ref}, nil
+	return &clientWriter{Writer: w, ref: o.Ref, client: c}, nil
 }
 func (c *clientContent) Status(ctx context.Context, ref string) (content.Status, error) {
 	s, err := c.Store.Status(ctx, c.prefix+ref)
@@ -61,12 +75,15 @@ func (c *clientContent) ListStatuses(ctx context.Context, filters ...string) ([]
 type blobStore struct {
 	content.Store
 	sync.Mutex
-	path    string
-	applied map[string]ocispec.Descriptor
+	path          string
+	applied       map[string]ocispec.Descriptor
+	ownership     contentOwnership
+	ownershipPath string
+	gcRequests    chan struct{}
 }
 
-func openBlobs(root string) (*blobStore, error) {
-	if err := os.MkdirAll(root, 0700); err != nil {
+func openBlobs(root string, legacyClients ...string) (*blobStore, error) {
+	if err := os.MkdirAll(filepath.Join(root, "blobs"), 0700); err != nil {
 		return nil, err
 	}
 	cs, err := local.NewStore(root)
@@ -80,12 +97,19 @@ func openBlobs(root string) (*blobStore, error) {
 	} else if os.IsNotExist(err) {
 		err = nil
 	}
-	return b, err
+	if err != nil {
+		return nil, err
+	}
+	if err := b.openOwnership(legacyClients); err != nil {
+		return nil, err
+	}
+	return b, nil
 }
 
 type clientWriter struct {
 	content.Writer
-	ref string
+	ref    string
+	client *clientContent
 }
 
 func (w *clientWriter) Status() (content.Status, error) {
@@ -119,7 +143,9 @@ func scopedStatuses(statuses []content.Status, prefix string, fs []string) ([]co
 // Stop the client's gRPC server before this call so no new writes can race
 // retirement. Repeat on startup for tombstones left by interrupted retirement.
 func (b *blobStore) retire(ctx context.Context, id string) error {
-	c := &clientContent{Store: b.Store, prefix: id + "/"}
+	b.Lock()
+	defer b.Unlock()
+	c := &clientContent{blobStore: b, prefix: id + "/"}
 	statuses, err := c.ListStatuses(ctx)
 	if err != nil {
 		return err
@@ -129,5 +155,5 @@ func (b *blobStore) retire(ctx context.Context, id string) error {
 			return err
 		}
 	}
-	return nil
+	return b.releaseClient(id)
 }

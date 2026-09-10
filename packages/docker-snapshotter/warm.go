@@ -28,7 +28,7 @@ const (
 )
 
 // Our internal interface reuses containerd's protobuf request/descriptor types.
-// Lookup is read-only; Adopt rechecks everything and persists only an alias.
+// Lookup pins content; Adopt rechecks everything and persists an image alias.
 // The local caller MUST register the returned descriptor before calling Adopt.
 // Neither call changes ownership of shared backing or allocates a snapshot.
 type warmServer interface {
@@ -107,7 +107,7 @@ func (w *sharedWarm) candidate(ctx context.Context, r *api.PrepareSnapshotReques
 	if ch.Parent != bp {
 		return miss()
 	}
-	data, err := content.ReadBlob(ctx, w.blobs, ocispec.Descriptor{Digest: manifest})
+	data, err := content.ReadBlob(ctx, &clientContent{blobStore: w.blobs, prefix: w.client.id + "/"}, ocispec.Descriptor{Digest: manifest})
 	if err != nil {
 		return ocispec.Descriptor{}, Chain{}, err
 	}
@@ -138,7 +138,7 @@ func (w *sharedWarm) candidate(ctx context.Context, r *api.PrepareSnapshotReques
 	if chain != target {
 		return miss()
 	}
-	info, err := w.blobs.Info(ctx, desc.Digest)
+	info, err := (&clientContent{blobStore: w.blobs, prefix: w.client.id + "/"}).Info(ctx, desc.Digest)
 	if err != nil {
 		return ocispec.Descriptor{}, Chain{}, err
 	}

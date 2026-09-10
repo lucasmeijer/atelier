@@ -119,7 +119,7 @@ func newLocalFixture(t *testing.T) *localFixture {
 		t.Fatal(err)
 	}
 	t.Cleanup(func() { bdb.Close() })
-	db := metadata.NewDB(bdb, &clientContent{Store: blobs.Store, prefix: "B/"}, map[string]snapshots.Snapshotter{"shared-overlay": proxy.NewSnapshotter(api.NewSnapshotsClient(localConn), "shared-overlay")})
+	db := metadata.NewDB(bdb, &clientContent{blobStore: blobs, prefix: "B/"}, map[string]snapshots.Snapshotter{"shared-overlay": proxy.NewSnapshotter(api.NewSnapshotsClient(localConn), "shared-overlay")})
 	if err := db.Init(ctx); err != nil {
 		t.Fatal(err)
 	}
@@ -498,5 +498,23 @@ func TestLocalWarmRegistrationCannotRacePrivateOwnership(t *testing.T) {
 	info, err := f.local.hybrid.Stat(f.ctx, f.request.Key)
 	if err != nil || info.Kind != snapshots.KindActive {
 		t.Fatalf("private winner changed: %+v %v", info, err)
+	}
+}
+
+func TestWarmLookupPinsExactCompressedRepresentation(t *testing.T) {
+	f := newLocalFixture(t)
+	if _, err := f.warm.Lookup(f.ctx, f.request); err != nil {
+		t.Fatal(err)
+	}
+	if !f.blobs.ownership.Blobs[f.desc.Digest].Clients["B"] || !f.blobs.ownership.Blobs[f.manifest.Digest].Clients["B"] {
+		t.Fatal("warm lookup did not durably pin layer and manifest")
+	}
+	reopened, err := openBlobs(filepath.Dir(f.blobs.path))
+	if err != nil {
+		t.Fatal(err)
+	}
+	result := collectContentAt(t, reopened, 0, time.Now().Add(30*24*time.Hour))
+	if result.PinnedBytes != f.desc.Size+f.manifest.Size {
+		t.Fatalf("warm content not protected: %+v", result)
 	}
 }

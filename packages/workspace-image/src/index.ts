@@ -13,7 +13,7 @@ import { buildSharedWorkspaceImage, sharedWorkspaceImageTag, type SharedWorkspac
 import { dockerServerPlatform, nativeImageExists as imageExists } from "./local-images.ts";
 
 export * from "./runtime-connection.ts";
-export { readSharedLayerStorage, type SharedLayerStorage } from "./storage.ts";
+export { readSharedLayerStorage, type SharedLayerStorage, readSharedContentStorage, type SharedContentStorage } from "./storage.ts";
 
 interface WorkspaceImageBuildTask {
   tag: string;

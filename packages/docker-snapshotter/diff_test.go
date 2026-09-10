@@ -77,6 +77,9 @@ func TestApplyReuseRequiresContentAndMatchingChain(t *testing.T) {
 	if err != nil || response.Applied.Digest != applied.Digest.String() || response.Applied.Size != applied.Size {
 		t.Fatalf("reuse failed: %+v %v", response, err)
 	}
+	if !blobs.ownership.Blobs[desc.Digest].Clients["B"] {
+		t.Fatal("shared diff reuse did not pin compressed content")
+	}
 	wrongMedia := desc
 	wrongMedia.MediaType = ocispec.MediaTypeImageLayer
 	if _, reused, err := d.cachedApply(ctx, wrongMedia, mounts); err != nil || reused {

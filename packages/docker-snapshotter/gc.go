@@ -2,7 +2,6 @@ package main
 
 import (
 	"context"
-	"encoding/json"
 	"fmt"
 	"log/slog"
 	"net/http"
@@ -268,70 +267,14 @@ func (s *Store) requestLayerGC() {
 	}
 }
 
-// One worker coalesces mutation bursts. Requests and the timer use the same
-// collector as the admin API; Store's lock serializes collection and graph edits.
 func (s *Store) startLayerGC() func() {
 	s.Lock()
 	s.gcRequests = make(chan struct{}, 1)
 	s.Unlock()
-	ctx, cancel := context.WithCancel(context.Background())
-	done := make(chan struct{})
-	go func() {
-		defer close(done)
-		ticker := time.NewTicker(15 * time.Minute)
-		defer ticker.Stop()
-		for {
-			select {
-			case <-ctx.Done():
-				return
-			case <-ticker.C:
-			case <-s.gcRequests:
-				// Coalesce commits/releases from the same pull or retirement.
-				timer := time.NewTimer(time.Second)
-				select {
-				case <-ctx.Done():
-					timer.Stop()
-					return
-				case <-timer.C:
-				}
-				select {
-				case <-s.gcRequests:
-				default:
-				}
-			}
-			if _, err := s.collectLayers(ctx); err != nil {
-				// The collector persists and logs the failure for System Health.
-				continue
-			}
-		}
-	}()
-	s.requestLayerGC() // Recovery is complete before this worker starts.
-	return func() { cancel(); <-done }
+	return startStorageGC(s.gcRequests, s.collectLayers)
 }
 
 func (s *Store) registerStorageAPI(mux *http.ServeMux) {
-	mux.HandleFunc("GET /storage", func(w http.ResponseWriter, r *http.Request) {
-		w.Header().Set("Cache-Control", "no-store")
-		stats, err := s.storageStats(r.Context())
-		if err != nil {
-			http.Error(w, err.Error(), http.StatusInternalServerError)
-			return
-		}
-		w.Header().Set("Content-Type", "application/json")
-		if err := json.NewEncoder(w).Encode(stats); err != nil {
-			slog.Error("storage response", "error", err)
-		}
-	})
-	mux.HandleFunc("POST /gc", func(w http.ResponseWriter, r *http.Request) {
-		w.Header().Set("Cache-Control", "no-store")
-		stats, err := s.collectLayers(r.Context())
-		if err != nil {
-			http.Error(w, err.Error(), http.StatusInternalServerError)
-			return
-		}
-		w.Header().Set("Content-Type", "application/json")
-		if err := json.NewEncoder(w).Encode(stats); err != nil {
-			slog.Error("gc response", "error", err)
-		}
-	})
+	mux.HandleFunc("GET /storage", storageHandler(s.storageStats))
+	mux.HandleFunc("POST /gc", storageHandler(s.collectLayers))
 }
