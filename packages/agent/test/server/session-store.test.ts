@@ -1,3 +1,4 @@
+import { SessionManager } from "@earendil-works/pi-coding-agent";
 import { mkdtemp, rm, writeFile, mkdir } from "node:fs/promises";
 import { join } from "node:path";
 import { tmpdir } from "node:os";
@@ -153,7 +154,8 @@ describe("Workspace Agent conversation store", () => {
   test("replaces the Agent session behind an existing Agent conversation and archives the old session", async () => {
     await dataDir();
     const original = await ensureDefaultWorkspaceAgentConversation("ws1");
-    await writeFile(original.path, '{"type":"message"}\n');
+    SessionManager.open(original.path, undefined, "/work").appendMessage({ role: "user", content: "Original task", timestamp: 1 });
+    const originalContent = await Bun.file(original.path).text();
 
     const replacement = await replaceWorkspaceAgentSession(original);
 
@@ -161,14 +163,14 @@ describe("Workspace Agent conversation store", () => {
     expect(replacement.conversationId).toBe(original.conversationId);
     expect(replacement.path).toBe(original.path);
     expect(await Bun.file(replacement.path).text()).toBe("");
-    expect(await Bun.file(original.path.replace(/\.jsonl$/, ".archived.jsonl")).text()).toBe('{"type":"message"}\n');
+    expect(await Bun.file(original.path.replace(/\.jsonl$/, ".archived.jsonl")).text()).toBe(originalContent);
     expect(await listWorkspaceAgentConversations("ws1")).toEqual([replacement]);
   });
 
   test("concurrent list readers never observe the replacement gap used by /new", async () => {
     await dataDir();
     const original = await ensureDefaultWorkspaceAgentConversation("ws1");
-    await writeFile(original.path, '{"type":"message"}\n');
+    SessionManager.open(original.path, undefined, "/work").appendMessage({ role: "user", content: "Original task", timestamp: 1 });
 
     const replacement = replaceWorkspaceAgentSession(original);
     const readers = Array.from({ length: 8 }, () => listWorkspaceAgentConversations("ws1"));

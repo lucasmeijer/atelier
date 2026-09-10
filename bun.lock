@@ -23,6 +23,7 @@
         "@atelier/design-system": "workspace:*",
         "@atelier/files": "workspace:*",
         "@atelier/keypress-probe": "workspace:*",
+        "@atelier/project-setup": "workspace:*",
         "@atelier/projects": "workspace:*",
         "@atelier/proxy-egress": "workspace:*",
         "@atelier/proxy-ingress": "workspace:*",
@@ -147,6 +148,18 @@
       "dependencies": {
         "@atelier/core": "workspace:*",
         "@gespenst/core": "catalog:",
+      },
+    },
+    "packages/project-setup": {
+      "name": "@atelier/project-setup",
+      "dependencies": {
+        "@atelier/agent": "workspace:*",
+        "@atelier/core": "workspace:*",
+        "@atelier/design-system": "workspace:*",
+        "@atelier/projects": "workspace:*",
+        "@atelier/shared": "workspace:*",
+        "@earendil-works/pi-coding-agent": "catalog:",
+        "typebox": "^1.0.57",
       },
     },
     "packages/projects": {
@@ -310,6 +323,8 @@
     "@atelier/markdown": ["@atelier/markdown@workspace:packages/markdown"],
 
     "@atelier/observable-terminal": ["@atelier/observable-terminal@workspace:packages/observable-terminal"],
+
+    "@atelier/project-setup": ["@atelier/project-setup@workspace:packages/project-setup"],
 
     "@atelier/projects": ["@atelier/projects@workspace:packages/projects"],
 

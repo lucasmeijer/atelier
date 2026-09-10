@@ -35,7 +35,6 @@ export {
   normalizeWorkspacePath,
   registerWorkspaceAgentTool,
   registerWorkspacePresenter,
-  workspaceAgentToolNames,
   type WorkspacePresenterDefinition,
   type WorkspacePresenterDeps,
 } from "./tools.ts";
@@ -70,3 +69,5 @@ export { type AgentRouteHandler, requireAgentRuntime } from "./route-support.ts"
 export { type AgentTranscriptSnapshot, type AgentTranscriptAddition, type AgentTranscriptAnchor } from "./transcript-contributions.ts";
 
 export { renderNotificationHeader } from "./render-notification.ts";
+
+export { registerConversationAgentTool } from "./conversation-tools.ts";

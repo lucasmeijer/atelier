@@ -1,3 +1,4 @@
+import { projectSetupWorkspace } from "@atelier/project-setup";
 import {
   prepareNewWorkspaceAgentParameters,
   renderLaunchComposer,
@@ -188,8 +189,9 @@ export function createWebApp(deps: WebAppDeps): WebApp {
     refreshWorkspacePaneCollections,
     refreshProjectWarnings,
     renderLaunchComposer: renderProjectLaunchComposerFrame,
-    createAgentWorkspace: async (project, request) => await createAgentWorkspaceFromForm(request, { project }),
+    createSetupWorkspace: createProjectSetupWorkspace,
     workspaceCommandModalHostId,
+    createAgentWorkspace: async (project, request) => await createAgentWorkspaceFromForm(request, { project }),
   });
 
   function workspaceResidentId(id: string): string {
@@ -564,7 +566,7 @@ export function createWebApp(deps: WebAppDeps): WebApp {
   type ShellSurface =
     | { kind: "module-modal"; dialogHtml: string }
     | { kind: "project-settings"; projectId: string; section: string | undefined }
-    | { kind: "new-project" }
+    | { kind: "new-project"; setupGitUrl?: string }
     | { kind: "new-workspace"; project?: ProjectSummary }
     | { kind: "settings"; section: string | undefined; development?: true };
 
@@ -572,7 +574,7 @@ export function createWebApp(deps: WebAppDeps): WebApp {
     const pane = await workspacePaneCollections(selectedId ?? "");
     const projectEditor = surface?.kind === "project-settings"
       ? await projectRoutes.editorModal({ kind: "settings", projectId: surface.projectId, section: surface.section })
-      : await projectRoutes.editorModal(surface?.kind === "new-project" ? { kind: "new" } : undefined);
+      : await projectRoutes.editorModal(surface?.kind === "new-project" ? { kind: "new", setupGitUrl: surface.setupGitUrl } : undefined);
     const settings = surface?.kind === "settings"
       ? surface.development ? await renderDevelopmentSettingsDialog() : await renderSettingsDialog(surface.section)
       : "";
@@ -707,11 +709,8 @@ export function createWebApp(deps: WebAppDeps): WebApp {
     const thinkingLevel = agent?.thinkingLevel ?? "";
     const serviceTier = agent?.serviceTier ?? "";
     const attachmentDraft = agent?.attachmentDraft ?? "";
-    if (!initialPrompt && !initialPromptMode && !model && !thinkingLevel && !serviceTier && !attachmentDraft) return undefined;
-    const parameters: AgentWorkspaceParameters = { initialPrompt, model, thinkingLevel, attachmentDraft };
-    if (initialPromptMode) parameters.initialPromptMode = initialPromptMode;
-    if (serviceTier) parameters.serviceTier = serviceTier;
-    return parameters;
+    if (!initialPrompt && !initialPromptMode && !model && !thinkingLevel && !serviceTier && !attachmentDraft && !agent?.additionalTools?.length) return undefined;
+    return { ...agent, initialPrompt, model, thinkingLevel, attachmentDraft };
   }
 
   interface CreatedWorkspace {
@@ -793,6 +792,14 @@ export function createWebApp(deps: WebAppDeps): WebApp {
     }
     const { id, isFirstWorkspace } = await launch;
     return turboStreamResponse(`${workspacePaneCollectionsTurboStream(await workspacePaneCollections(""))}${turboUpdateStream(launchComposerFrameId, "")}${isFirstWorkspace ? selectWorkspaceTurboStream(id) : ""}`);
+  }
+
+  async function createProjectSetupWorkspace(project: ProjectSummary, request: Request): Promise<Response> {
+    const { id } = await createWorkspaceFromCommand(projectSetupWorkspace(project));
+    const location = `/workspaces/${encodeURIComponent(id)}`;
+    if (requestAcceptsJson(request)) return jsonResponse({ workspace: { id, phase: "starting", url: location } }, { status: 202, headers: { location } });
+    if (wantsTurboStream(request)) return turboStreamResponse(`${workspacePaneCollectionsTurboStream(await workspacePaneCollections(""))}${turboReplaceStream("project-editor-modal", await projectRoutes.editorModal())}${selectWorkspaceTurboStream(id)}`);
+    return new Response(null, { status: 303, headers: { location } });
   }
 
   async function createEmptyAgentWorkspaceEndpoint(request: Request): Promise<Response> {
@@ -1214,6 +1221,7 @@ export function createWebApp(deps: WebAppDeps): WebApp {
     const projectWorkspaceMatch = url.pathname.match(/^\/projects\/([^/]+)\/workspaces\/new$/);
     if (projectWorkspaceMatch && request.method === "GET") return await surfacePage({ kind: "new-workspace", project: await projectRoutes.byReference(decodeURIComponent(projectWorkspaceMatch[1]!)) });
     if (url.pathname === "/workspaces/new" && request.method === "GET") return await surfacePage({ kind: "new-workspace" });
+    if (url.pathname === "/projects/new/setup" && request.method === "GET") return await surfacePage({ kind: "new-project", setupGitUrl: url.searchParams.get("gitUrl") ?? "" });
     if (url.pathname === "/projects/new" && request.method === "GET") return await surfacePage({ kind: "new-project" });
     if (url.pathname === "/settings" && request.method === "GET" && !wantsTurboStream(request)) return await surfacePage({ kind: "settings", section: url.searchParams.get("section") ?? undefined });
     if (url.pathname === "/settings/development" && request.method === "GET" && !wantsTurboStream(request)) return await surfacePage({ kind: "settings", section: undefined, development: true });

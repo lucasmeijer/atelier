@@ -27,7 +27,7 @@ export function registerAgentEvents(events: AtelierEventBus): void {
 }
 
 async function initializeWorkspaceAgent(workspaceId: string, context: AgentWorkspaceParameters, events: AtelierEventBus): Promise<void> {
-  const agent = await ensureDefaultWorkspaceAgentConversation(workspaceId);
+  const agent = await ensureDefaultWorkspaceAgentConversation(workspaceId, { additionalTools: context.additionalTools });
   const runtime = await getWorkspaceAgentRuntime(agent, { events });
   const modelRef = context.model ? parseModelRef(context.model) : undefined;
   if (modelRef) await runtime.setModel(modelRef.provider, modelRef.id);

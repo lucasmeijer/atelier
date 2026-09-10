@@ -1,0 +1,15 @@
+{
+  "name": "@atelier/project-setup",
+  "private": true,
+  "type": "module",
+  "exports": { ".": "./src/index.ts", "./server": "./src/server/index.ts", "./client": "./src/client/index.ts" },
+  "dependencies": {
+    "@atelier/agent": "workspace:*",
+    "@atelier/core": "workspace:*",
+    "@atelier/design-system": "workspace:*",
+    "@atelier/projects": "workspace:*",
+    "@atelier/shared": "workspace:*",
+    "@earendil-works/pi-coding-agent": "catalog:",
+    "typebox": "^1.0.57"
+  }
+}

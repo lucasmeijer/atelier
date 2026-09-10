@@ -1,3 +1,4 @@
+import { loadConversationTools } from "./conversation-tools.ts";
 import { agentDelegation, type AgentSessionAttachment, type AgentDelegationTranscript } from "./delegation.ts";
 import { attachModelRequestPipeline } from "./model-request-pipeline.ts";
 import { mkdir, readFile, writeFile } from "node:fs/promises";
@@ -12,10 +13,10 @@ import { createPiModelRuntime } from "./pi-config-models.ts";
 import type { WorkspaceAgentRuntimeOptions } from "./runtime-types.ts";
 import { compactionKeepRecentTokens } from "./runtime-status.ts";
 import { AgentServiceTierState, modelRuntimeWithServiceTiers, supportsFastMode, type AgentServiceTier } from "./service-tier.ts";
-import type { WorkspaceAgentConversationInfo } from "./session-store.ts";
+import { conversationToolBindings, type WorkspaceAgentConversationInfo } from "./session-store.ts";
 import { loadWorkspaceSkills } from "./skills.ts";
 import { createAtelierResourceLoader } from "./system-prompt.ts";
-import { createWorkspaceAgentTools, workspaceAgentToolNames } from "./tools.ts";
+import { createWorkspaceAgentTools } from "./tools.ts";
 import type { AgentToolDefinitionView } from "./render-transcript.ts";
 
 export interface AgentSessionDelegation {
@@ -73,7 +74,8 @@ export async function createPiSession(agent: WorkspaceAgentConversationInfo, opt
   const sessionManager = SessionManager.open(agent.path, dirname(agent.path), workspaceRoot);
   preparation?.seedHistory?.(sessionManager);
   const serviceTiers = new AgentServiceTierState(sessionManager);
-  const customTools = [...createWorkspaceAgentTools(agent.workspaceId, { events: options.events }), ...(preparation?.tools ?? [])];
+  const customTools = [...createWorkspaceAgentTools(agent.workspaceId, { events: options.events }), ...(preparation?.tools ?? []), ...loadConversationTools(conversationToolBindings(sessionManager.getEntries()), agent.workspaceId)];
+  if (new Set(customTools.map((tool) => tool.name)).size !== customTools.length) throw new Error("Duplicate agent tool names");
   const inheritedModel = preparation?.model;
   let promptSession: AgentSession | undefined;
   const { session } = await createAgentSession({
@@ -87,7 +89,7 @@ export async function createPiSession(agent: WorkspaceAgentConversationInfo, opt
       ...(promptSession ? preparation?.modelPrompt?.(promptSession.model?.id, promptSession.thinkingLevel) ?? [] : []),
     ], skillResources),
     customTools,
-    tools: [...workspaceAgentToolNames(), ...(preparation?.tools ?? []).map((tool) => tool.name)],
+    tools: customTools.map((tool) => tool.name),
     sessionManager,
     settingsManager: SettingsManager.inMemory(sessionSettings),
   });

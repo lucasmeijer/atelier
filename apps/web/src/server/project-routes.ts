@@ -1,3 +1,4 @@
+import { projectSetupFrame } from "@atelier/project-setup";
 import { AtelierCoreError, gitHubCredentialHelperCommand, invalidArguments, readJsonObject, requestAcceptsJson, type JsonObject } from "@atelier/core";
 import { actionItemHtml } from "@atelier/design-system/action-item";
 import { actionLinkHtml } from "@atelier/design-system/action-link";
@@ -26,7 +27,7 @@ import { jsonResponse, response, turboReplaceStream, turboUpdateStream, wantsTur
 const jsonStringSchema = Type.String();
 const jsonBooleanSchema = Type.Boolean();
 
-type ProjectEditorModalOptions = { kind: "settings"; projectId: string; section: string | undefined } | { kind: "new" };
+type ProjectEditorModalOptions = { kind: "settings"; projectId: string; section: string | undefined } | { kind: "new"; setupGitUrl?: string };
 
 export interface ProjectRoutes {
   handle(request: Request, url: URL): Promise<Response | undefined>;
@@ -44,6 +45,7 @@ export function createProjectRoutes(deps: {
   refreshWorkspacePaneCollections(): Promise<string>;
   refreshProjectWarnings(projectId: string): Promise<string>;
   renderLaunchComposer(project: ProjectSummary): Promise<string>;
+  createSetupWorkspace(project: ProjectSummary, request: Request): Promise<Response>;
   createAgentWorkspace(project: ProjectSummary, request: Request): Promise<Response>;
   workspaceCommandModalHostId: string;
 }): ProjectRoutes {
@@ -235,8 +237,8 @@ export function createProjectRoutes(deps: {
 
   function newProjectEditorFrame(): string {
     const cancelButton = buttonHtml({ type: "button", variant: "secondary", content: { kind: "caption", caption: "Cancel" }, attributesHtml: 'data-action="dialog#close"' });
-    const addButton = buttonHtml({ type: "submit", variant: "primary", content: { kind: "caption", caption: "Add project" }, attributesHtml: 'data-turbo-submits-with="Adding…"' });
-    return `<turbo-frame id="project_editor_frame" class="project-editor-frame"><div class="project-editor-page project-editor-detail-page"><form class="project-editor-new-form" aria-label="Add project" method="post" action="/projects" data-turbo="true" data-action="turbo:submit-end->dialog#submitted"><div><h3>Repository source</h3><p>Save a remote URL, local path, or search for a GitHub repository.</p><div data-controller="project-github-search" data-project-github-search-url-value="/projects/github-search"><input class="text-field" name="gitUrl" placeholder="github.com/org/repo, or /path/to/repo#branch" required autofocus data-project-github-search-target="input" data-action="keydown->project-github-search#keydown input->project-github-search#input"><div class="floating-surface autocomplete-popover" popover="manual" data-project-github-search-target="menu" hidden></div></div></div><footer>${cancelButton}${addButton}</footer></form></div></turbo-frame>`;
+    const continueButton = buttonHtml({ type: "submit", variant: "primary", content: { kind: "caption", caption: "Continue" }, attributesHtml: 'data-turbo-submits-with="Continuing…"' });
+    return `<turbo-frame id="project_editor_frame" class="project-editor-frame"><div class="project-editor-page project-editor-detail-page"><form class="project-editor-new-form" aria-label="Add project" method="get" action="/projects/new/setup" data-turbo="true" data-turbo-frame="project_editor_frame"><div><h3>Repository source</h3><p>Save a remote URL, local path, or search for a GitHub repository.</p><div data-controller="project-github-search" data-project-github-search-url-value="/projects/github-search"><input class="text-field" name="gitUrl" placeholder="github.com/org/repo, or /path/to/repo#branch" required autofocus data-project-github-search-target="input" data-action="keydown->project-github-search#keydown input->project-github-search#input"><div class="floating-surface autocomplete-popover" popover="manual" data-project-github-search-target="menu" hidden></div></div></div><footer>${cancelButton}${continueButton}</footer></form></div></turbo-frame>`;
   }
 
   async function projectEditorModal(options?: ProjectEditorModalOptions): Promise<string> {
@@ -244,7 +246,7 @@ export function createProjectRoutes(deps: {
     const section = parseProjectSettingsSection(options?.kind === "settings" ? options.section : undefined);
     const title = options?.kind === "new" ? "Add project" : "Project settings";
     const bodyHtml = options?.kind === "new"
-      ? newProjectEditorFrame()
+      ? options.setupGitUrl ? projectSetupFrame(options.setupGitUrl) : newProjectEditorFrame()
       : project
         ? await projectEditorFrame(project, section)
         : '<turbo-frame id="project_editor_frame" class="project-editor-frame"></turbo-frame>';
@@ -339,15 +341,29 @@ export function createProjectRoutes(deps: {
     return value;
   }
 
+  function optionalJsonBoolean(body: JsonObject, field: string): boolean | undefined {
+    const value = body[field];
+    if (value !== undefined && !Value.Check(jsonBooleanSchema, value)) throw invalidArguments(`${field} must be a boolean`);
+    return value;
+  }
+
   async function projectDetailEndpoint(projectId: string): Promise<Response> {
     return jsonResponse({ project: await getProjectConfiguration(projectId) });
   }
 
   async function createProjectEndpoint(request: Request, url: URL): Promise<Response> {
     const json = requestAcceptsJson(request);
-    const gitUrl = json
-      ? requiredJsonString(await readJsonObject(request), "gitUrl")
-      : String((await request.formData()).get("gitUrl") ?? "");
+    let gitUrl: string;
+    let setup: boolean;
+    if (json) {
+      const body = await readJsonObject(request);
+      gitUrl = requiredJsonString(body, "gitUrl");
+      setup = optionalJsonBoolean(body, "setup") ?? false;
+    } else {
+      const form = await request.formData();
+      gitUrl = String(form.get("gitUrl") ?? "");
+      setup = form.get("setup") === "true";
+    }
     let project: ProjectSummary;
     try {
       project = (await addProject(gitUrl)).project;
@@ -357,9 +373,10 @@ export function createProjectRoutes(deps: {
       const projects = (await listProjects()).projects;
       project = projects.find((candidate) => candidate.gitUrl === specification.gitUrl && candidate.branch === specification.branch)!;
     }
+    if (setup) return await deps.createSetupWorkspace(project, request);
     const paneStream = await deps.refreshWorkspacePaneCollections();
     if (json) return jsonResponse({ project });
-    if (wantsTurboStream(request)) return turboStreamResponse(`${turboUpdateStream("project_editor_frame", "")}${paneStream}`);
+    if (wantsTurboStream(request)) return turboStreamResponse(`${turboReplaceStream("project-editor-modal", await projectEditorModal())}${paneStream}`);
     return Response.redirect(new URL("/", url).toString(), 303);
   }
 
@@ -445,15 +462,13 @@ export function createProjectRoutes(deps: {
       };
     }
     const body = await readJsonObject(request);
-    const optional = body.optional;
-    if (optional !== undefined && !Value.Check(jsonBooleanSchema, optional)) throw invalidArguments("optional must be a boolean");
     return {
       envName: requiredJsonString(body, "envName"),
       hostPattern: requiredJsonString(body, "hostPattern"),
       placeholder: optionalJsonString(body, "placeholder"),
       secretValue: optionalJsonString(body, "secretValue"),
       annotation: optionalJsonString(body, "annotation"),
-      optional,
+      optional: optionalJsonBoolean(body, "optional"),
     };
   }
 

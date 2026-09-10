@@ -56,6 +56,20 @@ describe("projects", () => {
     expect((await revealProjectSecrets(project.id, file, keyFile))[0]).not.toHaveProperty("placeholder");
   });
 
+  test("secret environment names accept and preserve lowercase and mixed case", async () => {
+    const file = join(await mkdtemp(join(tmpdir(), "atelier-secret-names-")), "projects.json");
+    const { project } = await addProject("https://github.com/org/repo.git", file);
+    const secret = await createProjectSecret(project.id, { envName: " api_token ", hostPattern: "api.example.com" }, file);
+    expect(secret.envName).toBe("api_token");
+    const updated = await updateProjectSecret(project.id, secret.id, { envName: "apiToken_2", hostPattern: "api.example.com" }, file);
+    expect(updated.envName).toBe("apiToken_2");
+    expect((await listProjectSecrets(project.id, file))[0]?.envName).toBe("apiToken_2");
+    for (const envName of ["2token", "api-token", "api token", ""]) {
+      await expect(createProjectSecret(project.id, { envName, hostPattern: "api.example.com" }, file)).rejects.toThrow("environment variable name");
+      await expect(updateProjectSecret(project.id, secret.id, { envName, hostPattern: "api.example.com" }, file)).rejects.toThrow("environment variable name");
+    }
+  });
+
   test("secret requirements can be saved, annotated, made optional, and filled later", async () => {
     const dir = await mkdtemp(join(tmpdir(), "atelier-secret-requirements-"));
     const file = join(dir, "projects.json");

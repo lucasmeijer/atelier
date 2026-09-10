@@ -221,7 +221,7 @@ export const agentWorkspaceModule: WorkspaceModule = {
       id: "workspace.agent",
       label: "Prepare default agent",
       async run({ workspaceId, creationContext }) {
-        await ensureDefaultWorkspaceAgentConversation(workspaceId, { topic: creationContext?.agent?.initialPrompt });
+        await ensureDefaultWorkspaceAgentConversation(workspaceId, { topic: creationContext?.agent?.initialPrompt, additionalTools: creationContext?.agent?.additionalTools });
       },
     });
     context.registerSocketHandler(createAgentTermSocketSession);

@@ -1,0 +1,6 @@
+.project-setup-step footer { justify-content:space-between; }
+.project-setup-skip .button { border-color:transparent; background:transparent; color:var(--text-muted); }
+.project-setup-skip .button:hover { color:var(--text); }
+
+.secret-request-fields { margin-top:12px; }
+[data-setup-request-skip] { order:-1; }

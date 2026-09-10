@@ -84,6 +84,68 @@ describe("HTTP contracts", () => {
     expect(await up.text()).toBe("");
   });
 
+  test.each([
+    "https://github.com/example/setup-demo#develop",
+    "https://gitlab.com/example/project#develop",
+    "git@bitbucket.org:team/repo.git",
+    "ssh://git@git.internal:2222/team/repo.git",
+    "file:///srv/git/project.git",
+  ])("project setup starts a named projectless workspace for %s", async (gitUrl) => {
+    const provision = deferred();
+    const seen: ProvisionWorkspaceOptions[] = [];
+    const { app, registry } = createTestApp({ provision: (_id, options) => {
+      seen.push(options);
+      return provision.promise;
+    } });
+    await registry.seed([]);
+    const response = await app.fetch(postJson("/projects", { gitUrl, setup: true }));
+    const project = (await listProjects()).projects[0]!;
+    const body = Value.Parse(workspaceCreatedResponseSchema, await response.json());
+    expect(response.status).toBe(202);
+    expect(response.headers.get("location")).toBe(body.workspace.url);
+    expect(seen[0]?.init).toBeUndefined();
+    expect(seen[0]?.context?.agent?.additionalTools).toEqual(["add_project_secret", "add_project_settings_environment_variable", "set_project_settings_dockerfile"].map((name) => ({ name, context: { projectId: project.id } })));
+    expect(seen[0]?.context?.agent?.initialPrompt).toContain("/opt/atelier/project-setup/configure-user-project.md");
+    expect(seen[0]?.context?.agent?.initialPrompt).toContain(gitUrl);
+    const status = await app.fetch(new Request(`http://test.local${body.workspace.url}`, { headers: { accept: "application/json" } }));
+    expect(Value.Parse(workspaceStatusResponseSchema, await status.json()).workspace.title).toBe(`Set up ${project.name}`);
+    provision.resolve();
+  });
+
+  test("project setup still requires a repository source", async () => {
+    const { app } = createTestApp();
+    const response = await app.fetch(postJson("/projects", { gitUrl: " ", setup: true }));
+    expect(response.status).toBe(400);
+    expect((await listProjects()).projects).toEqual([]);
+  });
+
+  test("adding a project with setup disabled saves only the project", async () => {
+    const { app, registry } = createTestApp();
+    const response = await app.fetch(postJson("/projects", { gitUrl: "https://github.com/example/manual", setup: false }));
+    expect(response.status).toBe(200);
+    expect(Value.Parse(projectResponseSchema, await response.json()).project.name).toBe("manual");
+    expect(registry.list()).toEqual([]);
+  });
+
+  test("form project creation without setup saves only the project", async () => {
+    const { app, registry } = createTestApp();
+    const gitUrl = "https://github.com/example/form-project";
+    const response = await app.fetch(new Request("http://test.local/projects", {
+      method: "POST",
+      body: new URLSearchParams({ gitUrl }),
+    }));
+    expect(response.status).toBe(303);
+    expect((await listProjects()).projects.map((project) => project.gitUrl)).toEqual([gitUrl]);
+    expect(registry.list()).toEqual([]);
+  });
+
+  test("invalid setup input is rejected before saving a project", async () => {
+    const { app } = createTestApp();
+    const response = await app.fetch(postJson("/projects", { gitUrl: "https://github.com/example/manual", setup: "true" }));
+    expect(response.status).toBe(400);
+    expect((await listProjects()).projects).toEqual([]);
+  });
+
   test("creates a workspace asynchronously and reports readiness through JSON", async () => {
     const provision = deferred();
     const seen: Array<{ id: string; options: unknown }> = [];

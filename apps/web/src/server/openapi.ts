@@ -29,7 +29,7 @@ const attentionTokens = { name: "attentionTokens", in: "query", required: true, 
 const jsonBody = (schema: TSchema) => ({ required: true, content: { "application/json": { schema } } });
 const emptyObjectSchema = { type: "object", additionalProperties: false };
 const workspaceIssuesSchema = { type: "array", items: { type: "object", required: ["kind", "message"], properties: { kind: { type: "string", enum: ["gateway", "image"] }, message: { type: "string" } }, additionalProperties: false } };
-const projectSecretInputSchema = { type: "object", required: ["envName", "hostPattern"], properties: { envName: { type: "string" }, hostPattern: { type: "string" }, placeholder: { type: "string" }, annotation: { type: "string", description: "What this secret is needed for" }, optional: { type: "boolean", default: false }, secretValue: { type: "string", writeOnly: true } }, additionalProperties: false };
+const projectSecretInputSchema = { type: "object", required: ["envName", "hostPattern"], properties: { envName: { type: "string" }, hostPattern: { type: "string" }, placeholder: { type: "string" }, annotation: { type: "string", description: "A succinct explanation of what the app uses this secret for." }, optional: { type: "boolean", default: false }, secretValue: { type: "string", writeOnly: true } }, additionalProperties: false };
 const projectSummaryProperties = { configurationFingerprint: { type: "string", description: "Opaque fingerprint of workspace setup settings" }, id: { type: "string" }, name: { type: "string" }, gitUrl: { type: "string" }, branch: { type: ["string", "null"] }, sessionShareKey: { type: "string" }, dockerfile: { type: "string" } };
 const agentConversationSummarySchema = {
   type: "object",
@@ -71,7 +71,7 @@ export function atelierOpenApi(commands: WorkspaceModuleCommandHandler[], contri
       },
       "/projects": {
         get: { summary: "List projects", responses: jsonResponse("Project summaries", { type: "object", required: ["projects"], properties: { projects: { type: "array", items: { $ref: "#/components/schemas/ProjectSummary" } } } }) },
-        post: { summary: "Create or resolve a project", description: "Creates a project, or resolves and returns the existing project when the same repository specification was previously added.", requestBody: jsonBody({ type: "object", required: ["gitUrl"], properties: { gitUrl: { type: "string" } }, additionalProperties: false }), responses: jsonResponse("Project created or resolved", { $ref: "#/components/schemas/ProjectEnvelope" }) },
+        post: { summary: "Create or resolve a project", description: "Creates or resolves a project. Set setup to true for any Git repository to also start its projectless setup agent; returns a workspace envelope instead of a project envelope. The browser selects the setup workspace immediately.", requestBody: jsonBody({ type: "object", required: ["gitUrl"], properties: { gitUrl: { type: "string" }, setup: { type: "boolean", default: false } }, additionalProperties: false }), responses: { ...jsonResponse("Project created or resolved", { $ref: "#/components/schemas/ProjectEnvelope" }), ...jsonResponse("Setup workspace creation accepted", { $ref: "#/components/schemas/WorkspaceEnvelope" }, "202") } },
       },
       "/projects/new": { get: { summary: "Present the new-project screen", responses: htmlSurfaceResponses("Atelier with the new-project screen open") } },
       "/workspaces/new": { get: { summary: "Present the new projectless workspace composer", responses: htmlSurfaceResponses("Atelier with the workspace composer open") } },
@@ -87,6 +87,9 @@ export function atelierOpenApi(commands: WorkspaceModuleCommandHandler[], contri
           parameters: [projectId, projectSettingsSection],
           responses: htmlSurfaceResponses("Atelier with project settings open"),
         },
+      },
+      "/projects/new/setup": {
+        get: { summary: "Present the setup step of Add project before saving", parameters: [{ name: "gitUrl", in: "query", required: true, schema: { type: "string" } }], responses: htmlSurfaceResponses("Add project with its setup step open") },
       },
       "/projects/{projectId}/workspaces/new": { get: { summary: "Present a new project workspace composer", parameters: [projectId], responses: htmlSurfaceResponses("Atelier with the project workspace composer open") } },
       "/projects/{projectId}/dockerfile": { post: { summary: "Set the project workspace Dockerfile override", description: "Must start with FROM atelier-workspace. An empty string clears the override. Takes priority over .atelier/Dockerfile for new workspaces.", parameters: [projectId], requestBody: jsonBody({ type: "object", required: ["dockerfile"], properties: { dockerfile: { type: "string" } }, additionalProperties: false }), responses: jsonResponse("Dockerfile saved", { $ref: "#/components/schemas/ProjectEnvelope" }) } },

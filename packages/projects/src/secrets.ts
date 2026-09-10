@@ -22,7 +22,7 @@ export function secretNeedsValue(secret: ProjectSecretSummary): boolean {
 
 function normalizeEnvName(value: string): string {
   const envName = value.trim();
-  if (!/^[A-Z_][A-Z0-9_]*$/.test(envName)) throw new AtelierCoreError("invalid_arguments", "ENV must be an uppercase environment variable name");
+  if (!/^[A-Za-z_][A-Za-z0-9_]*$/.test(envName)) throw new AtelierCoreError("invalid_arguments", "ENV must be an environment variable name");
   return envName;
 }
 

@@ -292,7 +292,13 @@ export interface DeleteCurrentWorkspaceResult {
 
 export type AgentServiceTier = "default" | "priority";
 
+export interface AgentToolBinding {
+  name: string;
+  context: JsonObject;
+}
+
 export interface AgentWorkspaceParameters {
+  additionalTools?: AgentToolBinding[];
   initialPrompt?: string;
   initialPromptMode?: "composer";
   model?: string;

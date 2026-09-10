@@ -47,6 +47,10 @@ Project settings has a browser-navigable surface that agents can pass directly t
 /projects/:projectId/settings?section=environment
 ```
 
+“Continue” uses GET navigation to the setup step; `POST /projects` always saves the project and defaults to no setup for both form and JSON submissions.
+
+For Git repositories, `/projects/new/setup?gitUrl=<encoded-repository-url>` presents the second step of Add project, before the project is saved. “Let’s go!” saves the project and immediately selects a named, projectless setup workspace; “Skip this step” saves only the project. JSON clients use `POST /projects` with `{ "gitUrl": "https://github.com/org/repo", "setup": true }` to add or resolve the project and start its setup workspace, returning the usual `202` workspace envelope. Omit `setup` or set it to `false` to save only the project. Its initial conversation alone receives the `configure_project` tool, bound to that project. The tool saves Dockerfile overrides, non-secret environment variables, and secret requirements without accepting secret values.
+
 Supported sections are `repository`, `secrets`, `ssh-keys`, `environment`, `dockerfile`, and `danger`. Direct navigation renders the complete Atelier shell, opens Project settings, expands configurable sections when selected, and scrolls the selected section into view.
 
 Use `GET /projects` with `Accept: application/json` to discover the project ID before constructing the presentation URL.
@@ -127,6 +131,16 @@ curl -sS -X POST "http://localhost:3000/workspaces/$id/commands/agent.create" \
 ```
 
 Navigate an existing Browser Work view with `POST /workspaces/:id/browser/:browserId/navigate` and `{ "url": "..." }`.
+
+## Answer a project setup secret request
+
+The setup agent uses `add_project_secret` to offer individual secrets and `add_project_settings_environment_variable` to ask permission for individual non-secret variables in editable dialogs. `set_project_settings_dockerfile` saves only a custom Dockerfile, immediately after the agent has shown it in full and obtained agreement in chat; it has no extra confirmation dialog. No setup tool creates or deletes workspaces. The user creates her first project workspace and can delete the setup workspace herself. The agent must not commit or push during setup, and cannot use newly saved secrets in its current workspace.
+
+Discover the pending request with `GET /workspaces/:id/project-setup/secret-request` and `Accept: application/json`. The response contains `request: null` or `{ id, suggestion, configured }`. Present `/workspaces/:id` to let the user answer the dialog. Both choices persist the final definition; only **Save secret** requires and stores a value. Deferring leaves a new secret unconfigured and preserves any existing value.
+
+Automation can submit final settings to `POST /workspaces/:id/project-setup/secret-request/:requestId` using the schema in OpenAPI. `decision` is `save` or `skip`. Responses and tool results contain only the final secret summary, `valueProvided`, and `changedFields`, never the secret value. Pending requests are scoped to the workspace and active tool call; aborting the tool or restarting the server requires a new request.
+
+The environment approval has matching routes at `/workspaces/:id/project-setup/environment-request` and `/workspaces/:id/project-setup/environment-request/:requestId`. Submit `{ "name": "PORT", "value": "3000", "decision": "save" }` to approve, or `decision: "skip"` to leave settings unchanged. The result reports `saved`, final `settings`, and `changedFields`. Empty non-secret values are allowed. The agent should not bring up environment variables if none are needed.
 
 ## Arrange Work views
 

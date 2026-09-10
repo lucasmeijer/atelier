@@ -1,10 +1,41 @@
-import { mkdir, open, readFile, readdir, rename, writeFile } from "node:fs/promises";
+import type { AgentToolBinding } from "@atelier/shared";
+import { Type } from "typebox";
+import { Value } from "typebox/value";
+import { SessionManager, type SessionEntry } from "@earendil-works/pi-coding-agent";
+import { mkdir, readFile, readdir, rename, writeFile } from "node:fs/promises";
 import { randomUUID } from "node:crypto";
-import { join } from "node:path";
-import { createKeyedOperationQueue, getAtelierRuntimeContext } from "@atelier/core";
+import { dirname, join } from "node:path";
+import { createKeyedOperationQueue, getAtelierRuntimeContext, isJsonObject } from "@atelier/core";
 import type { GitProjectInitInstruction } from "@atelier/projects";
 import { isGitProjectInit } from "@atelier/projects";
-import type { WorkspaceInitInstruction } from "@atelier/workspace";
+import { workspaceRoot, type WorkspaceInitInstruction } from "@atelier/workspace";
+
+const bindingsSchema = Type.Array(Type.Object({ name: Type.String(), context: Type.Unknown() }, { additionalProperties: false }));
+const additionalToolsEntryType = "atelier.additional-tools";
+
+/** Read explicit host-authored metadata, never historical tool calls or model text. */
+export function conversationToolBindings(entries: SessionEntry[]): AgentToolBinding[] {
+  const entry = entries.findLast((entry) => entry.type === "custom" && entry.customType === additionalToolsEntryType);
+  if (!entry || entry.type !== "custom") return [];
+  const bindings = entry.data;
+  Value.Assert(bindingsSchema, bindings);
+  return bindings.map((binding) => {
+    if (!isJsonObject(binding.context)) throw new Error("Invalid conversation tool binding");
+    return { name: binding.name, context: binding.context };
+  });
+}
+
+/** Publish the session and its bindings together, even before the first agent turn. */
+async function initializeConversationSession(path: string, bindings: AgentToolBinding[] = []): Promise<void> {
+  const manager = SessionManager.inMemory(workspaceRoot);
+  if (bindings.length) manager.appendCustomEntry(additionalToolsEntryType, bindings);
+  const content = bindings.length
+    ? [manager.getHeader(), ...manager.getEntries()].map((entry) => JSON.stringify(entry)).join("\n") + "\n"
+    : "";
+  const temporary = `${path}.tmp-${randomUUID()}`;
+  await writeFile(temporary, content);
+  await rename(temporary, path);
+}
 
 export interface WorkspaceAgentConversationInfo {
   workspaceId: string;
@@ -16,6 +47,7 @@ export interface WorkspaceAgentConversationInfo {
 
 export interface WorkspaceAgentConversationCreateOptions {
   topic?: string;
+  additionalTools?: AgentToolBinding[];
 }
 
 const sharedAgentFilePattern = /^([a-z0-9][a-z0-9-]*)--([a-zA-Z0-9][a-zA-Z0-9_.-]*)--agent-([1-9]\d*)--([0-9a-f]{8}-[0-9a-f]{4}-[1-8][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12})\.jsonl$/;
@@ -89,11 +121,6 @@ export function parseWorkspaceAgentFilename(name: string, workspaceId?: string):
   return undefined;
 }
 
-async function touch(path: string): Promise<void> {
-  const file = await open(path, "a");
-  await file.close();
-}
-
 function conversationTitlePath(sessionPath: string): string {
   return sessionPath.replace(/\.jsonl$/, ".title");
 }
@@ -110,21 +137,22 @@ async function sessionDirForWorkspace(workspaceId: string, dataDir = getAtelierR
   return { shareKey, dir: sessionShareDir(shareKey, dataDir) };
 }
 
-async function createWorkspaceAgentConversation(workspaceId: string, label: string, topic = "agent-session", conversationId = randomUUID()): Promise<WorkspaceAgentConversationInfo> {
+async function createWorkspaceAgentConversation(workspaceId: string, label: string, options: WorkspaceAgentConversationCreateOptions): Promise<WorkspaceAgentConversationInfo> {
   const store = await sessionDirForWorkspace(workspaceId);
   await mkdir(store.dir, { recursive: true });
-  const path = sharedAgentSessionPath(store.shareKey, workspaceId, label, topic, conversationId);
+  const conversationId = randomUUID();
+  const path = sharedAgentSessionPath(store.shareKey, workspaceId, label, options.topic ?? "agent-session", conversationId);
   await writeConversationTitle(path, untitledAgentConversationTitle);
   // Listing discovers only .jsonl files, so publish the session after its title
-  // is durable. Readers can never observe a conversation without metadata.
-  await touch(path);
+  // and tool bindings are durable. Readers never see a partially prepared agent.
+  await initializeConversationSession(path, options.additionalTools);
   return { workspaceId, conversationId, label, title: untitledAgentConversationTitle, path };
 }
 
 export async function ensureDefaultWorkspaceAgentConversation(workspaceId: string, options: WorkspaceAgentConversationCreateOptions = {}): Promise<WorkspaceAgentConversationInfo> {
   return await serializeConversationOperation(workspaceId, async () => {
     const current = (await listWorkspaceAgentConversationsUnlocked(workspaceId)).find((agent) => agent.label === "Agent 1");
-    return current ?? await createWorkspaceAgentConversation(workspaceId, "Agent 1", options.topic);
+    return current ?? await createWorkspaceAgentConversation(workspaceId, "Agent 1", options);
   });
 }
 
@@ -159,15 +187,16 @@ export async function createNextWorkspaceAgentConversation(workspaceId: string, 
     const used = new Set((await listWorkspaceAgentConversationsUnlocked(workspaceId)).map((agent) => Number(agent.label.slice("Agent ".length))));
     let next = 1;
     while (used.has(next)) next += 1;
-    return await createWorkspaceAgentConversation(workspaceId, `Agent ${next}`, options.topic);
+    return await createWorkspaceAgentConversation(workspaceId, `Agent ${next}`, options);
   });
 }
 
 /** Archive an Agent conversation's current session and create a fresh session for the same display label. */
 export async function replaceWorkspaceAgentSession(agent: WorkspaceAgentConversationInfo): Promise<WorkspaceAgentConversationInfo> {
   return await serializeConversationOperation(agent.workspaceId, async () => {
+    const bindings = conversationToolBindings(SessionManager.open(agent.path, dirname(agent.path), workspaceRoot).getEntries());
     await rename(agent.path, agent.path.replace(/\.jsonl$/, ".archived.jsonl"));
-    await touch(agent.path);
+    await initializeConversationSession(agent.path, bindings);
     return agent;
   });
 }

@@ -88,6 +88,21 @@ describe("Codex fork-history selection and filtering", () => {
       expect(updated.slice(boundary + 1).map((entry) => entry.id)).toEqual([localId]);
     } finally { attachment.dispose(); }
   });
+  test("forking history does not inherit the parent's additional tool bindings", () => {
+    const parent = SessionManager.inMemory();
+    parent.appendCustomEntry("atelier.additional-tools", [{ name: "set_project_settings_dockerfile", context: { projectId: "project-1" } }]);
+    parent.appendMessage(user("Investigate this repository"));
+    const child = { id: "child", parentId: "root", rootId: "root", taskName: "review", task: "Review", depth: 1, thinkingLevel: "off", status: "completed" as const, forkTurns: "all" };
+    const coordinator = new SubagentRuntime({ agents: [child], messages: [] }, { async save() {}, async peer() { throw new Error("No inference needed"); } });
+    const attachment = bindSubagentSession("tool-binding-fork", "root", { messages: parent.buildSessionContext().messages, subscribe: () => () => {} }, coordinator);
+    const manager = SessionManager.inMemory();
+    try {
+      forkSubagentHistory("tool-binding-fork", child, manager);
+      expect(manager.buildSessionContext().messages).toEqual([user("Investigate this repository")]);
+      expect(manager.getEntries().filter((entry) => entry.type === "custom").map((entry) => entry.customType)).toEqual([inheritedContextEntryType]);
+    } finally { attachment.dispose(); }
+  });
+
   test("no inherited messages means no boundary marker", () => {
     for (const forkTurns of ["none", "1", "all"]) {
       const child = { id: "child", parentId: "root", rootId: "root", taskName: "preview", task: "Preview", depth: 1, thinkingLevel: "off", status: "completed" as const, forkTurns };
