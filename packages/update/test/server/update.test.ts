@@ -92,6 +92,7 @@ function context() {
         sidebar.push(html ?? "");
         broadcasts.push(options?.broadcastHtml ?? "");
       } },
+      createWorkView: async () => {},
       presentWorkView: async () => {},
       broadcastWorkspace: () => {},
       deleteCurrentWorkspace: async () => ({ deleted: false, blocked: false }),

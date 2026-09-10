@@ -8,6 +8,7 @@ import { Value } from "typebox/value";
 
 const gitProjectInitSchema = Type.Object({
   type: Type.Literal("project.git"),
+  configurationFingerprint: Type.Optional(Type.String()),
   projectId: Type.String(),
   name: Type.String(),
   gitUrl: Type.String(),
@@ -23,9 +24,9 @@ declare module "@atelier/workspace" {
   }
 }
 
-export type ProjectSummary = Omit<ProjectRecord, "secrets" | "sshKeys" | "environment">;
+export type ProjectSummary = Omit<ProjectRecord, "secrets" | "sshKeys" | "environment"> & { configurationFingerprint?: string };
 export type StoredProjectSecret = Static<typeof storedProjectSecretSchema>;
-export type ProjectSecretSummary = Omit<StoredProjectSecret, "encryptedSecret">;
+export type ProjectSecretSummary = Omit<StoredProjectSecret, "encryptedSecret" | "optional" | "annotation"> & { annotation: string; optional: boolean; configured: boolean };
 export type StoredProjectSshKey = Static<typeof storedProjectSshKeySchema>;
 export type ProjectSshKeySummary = Omit<StoredProjectSshKey, "encryptedPrivateKey">;
 export type ProjectEnvironmentVariable = Static<typeof projectEnvironmentVariableSchema>;
@@ -56,7 +57,9 @@ const storedProjectSecretSchema = Type.Object({
   placeholder: Type.Optional(Type.String()),
   createdAt: Type.String(),
   updatedAt: Type.String(),
-  encryptedSecret: Type.String(),
+  encryptedSecret: Type.Optional(Type.String()),
+  annotation: Type.Optional(Type.String()),
+  optional: Type.Optional(Type.Boolean()),
 });
 
 const projectEnvironmentVariableSchema = Type.Object({
@@ -160,6 +163,18 @@ export function findProjectRecord(store: ProjectStore, projectId: string): Proje
   return project;
 }
 
+function projectConfigurationFingerprint(project: ProjectRecord): string {
+  // Only settings consumed by workspace setup belong here; annotations and optionality are live metadata.
+  const configuration = {
+    gitUrl: project.gitUrl, branch: project.branch, sessionShareKey: project.sessionShareKey,
+    dockerfile: project.dockerfile ?? "",
+    environment: (project.environment ?? []).map(({ name, value }) => ({ name, value })).sort((a, b) => a.name.localeCompare(b.name)),
+    secrets: (project.secrets ?? []).filter((secret) => secret.encryptedSecret).map(({ envName, hostPattern, placeholder, encryptedSecret }) => ({ envName, hostPattern, placeholder, encryptedSecret })).sort((a, b) => a.envName.localeCompare(b.envName)),
+    sshKeys: (project.sshKeys ?? []).map(({ encryptedPrivateKey }) => encryptedPrivateKey).sort(),
+  };
+  return createHash("sha256").update(JSON.stringify(configuration)).digest("hex");
+}
+
 function projectSummary(project: ProjectRecord): ProjectSummary {
   return {
     id: project.id,
@@ -168,6 +183,31 @@ function projectSummary(project: ProjectRecord): ProjectSummary {
     branch: project.branch,
     sessionShareKey: project.sessionShareKey,
     dockerfile: project.dockerfile,
+    configurationFingerprint: projectConfigurationFingerprint(project),
+  };
+}
+
+export type ProjectConfiguration = ProjectSummary & {
+  environment: ProjectEnvironmentVariable[];
+  secrets: ProjectSecretSummary[];
+};
+
+export function projectSecretSummary(secret: StoredProjectSecret): ProjectSecretSummary {
+  const { encryptedSecret, ...metadata } = secret;
+  return { ...metadata, annotation: secret.annotation ?? "", optional: secret.optional ?? false, configured: !!encryptedSecret };
+}
+
+export function projectSecretSummaries(project: ProjectRecord): ProjectSecretSummary[] {
+  return (project.secrets ?? []).map(projectSecretSummary).sort((a, b) => a.envName.localeCompare(b.envName));
+}
+
+/** Non-sensitive settings derived from a single persisted project snapshot. */
+export async function getProjectConfiguration(projectId: string, file = projectsFile()): Promise<ProjectConfiguration> {
+  const project = findProjectRecord(await readProjectStore(file), projectId);
+  return {
+    ...projectSummary(project),
+    environment: [...(project.environment ?? [])].sort((a, b) => a.name.localeCompare(b.name)),
+    secrets: projectSecretSummaries(project),
   };
 }
 
@@ -219,7 +259,7 @@ export async function deleteProject(id: string, file = projectsFile()): Promise<
 }
 
 export function projectWorkspaceInit(project: ProjectSummary): WorkspaceInitInstruction {
-  return { type: "project.git", projectId: project.id, name: project.name, gitUrl: project.gitUrl, branch: project.branch, sessionShareKey: project.sessionShareKey };
+  return { type: "project.git", configurationFingerprint: project.configurationFingerprint, projectId: project.id, name: project.name, gitUrl: project.gitUrl, branch: project.branch, sessionShareKey: project.sessionShareKey };
 }
 
 export function isGitProjectInit(init: unknown): init is GitProjectInitInstruction {

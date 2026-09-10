@@ -26,6 +26,7 @@
     "./popup/client": "./src/popup/popup-controller.ts",
     "./transient-feedback": "./src/transient-feedback/transient-feedback-html.ts",
     "./transient-feedback/client": "./src/transient-feedback/transient-feedback-controller.ts",
+    "./warning-banner": "./src/warning-banner/warning-banner-html.ts",
     "./toggle": "./src/toggle/toggle-html.ts",
     "./toggle/client": "./src/toggle/toggle-controller.ts",
     "./client": "./src/client.ts",

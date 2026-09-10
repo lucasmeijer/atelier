@@ -10,6 +10,7 @@ import { panelHtml } from "@atelier/design-system/panel";
 import { popupHtml } from "@atelier/design-system/popup";
 import { domId, escapeHtml, turboStream, workspaceWorkViewLabelDomId } from "@atelier/shared";
 import { renderPwaReminder } from "./pwa-reminder.ts";
+import { atelierEasterEggHtml } from "./atelier-easter-egg.ts";
 import type { WorkspaceDeletionState } from "./workspace-registry.ts";
 
 export type WorkViewAvailability =
@@ -92,6 +93,7 @@ export interface WorkspacePresentation {
   workViews: readonly WorkPaneContribution[];
   commands?: readonly { id: string; label: string; description?: string; scope: string; iconHtml?: string; placement?: "work-launcher" | "agent-action"; binding?: string }[];
   overlayHtml?: readonly string[];
+  warningsHtml?: string;
 }
 
 
@@ -279,7 +281,7 @@ export function renderWorkspacePane(presentation: WorkspacePanePresentation, sid
   });
   return `<div class="fixed-shell-workspace-pane">${panelHtml({
     element: { tag: "aside",  attributesHtml: 'aria-label="Workspaces"' },
-    headerHtml: `<strong class="panel__title">${Icons.Atelier}Atelier</strong>${buttonGroupHtml({ orientation: "horizontal", semantics: "layout", itemsHtml: `${renderPwaReminder()}${moduleActionsHtml}${settings}${barButton("Collapse Workspace pane", "click->workspace-navigation#toggleWorkspacePaneCollapsed", Icons.Panel, "data-collapse-workspace-pane")}` })}`,
+    headerHtml: `<strong class="panel__title">${atelierEasterEggHtml()}Atelier</strong>${buttonGroupHtml({ orientation: "horizontal", semantics: "layout", itemsHtml: `${renderPwaReminder()}${moduleActionsHtml}${settings}${barButton("Collapse Workspace pane", "click->workspace-navigation#toggleWorkspacePaneCollapsed", Icons.Panel, "data-collapse-workspace-pane")}` })}`,
     bodyHtml: renderWorkspacePaneCollections(presentation, sidebarContributionsHtml),
   })}</div>`;
 }
@@ -355,7 +357,7 @@ function renderAgentNavigation(presentation: WorkspacePresentation): string {
   } else {
     const agent = presentation.agentConversations[0];
     const title = agent && agent.title !== untitledAgentConversationTitle ? agent.title : presentation.workspace.title;
-    conversations = `<div class="fixed-shell-workspace-title"><span class="fixed-shell-agent-icon">${Icons.Agent}</span><strong>${escapeHtml(title)}</strong></div>`;
+    conversations = `<div class="fixed-shell-workspace-title" ${fullscreenViewAttributes(agent!.id, title)} data-atelier-fullscreen-pane-header-value="true"><span class="fixed-shell-agent-icon">${Icons.Agent}</span><strong>${escapeHtml(title)}</strong></div>`;
   }
   const agentActions = (presentation.commands ?? []).filter((command) => command.placement === "agent-action").map((command) => {
     const button = buttonHtml({ type: "submit", variant: "secondary", content: { kind: "icon-only", iconHtml: Icons.Plus, label: command.label } });
@@ -386,7 +388,7 @@ function renderAgentActions(presentation: WorkspacePresentation): string {
 
 function renderAgentPane(presentation: WorkspacePresentation): string {
   const panes = presentation.agentConversations.map((agent) => renderAgentPaneSlot(presentation.workspace.id, agent)).join("");
-  return `<div class="fixed-shell-agent-pane">${panelHtml({
+  return `<div class="fixed-shell-agent-pane"><div class="workspace-warning-stack" id="${domId("workspace_warnings", presentation.workspace.id)}">${presentation.warningsHtml ?? ""}</div>${panelHtml({
     element: { tag: "section",  attributesHtml: 'data-workspace-role-region="agent" data-workspace-presentation-target="agentPane" aria-label="Agent"' },
     headerHtml: `${barButton("Show Workspace pane", "click->workspace-navigation#toggleWorkspacePaneCollapsed", Icons.Panel, "data-show-workspace-pane")}<div id="${agentNavigationDomId(presentation.workspace.id)}" class="fixed-shell-agent-navigation">${renderAgentNavigation(presentation)}</div><div id="${agentActionsDomId(presentation.workspace.id)}" class="fixed-shell-agent-actions">${renderAgentActions(presentation)}</div>`,
     bodyHtml: `<div id="${agentBodiesDomId(presentation.workspace.id)}" class="fixed-shell-agent-bodies">${panes}</div>`,

@@ -47,6 +47,7 @@
   max-width: 100%; width: fit-content; margin-left: auto; color: var(--text-bright); background: var(--elev); border: 1px solid var(--line); border-radius: var(--radius-surface);
   padding: 8px 12px;
 }
+.agent-user-label { color: var(--text-muted); font-size: var(--text-code); margin-bottom: 4px; }
 .agent-user-attachments { display: flex; gap: 6px; margin-top: 6px; flex-wrap: wrap; }
 .agent-user-attachments img { max-height: 90px; max-width: 160px; border-radius: var(--radius-control); border: 1px solid var(--line); }
 
@@ -265,8 +266,6 @@
   .agent-stat[title="Context window used"] { display: none; }
 }
 
-.agent-model-provider-icon { width: 13px; height: 13px; flex: 0 0 auto; }
-.agent-model-provider-icon.brand-icon-fallback { display: inline-grid; place-items: center; border-radius: var(--radius-indicator); }
 
 .agent-media-img, .agent-media-video, .agent-media-frame { border-color: var(--line); border-radius: var(--radius-surface); }
 .launch-composer-dialog { width: min(860px, calc(100vw - 40px)); margin: auto; position: fixed; inset: 0; background: var(--panel); border: 1.5px solid var(--line-strong); border-radius: var(--radius-overlay); box-shadow: var(--shadow); overflow: hidden; padding: 0; color: var(--text); font: var(--text-body)/var(--leading-standard) var(--font-sans); }

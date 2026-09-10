@@ -46,10 +46,12 @@ function removeFullscreenHover(controller: AtelierFullscreenController): void {
 }
 
 class AtelierFullscreenController extends Controller<HTMLElement> {
-  static values = { mode: String, viewKey: String, title: String };
+  static values = { mode: String, viewKey: String, title: String, paneHeader: Boolean };
   declare readonly modeValue: FullscreenMode;
   declare readonly viewKeyValue: string;
   declare readonly titleValue: string;
+  declare readonly paneHeaderValue: boolean;
+  private hoverTarget!: HTMLElement;
   private iframeLoadTargets: HTMLIFrameElement[] = [];
   private readonly pointerenter = (): void => pushFullscreenHover(this);
   private readonly pointerleave = (): void => removeFullscreenHover(this);
@@ -61,16 +63,17 @@ class AtelierFullscreenController extends Controller<HTMLElement> {
   };
 
   connect(): void {
-    this.element.addEventListener("pointerenter", this.pointerenter);
-    this.element.addEventListener("pointerleave", this.pointerleave);
+    this.hoverTarget = this.paneHeaderValue ? this.element.closest<HTMLElement>(".panel__header")! : this.element;
+    this.hoverTarget.addEventListener("pointerenter", this.pointerenter);
+    this.hoverTarget.addEventListener("pointerleave", this.pointerleave);
     if (fullscreenControllerCount++ === 0) document.addEventListener("keydown", documentFullscreenKeydown, true);
   }
 
   disconnect(): void {
     removeFullscreenHover(this);
     this.detachIframeShortcuts();
-    this.element.removeEventListener("pointerenter", this.pointerenter);
-    this.element.removeEventListener("pointerleave", this.pointerleave);
+    this.hoverTarget.removeEventListener("pointerenter", this.pointerenter);
+    this.hoverTarget.removeEventListener("pointerleave", this.pointerleave);
     if (--fullscreenControllerCount === 0) document.removeEventListener("keydown", documentFullscreenKeydown, true);
     if (activeFullscreenSession?.owner === this) activeFullscreenSession.close();
   }
@@ -154,8 +157,8 @@ class AtelierFullscreenController extends Controller<HTMLElement> {
   }
 
   private showView(): void {
-    // SAFETY: The server-rendered DOM and connected controller contract establish this element shape.
-    (this.element as HTMLButtonElement).click();
+    // A single conversation is already selected; its header is not a tab.
+    if (!this.paneHeaderValue) this.element.click();
   }
 
   private createViewer(): FullscreenViewer {

@@ -216,7 +216,7 @@ export abstract class BaseAgentRuntime implements WorkspaceAgentRuntime {
   }
 
   private itemIsOutside(item: TranscriptItem): boolean {
-    return item.type === "user" || item.type === "error" || item.type === "note" || (item.type === "text" && item.final);
+    return (item.type === "user" && !item.steering) || item.type === "error" || item.type === "note" || (item.type === "text" && item.final);
   }
 
   private streamItem(item: TranscriptItem, html: string): void {
@@ -225,7 +225,7 @@ export abstract class BaseAgentRuntime implements WorkspaceAgentRuntime {
   }
 
   protected livePendingUser(key: string, text: string, images: SessionImageRef[] = []): void {
-    const item: Extract<TranscriptItem, { type: "user" }> = { type: "user", key, text, images, timestamp: Date.now() };
+    const item: Extract<TranscriptItem, { type: "user" }> = { type: "user", key, text, images, timestamp: Date.now(), pending: true };
     this.pendingUsers.set(key, item);
     this.stream(turboStream("append", ids.transcript(this.ctx), renderTranscriptItem(this.ctx, item)));
   }
@@ -307,13 +307,13 @@ export abstract class BaseAgentRuntime implements WorkspaceAgentRuntime {
 
   protected liveSteeringUser(entryId: string, user: { text: string; images: SessionImageRef[] }, pendingKey?: string): void {
     const live = this.liveEnsure();
-    const item: TranscriptItem = { type: "user", key: entryId, rewindEntryId: entryId, ...user };
+    const item: TranscriptItem = { type: "user", key: entryId, rewindEntryId: entryId, timestamp: Date.now(), ...user, steering: true };
     live.working.inputEntryIds!.push(entryId);
     live.items.push(item);
-    if (pendingKey) {
-      this.pendingUsers.delete(pendingKey);
-      this.stream(turboStream("replace", ids.item(this.ctx, pendingKey), renderTranscriptItem(this.ctx, item)));
-    } else this.appendLiveItem(item);
+    if (pendingKey) this.liveConsumePendingUser(pendingKey);
+    this.appendLiveItem(item);
+    const section = this.decorateTranscript([this.liveWorkingSection(live)]).find((item) => item.type === "working")!;
+    this.stream(turboStream("replace", ids.itemSummaryContent(this.ctx, section.key), renderWorkingSummary(this.ctx, section), { method: "morph" }));
   }
 
   protected liveEnsure(): LiveState {

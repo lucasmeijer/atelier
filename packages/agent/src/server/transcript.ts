@@ -114,7 +114,7 @@ export type WorkingTranscriptItem = TranscriptItemBase & {
 
 export type TranscriptItem =
   | (TranscriptItemBase & { type: "extension"; render(ctx: AgentRenderContext): string })
-  | (TranscriptItemBase & { type: "user"; text: string; images: SessionImageRef[] })
+  | (TranscriptItemBase & { type: "user"; text: string; images: SessionImageRef[]; steering?: boolean; pending?: boolean })
   | (TranscriptItemBase & { type: "inherited-context"; source: string; messageCount: number; items: TranscriptItem[] })
   | WorkingTranscriptItem
   | (TranscriptItemBase & { type: "thinking"; text: string; live?: boolean })
@@ -203,16 +203,18 @@ export function buildTranscript(records: TranscriptRecord[]): TranscriptItem[] {
       continue;
     }
     if (record.kind === "user" || record.kind === "taskStart") {
-      if (record.kind === "user") items.push({
+      const steeringRun = working && runScoped && !runStarts.has(record.id) ? working : undefined;
+      if (record.kind === "user") (steeringRun?.items ?? items).push({
         type: "user",
         timestamp: record.timestamp,
         key: record.id,
         rewindEntryId: record.rewindable === false ? undefined : record.id,
         text: record.text,
         images: record.images,
+        steering: steeringRun ? true : undefined,
       });
-      if (working && runScoped && !runStarts.has(record.id)) {
-        working.inputEntryIds!.push(record.id);
+      if (steeringRun) {
+        steeringRun.inputEntryIds!.push(record.id);
         continue;
       }
       if (working) {

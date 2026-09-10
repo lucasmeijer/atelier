@@ -2,7 +2,7 @@ import { mkdtemp, readFile, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { describe, expect, test } from "bun:test";
-import { addProject, createProjectEnvironmentVariable, createProjectSecret, deleteProject, deleteProjectEnvironmentVariable, getGitIdentity, getStoredGitIdentity, gitIdentitySettingsFile, hasGitIdentity, createProjectSshKey, listProjectEnvironmentVariables, listProjectSshKeys, listProjects, parseProjectSpec, revealProjectSecrets, revealProjectSshKeys, setGitIdentity, updateProject, updateProjectEnvironmentVariable, updateProjectSecret } from "@atelier/projects";
+import { addProject, createProjectEnvironmentVariable, createProjectSecret, deleteProject, deleteProjectEnvironmentVariable, getGitIdentity, getStoredGitIdentity, gitIdentitySettingsFile, hasGitIdentity, createProjectSshKey, listProjectEnvironmentVariables, listProjectSecrets, listProjectSshKeys, listProjects, parseProjectSpec, revealProjectSecrets, revealProjectSshKeys, setGitIdentity, updateProject, updateProjectEnvironmentVariable, updateProjectSecret } from "@atelier/projects";
 
 describe("projects", () => {
   test("parseProjectSpec supports an optional #branch suffix", () => {
@@ -56,6 +56,38 @@ describe("projects", () => {
     expect((await revealProjectSecrets(project.id, file, keyFile))[0]).not.toHaveProperty("placeholder");
   });
 
+  test("secret requirements can be saved, annotated, made optional, and filled later", async () => {
+    const dir = await mkdtemp(join(tmpdir(), "atelier-secret-requirements-"));
+    const file = join(dir, "projects.json");
+    const keyFile = join(dir, "key");
+    const project = (await addProject("https://github.com/org/requirements.git", file)).project;
+    const values = { envName: "API_TOKEN", hostPattern: "api.example.com" };
+    const secret = await createProjectSecret(project.id, { ...values, annotation: " Integration tests " }, file, keyFile);
+    expect(secret).toMatchObject({ annotation: "Integration tests", optional: false, configured: false });
+    expect(await revealProjectSecrets(project.id, file, keyFile)).toEqual([]);
+    expect(await updateProjectSecret(project.id, secret.id, { ...values, optional: true, annotation: "Upload reports" }, file, keyFile))
+      .toMatchObject({ optional: true, configured: false, annotation: "Upload reports" });
+    expect(await updateProjectSecret(project.id, secret.id, { ...values, secretValue: "real-value" }, file, keyFile))
+      .toMatchObject({ optional: true, configured: true, annotation: "Upload reports" });
+    await updateProjectSecret(project.id, secret.id, { ...values, annotation: "", optional: false, secretValue: "" }, file, keyFile);
+    expect(await listProjectSecrets(project.id, file)).toMatchObject([{ annotation: "", optional: false, configured: true }]);
+    expect(await revealProjectSecrets(project.id, file, keyFile)).toMatchObject([{ secretValue: "real-value" }]);
+    expect(await readFile(file, "utf8")).not.toContain("real-value");
+  });
+
+  test("older persisted secrets remain configured and default to required with no annotation", async () => {
+    const dir = await mkdtemp(join(tmpdir(), "atelier-old-secrets-"));
+    const file = join(dir, "projects.json");
+    const keyFile = join(dir, "key");
+    const project = (await addProject("https://github.com/org/old.git", file)).project;
+    await createProjectSecret(project.id, { envName: "TOKEN", hostPattern: "example.com", secretValue: "value" }, file, keyFile);
+    const store = JSON.parse(await readFile(file, "utf8"));
+    delete store.projects[0].secrets[0].annotation;
+    delete store.projects[0].secrets[0].optional;
+    await writeFile(file, JSON.stringify(store));
+    expect(await listProjectSecrets(project.id, file)).toMatchObject([{ annotation: "", optional: false, configured: true }]);
+  });
+
   test("project SSH private keys are encrypted at rest", async () => {
     const dir = await mkdtemp(join(tmpdir(), "atelier-project-ssh-key-"));
     const file = join(dir, "projects.json");
@@ -71,7 +103,8 @@ describe("projects", () => {
     expect(await listProjectSshKeys(project.id, file)).toEqual([first, second]);
     expect(await readFile(file, "utf8")).not.toContain("OPENSSH PRIVATE KEY");
     expect(await revealProjectSshKeys(project.id, file, keyFile)).toEqual([privateKey, privateKey]);
-    expect((await listProjects(file)).projects[0]).toEqual(project);
+    expect((await listProjects(file)).projects[0]).toEqual({ ...project, configurationFingerprint: expect.any(String) });
+    expect((await listProjects(file)).projects[0]!.configurationFingerprint).not.toBe(project.configurationFingerprint);
   });
 
   test("project environment variables support empty values", async () => {
@@ -86,7 +119,8 @@ describe("projects", () => {
       { name: "EMPTY", value: "" },
       { name: "SERVICE_URL", value: "https://service.example.com" },
     ]);
-    expect((await listProjects(file)).projects[0]).toEqual(project);
+    expect((await listProjects(file)).projects[0]).toEqual({ ...project, configurationFingerprint: expect.any(String) });
+    expect((await listProjects(file)).projects[0]!.configurationFingerprint).not.toBe(project.configurationFingerprint);
 
     await deleteProjectEnvironmentVariable(project.id, created.id, file);
     expect(await listProjectEnvironmentVariables(project.id, file)).toHaveLength(1);

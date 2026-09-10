@@ -17,11 +17,14 @@ import {
 import { actionLinkHtml } from "@atelier/design-system/action-link";
 import { buttonHtml } from "@atelier/design-system/button";
 import { Icons } from "@atelier/design-system/icons";
-import { isGitProjectInit, listProjects, projectWorkspaceInit, type ProjectSummary } from "@atelier/projects";
+import { warningBannerHtml } from "@atelier/design-system/warning-banner";
+import { workspaceWarnings, type WorkspaceWarning } from "./workspace-warnings.ts";
+import { getProjectConfiguration, type ProjectConfiguration, isGitProjectInit, listProjects, projectWorkspaceInit, type ProjectSummary } from "@atelier/projects";
 import { createWorkspacePresentationStore, generateWorkspaceId, listWorkspaces, setWorkspaceParked, setWorkspaceTitle, type WorkspaceCreationContext, type WorkspaceInitInstruction, type WorkspaceWorkViewReference, type WorkspaceWorkViewState } from "@atelier/workspace";
 import { createWorkspaceProvisioningStore } from "@atelier/workspace/server/provisioning";
 import {
   workspaceModuleModalFrameId,
+  parseWorkspaceFileTarget,
   atelierCableConnectionHeader,
   CableTopics,
   emptyWorkspaceCommandInputSchema,
@@ -47,6 +50,7 @@ import { workspaceModules } from "./workspace-modules.ts";
 import { handleSettingsRequest, renderDevelopmentSettingsDialog, renderSettingsDialog } from "./settings/routes.ts";
 import { handleOnboardingRequest, renderOnboardingDialog } from "./onboarding/routes.ts";
 import { atelierOpenApi } from "./openapi.ts";
+import { openWorkspaceFile } from "./file-navigation.ts";
 import { parseCloseWorkViewRequest, parseReorderWorkViewRequest } from "./work-view-api.ts";
 import { Type } from "typebox";
 import { Value } from "typebox/value";
@@ -98,6 +102,7 @@ export interface WebApp {
   deleteCurrentWorkspaceFromAgent(workspaceId: string, force: boolean): Promise<DeleteCurrentWorkspaceResult>;
   resumeWorkspaceDeletions(): void;
   waitForWorkspaceStartupContinue(id: string, stepId: string): Promise<void>;
+  createWorkView(workspaceId: string, reference: WorkspaceWorkViewReference): Promise<void>;
   presentWorkViewFromAgent(workspaceId: string, reference: WorkspaceWorkViewReference): Promise<void>;
   globalSidebarContributions: GlobalSidebarContributionRegistry;
 }
@@ -183,6 +188,7 @@ export function createWebApp(deps: WebAppDeps): WebApp {
       .filter((entry) => isGitProjectInit(entry.init) && entry.init.projectId === projectId)
       .map((entry) => ({ workspaceId: entry.id, title: workspaceTitle(entry) })),
     refreshWorkspacePaneCollections,
+    refreshProjectWarnings,
     renderLaunchComposer: renderProjectLaunchComposerFrame,
     createAgentWorkspace: async (project, request) => await createAgentWorkspaceFromForm(request, { project }),
     workspaceCommandModalHostId,
@@ -235,6 +241,7 @@ export function createWebApp(deps: WebAppDeps): WebApp {
         } else if (entry.phase === "ready") void broadcastWorkspaceReady(entry.id);
         else if (entry.phase === "failed") broadcastWorkspaceBoot(entry.id);
       }
+      if (context.issuesChanged && entry.phase === "ready") void workspaceWarningStream(entry).then(broadcastShell);
       if (context.viewKey) broadcastShell(workspacePreparationInvalidatedTurboStream(entry.id));
     },
     listChanged() {
@@ -413,10 +420,24 @@ export function createWebApp(deps: WebAppDeps): WebApp {
     });
   }
 
+  interface WorkspaceWarningState {
+    warnings: WorkspaceWarning[];
+    dismissedWarnings: Record<string, string>;
+  }
+
+  async function workspaceWarningState(entry: WorkspaceEntry, project?: ProjectConfiguration): Promise<WorkspaceWarningState> {
+    const [configuration, dismissedWarnings] = await Promise.all([
+      project ?? (isGitProjectInit(entry.init) ? getProjectConfiguration(entry.init.projectId) : undefined),
+      presentationStore.dismissedWarnings(entry.id),
+    ]);
+    return { warnings: workspaceWarnings(entry, configuration), dismissedWarnings };
+  }
+
   async function workspacePresentationBundle(workspaceId: string): Promise<{
     presentation: FixedWorkspacePresentation;
     attachments: WorkspaceAttachment[];
     storedWorkViews: WorkspaceWorkViewState[];
+    warningState: WorkspaceWarningState;
   }> {
     const entry = requireWorkspace(workspaceId);
     const attachments = await attachWorkspaceModules(workspaceId);
@@ -427,6 +448,7 @@ export function createWebApp(deps: WebAppDeps): WebApp {
     const commands = attachments.flatMap((attachment) => attachment.commands ?? []).map((command) => ({
       id: command.id, label: command.surfaces?.ui?.label ?? command.label, description: command.description, scope: command.scope, placement: command.surfaces?.ui?.placement, iconHtml: command.surfaces?.ui?.iconHtml, binding: command.surfaces?.shortcut?.defaultBinding,
     }));
+    const warningState = await workspaceWarningState(entry);
     const presentation: FixedWorkspacePresentation = {
       workspace: { id: entry.id, title: workspaceTitle(entry) },
       agentConversations: agentConversations.map((conversation) => {
@@ -436,9 +458,43 @@ export function createWebApp(deps: WebAppDeps): WebApp {
       }),
       workViews: workViewPresentations(workspaceId, currentWorkViews, storedWorkViews),
       commands,
+      warningsHtml: workspaceWarningsHtml(entry.id, warningState),
       overlayHtml: attachments.flatMap((attachment) => attachment.overlayHtml ?? []),
     };
-    return { presentation, attachments, storedWorkViews };
+    return { presentation, attachments, storedWorkViews, warningState };
+  }
+
+  function workspaceWarningsHtml(workspaceId: string, { warnings, dismissedWarnings }: WorkspaceWarningState): string {
+    return warnings.filter((warning) => dismissedWarnings[warning.kind] !== warning.state).map((warning) => warningBannerHtml({
+      title: warning.title,
+      message: warning.message,
+      actionsHtml: warning.action ? actionLinkHtml({ href: warning.action.href, variant: "secondary", content: { kind: "caption", caption: warning.action.caption }, attributesHtml: 'data-turbo-stream="true"' }) : undefined,
+      dismiss: { action: `/workspaces/${encodeURIComponent(workspaceId)}/warnings/${encodeURIComponent(warning.kind)}/dismiss`, state: warning.state },
+    })).join("");
+  }
+
+  async function workspaceWarningStream(entry: WorkspaceEntry, project?: ProjectConfiguration): Promise<string> {
+    return turboUpdateStream(domId("workspace_warnings", entry.id), workspaceWarningsHtml(entry.id, await workspaceWarningState(entry, project)));
+  }
+
+  async function refreshProjectWarnings(projectId: string): Promise<string> {
+    const entries = registry.list().filter((entry) => entry.phase === "ready" && isGitProjectInit(entry.init) && entry.init.projectId === projectId);
+    const project = await getProjectConfiguration(projectId);
+    const stream = (await Promise.all(entries.map((entry) => workspaceWarningStream(entry, project)))).join("");
+    broadcastShell(stream);
+    return stream;
+  }
+
+  async function dismissWorkspaceWarning(id: string, kind: string, request: Request): Promise<Response> {
+    const entry = requireWorkspace(id);
+    const state = requestAcceptsJson(request) ? (await readJsonObject(request)).state : (await request.formData()).get("state");
+    const warningState = await workspaceWarningState(entry);
+    const warning = warningState.warnings.find((candidate) => candidate.kind === kind && candidate.state === state);
+    if (!warning) throw invalidArguments("warning is no longer current");
+    await presentationStore.dismissWarning(id, kind, warning.state);
+    const stream = await workspaceWarningStream(entry);
+    broadcastShell(stream);
+    return requestAcceptsJson(request) ? jsonResponse({ dismissed: true }) : turboStreamResponse(stream);
   }
 
   async function fixedWorkspacePresentation(workspaceId: string): Promise<FixedWorkspacePresentation> {
@@ -568,10 +624,11 @@ export function createWebApp(deps: WebAppDeps): WebApp {
     if (entry.issues?.length) workspace.issues = entry.issues;
     if (entry.deletion || entry.parked || entry.phase !== "ready") return jsonResponse({ workspace });
 
-    const { presentation, storedWorkViews, attachments } = await workspacePresentationBundle(id);
+    const { presentation, storedWorkViews, attachments, warningState } = await workspacePresentationBundle(id);
     const handlers = new Map(workspaceModuleCommands().map((handler) => [handler.id, handler]));
     return jsonResponse({ workspace: {
       ...workspace,
+      ...warningState,
       agentConversations: presentation.agentConversations.map(({ id, title }) => ({ id, title })),
       workViews: storedWorkViews.map((workView) => ({ key: workViewKey(workView.reference), ...workView })),
       commands: attachments.flatMap((attachment) => attachment.commands ?? []).filter((command) => handlers.has(command.id)).map((command) => ({
@@ -956,14 +1013,18 @@ export function createWebApp(deps: WebAppDeps): WebApp {
     return workViewPresentations(workspaceId, currentWorkViews, await presentationStore.listWorkViews(workspaceId));
   }
 
+  async function openAvailableWorkView(workspaceId: string, reference: WorkspaceWorkViewReference) {
+    const key = workViewKey(reference);
+    const attachments = await attachWorkspaceModules(workspaceId);
+    const contribution = attachments.flatMap((attachment) => attachment.workViews ?? []).find((view) => workViewKey(view.reference) === key);
+    if (!contribution) throw new AtelierCoreError("work_view_not_found", `Work view is not available: ${key}`);
+    const { opened } = await presentationStore.openWorkView(workspaceId, contribution.reference);
+    return { reference: contribution.reference, key, opened };
+  }
+
   async function openWorkspaceModuleWorkView(workspaceId: string, reference: WorkspaceWorkViewReference, request: Request): Promise<Response> {
     return await serializePresentationMutation(workspaceId, async () => {
-      const attachments = await attachWorkspaceModules(workspaceId);
-      const currentWorkViews = attachments.flatMap((attachment) => attachment.workViews ?? []);
-      const contribution = currentWorkViews.find((view) => workViewKey(view.reference) === workViewKey(reference));
-      if (!contribution) throw new AtelierCoreError("work_view_not_found", `Work view is not available: ${workViewKey(reference)}`);
-      const { opened } = await presentationStore.openWorkView(workspaceId, contribution.reference);
-      const key = workViewKey(contribution.reference);
+      const { opened, key } = await openAvailableWorkView(workspaceId, reference);
       const structural = opened ? openWorkViewTurboStream(workspaceId, await currentWorkPanePresentations(workspaceId), key) : "";
       return turboStreamResponse(deliverShellMutation(request, structural, presentWorkViewTurboStream(workspaceId, key)));
     });
@@ -974,11 +1035,7 @@ export function createWebApp(deps: WebAppDeps): WebApp {
     let createdWorkView: WorkspaceWorkViewReference | undefined;
     let openedWorkView = false;
     if (result.createdWorkView) {
-      const metadata = await attachWorkspaceModules(workspaceId);
-      const contribution = metadata.flatMap((attachment) => attachment.workViews ?? []).find((view) => workViewKey(view.reference) === workViewKey(result.createdWorkView!));
-      if (!contribution) throw new AtelierCoreError("work_view_not_found", `Command ${commandId} created an unavailable Work view`);
-      createdWorkView = contribution.reference;
-      ({ opened: openedWorkView } = await presentationStore.openWorkView(workspaceId, createdWorkView));
+      ({ reference: createdWorkView, opened: openedWorkView } = await openAvailableWorkView(workspaceId, result.createdWorkView));
     }
     const presentation = createdWorkView || result.createdAgentConversationId ? await fixedWorkspacePresentation(workspaceId) : undefined;
     const structural = [
@@ -1040,15 +1097,18 @@ export function createWebApp(deps: WebAppDeps): WebApp {
     return await closeWorkViewEndpoint(workspaceId, JSON.stringify(body.reference), request);
   }
 
+  async function createWorkView(workspaceId: string, reference: WorkspaceWorkViewReference): Promise<void> {
+    await serializePresentationMutation(workspaceId, async () => {
+      const { opened, key } = await openAvailableWorkView(workspaceId, reference);
+      if (opened) broadcastShell(openWorkViewTurboStream(workspaceId, await currentWorkPanePresentations(workspaceId), key));
+    });
+  }
+
   async function presentWorkViewFromAgent(workspaceId: string, reference: WorkspaceWorkViewReference): Promise<void> {
     await serializePresentationMutation(workspaceId, async () => {
-      const attachments = await attachWorkspaceModules(workspaceId);
-      const contribution = attachments.flatMap((attachment) => attachment.workViews ?? []).find((view) => workViewKey(view.reference) === workViewKey(reference));
-      if (!contribution) throw new AtelierCoreError("work_view_not_found", `Work view is not available: ${workViewKey(reference)}`);
-      const { opened } = await presentationStore.openWorkView(workspaceId, contribution.reference);
+      const { opened, key, reference: availableReference } = await openAvailableWorkView(workspaceId, reference);
       registry.setParked(workspaceId, false);
-      const attentionSequence = await presentationStore.requestAttention(workspaceId, contribution.reference);
-      const key = workViewKey(contribution.reference);
+      const attentionSequence = await presentationStore.requestAttention(workspaceId, availableReference);
       registry.markViewAttention(workspaceId, key, attentionSequence);
       const workViews = await currentWorkPanePresentations(workspaceId);
       broadcastShell(workViewsTurboStream(workspaceId, workViews, { openedKey: opened ? key : undefined, selectKey: key, intendSelection: true }));
@@ -1088,6 +1148,18 @@ export function createWebApp(deps: WebAppDeps): WebApp {
     const responseStream = deliverShellMutation(request, structural);
     if (requestAcceptsJson(request) && !wantsTurboStream(request)) return jsonResponse({ archivedConversationId: conversationId, agentConversations: presentation.agentConversations.map(({ id, title }) => ({ id, title })) });
     return turboStreamResponse(responseStream);
+  }
+
+  async function renderModelPickerUpdates(request: Request): Promise<string> {
+    const invalidations: string[] = [];
+    for (const entry of registry.list().filter((workspace) => workspace.phase === "ready")) {
+      const presentation = await fixedWorkspacePresentation(entry.id);
+      for (const conversation of presentation.agentConversations) {
+        invalidations.push(workspacePreparationInvalidatedTurboStream(entry.id, conversation.id));
+      }
+    }
+    const html = invalidations.join("") + turboReplaceStream(launchComposerSettingsFrameId, await launchComposerSettingsFrame());
+    return deliverShellMutation(request, html);
   }
 
   async function agentBodyEndpoint(workspaceId: string, conversationId: string): Promise<Response> {
@@ -1176,7 +1248,7 @@ export function createWebApp(deps: WebAppDeps): WebApp {
       return value;
     };
 
-    const settingsResponse = await handleSettingsRequest(request, url, { forceDeleteAllWorkspaces: forceDeleteAllWorkspacesFromSettings });
+    const settingsResponse = await handleSettingsRequest(request, url, { forceDeleteAllWorkspaces: forceDeleteAllWorkspacesFromSettings, renderModelPickerUpdates: () => renderModelPickerUpdates(request) });
     if (settingsResponse) return settingsResponse;
 
     const onboardingResponse = await handleOnboardingRequest(request, url);
@@ -1193,6 +1265,11 @@ export function createWebApp(deps: WebAppDeps): WebApp {
 
     let params: string[] | undefined;
 
+    if ((params = match(/^\/workspaces\/([^/]+)\/file\/open$/))) {
+      if (request.method !== "GET") return response("Method not allowed", { status: 405, headers: { allow: "GET" } });
+      return await openWorkspaceFile(routeParam(params, 0), parseWorkspaceFileTarget(url.searchParams),
+        (workspaceId, reference) => openWorkspaceModuleWorkView(workspaceId, reference, request));
+    }
 
     if (url.pathname === "/agent-workspaces" && request.method === "POST") return await createEmptyAgentWorkspaceEndpoint(request);
 
@@ -1230,6 +1307,7 @@ export function createWebApp(deps: WebAppDeps): WebApp {
     }
     if ((params = match(/^\/workspaces\/([^/]+)\/park$/)) && request.method === "POST") return parkWorkspaceEndpoint(params[0], true, request);
     if ((params = match(/^\/workspaces\/([^/]+)\/unpark$/)) && request.method === "POST") return parkWorkspaceEndpoint(params[0], false, request);
+    if ((params = match(/^\/workspaces\/([^/]+)\/warnings\/([^/]+)\/dismiss$/)) && request.method === "POST") return dismissWorkspaceWarning(params[0], params[1], request);
     if ((params = match(/^\/workspaces\/([^/]+)\/provisioning\/continue$/)) && request.method === "POST") return continueWorkspaceProvisioningEndpoint(params[0], request);
     if ((params = match(/^\/workspaces\/([^/]+)\/delete\/cancel$/)) && request.method === "POST") return await cancelWorkspaceDeletionEndpoint(params[0], request);
     if ((params = match(/^\/workspaces\/([^/]+)\/delete\/confirm$/)) && request.method === "POST") return await confirmWorkspaceDeletionEndpoint(params[0], request);
@@ -1245,6 +1323,7 @@ export function createWebApp(deps: WebAppDeps): WebApp {
     deleteCurrentWorkspaceFromAgent,
     resumeWorkspaceDeletions: deletion.resume,
     waitForWorkspaceStartupContinue: waitForProvisioningContinue,
+    createWorkView,
     presentWorkViewFromAgent,
     globalSidebarContributions,
     async fetch(request) {

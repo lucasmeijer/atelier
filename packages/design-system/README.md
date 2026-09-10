@@ -41,6 +41,7 @@ Prefer consistency over feature-specific visual preservation.
 | Brief action acknowledgement | `transient-feedback` | [TransientFeedbackOptions](src/transient-feedback/transient-feedback-html.ts) |
 | Input / textarea | `text-entry` (native HTML) | `.text-field` / `.textarea` in [styles](src/text-entry/text-entry.css) |
 | Non-selectable records | `managed-list` (native HTML) | [anatomy and filtering contract](catalogue/entries.ts) |
+| Persistent non-blocking warning | `warning-banner` | [WarningBannerOptions](src/warning-banner/warning-banner-html.ts), optional confirmed dismissal |
 | Status markers / step progress | `status` (native HTML) | `.status-dot` / `.status-list` in [styles](src/status/status.css) |
 | Decorative SVGs | `icons` | [Icons](src/icons/icons-html.ts) |
 | Vertical focus navigation | `linear-navigation/client` | [data targets and controller](src/linear-navigation/linear-navigation-controller.ts) |

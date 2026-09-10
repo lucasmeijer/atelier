@@ -73,9 +73,9 @@ class CatalogueController extends Controller<HTMLElement> {
   }
   submit(event: Event): void {
     event.preventDefault();
-    // SAFETY: This demo action is bound to the confirmation form.
-    const form = event.target as HTMLFormElement;
-    form.querySelector("output")!.textContent =
+    // SAFETY: Catalogue submit actions are bound to the element containing the demo and its output.
+    const demo = event.currentTarget as HTMLElement;
+    demo.querySelector("output")!.textContent =
       "Submitted — demo only. Nothing was deleted.";
   }
 }

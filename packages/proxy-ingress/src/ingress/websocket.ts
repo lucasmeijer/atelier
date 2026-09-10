@@ -7,3 +7,21 @@ export function closeWebSocket(socket: Pick<WebSocket, "close">, code: number, r
   if (isForwardableCloseCode(code)) socket.close(code, reason);
   else socket.close();
 }
+
+export const maxSocketBufferedBytes = 8 * 1024 * 1024;
+
+/** Bound the other direction too: browser input must not queue without limit. */
+export function forwardToUpstream(
+  upstream: Pick<WebSocket, "bufferedAmount" | "send" | "close">,
+  downstream: Pick<WebSocket, "close">,
+  payload: string | ArrayBuffer,
+): void {
+  const bytes = payload instanceof ArrayBuffer ? payload.byteLength : Buffer.byteLength(payload);
+  if (upstream.bufferedAmount + bytes > maxSocketBufferedBytes) {
+    const reason = "Workspace stream consumer is too slow";
+    upstream.close(1013, reason);
+    downstream.close(1013, reason);
+    return;
+  }
+  upstream.send(payload);
+}

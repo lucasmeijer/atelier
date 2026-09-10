@@ -1,7 +1,7 @@
 import { renderStreamingMarkdownSnapshot } from "@atelier/markdown";
 import { escapeHtml } from "./html.ts";
 import { thinkingBlockRendererFor } from "./thinking-block-renderers.ts";
-import { formatDuration, formatTokens, type TranscriptItem, type WorkingTranscriptItem, type SessionImageRef } from "./transcript.ts";
+import { formatDuration, formatTokens, type TranscriptItem, type WorkingTranscriptItem } from "./transcript.ts";
 import { ids, sessionImageUrl, transcriptItemPath, type AgentRenderContext } from "./render-context.ts";
 import { codeBlockHtml, detailFullscreen, fullscreenAttributes, markdown, renderMarkdownRow, transcriptActionItemHtml, transcriptRow } from "./render-markup.ts";
 import { renderToolCard, renderToolDetail, statusHtml, tailFrameAttributes } from "./render-tool.ts";
@@ -42,9 +42,10 @@ export function renderModelContextDetailFrame(ctx: AgentRenderContext, modelCont
   return `<turbo-frame id="${ids.detailFrame(ctx, "model-context")}"><div class="agent-tool-detail">${detailFullscreen("Model context", blocks)}</div></turbo-frame>`;
 }
 
-function renderUserMessage(ctx: AgentRenderContext, user: { text: string; images: SessionImageRef[] }): string {
+function renderUserMessage(ctx: AgentRenderContext, user: Extract<TranscriptItem, { type: "user" }>): string {
   const images = user.images.length ? `<div class="agent-user-attachments">${user.images.map((image) => `<img${fullscreenAttributes("attachment", "media")} src="${escapeHtml(sessionImageUrl(ctx, image))}" alt="attachment" loading="lazy">`).join("")}</div>` : "";
-  return transcriptRow(`<div class="agent-user" data-agent-user-text="${escapeHtml(user.text)}"><div class="agent-user-bubble markdown">${markdown(ctx, user.text)}${images}</div></div>`);
+  const label = user.pending ? "Queued · awaiting consumption" : user.steering ? "Steering" : "";
+  return transcriptRow(`<div class="agent-user" data-agent-user-text="${escapeHtml(user.text)}"><div class="agent-user-bubble markdown">${label ? `<div class="agent-user-label">${label}</div>` : ""}${markdown(ctx, user.text)}${images}</div></div>`);
 }
 
 function renderStreamingTextBody(ctx: AgentRenderContext, key: string, text: string, className: string): string {
@@ -92,7 +93,8 @@ function renderWorkingSection(ctx: AgentRenderContext, section: WorkingTranscrip
   return `<details class="agent-working" id="${ids.item(ctx, section.key)}"${attributes}>${summary}<div class="agent-working-items" id="${ids.workingItems(ctx, section.key)}" data-agent-turn-target="items"></div></details>`;
 }
 
-export function renderWorkingSummary(ctx: AgentRenderContext, section: Omit<WorkingTranscriptItem, "items">): string {
+export function renderWorkingSummary(ctx: AgentRenderContext, section: WorkingTranscriptItem): string {
+  const steeringCount = section.items.filter((item) => item.type === "user" && item.steering).length;
   const endedAt = section.completedAt ?? section.stoppedAt;
   const active = endedAt === undefined;
   const duration = formatDuration(section.timing?.elapsedMs ?? ((endedAt ?? Date.now()) - section.startedAt));
@@ -102,7 +104,7 @@ export function renderWorkingSummary(ctx: AgentRenderContext, section: Omit<Work
     attributesHtml: active ? `data-controller="agent-elapsed" data-agent-elapsed-since-value="${section.startedAt}" data-agent-elapsed-prefix-value="Working for "` : undefined,
     textAttributesHtml: active ? 'data-agent-elapsed-target="time"' : undefined,
   }, {
-    disclosure: true, leadingHtml: status, trailingHtml: `${active ? "" : renderWorkingTiming(section)}${section.unreadQueueCount ? `<span class="agent-working-timing">${section.unreadQueueCount} unread ${section.unreadQueueCount === 1 ? "message" : "messages"} in queue</span>` : ""}`,
+    disclosure: true, leadingHtml: status, trailingHtml: `${steeringCount ? `<span class="agent-working-timing">${steeringCount} steering ${steeringCount === 1 ? "message" : "messages"}</span>` : ""}${active ? "" : renderWorkingTiming(section)}${section.unreadQueueCount ? `<span class="agent-working-timing">${section.unreadQueueCount} unread ${section.unreadQueueCount === 1 ? "message" : "messages"} in queue</span>` : ""}`,
     summaryId: ids.itemSummaryContent(ctx, section.key),
   });
 }
@@ -111,7 +113,7 @@ function renderWorkingTiming(section: Omit<WorkingTranscriptItem, "items">): str
   if (!section.timing) return "";
   const timing = section.timing;
   const rate = timing.usageComplete && timing.inferenceMs > 0
-    ? `${(timing.outputTokens / (timing.inferenceMs / 1000)).toFixed(1)} tps`
+    ? `${(timing.outputTokens / (timing.inferenceMs / 1000)).toFixed(0)} tps`
     : "tps unavailable";
   const toolDuration = formatDuration(timing.toolMs);
   const toolsLabel = toolDuration === "0s" ? "" : `${toolDuration} tools, `;

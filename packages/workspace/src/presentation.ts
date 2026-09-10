@@ -21,6 +21,8 @@ export interface WorkspaceWorkViewState<Reference extends WorkspaceWorkViewRefer
 }
 
 export interface WorkspacePresentationStore {
+  dismissedWarnings(workspaceId: string): Promise<Record<string, string>>;
+  dismissWarning(workspaceId: string, kind: string, state: string): Promise<void>;
   initialize(workspaceId: string, initialWorkViews?: WorkspaceWorkViewReference[]): Promise<void>;
   listWorkViews(workspaceId: string): Promise<WorkspaceWorkViewState[]>;
   openWorkView(workspaceId: string, reference: WorkspaceWorkViewReference, options?: { after?: WorkspaceWorkViewReference }): Promise<{ opened: boolean }>;
@@ -41,6 +43,8 @@ interface StoredWorkView {
 }
 
 interface StoredPresentation {
+  workViewsInitialized: boolean;
+  dismissedWarnings: Record<string, string>;
   version: 1;
   nextAttentionSequence: number;
   workViews: StoredWorkView[];
@@ -48,6 +52,8 @@ interface StoredPresentation {
 
 const presentationFilename = "presentation.json";
 const workViewTypeSchema = Type.String();
+const booleanSchema = Type.Boolean();
+const dismissedWarningsSchema = Type.Record(Type.String(), Type.String());
 
 function presentationError(workspaceId: string, message: string): AtelierCoreError {
   return new AtelierCoreError("workspace_presentation_invalid", `invalid presentation state for workspace ${workspaceId}: ${message}`);
@@ -116,7 +122,11 @@ export function createWorkspacePresentationStore(options: WorkspacePresentationS
     if (new Set(attentionSequences).size !== attentionSequences.length || attentionSequences.some((sequence) => sequence >= Number(nextAttentionSequence))) {
       throw presentationError(workspaceId, "Attention sequences are inconsistent");
     }
-    return { version: 1, nextAttentionSequence: Number(nextAttentionSequence), workViews };
+    const dismissedWarnings = value.dismissedWarnings ?? {};
+    if (!Value.Check(dismissedWarningsSchema, dismissedWarnings)) throw presentationError(workspaceId, "invalid dismissed warnings");
+    const workViewsInitialized = value.workViewsInitialized ?? true;
+    if (!Value.Check(booleanSchema, workViewsInitialized)) throw presentationError(workspaceId, "invalid Work view initialization state");
+    return { version: 1, nextAttentionSequence: Number(nextAttentionSequence), workViews, dismissedWarnings, workViewsInitialized };
   }
 
   async function read(workspaceId: string): Promise<StoredPresentation | undefined> {
@@ -144,10 +154,24 @@ export function createWorkspacePresentationStore(options: WorkspacePresentationS
   }
 
   return {
+    async dismissedWarnings(workspaceId) {
+      return await serialized(workspaceId, async () => ({ ...(await read(workspaceId))?.dismissedWarnings }));
+    },
+    async dismissWarning(workspaceId, kind, warningState) {
+      await serialized(workspaceId, async () => {
+        // A warning can be dismissed before modules initialize their Work views.
+        const state = await read(workspaceId) ?? { version: 1, nextAttentionSequence: 1, workViews: [], dismissedWarnings: {}, workViewsInitialized: false };
+        state.dismissedWarnings[kind] = warningState;
+        await write(workspaceId, state);
+      });
+    },
     async initialize(workspaceId, initialWorkViews = []) {
       await serialized(workspaceId, async () => {
-        if (await read(workspaceId)) return;
+        const existing = await read(workspaceId);
+        if (existing?.workViewsInitialized) return;
         const state = parse(workspaceId, {
+          dismissedWarnings: existing?.dismissedWarnings ?? {},
+          workViewsInitialized: true,
           version: 1,
           nextAttentionSequence: 1,
           workViews: initialWorkViews.map((reference) => ({ reference })),

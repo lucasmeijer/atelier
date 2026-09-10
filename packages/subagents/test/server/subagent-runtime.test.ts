@@ -56,19 +56,29 @@ describe("subagent delegation protocol", () => {
     expect(deliveries[2].message.to).toBe("parent");
   });
 
-  test("completion automatically flows to parent and wakes a waiting tool", async () => {
+  test.each(["Found two bugs", "", " \n\t"])("completion %j automatically flows to parent and wakes a waiting tool", async (text) => {
     const { runtime, deliveries, drain } = harness();
     const child = await runtime.spawn("parent", "review", "Review");
     await runtime.started(child.id);
     const waiting = runtime.wait("parent", 1000);
-    await runtime.finished(child.id, "Found two bugs", "completed");
+    await runtime.finished(child.id, text, "completed");
     const result = await waiting;
     expect(result.timed_out).toBe(false);
-    expect(deliveries.at(-1)!.message).toMatchObject({ from: child.id, to: "parent", kind: "completion", text: "Found two bugs" });
+    expect(deliveries.at(-1)!.message).toMatchObject({ from: child.id, to: "parent", kind: "completion", text });
     expect(deliveries.at(-1)!.triggerTurn).toBe(false);
-    expect(runtime.list("parent")[0]).toMatchObject({ status: "completed", result: "Found two bugs" });
+    expect(runtime.list("parent")[0]).toMatchObject({ status: "completed", result: text });
     drain("parent");
     expect((await runtime.wait("parent", 1)).timed_out).toBe(true);
+  });
+
+  test.each(["", " \n\t"])("blank messages and tasks %j remain invalid", async (text) => {
+    const { runtime } = harness();
+    const child = await runtime.spawn("parent", "review", "Review");
+    await runtime.started(child.id);
+    await expect(runtime.send(child.id, "/root", text)).rejects.toThrow("message must not be empty");
+    await expect(runtime.followup("parent", "review", text)).rejects.toThrow("message must not be empty");
+    await expect(runtime.spawn("parent", "other", text)).rejects.toThrow("message must not be empty");
+    expect(runtime.state.messages).toHaveLength(1);
   });
 
   test("wait returns already queued messages, times out without stopping children, and cancels", async () => {

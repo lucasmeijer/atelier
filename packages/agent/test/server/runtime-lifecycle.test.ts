@@ -47,6 +47,7 @@ function fakeSession(navigation: Deferred<{ editorText?: string; cancelled?: boo
     ["entry", { id: "entry", parentId: "parent" }],
     ["parent", { id: "parent", parentId: null }],
   ]);
+  const branch = [{ type: "message", id: "initial-user", parentId: "parent", timestamp: new Date().toISOString(), message: { role: "user", content: [{ type: "text", text: "Initial prompt" }] } }];
   const session = {
     isStreaming: false,
     model: undefined,
@@ -56,7 +57,7 @@ function fakeSession(navigation: Deferred<{ editorText?: string; cancelled?: boo
       appendCustomEntry: () => crypto.randomUUID(),
       getSessionId: () => "test-session",
       getLeafId: () => "initial-user",
-      getBranch: () => [{ type: "message", id: "initial-user", parentId: "parent", timestamp: new Date().toISOString(), message: { role: "user", content: [{ type: "text", text: "Initial prompt" }] } }],
+      getBranch: () => branch,
       getEntry: (entryId: string) => entries.get(entryId),
     },
     subscribe(next: SessionListener): () => void {
@@ -82,6 +83,12 @@ function fakeSession(navigation: Deferred<{ editorText?: string; cancelled?: boo
     abortCount: () => aborts,
     unsubscribeCount: () => unsubscribes,
   };
+}
+
+async function startPrompt(session: any, emit: SessionListener): Promise<void> {
+  emit({ type: "agent_start" });
+  emit({ type: "message_end", message: session.sessionManager.getBranch().findLast((entry: any) => entry.message?.role === "user").message });
+  await Promise.resolve();
 }
 
 const emptyStats: AgentStatsView = {
@@ -166,7 +173,7 @@ test("tool deltas update authoritative state immediately and coalesce server pub
   const subscription = runtime.subscribeLivePresentation(() => {});
   await subscription.ready;
   const event = (inner: ToolStreamEvent) => emit({ type: "message_update", assistantMessageEvent: inner });
-  emit({ type: "agent_start" });
+  await startPrompt(session, emit);
   const innerSubscription = runtime.subscribeCurrentTurn(() => {});
   await innerSubscription.ready;
   event({ type: "toolcall_start", contentIndex: 0, partial: { content: [{ name: "write" }] } });
@@ -194,7 +201,7 @@ test("large tool arguments slow publications to 500 ms without delaying state or
   const subscription = runtime.subscribeLivePresentation(() => {});
   await subscription.ready;
   const event = (inner: ToolStreamEvent) => emit({ type: "message_update", assistantMessageEvent: inner });
-  emit({ type: "agent_start" });
+  await startPrompt(session, emit);
   const innerSubscription = runtime.subscribeCurrentTurn(() => {});
   await innerSubscription.ready;
   event({ type: "toolcall_start", contentIndex: 0, partial: { content: [{ name: "write" }] } });
@@ -233,7 +240,7 @@ test("pending tool updates stop when the last subscriber leaves", async () => {
   const runtime = runtimeFor(session);
   const subscription = runtime.subscribeLivePresentation(() => {});
   await subscription.ready;
-  emit({ type: "agent_start" });
+  await startPrompt(session, emit);
   emit({ type: "message_update", assistantMessageEvent: { type: "toolcall_start", contentIndex: 0, partial: { content: [{ name: "write" }] } } });
   emit({ type: "message_update", assistantMessageEvent: { type: "toolcall_delta", delta: '{"path":"file.js"' } });
   subscription.unsubscribe();
@@ -344,7 +351,7 @@ test("disposing a busy closed Agent unsubscribes and suppresses delayed terminal
   });
 
   try {
-    emit({ type: "agent_start" });
+    await startPrompt(session, emit);
     const turn = currentNotificationTurn(runtime)!;
     setTurnNotification(runtime, turn.id, { endpoint: "https://web.push.apple.com/disposed", keys: { p256dh: "unused", auth: "unused" } });
     await runtime.dispose();
@@ -444,7 +451,7 @@ test("retry boundaries remain continuously busy and only the settled prompt beco
   events.on("workspace_agent_turn_finished", () => { finished += 1; });
 
   try {
-    emit({ type: "agent_start" });
+    await startPrompt(session, emit);
     const notificationTurn = currentNotificationTurn(runtime);
     expect(notificationTurn).toBeDefined();
     emit({ type: "message_end", message: { role: "assistant", content: [], stopReason: "error", errorMessage: "Temporary provider failure" } });
@@ -480,7 +487,7 @@ test("threshold compaction inside an Agent loop stays busy until the prompt sett
 
   try {
     session.isStreaming = true;
-    emit({ type: "agent_start" });
+    await startPrompt(session, emit);
     emit({ type: "compaction_start", reason: "threshold" });
     emit({ type: "compaction_end", reason: "threshold", willRetry: false });
     await Bun.sleep(0);
@@ -528,7 +535,7 @@ test("a settled prompt becomes ready before stats and cannot clear a newer run",
   events.on("workspace_agent_turn_finished", () => { finished += 1; });
 
   try {
-    emit({ type: "agent_start" });
+    await startPrompt(session, emit);
     emit({ type: "agent_end", willRetry: false });
     emit({ type: "agent_settled" });
     await Bun.sleep(0);
@@ -537,7 +544,7 @@ test("a settled prompt becomes ready before stats and cannot clear a newer run",
     expect(finished).toBe(1);
     expect(currentNotificationTurn(runtime)).toBeUndefined();
 
-    emit({ type: "agent_start" });
+    await startPrompt(session, emit);
     releaseOldStats.resolve();
     await Bun.sleep(0);
 
@@ -562,7 +569,7 @@ test("throwing terminal stats do not suppress idle state or readiness", async ()
   events.on("workspace_agent_turn_finished", () => { finished += 1; });
 
   try {
-    emit({ type: "agent_start" });
+    await startPrompt(session, emit);
     emit({ type: "agent_end", willRetry: false });
     emit({ type: "agent_settled" });
     await Bun.sleep(0);
@@ -586,7 +593,7 @@ test("abort succeeds even when its secondary stats refresh fails", async () => {
   });
 
   try {
-    emit({ type: "agent_start" });
+    await startPrompt(session, emit);
     await expect(runtime.abort()).resolves.toBeUndefined();
     await Bun.sleep(0);
 
@@ -608,7 +615,7 @@ test.each([
   let finished = 0;
   events.on("workspace_agent_turn_finished", () => { finished += 1; });
 
-  emit({ type: "agent_start" });
+  await startPrompt(session, emit);
   emit({ type: "agent_end", willRetry: false, ...terminalEvent });
   emit({ type: "agent_settled" });
   await Bun.sleep(0);
@@ -666,7 +673,7 @@ test("submit rejects failed Pi preflight without emitting terminal readiness", a
   expect(finished).toBe(0);
 });
 
-test("live Responses text events keep commentary in Working and render only final_answer outside", () => {
+test("live Responses text events keep commentary in Working and render only final_answer outside", async () => {
   const navigation = deferred<{ editorText?: string }>();
   const { session, emit } = fakeSession(navigation);
   const runtime = runtimeFor(session);
@@ -676,7 +683,7 @@ test("live Responses text events keep commentary in Working and render only fina
   const commentary = { type: "text", text: "I’m checking that now.", textSignature: commentarySignature };
   const final = { type: "text", text: "Everything is ready.", textSignature: finalSignature };
 
-  emit({ type: "agent_start" });
+  await startPrompt(session, emit);
   emit({ type: "message_update", assistantMessageEvent: { type: "text_start", contentIndex: 0, partial: partial([{ ...commentary, text: "" }]) } });
   emit({ type: "message_update", assistantMessageEvent: { type: "text_delta", contentIndex: 0, delta: commentary.text, partial: partial([commentary]) } });
   emit({ type: "message_update", assistantMessageEvent: { type: "text_end", contentIndex: 0, content: commentary.text, partial: partial([commentary]) } });
@@ -684,7 +691,7 @@ test("live Responses text events keep commentary in Working and render only fina
   emit({ type: "message_update", assistantMessageEvent: { type: "text_delta", contentIndex: 1, delta: final.text, partial: partial([commentary, final]) } });
   emit({ type: "message_update", assistantMessageEvent: { type: "text_end", contentIndex: 1, content: final.text, partial: partial([commentary, final]) } });
 
-  const items = runtime.inspectLiveItems();
+  const items = runtime.inspectLiveItems().filter((item) => item.type !== "user");
   expect(items).toHaveLength(2);
   expect(items[0]).toMatchObject({
     type: "working",
@@ -704,7 +711,7 @@ test("a second live subscriber cannot advance pacing past text the first subscri
   const text = "paced-text-abcdefghijklmnopqrstuvwxyz-0123456789";
   const partial = { stopReason: "stop", content: [{ type: "text", text }] };
 
-  emit({ type: "agent_start" });
+  await startPrompt(session, emit);
   emit({ type: "message_update", assistantMessageEvent: { type: "text_start", contentIndex: 0, partial: { ...partial, content: [{ type: "text", text: "" }] } } });
   emit({ type: "message_update", assistantMessageEvent: { type: "text_delta", contentIndex: 0, delta: text, partial } });
   const secondSubscription = runtime.subscribeLivePresentation((html) => secondDeliveries.push(html));
@@ -758,7 +765,7 @@ test("a joining snapshot absorbs queued paced text at its actual capture boundar
   await firstSubscription.ready;
   const beforeBoundary = "abcdefghijklmnopqrstuvwxyz-123456789";
 
-  emit({ type: "agent_start" });
+  await startPrompt(session, emit);
   emit({ type: "message_update", assistantMessageEvent: { type: "text_start", contentIndex: 0, partial: { stopReason: "stop", content: [{ type: "text", text: "" }] } } });
   emit({ type: "message_update", assistantMessageEvent: { type: "text_delta", contentIndex: 0, delta: beforeBoundary, partial: { stopReason: "stop", content: [{ type: "text", text: beforeBoundary }] } } });
 
@@ -804,7 +811,7 @@ for (const failure of [
   test(`assistant ${failure.stopReason}: ${failure.errorMessage ?? "no detail"} is published once and agrees with reload`, async () => {
     const { session, emit } = fakeSession(deferred());
     const runtime = runtimeFor(session);
-    emit({ type: "agent_start" });
+    await startPrompt(session, emit);
     const message = { role: "assistant", content: [], ...failure };
     emit({ type: "message_update", assistantMessageEvent: { type: "error", error: message }, message });
     emit({ type: "message_end", message });
@@ -820,10 +827,10 @@ for (const failure of [
 }
 
 
-test("provider failure preserves streamed partial content as non-final activity", () => {
+test("provider failure preserves streamed partial content as non-final activity", async () => {
   const { session, emit } = fakeSession(deferred());
   const runtime = runtimeFor(session);
-  emit({ type: "agent_start" });
+  await startPrompt(session, emit);
   emit({ type: "message_update", assistantMessageEvent: { type: "text_delta", contentIndex: 0, partial: { content: [{ type: "text", text: "Partial response" }], stopReason: "pending" }, delta: "Partial response" } });
   emit({ type: "message_end", message: { role: "assistant", content: [{ type: "text", text: "Partial response" }], stopReason: "error", errorMessage: "Connection lost" } });
   const items = runtime.inspectLiveItems().flatMap((item) => item.type === "working" ? item.items : [item]);
@@ -846,7 +853,7 @@ test("consumed steering keeps the run subscription and publishes only one summar
   };
   session.steer = async () => {};
   const runtime = runtimeFor(session);
-  emit({ type: "agent_start" });
+  await startPrompt(session, emit);
   const first = runtime.inspectLiveItems().find((item) => item.type === "working")!;
   expect(first.key).toBe("initial-user:working");
   const deliveries: string[] = [];
@@ -869,8 +876,11 @@ test("consumed steering keeps the run subscription and publishes only one summar
   emit({ type: "message_update", assistantMessageEvent: { type: "thinking_delta", delta: "Still on the same subscription" } });
   expect(deliveries.length).toBeGreaterThan(beforeActivity);
   emit({ type: "message_end", message: { role: "assistant", content: [{ type: "text", text: "After steering" }], stopReason: "stop", usage: { output: 3 } } });
-  expect(runtime.inspectLiveItems().map((item) => item.type)).toEqual(["working", "user", "text"]);
-  expect(runtime.inspectLiveItems()[1]).toMatchObject({ text: "Steer now", rewindEntryId: "steering-pi-id" });
+  expect(runtime.inspectLiveItems().map((item) => item.type)).toEqual(["user", "working", "text"]);
+  expect(runtime.inspectLiveItems()[1]).toMatchObject({ items: [
+    { type: "user", text: "Steer now", rewindEntryId: "steering-pi-id", steering: true },
+    { type: "thinking" },
+  ] });
   emit({ type: "agent_end", willRetry: false });
   emit({ type: "agent_settled" });
   expect(timings).toHaveLength(1);
@@ -878,12 +888,12 @@ test("consumed steering keeps the run subscription and publishes only one summar
   subscription.unsubscribe();
 });
 
-test("automatic retries retain turn identity and publish only one terminal summary", () => {
+test("automatic retries retain turn identity and publish only one terminal summary", async () => {
   const { session, emit } = fakeSession(deferred());
   const timings: Array<{ turnEntryId: string; outputTokens: number }> = [];
   session.sessionManager.appendCustomEntry = (_type: string, timing: { turnEntryId: string; outputTokens: number }) => { if (_type === turnTimingEntryType) timings.push(timing); return "timing"; };
   const runtime = runtimeFor(session);
-  emit({ type: "agent_start" });
+  await startPrompt(session, emit);
   emit({ type: "turn_start" });
   emit({ type: "message_end", message: { role: "assistant", content: [], usage: { output: 2 }, stopReason: "error", errorMessage: "Retry me" } });
   emit({ type: "agent_end", willRetry: true });
@@ -924,7 +934,7 @@ test("branch selection rejects obsolete subscriptions even when the turn start i
   const navigation = deferred<{ editorText?: string }>();
   const { session, emit } = fakeSession(navigation);
   const runtime = runtimeFor(session);
-  emit({ type: "agent_start" });
+  await startPrompt(session, emit);
   const oldBranch = runtime.inspectBranchId();
   const deliveries: string[] = [];
   const old = runtime.subscribeCurrentTurn((html) => deliveries.push(html));
@@ -936,7 +946,7 @@ test("branch selection rejects obsolete subscriptions even when the turn start i
   await runtime.navigateTree("other-branch", { summarize: false });
   expect(runtime.inspectBranchId()).not.toBe(oldBranch);
   const count = deliveries.length;
-  emit({ type: "agent_start" });
+  await startPrompt(session, emit);
   expect(runtime.inspectLiveItems().find((item) => item.type === "working")!.key).toBe("initial-user:working");
   expect(() => runtime.subscribeTurnPresentation("initial-user:working", oldBranch, () => {})).toThrow("obsolete branch");
   emit({ type: "message_update", assistantMessageEvent: { type: "thinking_delta", delta: "Other branch only" } });
@@ -954,7 +964,7 @@ test("cancelling retry backoff closes the existing block with a stopped summary"
   let finished = 0;
   events.on("workspace_agent_turn_finished", () => { finished += 1; });
   const runtime = runtimeFor(session, events);
-  emit({ type: "agent_start" });
+  await startPrompt(session, emit);
   emit({ type: "message_end", message: { role: "assistant", content: [], stopReason: "error", errorMessage: "Busy" } });
   emit({ type: "agent_end", willRetry: true });
   emit({ type: "auto_retry_end", success: false, finalError: "Retry cancelled" });
@@ -967,10 +977,10 @@ test("cancelling retry backoff closes the existing block with a stopped summary"
   expect(runtime.inspectLiveItems()).toEqual([]);
 });
 
-test("an early-final answer that fails is demoted to inner non-final activity", () => {
+test("an early-final answer that fails is demoted to inner non-final activity", async () => {
   const { session, emit } = fakeSession(deferred());
   const runtime = runtimeFor(session);
-  emit({ type: "agent_start" });
+  await startPrompt(session, emit);
   emit({ type: "message_start", message: { role: "assistant" } });
   const text = "Incomplete answer";
   const part = { type: "text", text, textSignature: JSON.stringify({ v: 1, id: "final-id", phase: "final_answer" }) };

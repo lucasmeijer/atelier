@@ -2,6 +2,7 @@
 
 Do not write UI tests. Follow the [UI testing policy](docs/ui-testing-policy.md).
 
+- Do not add documentation files unless explicitly requested.
 - When working on the web app, prefer server-rendered HTML over client-rendered UI.
 - Prefer Turbo Frames and Turbo Streams for webpage/server interactions whenever possible.
 - Have endpoints return server-rendered HTML or `text/vnd.turbo-stream.html` responses instead of JSON that client JavaScript turns into DOM.
@@ -12,7 +13,7 @@ Do not write UI tests. Follow the [UI testing policy](docs/ui-testing-policy.md)
 - Do not use defensive programming.  We don't want to swallow errors, we want to notice them. Only be defensive when parsing external inputs.
 - Never add a new environment variable to the codebase without explicit instructions to do so. We're striving for minimal configuration, and minimal environment variables.
 - Run `bun run generate:workspace-modules` before raw TypeScript checks; otherwise missing ignored generated modules cause cascading unrelated server errors.
-- When presenting the user with the results after an implementation request, run atelier, show it in the preview browser, and use api's you can find in our openapi description to bring the inner atelier to a state/situation where
+- When presenting the user with the results after an implementation request, if atelier itself is the most natural place to showcase your change to the user, run atelier, show it in the preview browser, and use api's you can find in our openapi description to bring the inner atelier to a state/situation where
 - your work can immediately be evaluated, without the user having to do more manual preparation steps.
 - When controlling or staging an Atelier instance programmatically, follow [docs/automation.md](docs/automation.md).
 - Whenever modifying the user interface, use elements from the [Atelier design system catalogue](packages/design-system/README.md) whenever possible.

@@ -21,6 +21,18 @@ class WorkspaceAppFrameController extends Controller<HTMLIFrameElement> {
     document.removeEventListener("atelier:theme-change", this.themeChanged);
   }
 
+  initialPathValueChanged(): void {
+    if (!isWorkspacePaneVisible(this.element)) return;
+    if (!this.loadedUrl) {
+      this.load();
+      return;
+    }
+    // A live document may veto navigation with beforeunload. Keep it usable
+    // rather than waiting for a load event that cancellation will never emit.
+    this.loadedUrl = this.frameSrc();
+    this.element.src = this.loadedUrl;
+  }
+
   becomeVisible(): void {
     this.load();
   }

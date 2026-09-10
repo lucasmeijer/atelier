@@ -23,3 +23,9 @@
 .terminal-session-empty { min-height: 120px; }
 
 [data-terminal-key] { touch-action: manipulation; user-select: none; -webkit-user-select: none; }
+
+.terminal-clipboard-bar { display: flex; flex: 0 0 auto; align-items: center; justify-content: flex-end; gap: 6px; padding: 4px 2px; border-top: 1px solid var(--line); }
+.terminal-selection-hint, .terminal-clipboard-status { color: var(--text-muted); font-size: var(--text-code); }
+.terminal-selection-hint { margin-right: auto; }
+.terminal-clipboard-status { flex: 0 0 auto; }
+@media (max-width: 600px) { .terminal-selection-hint { display: none; } }

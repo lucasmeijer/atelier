@@ -22,6 +22,7 @@ import type { RewindMode, SubmitOptions, WorkspaceAgentRuntime, WorkspaceAgentRu
 import { AgentServiceTierState, supportsFastMode, type AgentServiceTier } from "./service-tier.ts";
 import { recordsFromSessionEntries, sessionContentImages } from "./session-records.ts";
 import { replaceWorkspaceAgentSession, type WorkspaceAgentConversationInfo } from "./session-store.ts";
+import { expandWorkspaceSkillCommand } from "./skills.ts";
 import { renderAgentSessionTree, updateAgentSessionTreeLabel, type TreeFilterMode } from "./session-tree.ts";
 import {
   assistantErrorText,
@@ -63,28 +64,36 @@ export class RealAgentRuntime extends BaseAgentRuntime {
   private pendingAcceptedPrompt?: symbol;
   private readonly terminalSessionOperations = new Set<Promise<void>>();
   private disposal?: Promise<void>;
+  private unsubscribeCosts?: () => void;
+  private settledCost: number;
   private unsubscribeTranscript?: () => void;
 
   constructor(agent: WorkspaceAgentConversationInfo, private session: any, private toolsForModel: AgentToolDefinitionView[], private serviceTiers: AgentServiceTierState, options: WorkspaceAgentRuntimeOptions = {}, private delegation: AgentSessionDelegation = { dispose: async () => {} }) {
     super(agent, options);
+    this.settledCost = this.session.getSessionStats?.().cost ?? 0;
     this.ctx.model = this.currentModel();
     this.selectBranch();
     try {
       this.subscribeToSession();
-      this.attachTranscript();
+      this.attachContributions();
     } catch (error) {
       this.unsubscribeSession?.();
-      this.detachTranscript();
+      this.detachContributions();
       throw error;
     }
   }
 
-  private attachTranscript(): void {
+  private attachContributions(): void {
+    this.unsubscribeCosts = this.delegation.attachment?.costs?.subscribe(() => {
+      void this.refreshStats().catch((error) => console.error("Could not refresh Agent costs", normalizedPromiseError(error)));
+    });
     this.captureContributedRows();
     this.unsubscribeTranscript = this.delegation.transcript?.subscribe(() => this.refreshContributedRows());
   }
 
-  private detachTranscript(): void {
+  private detachContributions(): void {
+    this.unsubscribeCosts?.();
+    this.unsubscribeCosts = undefined;
     const unsubscribe = this.unsubscribeTranscript;
     this.unsubscribeTranscript = undefined;
     unsubscribe?.();
@@ -180,6 +189,7 @@ export class RealAgentRuntime extends BaseAgentRuntime {
 
   protected async statsView(): Promise<AgentStatsView> {
     const stats = this.session.getSessionStats?.();
+    const costs = await this.delegation.attachment?.costs?.snapshot();
     const context = this.session.getContextUsage?.();
     const model = this.session.model;
     const estimate = this.postCompactionEstimate;
@@ -201,7 +211,9 @@ export class RealAgentRuntime extends BaseAgentRuntime {
       compactAvailable: manualCompactionAvailable(context?.tokens, branch.at(-1)?.type),
       inputTokens: stats?.tokens?.input ?? 0,
       outputTokens: stats?.tokens?.output ?? 0,
-      cost: stats?.cost ?? 0,
+      cost: costs?.cost ?? this.settledCost,
+      descendantCost: costs?.descendantCost,
+      isSubagent: costs?.isSubagent,
       modelName: model?.name ?? model?.id,
       thinkingLevel,
       thinkingLevels,
@@ -280,15 +292,9 @@ export class RealAgentRuntime extends BaseAgentRuntime {
           this.turnTiming = new TurnTiming(performance.now());
           this.terminalOutcome = "completed";
         }
-        if (!this.live && !this.pendingAcceptedPrompt) {
-          const records = recordsFromSessionEntries(this.session.sessionManager.getBranch());
-          const startIndex = records.findLastIndex((record) => record.kind === "user" || record.kind === "taskStart");
-          const start = records[startIndex];
-          const finished = records.slice(startIndex + 1).some((record) => record.kind === "timing");
-          // A newly triggered task is persisted after agent_start. Do not
-          // re-advertise the previous completed block while waiting for it.
-          if (start && (start.kind === "user" || start.kind === "taskStart") && !finished) this.beginPersistedRun(start.id);
-        }
+        // Loop startup carries no input identity. Bind the run only when Pi
+        // consumes and persists its user/task message (message_end). Retries
+        // keep the existing run; historical context never starts a new one.
         this.setBusy(true);
         break;
       case "turn_start":
@@ -373,6 +379,7 @@ export class RealAgentRuntime extends BaseAgentRuntime {
         break;
       }
       case "agent_settled":
+        this.settledCost = this.session.getSessionStats?.().cost ?? 0;
         // agent_end only ends an agent-core loop. Pi may still compact and
         // continue without another user, even when agent_end.willRetry is false.
         if (!this.turnTiming) break;
@@ -422,10 +429,12 @@ export class RealAgentRuntime extends BaseAgentRuntime {
     this.assertActive();
     const trimmed = text.trim();
     const noteLines = options.attachmentNotes ?? [];
-    const fullText = noteLines.length > 0 ? `${trimmed}\n\n${noteLines.join("\n")}` : trimmed;
+    const submittedText = noteLines.length > 0 ? `${trimmed}\n\n${noteLines.join("\n")}` : trimmed;
     const images = (options.images ?? []).map((image) => ({ type: "image" as const, data: image.data, mimeType: image.mimeType }));
-    if (!fullText.trim() && images.length === 0) return;
+    if (!submittedText.trim() && images.length === 0) return;
     if (this.summarizing) throw new Error("Wait for branch summarization to finish before sending another prompt.");
+
+    const fullText = await expandWorkspaceSkillCommand(this.workspaceId, submittedText);
 
     if (this.session.isStreaming) {
       const key = `pending-user:${crypto.randomUUID()}`;
@@ -521,7 +530,7 @@ export class RealAgentRuntime extends BaseAgentRuntime {
   }
 
   private async finishDisposal(): Promise<void> {
-    this.detachTranscript();
+    this.detachContributions();
     const unsubscribe = this.unsubscribeSession;
     this.unsubscribeSession = undefined;
     unsubscribe?.();
@@ -581,7 +590,7 @@ export class RealAgentRuntime extends BaseAgentRuntime {
       throw error;
     }
     this.unsubscribeSession?.();
-    this.detachTranscript();
+    this.detachContributions();
     try {
       await this.delegation.dispose();
     } catch (error) {
@@ -590,16 +599,17 @@ export class RealAgentRuntime extends BaseAgentRuntime {
     }
     this.delegation = created.delegation;
     this.session = created.session;
+    this.settledCost = this.session.getSessionStats?.().cost ?? 0;
     this.toolsForModel = created.toolViews;
     this.serviceTiers = created.serviceTiers;
     this.sessionFile = agent.path;
     this.selectBranch();
     try {
       this.subscribeToSession();
-      this.attachTranscript();
+      this.attachContributions();
     } catch (error) {
       this.unsubscribeSession?.();
-      this.detachTranscript();
+      this.detachContributions();
       try { await created.session.abort(); } finally { await created.delegation.dispose(); }
       throw error;
     }

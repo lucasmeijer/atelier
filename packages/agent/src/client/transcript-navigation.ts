@@ -19,6 +19,8 @@ export class TranscriptNavigation {
   private hideScrollbarTimer?: ReturnType<typeof setTimeout>;
   private pendingPosition: "prompt" | "instant" | "smooth" | undefined;
   private floor = 0;
+  private width = 0;
+  private readingAnchor?: { element: HTMLElement; offset: number; height: number };
   private streaming = false;
   private motionFrame = 0;
   private motionTarget = 0;
@@ -57,6 +59,7 @@ export class TranscriptNavigation {
     this.setStreaming(busy);
     this.stopMotion();
     this.floor = 0;
+    this.readingAnchor = undefined;
     this.transcript.style.removeProperty("--agent-follow-floor");
     this.pendingPosition = busy ? "instant" : "prompt";
     this.selectionAwaitingSnapshot = true;
@@ -147,12 +150,39 @@ export class TranscriptNavigation {
     else this.moveTo(target, false);
   }
 
+  private rememberReadingPosition(): void {
+    this.readingAnchor = undefined;
+    if (this.following) return;
+    const top = this.transcript.getBoundingClientRect().top;
+    for (const element of this.content.querySelectorAll<HTMLElement>(".agent-item, p, pre, li, h1, h2, h3, h4, h5, h6")) {
+      const bounds = element.getBoundingClientRect();
+      if (bounds.height === 0 || bounds.bottom <= top) continue;
+      // Prefer the innermost visible block over a potentially very long message.
+      if (this.readingAnchor && !this.readingAnchor.element.contains(element)) break;
+      this.readingAnchor = { element, offset: bounds.top - top, height: bounds.height };
+    }
+  }
+
   readonly layoutChanged = (): void => {
     if (this.frame) return;
     this.frame = requestAnimationFrame(() => {
       this.frame = 0;
       if (!this.visible) return;
+      const width = this.transcript.clientWidth;
+      const resized = this.width !== 0 && width !== this.width;
+      this.width = width;
       const geometry = this.geometry();
+      if (resized && !this.pendingPosition) {
+        if (this.following) {
+          this.pendingPosition = "instant";
+        } else if (this.readingAnchor && this.content.contains(this.readingAnchor.element)) {
+          const { element, offset, height } = this.readingAnchor;
+          const bounds = element.getBoundingClientRect();
+          // Scale an offset inside a reflowed block; preserve gaps above it.
+          const nextOffset = offset < 0 ? offset * bounds.height / height : offset;
+          this.moveTo(this.transcript.scrollTop + bounds.top - this.transcript.getBoundingClientRect().top - nextOffset, true);
+        }
+      }
       this.reconcileMotion(geometry);
       this.reserve(geometry);
 
@@ -163,6 +193,10 @@ export class TranscriptNavigation {
         this.transcript.scrollTop = target
           ? this.transcript.scrollTop + target.getBoundingClientRect().top - this.transcript.getBoundingClientRect().top
           : 0;
+      } else if (!this.following && geometry.contentEnd < this.transcript.scrollTop + geometry.threshold) {
+        // A wider pane (for example fullscreen) can reflow the entire transcript
+        // above a paused viewport. Do not protect an empty viewport with reserve.
+        this.transcript.scrollTop = geometry.latestTop;
       } else if (this.following) {
         // Follow visible content, not scrollHeight (which includes our reserve).
         // Hysteresis lets several new lines use the room before another scroll.
@@ -174,6 +208,7 @@ export class TranscriptNavigation {
         }
       }
       this.reserve(geometry);
+      this.rememberReadingPosition();
     });
   };
 

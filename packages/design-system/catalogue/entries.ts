@@ -15,6 +15,7 @@ import { popupHtml } from "../src/popup/popup-html.ts";
 import { toggleHtml } from "../src/toggle/toggle-html.ts";
 import { autocompleteHtml } from "../src/autocomplete/autocomplete-html.ts";
 import { transientFeedbackHtml } from "../src/transient-feedback/transient-feedback-html.ts";
+import { warningBannerHtml } from "../src/warning-banner/warning-banner-html.ts";
 import { Icons } from "../src/icons/icons-html.ts";
 
 export interface CatalogueEntry {
@@ -29,6 +30,14 @@ export interface CatalogueEntry {
   examples: { title: string; render: (idSuffix?: string) => string }[];
 }
 export const entries: CatalogueEntry[] = [
+  {
+    id: "warning-banner", title: "Warning banner",
+    when: "Persistent, non-blocking problems or configuration notices that need user attention.",
+    contract: "Title and message are escaped text. Optional actionsHtml composes server-rendered actions. Supplying dismiss adds an × and destructive confirmation; the feature owns the POST action and opaque state token, persistence, and Turbo replacement. Dismissal does not resolve the condition.",
+    imports: { "warning-banner": "warningBannerHtml" },
+    sources: ["warning-banner/warning-banner-html.ts", "warning-banner/warning-banner.css"],
+    examples: [{ title: "Missing configuration", render: () => `<div data-action="submit->catalogue#submit">${warningBannerHtml({ title: "Required secrets need values", message: "Your workspace can run, but features needing these secrets may not work.", dismiss: { action: "/catalogue/warnings/dismiss", state: "example" } })}<output aria-live="polite"></output></div>` }],
+  },
   {
     id: "markdown",
     title: "Markdown",
@@ -757,7 +766,7 @@ export const entries: CatalogueEntry[] = [
     title: "Icons",
     when: "Shared decorative vocabulary. Use icon-only Button for standalone icon actions.",
     contract:
-      "Icons exports trusted decorative SVG strings. Put the accessible name on the containing control. Never use an unlabeled icon as an action.",
+      "Icons exports trusted decorative SVG strings. atelierLogoPathsHtml exports the same logo geometry without a nested SVG viewport for animated scenes using 24×24 user units. Put the accessible name on the containing control. Never use an unlabeled icon as an action.",
     imports: { icons: "Icons" },
     examples: [
       {

@@ -19,6 +19,10 @@ export interface AgentModelRequestTransform {
 }
 
 export interface AgentSessionAttachment {
+  costs?: {
+    snapshot(): Promise<{ cost: number; descendantCost?: number; isSubagent: boolean }>;
+    subscribe(invalidate: () => void): () => void;
+  };
   createModelRequest?(): AgentModelRequestTransform;
   dispose(): void | Promise<void>;
 }

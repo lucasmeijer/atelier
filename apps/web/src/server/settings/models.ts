@@ -1,3 +1,4 @@
+import { actionItemHtml } from "@atelier/design-system/action-item";
 import { actionLinkHtml } from "@atelier/design-system/action-link";
 import { buttonHtml } from "@atelier/design-system/button";
 import { copyButtonHtml } from "@atelier/design-system/copy-button";
@@ -6,12 +7,17 @@ import { dialogHtml } from "@atelier/design-system/dialog";
 import { Icons } from "@atelier/design-system/icons";
 import {
   connectModelProviderApiKey,
+  ProviderCatalogueRefreshError,
   createPiModelRuntime,
   disconnectModelProvider,
   getConfiguredAgentModels,
   getCustomModelsJson,
   getPopularModelRank,
+  getPopularProviderRank,
   getProviderApiKeyExample,
+  hasAvailableConfiguredAgentModel,
+  modelRefValue as modelKey,
+  parseModelRef,
   loginPiOAuthProvider,
   setCustomModelsJson,
   setPickerAgentModels,
@@ -19,19 +25,13 @@ import {
   type PiAuthPrompt,
 } from "@atelier/agent/server";
 import { domId, escapeHtml } from "@atelier/shared";
-import { append, remove, replace, replaceTargets, response, stream, update, updateTargets, wantsStream } from "./http.ts";
+import { append, remove, replace, replaceTargets, response, stream, update, wantsStream } from "./http.ts";
 import { registerSettingsContribution } from "./registry.ts";
 import { providerIcon, type SettingsSurface } from "./views.ts";
 
 const providerDisconnectConfirmation = destructiveConfirmationHtml({
   trigger: { type: "button", variant: "danger", content: { kind: "caption", caption: "Disconnect" } },
   confirmCaption: "Disconnect",
-  cancelCaption: "Cancel",
-});
-
-const modelRemovalConfirmation = destructiveConfirmationHtml({
-  trigger: { type: "button", variant: "danger", content: { kind: "icon-only", iconHtml: Icons.Trash, label: "Remove configured model" } },
-  confirmCaption: "Remove model",
   cancelCaption: "Cancel",
 });
 
@@ -47,17 +47,7 @@ async function providerSummaries(): Promise<ProviderSummary[]> {
       connected: status.configured,
       methods: [provider.auth.oauth && "oauth", provider.auth.apiKey?.login && "api_key"].filter((method): method is string => Boolean(method)),
     };
-  }).sort((a, b) => Number(b.connected) - Number(a.connected) || a.label.localeCompare(b.label));
-}
-
-
-function modelKey(model: { provider: string; id: string }): string {
-  return `${model.provider}::${model.id}`;
-}
-
-function modelManagedListContent(model: ConfiguredAgentModel, description: string): string {
-  return `${providerIcon(model.provider, model.provider, "settings-model-provider-icon managed-list__visual")}
-    <div class="managed-list__content"><div class="managed-list__label"><span class="managed-list__label-text">${escapeHtml(model.label)}</span></div><div class="managed-list__description">${escapeHtml(description)}</div></div>`;
+  }).sort((a, b) => (getPopularProviderRank(a.provider) ?? Number.MAX_SAFE_INTEGER) - (getPopularProviderRank(b.provider) ?? Number.MAX_SAFE_INTEGER) || a.label.localeCompare(b.label));
 }
 
 type ModelSetupSurface = SettingsSurface | "dialog";
@@ -65,70 +55,26 @@ const modelSetupSurfaces: readonly ModelSetupSurface[] = ["settings", "onboardin
 
 type ModelCatalogueEntry = ConfiguredAgentModel & { configured: boolean };
 
-type ModelSetupData = {
-  configured: ConfiguredAgentModel[];
-  models: ModelCatalogueEntry[];
-  providers: Map<string, ProviderSummary>;
-  working: boolean;
-};
+type ModelSetupData = { providers: ProviderSummary[]; working: boolean };
 
 async function modelSetupData(): Promise<ModelSetupData> {
+  return { providers: await providerSummaries(), working: await hasAvailableConfiguredAgentModel() };
+}
+
+async function providerCatalogue(provider: string): Promise<ModelCatalogueEntry[]> {
   const runtime = await createPiModelRuntime();
-  const configured = await getConfiguredAgentModels();
-  const configuredByKey = new Map(configured.map((model) => [modelKey(model), model]));
-  const providers = new Map((await providerSummaries()).map((provider) => [provider.provider, provider]));
-  const models: ModelCatalogueEntry[] = [];
-  const seen = new Set<string>();
-
-  for (const provider of providers.values()) {
-    for (const model of runtime.getModels(provider.provider)) {
-      const existing = configuredByKey.get(modelKey(model));
-      models.push({ provider: model.provider, id: model.id, label: existing?.label ?? model.name ?? model.id, configured: Boolean(existing) });
-      seen.add(modelKey(model));
-    }
+  const favorites = (await getConfiguredAgentModels()).filter((model) => model.provider === provider);
+  const favoriteById = new Map(favorites.map((model) => [model.id, model]));
+  const models = new Map(runtime.getModels(provider).map((model): [string, ModelCatalogueEntry] => [model.id, {
+    provider, id: model.id, label: favoriteById.get(model.id)?.label ?? model.name ?? model.id, configured: favoriteById.has(model.id),
+  }]));
+  // Keep unavailable favorites visible so they can still be removed.
+  for (const model of favorites) {
+    if (!models.has(model.id)) models.set(model.id, { ...model, configured: true });
   }
-
-  for (const model of configured) {
-    if (!seen.has(modelKey(model))) models.push({ ...model, configured: true });
-  }
-
-  models.sort((a, b) => {
-    const aPopular = getPopularModelRank(a.provider, a.id);
-    const bPopular = getPopularModelRank(b.provider, b.id);
-    if (aPopular !== undefined || bPopular !== undefined) return (aPopular ?? Number.MAX_SAFE_INTEGER) - (bPopular ?? Number.MAX_SAFE_INTEGER);
-    const aConnected = providers.get(a.provider)?.connected ?? false;
-    const bConnected = providers.get(b.provider)?.connected ?? false;
-    return Number(bConnected) - Number(aConnected) || a.provider.localeCompare(b.provider) || a.label.localeCompare(b.label);
-  });
-  const available = new Set((await runtime.getAvailable()).map(modelKey));
-  return { configured, models, providers, working: configured.some((model) => available.has(modelKey(model))) };
-}
-
-async function initiatedModel(provider: string, value: string): Promise<ConfiguredAgentModel | undefined> {
-  const separator = value.indexOf("::");
-  if (separator < 1 || value.slice(0, separator) !== provider) return undefined;
-  const id = value.slice(separator + 2);
-  const model = (await createPiModelRuntime()).getModels(provider).find((candidate) => candidate.id === id);
-  return model ? { provider: model.provider, id: model.id, label: model.name ?? model.id } : undefined;
-}
-
-async function addConfiguredModel(model: ConfiguredAgentModel): Promise<void> {
-  const current = await getConfiguredAgentModels();
-  if (current.some((candidate) => modelKey(candidate) === modelKey(model))) return;
-  current.push(model);
-  await setPickerAgentModels(current, current.find((candidate) => candidate.active));
-}
-
-function providerState(provider: ProviderSummary): string {
-  return `<span class="model-provider-state ${domId("model_provider_state", provider.provider)}" data-connected="${provider.connected}" hidden></span>`;
-}
-
-function providerAuthLabel(method: string): string {
-  return method === "oauth" ? "Sign in" : "Add API key";
-}
-
-function providerAuthFormId(provider: ProviderSummary, method: string, surface: ModelSetupSurface): string {
-  return domId("model_catalogue_auth", surface, provider.provider, method);
+  return [...models.values()].sort((a, b) => Number(b.configured) - Number(a.configured)
+    || (getPopularModelRank(provider, a.id) ?? Number.MAX_SAFE_INTEGER) - (getPopularModelRank(provider, b.id) ?? Number.MAX_SAFE_INTEGER)
+    || a.label.localeCompare(b.label));
 }
 
 function providerAuthAction(provider: ProviderSummary, method: string, surface: ModelSetupSurface): string {
@@ -136,105 +82,59 @@ function providerAuthAction(provider: ProviderSummary, method: string, surface: 
 }
 
 function providerAuthenticationActions(provider: ProviderSummary, surface: ModelSetupSurface): string {
-  if (!provider.methods.length) return `<span class="settings-provider-desc">Provider unavailable</span>`;
-  return provider.methods.map((method) => `<form method="post" action="${providerAuthAction(provider, method, surface)}" data-turbo="true">${buttonHtml({
-    type: "submit",
-    variant: "secondary",
-    content: { kind: "caption", caption: providerAuthLabel(method) },
-  })}</form>`).join("");
+  return provider.methods.map((method) => `<form method="post" action="${providerAuthAction(provider, method, surface)}" data-turbo="true">${buttonHtml({ type: "submit", variant: "secondary", content: { kind: "caption", caption: method === "oauth" ? "Sign in" : "Add API Key" } })}</form>`).join("");
 }
 
-function catalogueProviderForms(provider: ProviderSummary, surface: ModelSetupSurface): string {
-  const authentication = provider.methods.map((method) => `<form id="${providerAuthFormId(provider, method, surface)}" method="post" action="${providerAuthAction(provider, method, surface)}" data-turbo="true" hidden></form>`).join("");
-  return `<form id="${domId("model_catalogue_add", surface, provider.provider)}" method="post" action="/settings/models/add" data-turbo="true" hidden></form>${authentication}`;
+function providerListFrameId(surface: ModelSetupSurface): string {
+  return domId("model_providers", surface);
 }
 
-function catalogueAuthenticationButtons(model: ModelCatalogueEntry, provider: ProviderSummary, surface: ModelSetupSurface): string {
-  if (!provider.methods.length) return `<span class="settings-provider-desc">Provider unavailable</span>`;
-  return provider.methods.map((method) => buttonHtml({
-    type: "submit",
-    variant: "secondary",
-    content: { kind: "caption", caption: providerAuthLabel(method) },
-    attributesHtml: `form="${providerAuthFormId(provider, method, surface)}" name="model" value="${escapeHtml(modelKey(model))}"`,
-  })).join("");
+function groupModelProviders(providers: ProviderSummary[]) {
+  const popular = providers.filter((provider) => getPopularProviderRank(provider.provider) !== undefined).slice(0, 4);
+  return { popular, other: providers.filter((provider) => !popular.includes(provider)) };
 }
 
-function configuredModelRow(model: ConfiguredAgentModel, provider: ProviderSummary, surface: ModelSetupSurface): string {
-  return `<div class="managed-list__item configured-model-row" data-search-text="${escapeHtml(`${model.label} ${model.provider} ${model.id}`.toLowerCase())}">
-    ${modelManagedListContent(model, `${model.provider} · ${model.id}`)}
-    <div class="managed-list__actions model-provider-actions">
-      ${providerState(provider)}
-      <span class="model-provider-disconnected-actions">${providerAuthenticationActions(provider, surface)}</span>
-      <span class="model-provider-connected-actions"><form method="post" action="/settings/providers/${encodeURIComponent(provider.provider)}/disconnect" data-turbo="true">${providerDisconnectConfirmation}</form></span>
-      <form method="post" action="/settings/models/remove" data-turbo="true"><input type="hidden" name="model" value="${escapeHtml(modelKey(model))}">${modelRemovalConfirmation}</form>
+function renderProviderList(providers: ProviderSummary[], surface: ModelSetupSurface, query = ""): string {
+  const normalized = query.trim().toLowerCase();
+  const matching = providers.filter((provider) => `${provider.label} ${provider.provider}`.toLowerCase().includes(normalized));
+  return `<turbo-frame id="${providerListFrameId(surface)}"><div class="model-providers" tabindex="0" role="region" aria-label="Other model providers">${matching.map((provider) => renderProvider(provider, surface)).join("") || '<div class="managed-list__empty" role="status">No matching providers.</div>'}</div></turbo-frame>`;
+}
+
+function providerFrameId(surface: ModelSetupSurface, provider: string): string {
+  return domId("model_provider_models", surface, provider);
+}
+
+function favoriteAction(model: ModelCatalogueEntry, surface: ModelSetupSurface): string {
+  return `<form class="${domId("model_favorite", surface, model.provider, model.id)}" method="post" action="/settings/models/${model.configured ? "remove" : "add"}" data-turbo="true">
+    <input type="hidden" name="model" value="${escapeHtml(modelKey(model))}">
+    ${buttonHtml({ type: "submit", variant: "secondary", content: { kind: "icon-only", iconHtml: model.configured ? Icons.StarFilled : Icons.Star, label: `${model.configured ? "Unfavorite" : "Favorite"} ${model.label}` }, attributesHtml: `aria-pressed="${model.configured}"` })}
+  </form>`;
+}
+
+function renderProviderModels(catalogue: ModelCatalogueEntry[], surface: ModelSetupSurface, provider: ProviderSummary, query: string): string {
+  const normalized = query.trim().toLowerCase();
+  const models = catalogue.filter((model) => `${model.label} ${model.id}`.toLowerCase().includes(normalized));
+  const rows = models.map((model) => `<div class="model-favorite-row"><span class="model-favorite-name" title="${escapeHtml(model.id)}">${escapeHtml(model.label)}</span>${favoriteAction(model, surface)}</div>`).join("");
+  return `<turbo-frame class="model-provider-results" id="${providerFrameId(surface, provider.provider)}"><div class="model-provider-models" tabindex="0" role="region" aria-label="${escapeHtml(provider.label)} models">${rows || '<div class="managed-list__empty">No matching models.</div>'}</div></turbo-frame>`;
+}
+
+function renderProvider(provider: ProviderSummary, surface: ModelSetupSurface, open = false): string {
+  const id = domId("model_provider", surface, provider.provider);
+  const frameId = providerFrameId(surface, provider.provider);
+  const catalogueUrl = `/settings/models/catalogue?surface=${surface}&provider=${encodeURIComponent(provider.provider)}`;
+  const connection = provider.connected
+    ? `<span class="model-provider-status"><span class="status-dot success" aria-hidden="true"></span> Connected</span><form method="post" action="/settings/providers/${encodeURIComponent(provider.provider)}/disconnect" data-turbo="true">${providerDisconnectConfirmation}</form>`
+    : `<div class="model-provider-auth-methods">${providerAuthenticationActions(provider, surface)}</div>`;
+  return `<section id="${id}" data-provider-accordion-target="provider">
+    <div class="model-provider-header"><div class="model-provider-name">${actionItemHtml({ kind: "single", element: { tag: "button", attributesHtml: `type="button" aria-expanded="${open}" aria-controls="${id}_body" data-action="provider-accordion#toggle"` }, label: { kind: "text", text: provider.label }, leadingHtml: Icons.Disclosure })}</div>${connection}</div>
+    <div class="model-provider-body" id="${id}_body"${open ? "" : " hidden"}>
+      ${provider.connected ? `<div class="managed-list" data-managed-list-server-filter="true"><form class="managed-list__filter" method="get" action="/settings/models/catalogue" data-controller="server-filter" data-action="input->server-filter#submit" data-turbo-frame="${frameId}">
+        <input type="hidden" name="surface" value="${surface}"><input type="hidden" name="provider" value="${escapeHtml(provider.provider)}">
+        <input class="text-field" type="search" name="q" placeholder="Filter models…" aria-label="Filter ${escapeHtml(provider.label)} models" autocomplete="off">
+        <button type="submit" hidden>Filter models</button>
+      </form><turbo-frame class="model-provider-results" id="${frameId}" src="${escapeHtml(catalogueUrl)}" loading="lazy"><div class="managed-list__empty" role="status">Loading models…</div></turbo-frame></div>` : '<p class="model-provider-connection-note">Connect this provider first.</p>'}
     </div>
-  </div>`;
-}
-
-function renderConfiguredModelsSection(data: ModelSetupData, surface: ModelSetupSurface): string {
-  if (!data.configured.length) return "";
-  const rows = data.configured.map((model) => configuredModelRow(model, data.providers.get(model.provider) ?? { provider: model.provider, label: model.provider, connected: false, methods: [] }, surface)).join("");
-  const models = `<div class="managed-list">${rows}</div>`;
-  return `<section class="model-setup-section form-section"><h2>Configured models</h2>${models}</section>`;
-}
-
-function catalogueModelAction(model: ModelCatalogueEntry, provider: ProviderSummary, surface: ModelSetupSurface): string {
-  const actionClass = domId("model_catalogue_action", surface, model.provider, model.id);
-  const addButton = buttonHtml({
-    type: "submit",
-    variant: "primary",
-    content: { kind: "caption", caption: "Add" },
-    attributesHtml: `form="${domId("model_catalogue_add", surface, provider.provider)}" name="model" value="${escapeHtml(modelKey(model))}"`,
-  });
-  return `<div class="managed-list__actions model-catalogue-action ${actionClass}">
-    ${model.configured
-      ? `<span class="settings-provider-desc">Already added</span>`
-      : `<span class="model-provider-disconnected-actions">${catalogueAuthenticationButtons(model, provider, surface)}</span><span class="model-provider-connected-actions">${addButton}</span>`}
-  </div>`;
-}
-
-function catalogueModelRow(model: ModelCatalogueEntry, provider: ProviderSummary, surface: ModelSetupSurface): string {
-  const popularityRank = getPopularModelRank(model.provider, model.id);
-  return `<div class="managed-list__item model-catalogue-row" data-model-sort="${escapeHtml(`${model.provider} ${model.label}`.toLowerCase())}"${popularityRank === undefined ? "" : ` data-popularity-rank="${popularityRank}"`} data-search-text="${escapeHtml(`${model.label} ${model.provider} ${model.id}`.toLowerCase())}">
-    ${providerState(provider)}
-    ${modelManagedListContent(model, `${model.provider} · ${model.id}`)}
-    ${catalogueModelAction(model, provider, surface)}
-  </div>`;
-}
-
-const modelCatalogueLimit = 50;
-
-function modelCatalogueFrameId(surface: ModelSetupSurface): string {
-  return domId("model_catalogue_results", surface);
-}
-
-type ModelCatalogueFeedback = { message: string; error?: boolean; details?: string };
-
-function renderModelCatalogueResults(data: ModelSetupData, surface: ModelSetupSurface, query: string, feedback?: ModelCatalogueFeedback): string {
-  const normalizedQuery = query.trim().toLowerCase();
-  const matchingModels = (normalizedQuery
-    ? data.models.filter((model) => `${model.label} ${model.provider} ${model.id} ${data.providers.get(model.provider)?.label ?? ""}`.toLowerCase().includes(normalizedQuery))
-    : data.models).filter((model) => data.providers.has(model.provider));
-  const visibleModels = matchingModels.slice(0, modelCatalogueLimit);
-  const visibleProviderIds = new Set(visibleModels.map((model) => model.provider));
-  const providerForms = [...visibleProviderIds].map((provider) => catalogueProviderForms(data.providers.get(provider)!, surface)).join("");
-  const rows = visibleModels.map((model) => catalogueModelRow(model, data.providers.get(model.provider)!, surface)).join("");
-  const remaining = matchingModels.length - visibleModels.length;
-  const more = remaining > 0 ? `<div class="managed-list__item model-catalogue-more" role="status" aria-disabled="true">Many results, use the filter box</div>` : "";
-  const empty = matchingModels.length ? "" : `<div class="managed-list__empty">No matching models.</div>`;
-  return `<turbo-frame id="${modelCatalogueFrameId(surface)}" class="model-catalogue-results">${providerForms}${feedback ? `<div class="model-catalogue-feedback${feedback.error ? " settings-error" : ""}" role="${feedback.error ? "alert" : "status"}">${escapeHtml(feedback.message)}${feedback.details ? `<details><summary>Refresh error details</summary>${escapeHtml(feedback.details)}</details>` : ""}</div>` : ""}<div class="model-catalogue-loading" role="status"><span class="status-spinner" aria-hidden="true"></span>Loading models…</div><div class="managed-list__items">${rows}${more}</div>${empty}</turbo-frame>`;
-}
-
-function renderModelCatalogue(data: ModelSetupData, surface: ModelSetupSurface): string {
-  const frameId = modelCatalogueFrameId(surface);
-  return `<div class="managed-list" data-managed-list-server-filter="true">
-    <form id="${domId("model_catalogue_filter", surface)}" class="managed-list__filter" method="get" action="/settings/models/catalogue" data-controller="server-filter" data-action="input->server-filter#submit" data-turbo-frame="${frameId}">
-      <input type="hidden" name="surface" value="${surface}">
-      <input class="text-field" type="search" name="q" placeholder="Filter models and providers…" aria-label="Filter available models" autocomplete="off">
-      <button type="submit" hidden>Filter models</button>
-    </form>
-    ${renderModelCatalogueResults(data, surface, "")}
-  </div>`;
+  </section>`;
 }
 
 const customModelsPlaceholder = `{
@@ -262,11 +162,11 @@ function renderCustomModelsSettings(view: CustomModelsView): string {
     type: "submit",
     variant: "secondary",
     content: { kind: "caption", caption: "Refresh model catalogue" },
-    attributesHtml: `form="${domId("model_catalogue_filter", "settings")}" formaction="/settings/models/catalogue/refresh" formmethod="post" data-turbo-submits-with="Refreshing…"`,
+    attributesHtml: 'data-turbo-submits-with="Refreshing…"',
   });
   return `<details class="custom-models-settings" id="custom_models_settings"${view.open ? " open" : ""}>
     <summary>Advanced model settings</summary>
-    <div>${refreshButton}</div>
+    <form method="post" action="/settings/models/catalogue/refresh" data-turbo="true">${refreshButton}</form>
     <form class="custom-models-form form-stack" method="post" action="/settings/models/custom" data-turbo="true">
       <div><label for="custom_models_json">Custom Pi model configuration</label><p>Paste a Pi <code>models.json</code> object containing <code>providers</code>. Custom models are merged with the official catalogue.</p></div>
       <textarea class="textarea custom-models-json" id="custom_models_json" name="models" placeholder="${escapeHtml(customModelsPlaceholder)}" spellcheck="false" autocomplete="off">${escapeHtml(view.source)}</textarea>
@@ -279,11 +179,24 @@ function renderCustomModelsSettings(view: CustomModelsView): string {
 
 function renderModelSetupData(data: ModelSetupData, surface: ModelSetupSurface, customModels?: CustomModelsView): string {
   const working = data.working;
+  const { popular, other } = groupModelProviders(data.providers);
   const id = surface === "dialog" ? "model_setup_dialog_content" : `model_setup_${surface}`;
   return `<div class="model-setup form-stack" id="${id}">
     ${modelSetupWorkingState(working)}
-    <div class="configured-model-section configured-model-section-${surface}">${renderConfiguredModelsSection(data, surface)}</div>
-    <section class="model-setup-section form-section"><h2>Available models</h2><div class="model-catalogue" data-controller="model-catalogue">${renderModelCatalogue(data, surface)}</div></section>
+    <div class="model-provider-groups" data-controller="provider-accordion">
+      <div class="model-popular-providers">${popular.map((provider, index) => renderProvider(provider, surface, index === 0 && provider.connected)).join("")}</div>
+      <details>
+        ${actionItemHtml({ kind: "single", element: { tag: "summary" }, label: { kind: "text", text: "Other providers" }, leadingHtml: Icons.Disclosure })}
+        <div class="model-other-providers-body">
+          <form method="get" action="/settings/models/providers" data-controller="server-filter" data-action="input->server-filter#submit" data-turbo-frame="${providerListFrameId(surface)}">
+            <input type="hidden" name="surface" value="${surface}">
+            <input class="text-field" type="search" name="q" placeholder="Filter providers…" aria-label="Filter other providers" autocomplete="off">
+            <button type="submit" hidden>Filter providers</button>
+          </form>
+          ${renderProviderList(other, surface)}
+        </div>
+      </details>
+    </div>
     ${surface === "settings" && customModels ? renderCustomModelsSettings(customModels) : ""}
   </div>`;
 }
@@ -296,7 +209,7 @@ export async function renderModelSetup(surface: ModelSetupSurface = "settings", 
 export async function renderModelSetupDialog(): Promise<string> {
   const data = await modelSetupData();
   return dialogHtml({
-    element: { id: "model_setup_dialog",  attributesHtml: "data-dialog-auto-show" },
+    element: { id: "model_setup_dialog", attributesHtml: "data-dialog-auto-show" },
     iconHtml: Icons.Settings,
     titleCaption: "Configure models",
     bodyHtml: renderModelSetupData(data, "dialog"),
@@ -310,11 +223,10 @@ async function renderModelSetupSettings(): Promise<string> {
 
 registerSettingsContribution({ id: "models", label: "Models", order: 40, render: renderModelSetupSettings });
 
-function apiKeyModal(id: string, label: string, surface: SettingsSurface, model?: ConfiguredAgentModel, error = ""): string {
+function apiKeyModal(id: string, label: string, surface: SettingsSurface, error = ""): string {
   const inputId = domId("provider_api_key", id);
   const formId = domId("provider_api_key_form", id);
   const action = `/settings/providers/${encodeURIComponent(id)}/connect${surface === "onboarding" ? "?surface=onboarding" : ""}`;
-  const initiatedModel = model ? `<input type="hidden" name="model" value="${escapeHtml(modelKey(model))}">` : "";
   const cancelButton = buttonHtml({ type: "submit", variant: "secondary", content: { kind: "caption", caption: "Cancel" } });
   const connectButton = buttonHtml({
     type: "submit",
@@ -325,13 +237,11 @@ function apiKeyModal(id: string, label: string, surface: SettingsSurface, model?
   return dialogHtml({
     element: {
       id: "settings_flow_dialog",
-
       attributesHtml: "data-dialog-auto-show",
     },
     iconHtml: providerIcon(id, label),
     titleCaption: `Connect ${label}`,
     bodyHtml: `<form id="${formId}" class="form-stack" method="post" action="${action}" data-turbo="true">
-      ${initiatedModel}
       ${error ? `<p class="settings-error">${escapeHtml(error)}</p>` : ""}
       <label for="${inputId}">API key</label>
       <input id="${inputId}" class="settings-input text-field" type="password" name="secret" placeholder="${escapeHtml(getProviderApiKeyExample(id) ?? "API key")}" autocomplete="off" required autofocus>
@@ -355,14 +265,12 @@ type PendingOAuthFlow = {
   prompt?: PendingPrompt;
   redirectSubmitted?: boolean;
   error?: string;
-  initiatedModel?: ConfiguredAgentModel;
 };
 
 const pendingOAuthFlows = new Map<string, PendingOAuthFlow>();
 
-async function startOAuthFlow(provider: string, label: string, initiatedModel?: ConfiguredAgentModel): Promise<PendingOAuthFlow> {
-  if (!(await createPiModelRuntime()).getProvider(provider)?.auth.oauth) throw new Error(`${label} does not support OAuth in this pi installation.`);
-  const flow: PendingOAuthFlow = { id: crypto.randomUUID(), provider, label, status: "pending", abort: new AbortController(), initiatedModel };
+async function startOAuthFlow(provider: string, label: string): Promise<PendingOAuthFlow> {
+  const flow: PendingOAuthFlow = { id: crypto.randomUUID(), provider, label, status: "pending", abort: new AbortController() };
   pendingOAuthFlows.set(flow.id, flow);
   void loginPiOAuthProvider(provider, {
     signal: flow.abort.signal,
@@ -372,8 +280,7 @@ async function startOAuthFlow(provider: string, label: string, initiatedModel?: 
       else if (event.type === "progress") { /* progress is reflected by polling status rows */ }
     },
     prompt: (prompt) => handleOAuthPrompt(flow, prompt),
-  }).then(async () => {
-    if (flow.initiatedModel) await addConfiguredModel(flow.initiatedModel);
+  }).then(() => {
     flow.status = "complete";
     flow.prompt = undefined;
   }).catch((error) => {
@@ -449,7 +356,7 @@ function oauthDeviceCodeBody(flow: PendingOAuthFlow, complete = false): string {
   });
   const confirmationName = flow.provider === "openai-codex" ? "OpenAI-Codex" : flow.label;
   const status = complete
-    ? `<p class="settings-oauth-waiting-status" role="status"><span class="settings-oauth-complete-marker" aria-hidden="true">✓</span><span>${escapeHtml(flow.label)} connected${flow.initiatedModel ? ` — ${escapeHtml(flow.initiatedModel.label)} was added to your models.` : " — You can now add models from this provider."}</span></p>`
+    ? `<p class="settings-oauth-waiting-status" role="status"><span class="settings-oauth-complete-marker" aria-hidden="true">✓</span><span>${escapeHtml(flow.label)} connected</span></p>`
     : `<p class="settings-oauth-waiting-status" data-oauth-waiting-status hidden><span class="status-spinner" aria-hidden="true"></span><span>This step will complete when ${escapeHtml(confirmationName)} confirms they have received the code</span></p>`;
   return `<div class="settings-oauth-card">
     ${copyButton}
@@ -482,7 +389,7 @@ function oauthBrowserRedirectBody(flow: PendingOAuthFlow): string {
 
 function oauthCompleteBody(flow: PendingOAuthFlow): string {
   if (flow.verificationUri) return oauthDeviceCodeBody(flow, true);
-  const detail = flow.initiatedModel ? `${flow.initiatedModel.label} was added to your models.` : "You can now add models from this provider.";
+  const detail = "Choose your favorite models from this provider.";
   return `<div class="settings-oauth-card">${oauthStatus("done", `${flow.label} connected`, detail)}</div>`;
 }
 
@@ -515,7 +422,6 @@ function oauthFlowModal(flow: PendingOAuthFlow): string {
   return dialogHtml({
     element: {
       id: "settings_flow_dialog",
-
       attributesHtml: `data-controller="oauth-flow" data-dialog-auto-show data-oauth-flow-status-url-value="/settings/providers/${encodeURIComponent(flow.provider)}/oauth/${encodeURIComponent(flow.id)}/status" data-oauth-flow-active-value="${flow.status === "pending" && !(flow.prompt && !flow.authUrl && !flow.verificationUri) ? "true" : "false"}" data-oauth-flow-poll-ms-value="${pollMs}"`,
     },
     iconHtml: providerIcon(flow.provider, flow.label),
@@ -534,54 +440,59 @@ function modelSetupDialogButton(working: boolean): string {
   return buttonHtml({
     type: "submit",
     variant: "secondary",
-    content: { kind: "caption", caption: working ? "OK" : "No model configured yet" },
+    content: { kind: "caption", caption: working ? "Done" : "No favorite model available" },
     attributesHtml: "data-model-setup-dialog-button",
   });
 }
 
-async function refreshProviderState(providerId: string): Promise<string> {
+async function refreshWorkingState(): Promise<string> {
+  const working = await hasAvailableConfiguredAgentModel();
+  return `${replaceTargets(".model-setup-working-state", modelSetupWorkingState(working))}${replaceTargets("[data-model-setup-dialog-button]", modelSetupDialogButton(working))}`;
+}
+
+async function refreshProviderState(providerId: string, renderPickerUpdates: () => Promise<string>): Promise<string> {
   const provider = (await providerSummaries()).find((candidate) => candidate.provider === providerId);
-  if (!provider) return "";
-  return replaceTargets(`.${domId("model_provider_state", providerId)}`, providerState(provider));
+  if (!provider) throw new Error(`Unknown provider: ${providerId}`);
+  return modelSetupSurfaces.map((surface) => replace(domId("model_provider", surface, providerId), renderProvider(provider, surface, provider.connected))).join("") + await refreshWorkingState() + await renderPickerUpdates();
 }
 
-async function refreshConfiguredModelState(model: { provider: string; id: string }): Promise<string> {
-  const data = await modelSetupData();
-  const working = data.working;
-  const view = data.models.find((candidate) => modelKey(candidate) === modelKey(model));
-  const provider = data.providers.get(model.provider);
-  const configuredSections = modelSetupSurfaces.map((surface) => updateTargets(`.configured-model-section-${surface}`, renderConfiguredModelsSection(data, surface))).join("");
-  const catalogueActions = view && provider
-    ? modelSetupSurfaces.map((surface) => replaceTargets(`.${domId("model_catalogue_action", surface, model.provider, model.id)}`, catalogueModelAction(view, provider, surface))).join("")
-    : "";
-  return `${configuredSections}${catalogueActions}${replaceTargets(".model-setup-working-state", modelSetupWorkingState(working))}${replaceTargets("[data-model-setup-dialog-button]", modelSetupDialogButton(working))}`;
+function providerErrorModal(provider: string, label: string, title: string, message: string): string {
+  return dialogHtml({
+    element: { id: "settings_flow_dialog", attributesHtml: "data-dialog-auto-show" },
+    iconHtml: providerIcon(provider, label), titleCaption: title,
+    bodyHtml: `<p class="settings-error" role="alert">${escapeHtml(message)}</p>`,
+  });
 }
 
-
-export async function handleModelSettingsRequest(request: Request, url: URL): Promise<Response | undefined> {
+export async function handleModelSettingsRequest(request: Request, url: URL, renderPickerUpdates: () => Promise<string>): Promise<Response | undefined> {
+  if (url.pathname === "/settings/models/providers" && request.method === "GET") {
+    const surface = modelSetupSurfaces.find((candidate) => candidate === (url.searchParams.get("surface") ?? "settings"));
+    if (!surface) return response("Unknown model setup surface", { status: 400 });
+    return response(renderProviderList(groupModelProviders(await providerSummaries()).other, surface, url.searchParams.get("q") ?? ""));
+  }
   if (url.pathname === "/settings/models/catalogue" && request.method === "GET") {
     const requestedSurface = url.searchParams.get("surface") ?? "settings";
     const surface = modelSetupSurfaces.find((candidate) => candidate === requestedSurface);
     if (!surface) return response("Unknown model catalogue surface", { status: 400 });
-    return response(renderModelCatalogueResults(await modelSetupData(), surface, url.searchParams.get("q") ?? ""));
+    const provider = (await providerSummaries()).find((candidate) => candidate.provider === url.searchParams.get("provider"));
+    if (!provider) return response("Unknown provider", { status: 400 });
+    const catalogue = provider.connected ? await providerCatalogue(provider.provider) : [];
+    return response(renderProviderModels(catalogue, surface, provider, url.searchParams.get("q") ?? ""));
   }
   if (url.pathname === "/settings/models/catalogue/refresh" && request.method === "POST") {
-    const form = await request.formData();
-    const surface = modelSetupSurfaces.find((candidate) => candidate === form.get("surface"));
-    if (!surface) return response("Unknown model catalogue surface", { status: 400 });
-    let feedback: ModelCatalogueFeedback;
+    let feedback: Pick<CustomModelsView, "error" | "status">;
     try {
       const runtime = await createPiModelRuntime();
       const result = await runtime.refresh({ allowNetwork: true, force: true });
       const errors = [...result.errors].map(([provider, error]) => `${provider}: ${error.message}`);
       if (result.aborted) errors.push("Refresh was interrupted.");
       feedback = errors.length
-        ? { message: result.aborted ? "Model catalogue refresh was interrupted." : `Could not refresh: ${[...result.errors.keys()].join(", ")}. Other catalogue updates have been applied.`, error: true, details: errors.join(" ") }
-        : { message: "Model catalogue refreshed." };
+        ? { error: `Model catalogue refresh was incomplete. ${errors.join(" ")}` }
+        : { status: "Model catalogue refreshed." };
     } catch (error) {
-      feedback = { message: "Model catalogue refresh failed.", error: true, details: error instanceof Error ? error.message : String(error) };
+      feedback = { error: `Model catalogue refresh failed. ${error instanceof Error ? error.message : String(error)}` };
     }
-    return stream(replace(modelCatalogueFrameId(surface), renderModelCatalogueResults(await modelSetupData(), surface, String(form.get("q") ?? ""), feedback)));
+    return stream(replace("model_setup_settings", await renderModelSetup("settings", { open: true, ...feedback })) + await renderPickerUpdates());
   }
   if (url.pathname === "/settings/models/dialog" && request.method === "GET") {
     const html = await renderModelSetupDialog();
@@ -596,7 +507,7 @@ export async function handleModelSettingsRequest(request: Request, url: URL): Pr
       const status = skipped.length
         ? `Saved. ${skipped.length} ${skipped.length === 1 ? "model is" : "models are"} already in the official catalogue and will use the official definition: ${skipped.map(modelKey).join(", ")}.`
         : "Custom model configuration saved.";
-      return stream(replace("model_setup_settings", await renderModelSetup("settings", { open: true, status })));
+      return stream(replace("model_setup_settings", await renderModelSetup("settings", { open: true, status })) + await renderPickerUpdates());
     } catch (error) {
       return stream(replace("custom_models_settings", renderCustomModelsSettings({ source, open: true, error: error instanceof Error ? error.message : String(error) })));
     }
@@ -604,21 +515,21 @@ export async function handleModelSettingsRequest(request: Request, url: URL): Pr
   let match = url.pathname.match(/^\/settings\/providers\/([^/]+)\/flow$/);
   if (match && request.method === "POST") {
     const provider = decodeURIComponent(match[1]!);
-    const method = url.searchParams.get("method") ?? "api_key";
+    const method = url.searchParams.get("method") ?? "";
     const surface = url.searchParams.get("surface") === "onboarding" ? "onboarding" : "settings";
-    const runtime = await createPiModelRuntime();
-    const label = runtime.getProvider(provider)?.name ?? provider;
-    const form = request.body ? await request.formData() : new FormData();
-    const model = await initiatedModel(provider, String(form.get("model") ?? ""));
+    const summary = (await providerSummaries()).find((candidate) => candidate.provider === provider);
+    if (!summary) return response("Unknown provider", { status: 400 });
+    const label = summary.label;
+    if (!summary.methods.includes(method)) return response("Unsupported authentication method", { status: 400 });
     if (method === "oauth") {
       try {
-        const flow = await startOAuthFlow(provider, label, model);
+        const flow = await startOAuthFlow(provider, label);
         return stream(append(surface === "onboarding" ? "onboarding_modal_host" : "settings_modal_host", oauthFlowModal(flow)));
       } catch (error) {
-        return stream(append(surface === "onboarding" ? "onboarding_modal_host" : "settings_modal_host", apiKeyModal(provider, label, surface, model, error instanceof Error ? error.message : String(error))));
+        return stream(append(surface === "onboarding" ? "onboarding_modal_host" : "settings_modal_host", providerErrorModal(provider, label, `Could not connect ${label}`, error instanceof Error ? error.message : String(error))));
       }
     }
-    return stream(append(surface === "onboarding" ? "onboarding_modal_host" : "settings_modal_host", apiKeyModal(provider, label, surface, model)));
+    return stream(append(surface === "onboarding" ? "onboarding_modal_host" : "settings_modal_host", apiKeyModal(provider, label, surface)));
   }
   match = url.pathname.match(/^\/settings\/providers\/([^/]+)\/connect$/);
   if (match && request.method === "POST") {
@@ -628,15 +539,15 @@ export async function handleModelSettingsRequest(request: Request, url: URL): Pr
     const label = runtime.getProvider(provider)?.name ?? provider;
     const form = await request.formData();
     const secret = String(form.get("secret") ?? "");
-    const model = await initiatedModel(provider, String(form.get("model") ?? ""));
     try {
       await connectModelProviderApiKey(provider, secret);
-      if (model) await addConfiguredModel(model);
     } catch (error) {
-      return stream(replace("settings_flow_dialog", apiKeyModal(provider, label, surface, model, error instanceof Error ? error.message : String(error))));
+      if (error instanceof ProviderCatalogueRefreshError) {
+        return stream(`${await refreshProviderState(provider, renderPickerUpdates)}${replace("settings_flow_dialog", providerErrorModal(provider, label, `${label} connected`, error.message))}`);
+      }
+      return stream(replace("settings_flow_dialog", apiKeyModal(provider, label, surface, error instanceof Error ? error.message : String(error))));
     }
-    const configuredModelState = model ? await refreshConfiguredModelState(model) : "";
-    return stream(`${await refreshProviderState(provider)}${configuredModelState}${remove("settings_flow_dialog")}`);
+    return stream(`${await refreshProviderState(provider, renderPickerUpdates)}${remove("settings_flow_dialog")}`);
   }
   match = url.pathname.match(/^\/settings\/providers\/([^/]+)\/oauth\/([^/]+)\/(status|prompt|finish|cancel)$/);
   if (match && request.method === "POST") {
@@ -644,7 +555,7 @@ export async function handleModelSettingsRequest(request: Request, url: URL): Pr
     const flowId = decodeURIComponent(match[2]!);
     const action = match[3]!;
     const flow = pendingOAuthFlows.get(flowId);
-    if (!flow || flow.provider !== provider) return stream(`${await refreshProviderState(provider)}${remove("settings_flow_dialog")}`);
+    if (!flow || flow.provider !== provider) return stream(remove("settings_flow_dialog"));
     if (action === "prompt") {
       const form = await request.formData();
       flow.redirectSubmitted = true;
@@ -653,44 +564,36 @@ export async function handleModelSettingsRequest(request: Request, url: URL): Pr
       await waitForOAuthFlowReady(flow);
       return stream(replace("settings_flow_dialog", oauthFlowModal(flow)));
     }
-    if (action === "cancel") {
-      flow.abort.abort();
+    if (action === "cancel" || action === "finish") {
+      if (action === "cancel") flow.abort.abort();
       pendingOAuthFlows.delete(flowId);
-      return stream(remove("settings_flow_dialog"));
+      return stream(`${await refreshProviderState(provider, renderPickerUpdates)}${remove("settings_flow_dialog")}`);
     }
-    if (action === "finish") {
-      pendingOAuthFlows.delete(flowId);
-      const configuredModelState = flow.initiatedModel && flow.status === "complete" ? await refreshConfiguredModelState(flow.initiatedModel) : "";
-      return stream(`${await refreshProviderState(provider)}${configuredModelState}${remove("settings_flow_dialog")}`);
-    }
-    const providerState = flow.status === "complete" ? await refreshProviderState(provider) : "";
-    const configuredModelState = flow.initiatedModel && flow.status === "complete" ? await refreshConfiguredModelState(flow.initiatedModel) : "";
-    return stream(`${replace("settings_flow_dialog", oauthFlowModal(flow))}${providerState}${configuredModelState}`);
+    return stream(replace("settings_flow_dialog", oauthFlowModal(flow)));
   }
   match = url.pathname.match(/^\/settings\/providers\/([^/]+)\/disconnect$/);
   if (match && request.method === "POST") {
     const provider = decodeURIComponent(match[1]!);
     await disconnectModelProvider(provider);
-    return stream(await refreshProviderState(provider));
+    return stream(await refreshProviderState(provider, renderPickerUpdates));
   }
-  if (["/settings/models/add", "/settings/models/remove"].includes(url.pathname) && request.method === "POST") return await handleModelPickerAction(request, url.pathname);
+  if (["/settings/models/add", "/settings/models/remove"].includes(url.pathname) && request.method === "POST") return await handleModelPickerAction(request, url.pathname, renderPickerUpdates);
   return undefined;
 }
 
-async function handleModelPickerAction(request: Request, pathname: string): Promise<Response> {
+async function handleModelPickerAction(request: Request, pathname: string, renderPickerUpdates: () => Promise<string>): Promise<Response> {
   const form = await request.formData();
-  const split = String(form.get("model") ?? "").split("::");
-  const provider = split[0] ?? "";
-  const id = split[1] ?? "";
+  const model = parseModelRef(String(form.get("model") ?? ""));
+  if (!model) return response("Invalid model", { status: 400 });
+  const option = (await providerCatalogue(model.provider)).find((candidate) => candidate.id === model.id);
+  if (!option) return response("Unknown model", { status: 400 });
+  const favorite = pathname === "/settings/models/add";
+  if (favorite && !(await createPiModelRuntime()).getProviderAuthStatus(model.provider).configured) return response("Provider not connected", { status: 400 });
   const current = await getConfiguredAgentModels();
-  const index = current.findIndex((model) => model.provider === provider && model.id === id);
-  if (pathname === "/settings/models/add" && provider && id && index < 0) {
-    const data = await modelSetupData();
-    const option = data.models.find((model) => model.provider === provider && model.id === id);
-    if (option && data.providers.get(provider)?.connected) current.push({ provider: option.provider, id: option.id, label: option.label });
-  }
-  if (pathname === "/settings/models/remove" && index >= 0) current.splice(index, 1);
-  await setPickerAgentModels(current, current.find((model) => model.active));
-  return stream(await refreshConfiguredModelState({ provider, id }));
-
+  const index = current.findIndex((candidate) => modelKey(candidate) === modelKey(model));
+  if (favorite && index < 0) current.push({ provider: option.provider, id: option.id, label: option.label });
+  if (!favorite && index >= 0) current.splice(index, 1);
+  await setPickerAgentModels(current, current.find((candidate) => candidate.active));
+  const actions = modelSetupSurfaces.map((surface) => replaceTargets(`.${domId("model_favorite", surface, model.provider, model.id)}`, favoriteAction({ ...option, configured: favorite }, surface))).join("");
+  return stream(actions + await refreshWorkingState() + await renderPickerUpdates());
 }

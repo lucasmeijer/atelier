@@ -11,13 +11,7 @@ export { hopByHopHeaderNames, isHopByHopHeader, stripHopByHopHeaders } from "./p
 
 export const atelierName = "Atelier" as const;
 
-export function workspaceFileOpenUrl(workspaceId: string, path: string, position: { line?: number; column?: number } = {}, filesViewId?: string): string {
-  const query = new URLSearchParams({ path });
-  if (position.line) query.set("line", String(position.line));
-  if (position.column) query.set("column", String(position.column));
-  if (filesViewId) query.set("filesView", filesViewId);
-  return `/workspaces/${encodeURIComponent(workspaceId)}/files-view/open?${query}`;
-}
+export { workspaceFileOpenUrl, parseWorkspaceFileTarget, type WorkspaceFileTarget } from "./file-target.ts";
 
 export function domId(...parts: string[]): string {
   return parts.join("_").replace(/[^a-zA-Z0-9_-]/g, "_");
@@ -303,7 +297,6 @@ export interface AgentWorkspaceParameters {
 
 export interface WorkspaceCreationContext extends Record<string, unknown> {
   agent?: AgentWorkspaceParameters;
-  fork?: { sourceWorkspaceId: string };
 }
 
 export interface WorkspaceServerModuleContext {
@@ -313,6 +306,8 @@ export interface WorkspaceServerModuleContext {
     markViewAttention(workspaceId: string, viewKey: string, token?: number): number | undefined;
   };
   globalSidebarContributions: GlobalSidebarContributionRegistry;
+  /** Add a Work view without selecting it or requesting attention. */
+  createWorkView(workspaceId: string, reference: WorkspaceWorkViewReference): Promise<void>;
   presentWorkView(workspaceId: string, reference: WorkspaceWorkViewReference): Promise<void>;
   broadcastWorkspace(workspaceId: string, html: string): void;
   deleteCurrentWorkspace(workspaceId: string, force: boolean): Promise<DeleteCurrentWorkspaceResult>;

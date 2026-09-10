@@ -153,7 +153,8 @@ test("persisted run starts survive reconstruction before and after the summary",
   ];
   const restored = recordsFromSessionEntries(JSON.parse(JSON.stringify(entries)));
   expect(restored[1]).toEqual({ kind: "runStart", turnEntryId: "start", startedAt: 900, timestamp: 1001 });
-  expect(buildTranscript(restored).map((item) => item.type)).toEqual(["user", "working", "user"]);
+  expect(buildTranscript(restored).map((item) => item.type)).toEqual(["user", "working"]);
+  expect(buildTranscript(restored)[1]).toMatchObject({ items: [{ type: "user", key: "steer", steering: true }] });
   const completed = recordsFromSessionEntries([...entries,
     { type: "custom", customType: "atelier.turn-timing", timestamp: new Date(3000).toISOString(), data: { turnEntryId: "start", outcome: "completed", elapsedMs: 2100, toolMs: 0, inferenceMs: 2100, outputTokens: 4, usageComplete: true } },
   ]);

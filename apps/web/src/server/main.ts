@@ -270,6 +270,7 @@ for (const module of workspaceModules) {
     events: atelierEvents,
     registry,
     globalSidebarContributions: app.globalSidebarContributions,
+    createWorkView: (workspaceId, reference) => app.createWorkView(workspaceId, reference),
     presentWorkView: (workspaceId, reference) => app.presentWorkViewFromAgent(workspaceId, reference),
     broadcastWorkspace: (workspaceId, html) => cableServer.broadcast(CableTopics.workspace(workspaceId), html),
     deleteCurrentWorkspace: (workspaceId, force) => app.deleteCurrentWorkspaceFromAgent(workspaceId, force),

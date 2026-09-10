@@ -1,7 +1,7 @@
 import { Icons } from "@atelier/design-system/icons";
 import type { JsonValue } from "@atelier/core";
 import { renderMarkdown } from "@atelier/markdown";
-import { turboStream, turboStreamResponse, type WorkspaceModule, type WorkspaceWorkViewReference } from "@atelier/shared";
+import { turboStream, turboStreamResponse, parseWorkspaceFileTarget, type WorkspaceFileTarget, type WorkspaceModule, type WorkspaceModuleRouteContext } from "@atelier/shared";
 import { workspaceRoot } from "@atelier/workspace";
 import { Type, type Static } from "typebox";
 import { Value } from "typebox/value";
@@ -26,12 +26,6 @@ function jsonResponse<Body extends object>(value: Body, status = 200): Response 
   return Response.json(value, { status, headers: { "cache-control": "no-store" } });
 }
 
-function positiveInteger(value: string | null): number | undefined {
-  if (!value) return undefined;
-  const parsed = Number(value);
-  return Number.isInteger(parsed) && parsed > 0 ? parsed : undefined;
-}
-
 async function filesEndpoint(workspaceId: string, url: URL): Promise<Response> {
   const viewId = url.searchParams.get("filesView") ?? defaultFilesViewId;
   const filesState = filesView(workspaceId, viewId);
@@ -52,13 +46,13 @@ async function filesEndpoint(workspaceId: string, url: URL): Promise<Response> {
   return htmlResponse(renderFilesTreeFrame(workspaceId, viewId, listing.entries, filesState.path));
 }
 
-async function openFileEndpoint(workspaceId: string, url: URL, openWorkView: (workspaceId: string, reference: WorkspaceWorkViewReference) => Promise<Response>): Promise<Response> {
-  const path = requestedEditableFilePath(url.searchParams.get("path"));
-  const viewId = url.searchParams.get("filesView") ?? defaultFilesViewId;
-  const view = setFilesViewFile(workspaceId, viewId, path, { line: positiveInteger(url.searchParams.get("line")), column: positiveInteger(url.searchParams.get("column")) });
+export async function openFileInFiles(workspaceId: string, target: WorkspaceFileTarget, openWorkView: WorkspaceModuleRouteContext["openWorkView"], requestedViewId?: string): Promise<Response> {
+  const path = requestedEditableFilePath(target.path);
+  const viewId = requestedViewId ?? defaultFilesViewId;
+  const view = setFilesViewFile(workspaceId, viewId, path, target);
   const updates = turboStream("replace", filesEditorFrameId(workspaceId, viewId), renderFilesEditorFrame(workspaceId, view))
     + turboStream("replace", filesTreeFrameId(workspaceId, viewId), renderLazyFilesTreeFrame(workspaceId, view));
-  if (url.searchParams.has("filesView")) return turboStreamResponse(updates);
+  if (requestedViewId !== undefined) return turboStreamResponse(updates);
   const presentation = await openWorkView(workspaceId, { type: "files", id: viewId });
   return turboStreamResponse(`${await presentation.text()}${updates}`);
 }
@@ -126,7 +120,7 @@ const filesWorkspaceModule: WorkspaceModule = {
         let match = url.pathname.match(/^\/workspaces\/([^/]+)\/files-view\/(open|content|markdown-preview)$/);
         if (match) {
           const workspaceId = decodeURIComponent(match[1]!);
-          if (match[2] === "open") return request.method === "GET" ? await openFileEndpoint(workspaceId, url, context.openWorkView) : textResponse("Method not allowed", 405);
+          if (match[2] === "open") return request.method === "GET" ? await openFileInFiles(workspaceId, parseWorkspaceFileTarget(url.searchParams), context.openWorkView, url.searchParams.get("filesView") ?? undefined) : textResponse("Method not allowed", 405);
           if (match[2] === "content") return await fileContentEndpoint(workspaceId, request, url);
           return await markdownPreviewEndpoint(workspaceId, request, url);
         }

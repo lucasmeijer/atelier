@@ -1,12 +1,13 @@
 /// <reference lib="dom" />
 
+import { showTransientFeedback } from "@atelier/design-system/transient-feedback/client";
 import {
   atelierObservableTerminalTheme,
   createObservableTerminalViewer,
   observableWebSocketUrl,
   type ObservableTerminalTheme,
 } from "@atelier/observable-terminal/client";
-import { isWorkspacePaneVisible, type WorkspaceClientControllerConstructor, type WorkspaceClientModule } from "@atelier/shared";
+import { copyTextToClipboard, isWorkspacePaneVisible, type WorkspaceClientControllerConstructor, type WorkspaceClientModule } from "@atelier/shared";
 import { terminalViewKey, terminalIdFromViewKey } from "../shared.ts";
 import { TerminalViewerRegistry } from "./terminal-viewer-registry.ts";
 
@@ -131,12 +132,19 @@ function createTerminalSessionPickerController(Controller: WorkspaceClientContro
 function createTerminalPaneController(Controller: WorkspaceClientControllerConstructor) {
   return class TerminalPaneController extends Controller {
     static values = { workspaceId: String, id: String };
+    static targets = ["clipboardStatus"];
+    declare readonly clipboardStatusTarget: HTMLElement;
     declare readonly element: HTMLElement;
     declare readonly workspaceIdValue: string;
     declare readonly idValue: string;
     private readonly viewport = window.visualViewport!;
     private readonly layoutObserver = new ResizeObserver(() => this.syncViewportHeight());
     private terminalTouch?: Touch;
+    private pointerDrag?: { id: number; select: boolean };
+
+    private get viewer() {
+      return terminals.active(terminalKey(this.workspaceIdValue, this.idValue));
+    }
 
     readonly syncViewportHeight = (): void => {
       // Keep the accessory row above the keyboard without resizing the app shell.
@@ -161,6 +169,7 @@ function createTerminalPaneController(Controller: WorkspaceClientControllerConst
       this.viewport.removeEventListener("scroll", this.syncViewportHeight);
       this.layoutObserver.disconnect();
       this.terminalTouch = undefined;
+      this.pointerDrag = undefined;
       this.element.style.removeProperty("--terminal-viewport-height");
       stopTerminal(this.workspaceIdValue, this.idValue);
     }
@@ -194,7 +203,75 @@ function createTerminalPaneController(Controller: WorkspaceClientControllerConst
       // touch finishes on the canvas. Own the completed tap, not blur events:
       // suppress release-time activation and focus within this user gesture.
       event.preventDefault();
-      terminals.active(terminalKey(this.workspaceIdValue, this.idValue))?.focus();
+      this.viewer?.focus();
+    }
+
+    dragPointer(event: PointerEvent): void {
+      // Leave touch scrolling/taps and non-primary buttons to Gespenst.
+      if (event.pointerType === "touch") return;
+      const host = event.currentTarget;
+      if (!(host instanceof HTMLElement)) throw new Error("terminal pointer action must come from its host");
+      const viewer = this.viewer;
+      if (!viewer) return;
+      if (event.type === "pointerdown") {
+        if (event.button !== 0 || this.pointerDrag) return;
+        this.pointerDrag = { id: event.pointerId, select: !event.shiftKey };
+        host.setPointerCapture(event.pointerId);
+        viewer.focus();
+      }
+      const drag = this.pointerDrag;
+      if (!drag || drag.id !== event.pointerId) return;
+      // Capture before Gespenst handles the event so each gesture is sent once.
+      event.stopImmediatePropagation();
+      event.preventDefault();
+      const action = event.type === "pointerdown" ? "press"
+        : event.type === "pointermove" ? "motion" : "release";
+      viewer.dragPointer(event, action, drag.select);
+      if (action === "release") {
+        this.pointerDrag = undefined;
+        if (host.hasPointerCapture(event.pointerId)) host.releasePointerCapture(event.pointerId);
+      }
+    }
+
+    allowNativePaste(event: KeyboardEvent): void {
+      // Gespenst otherwise encodes Ctrl+V as terminal input and cancels the
+      // browser paste event. Keep Ctrl+C untouched for shell interrupts.
+      if (event.ctrlKey && !event.altKey && event.code === "KeyV") event.stopImmediatePropagation();
+    }
+
+    async copySelection(event: Event): Promise<void> {
+      const button = event.currentTarget;
+      if (!(button instanceof HTMLButtonElement)) throw new Error("terminal copy action must come from a button");
+      const viewer = this.viewer;
+      if (!viewer) return;
+      try {
+        const text = await viewer.getSelection();
+        if (!text) {
+          this.clipboardStatusTarget.textContent = "Select terminal text first.";
+          return;
+        }
+        await copyTextToClipboard(text);
+        showTransientFeedback(button);
+        this.clipboardStatusTarget.textContent = "";
+      } catch (error) {
+        this.clipboardStatusTarget.textContent = "Could not copy. Check browser clipboard permissions.";
+        console.error("Could not copy terminal selection", error);
+      }
+    }
+
+    async pasteClipboard(): Promise<void> {
+      const viewer = this.viewer;
+      if (!viewer) return;
+      try {
+        const text = await navigator.clipboard.readText();
+        if (this.viewer !== viewer) return;
+        viewer.paste(text);
+        viewer.focus();
+        this.clipboardStatusTarget.textContent = "";
+      } catch (error) {
+        this.clipboardStatusTarget.textContent = "Could not read clipboard. Use Cmd+V or Ctrl+V in the terminal.";
+        console.error("Could not paste into terminal", error);
+      }
     }
 
     preserveTerminalFocus(event: MouseEvent): void {

@@ -29,6 +29,8 @@ export interface AgentStatsView {
   inputTokens: number;
   outputTokens: number;
   cost: number;
+  descendantCost?: number;
+  isSubagent?: boolean;
   modelName: string | undefined;
   thinkingLevel: string;
   thinkingLevels: string[];
@@ -328,7 +330,7 @@ ${stats.thinkingLevels.length > 0 ? `<form id="${thinkingFormId}" method="post" 
 ${meter}
 <span class="agent-stat" title="Tokens up (input)">↑ <b>${formatTokens(stats.inputTokens)}</b></span>
 <span class="agent-stat" title="Tokens down (output)">↓ <b>${formatTokens(stats.outputTokens)}</b></span>
-<span class="agent-stat" title="Session cost"><b>${formatCost(stats.cost)}</b></span>
+<span class="agent-stat" title="${stats.isSubagent ? "This agent" : "Root agent"} cost${stats.descendantCost === undefined ? "" : " + all subagents and nested subagents combined"}. Updated at agent turn end."><b>${formatCost(stats.cost)}${stats.descendantCost === undefined ? "" : ` + ${formatCost(stats.descendantCost)}`}</b></span>
 ${selectionForms}
 ${renderSharedComposerSelections({
     modelFormId,

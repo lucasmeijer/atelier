@@ -6,6 +6,7 @@ import { Type, type Static } from "typebox";
 import { Value } from "typebox/value";
 import { AtelierCoreError, createAtelierEventBus, type AtelierEventBus, type JsonObject } from "@atelier/core";
 import { atelierCableConnectionHeader, type CableIdentifier, type WorkspaceAgentTabProvider, type WorkspaceModule, type WorkspaceModuleWorkViewAdapter, type WorkspaceWorkViewReference } from "@atelier/shared";
+import { workspaceWarnings } from "../src/server/workspace-warnings.ts";
 import { createWebApp, type WebApp } from "../src/server/app.ts";
 import type { CableBroadcastOptions } from "../src/server/cable.ts";
 import {
@@ -194,6 +195,21 @@ function jsonPost(path: string): Request {
 }
 
 describe("Agent provider app integration", () => {
+  test("warning dismissal does not attach modules or list Agent conversations", async () => {
+    await withTestApp([{ id: "conversation-a", title: "Alpha" }], async ({ app, agent, registry, workspaceId }) => {
+      registry.setIssue(workspaceId, "gateway", "Gateway unavailable");
+      const warning = workspaceWarnings(registry.get(workspaceId)!, undefined)[0]!;
+      const response = await app.fetch(new Request(`http://test.local/workspaces/${workspaceId}/warnings/gateway/dismiss`, {
+        method: "POST",
+        headers: { accept: "application/json", "content-type": "application/json" },
+        body: JSON.stringify({ state: warning.state }),
+      }));
+      expect(response.status).toBe(200);
+      expect(await response.json()).toEqual({ dismissed: true });
+      expect(agent.listedWorkspaceIds).toEqual([]);
+    }, undefined, [{ id: "must-not-attach", attachToWorkspace() { throw new Error("Warning dismissal attached a module"); } }]);
+  });
+
   test("Workspace metadata stays cheap and the body route renders exactly one immutable conversation", async () => {
     await withTestApp([
       { id: "conversation-a", title: "Alpha" },

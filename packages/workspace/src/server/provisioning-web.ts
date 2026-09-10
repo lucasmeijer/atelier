@@ -53,7 +53,6 @@ const workspaceIntegrationSeedStep: WorkspaceProvisionSeedStep = { id: "workspac
 
 const workspaceProvisionStepRanks = new Map([
   "workspace.workdir",
-  "workspace.fork",
   "workspace.source",
   "workspace.plan",
   "workspace.image",

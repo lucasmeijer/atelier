@@ -49,7 +49,11 @@ describe("workspace secrets", () => {
     await createProjectSecret(project.id, { envName: "API_TOKEN", hostPattern: "api.example.com, *.example.org", secretValue: "real-secret" });
     await createProjectSecret(project.id, { envName: "STRICT_TOKEN", hostPattern: "api.example.com", placeholder: "sk-test-placeholder", secretValue: "strict-secret" });
 
+    await createProjectSecret(project.id, { envName: "MISSING_TOKEN", hostPattern: "api.example.com", annotation: "Integration tests" });
+    await createProjectSecret(project.id, { envName: "OPTIONAL_TOKEN", hostPattern: "api.example.com", optional: true });
     const context = await createWorkspaceSecretContext("test-workspace", projectInit(project.id));
+    expect(context.env).not.toHaveProperty("MISSING_TOKEN");
+    expect(context.env).not.toHaveProperty("OPTIONAL_TOKEN");
     const result = await context.hooks.onRequest(new Request("https://api.example.com/v1/sk-test-placeholder", { headers: { authorization: "Bearer sk-test-placeholder" } }));
 
     expect(context.env.API_TOKEN).toBe("ATELIER_PROXY_READY_API_TOKEN");

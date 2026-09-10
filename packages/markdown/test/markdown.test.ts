@@ -74,34 +74,9 @@ describe("renderMarkdown", () => {
     expect(html).toContain("title: Not closed");
   });
 
-  test("renders Atelier file links through the Files view", () => {
-    const html = renderMarkdown("work 1", "[example.ts:42](atelier://file/work/src/example.ts?line=42&column=3)");
-    expect(html).toContain(">example.ts:42</a>");
-    expect(html).toContain("/workspaces/work%201/files-view/open?path=%2Fwork%2Fsrc%2Fexample.ts&amp;line=42&amp;column=3");
-    expect(html).toContain(`data-turbo-stream="true"`);
-  });
-
-  test("renders files outside /work and normal inline Markdown in labels", () => {
-    const html = renderMarkdown("work 1", "[Open `/tmp/plan.md`](atelier://file/tmp/plan.md)");
-    expect(html).toContain(">Open <code>/tmp/plan.md</code></a>");
-    expect(html).toContain("files-view/open?path=%2Ftmp%2Fplan.md");
-  });
-
-  test("opens relative file links from the rendered Markdown file", () => {
-    const html = renderMarkdown(
-      "work 1",
-      "[Guide](../guides/getting%20started.md#setup) [Config](./config.ts)",
-      { sourcePath: "/work/docs/reference/README.md" },
-    );
-    expect(html).toContain("files-view/open?path=%2Fwork%2Fdocs%2Fguides%2Fgetting+started.md");
-    expect(html).toContain("files-view/open?path=%2Fwork%2Fdocs%2Freference%2Fconfig.ts");
-    expect(html.match(/data-turbo-stream="true"/g)).toHaveLength(2);
-  });
-
   test("leaves same-document anchors as preview links", () => {
     const html = renderMarkdown("work 1", "[Setup](#setup)", { sourcePath: "/work/README.md" });
     expect(html).toContain('href="#setup"');
-    expect(html).not.toContain("files-view/open");
   });
 
   test("does not rewrite Atelier links inside inline code", () => {

@@ -5,15 +5,17 @@ import { buttonHtml } from "@atelier/design-system/button";
 import { dialogHtml } from "@atelier/design-system/dialog";
 import { destructiveConfirmationHtml } from "@atelier/design-system/destructive-confirmation";
 import { Icons } from "@atelier/design-system/icons";
+import { toggleHtml } from "@atelier/design-system/toggle";
 import { transientFeedbackHtml } from "@atelier/design-system/transient-feedback";
+import { warningBannerHtml } from "@atelier/design-system/warning-banner";
 import { discoverHostGitHubToken, hasWorkspaceGitHubToken } from "@atelier/proxy-egress";
 import {
   addProject, createProjectEnvironmentVariable, createProjectSshKey, createProjectSecret,
   deleteProject, deleteProjectEnvironmentVariable, deleteProjectSecret, deleteProjectSshKey,
-  formatProjectSpec, listProjectEnvironmentVariables, listProjectSecrets,
+  formatProjectSpec, getProjectConfiguration, listProjectEnvironmentVariables, listProjectSecrets, secretNeedsValue,
   listProjectSshKeys, listProjects, parseProjectSpec, updateProject,
   updateProjectEnvironmentVariable, updateProjectSecret, setProjectDockerfile,
-  type ProjectEnvironmentVariable, type ProjectSecretSummary, type ProjectSshKeySummary, type ProjectSummary,
+  type ProjectEnvironmentVariable, type ProjectSecretInput, type ProjectSecretSummary, type ProjectSshKeySummary, type ProjectSummary,
 } from "@atelier/projects";
 import { domId, escapeHtml, providerBrandColor, providerBrandIconHtml, turboStreamResponse } from "@atelier/shared";
 import { Type } from "typebox";
@@ -22,6 +24,7 @@ import { GitHubRepositorySearchRateLimitError, renderGitHubRepositorySearchMenu,
 import { jsonResponse, response, turboReplaceStream, turboUpdateStream, wantsTurboStream } from "./http-responses.ts";
 
 const jsonStringSchema = Type.String();
+const jsonBooleanSchema = Type.Boolean();
 
 type ProjectEditorModalOptions = { kind: "settings"; projectId: string; section: string | undefined } | { kind: "new" };
 
@@ -39,6 +42,7 @@ interface ProjectWorkspaceReference {
 export function createProjectRoutes(deps: {
   referencingWorkspaces(projectId: string): ProjectWorkspaceReference[];
   refreshWorkspacePaneCollections(): Promise<string>;
+  refreshProjectWarnings(projectId: string): Promise<string>;
   renderLaunchComposer(project: ProjectSummary): Promise<string>;
   createAgentWorkspace(project: ProjectSummary, request: Request): Promise<Response>;
   workspaceCommandModalHostId: string;
@@ -113,39 +117,57 @@ export function createProjectRoutes(deps: {
     </section>`;
   }
 
-  function projectSecretRow(project: ProjectSummary, secret: ProjectSecretSummary): string {
-    const secretPath = `/projects/${encodeURIComponent(project.id)}/secrets/${encodeURIComponent(secret.id)}`;
-    const deleteButton = destructiveConfirmationHtml({
+  function secretRequirementToggle(optional: boolean): string {
+    return `<div class="project-secret-requirement"><span>Requirement</span><input type="hidden" name="optional" value="${optional}">${toggleHtml({
+      variant: "button",
+      label: "Secret requirement",
+      name: "optional",
+      value: String(optional),
+      options: [{ value: "false", label: "Mandatory" }, { value: "true", label: "Optional" }],
+      element: { dataAction: "change->settings-autosave#toggleChanged" },
+    })}</div>`;
+  }
+
+  function projectSecretRow(project: ProjectSummary, secret?: ProjectSecretSummary): string {
+    const secretPath = `/projects/${encodeURIComponent(project.id)}/secrets${secret ? `/${encodeURIComponent(secret.id)}` : ""}`;
+    const deleteButton = secret ? destructiveConfirmationHtml({
       trigger: { type: "button", variant: "danger", content: { kind: "caption", caption: "Delete secret" } },
       confirmCaption: "Delete secret",
       cancelCaption: "Cancel",
       confirmFormAction: `${secretPath}/delete`,
-    });
-    return `<form class="project-secret" aria-label="Secret" method="post" action="${secretPath}" data-turbo="true" data-controller="settings-autosave" data-action="focusout->settings-autosave#saveWhenLeaving">
-      <label><span>Environment variable</span><input class="text-field" name="envName" value="${escapeHtml(secret.envName)}" autocomplete="off"></label>
-      <label><span>Host</span><input class="text-field" name="hostPattern" value="${escapeHtml(secret.hostPattern)}" autocomplete="off"></label>
-      <label><span>Secret</span><input class="text-field" name="secretValue" type="password" placeholder="Unchanged" autocomplete="new-password"></label>
-      <label><span>Placeholder</span><input class="text-field" name="placeholder" value="${escapeHtml(secret.placeholder ?? "")}" placeholder="You rarely need to fill this in" autocomplete="off"></label>
-      <div class="project-secret-actions">${deleteButton}</div>
+    }) : "";
+    const status = secret?.configured
+      ? '<p class="project-secret-saved" role="status">✓ Secret stored</p>'
+      : secret && secretNeedsValue(secret) ? warningBannerHtml({ title: "Mandatory secret — needs a value" }) : "";
+    return `<form class="project-secret${secret ? "" : " new"}" aria-label="${secret ? "Secret" : "Add secret"}" method="post" action="${secretPath}" data-turbo="true" data-controller="settings-autosave" data-action="focusout->settings-autosave#saveWhenLeaving${secret ? "" : " submit->settings-autosave#submit"}">
+      ${status}
+      <label><span>Environment variable</span><input class="text-field" name="envName" value="${escapeHtml(secret?.envName ?? "")}" placeholder="GOOGLE_MAPS_API_KEY" autocomplete="off"${secret ? "" : " required"}></label>
+      <label><span>Host</span><input class="text-field" name="hostPattern" value="${escapeHtml(secret?.hostPattern ?? "")}" placeholder="maps.googleapis.com" autocomplete="off"${secret ? "" : " required"}></label>
+      <label><span>Secret</span><input class="text-field" name="secretValue" type="password" data-action="change->settings-autosave#save" placeholder="${secret?.configured ? "Secret stored — leave blank to keep it" : "No secret stored — enter a value"}" autocomplete="new-password"></label>
+      <label><span>Placeholder</span><input class="text-field" name="placeholder" value="${escapeHtml(secret?.placeholder ?? "")}" placeholder="You rarely need to fill this in" autocomplete="off"></label>
+      <label><span>Needed for</span><textarea class="textarea" name="annotation" rows="2" placeholder="For example, running payment integration tests">${escapeHtml(secret?.annotation ?? "")}</textarea></label>
+      ${secretRequirementToggle(secret?.optional ?? false)}
+      ${deleteButton ? `<div class="project-secret-actions">${deleteButton}</div>` : ""}
     </form>`;
   }
 
   function projectSecretFields(project: ProjectSummary, secrets: ProjectSecretSummary[]): string {
+    const requiredFirst = secrets.toSorted((a, b) => Number(secretNeedsValue(b)) - Number(secretNeedsValue(a)));
     return `<div class="project-secrets-list" id="${domId("project_secret_fields", project.id)}" aria-label="Secrets">
-      ${secrets.map((secret) => projectSecretRow(project, secret)).join("")}
-      <form class="project-secret new" aria-label="Add secret" method="post" action="/projects/${encodeURIComponent(project.id)}/secrets" data-turbo="true" data-controller="settings-autosave" data-action="focusout->settings-autosave#saveWhenLeaving submit->settings-autosave#submit">
-        <label><span>Environment variable</span><input class="text-field" name="envName" placeholder="GOOGLE_MAPS_API_KEY" autocomplete="off" required></label>
-        <label><span>Host</span><input class="text-field" name="hostPattern" placeholder="maps.googleapis.com" autocomplete="off" required></label>
-        <label><span>Secret</span><input class="text-field" name="secretValue" type="password" placeholder="AIzaSyExampleKey1234567890" autocomplete="new-password" required></label>
-        <label><span>Placeholder</span><input class="text-field" name="placeholder" placeholder="You rarely need to fill this in" autocomplete="off"></label>
-      </form>
+      ${requiredFirst.map((secret) => projectSecretRow(project, secret)).join("")}
+      ${projectSecretRow(project)}
     </div>`;
+  }
+
+  function collapsedSecretWarning(project: ProjectSummary, secrets: ProjectSecretSummary[]): string {
+    return `<div class="project-secrets-collapsed-warning" id="${domId("project_secret_warning", project.id)}">${secrets.some(secretNeedsValue) ? warningBannerHtml({ title: "Mandatory secret — needs a value" }) : ""}</div>`;
   }
 
   function projectSecretEditor(project: ProjectSummary, secrets: ProjectSecretSummary[], section?: ProjectSettingsSection): string {
     return `<section class="project-configuration-list project-secrets" id="${domId("project_secrets", project.id)}"${revealSection(section, "secrets")}>
-      <div class="project-configuration-head"><h3>Secrets</h3><p>Atelier lets you use secrets without exposing them to agents. Your encrypted secret stays outside agent sandboxes. Agents receive a placeholder that Atelier replaces with the real secret in matching network requests.</p></div>
-      ${projectConfigurationDisclosure("Configure secrets", projectSecretFields(project, secrets), section === "secrets")}
+      <div class="project-configuration-head"><h3>Secrets</h3><p>Atelier lets you use secrets without exposing them to agents. Your encrypted secret stays outside agent sandboxes. Agents receive a placeholder that Atelier replaces with the real secret in matching network requests. Updated secret configuration applies to new workspaces.</p></div>
+      ${collapsedSecretWarning(project, secrets)}
+      ${projectConfigurationDisclosure("Configure secrets", projectSecretFields(project, secrets), section === "secrets" || secrets.some(secretNeedsValue))}
     </section>`;
   }
 
@@ -199,12 +221,13 @@ export function createProjectRoutes(deps: {
 
   async function projectEditorFrame(project: ProjectSummary, section?: ProjectSettingsSection): Promise<string> {
     const [environment, secrets, sshKeys] = await Promise.all([listProjectEnvironmentVariables(project.id), listProjectSecrets(project.id), listProjectSshKeys(project.id)]);
+    if (section === undefined && secrets.some(secretNeedsValue)) section = "secrets";
     return `<turbo-frame id="project_editor_frame" class="project-editor-frame">
       <div class="project-editor-page project-editor-detail-page">
         <div class="project-editor-detail-body">
           <section class="project-edit-section"${revealSection(section, "repository")}><form class="project-edit-form" aria-label="Repository" method="post" action="/projects/${encodeURIComponent(project.id)}" data-controller="settings-autosave" data-action="change->settings-autosave#save"><label class="project-edit-field"><span>Display name</span><input class="text-field" name="name" value="${escapeHtml(project.name)}" required></label><label class="project-edit-field"><span>Repository</span><input class="text-field" name="gitUrl" value="${escapeHtml(formatProjectSpec(project))}" required></label></form></section>
           <div class="project-edit-config">${projectSecretEditor(project, secrets, section)}${projectSshKeyEditor(project, sshKeys, section)}${projectEnvironmentEditor(project, environment, section)}${projectDockerfileEditor(project, section)}</div>
-          <section class="project-edit-danger-zone"${revealSection(section, "danger")}><h3>Danger zone</h3><div class="project-edit-danger">${projectDeleteControl(project.id)}</div></section>
+          <section class="project-edit-danger-zone"${revealSection(section, "danger")}>${projectConfigurationDisclosure("Danger zone", `<div class="project-edit-danger">${projectDeleteControl(project.id)}</div>`, section === "danger")}</section>
         </div>
       </div>
     </turbo-frame>`;
@@ -229,12 +252,13 @@ export function createProjectRoutes(deps: {
       element: {
         id: "project-editor-modal",
 
-        attributesHtml: options ? "data-dialog-auto-show" : undefined,
+        attributesHtml: `${options ? "data-dialog-auto-show" : ""}${options?.kind === "new" ? "" : ' data-controller="project-settings" data-action="settings-autosave:saving->project-settings#saving settings-autosave:saved->project-settings#saved settings-autosave:failed->project-settings#failed"'}`,
       },
       iconHtml: Icons.Settings,
       titleCaption: title,
       bodyHtml,
       bodyLayout: "full-bleed",
+      footerHtml: options?.kind === "new" ? undefined : `<span class="project-settings-save-status" role="status" data-project-settings-target="status">Changes save automatically.</span>${buttonHtml({ type: "button", variant: "primary", content: { kind: "caption", caption: "OK" }, attributesHtml: 'data-action="project-settings#complete" data-project-settings-target="confirm"' })}`,
       closeLabel: `Close ${title.toLowerCase()}`,
     });
   }
@@ -316,12 +340,7 @@ export function createProjectRoutes(deps: {
   }
 
   async function projectDetailEndpoint(projectId: string): Promise<Response> {
-    const project = await projectById(projectId);
-    const [environment, secrets] = await Promise.all([
-      listProjectEnvironmentVariables(projectId),
-      listProjectSecrets(projectId),
-    ]);
-    return jsonResponse({ project: { ...project, environment, secrets } });
+    return jsonResponse({ project: await getProjectConfiguration(projectId) });
   }
 
   async function createProjectEndpoint(request: Request, url: URL): Promise<Response> {
@@ -359,14 +378,22 @@ export function createProjectRoutes(deps: {
     }
     const { project } = await updateProject(projectId, { name, spec });
     const paneStream = await deps.refreshWorkspacePaneCollections();
-    return json ? jsonResponse({ project }) : turboStreamResponse(paneStream);
+    return projectSettingsResponse(projectId, request, { project }, async () => paneStream);
+  }
+
+  type ProjectSettingsResult = { project: ProjectSummary } | { secret: ProjectSecretSummary; deleted?: true } | { environmentVariable: ProjectEnvironmentVariable; deleted?: true };
+
+  /** Every settings mutation refreshes workspace warnings, including JSON callers. */
+  async function projectSettingsResponse(projectId: string, request: Request, result: ProjectSettingsResult, renderFields: () => Promise<string> = async () => ""): Promise<Response> {
+    const warnings = await deps.refreshProjectWarnings(projectId);
+    return requestAcceptsJson(request) ? jsonResponse(result) : turboStreamResponse(`${await renderFields()}${warnings}`);
   }
 
   async function updateProjectDockerfileEndpoint(projectId: string, request: Request): Promise<Response> {
     const json = requestAcceptsJson(request);
     const dockerfile = json ? jsonString(await readJsonObject(request), "dockerfile") : String((await request.formData()).get("dockerfile") ?? "");
     const result = await setProjectDockerfile(projectId, dockerfile);
-    return json ? jsonResponse(result) : turboStreamResponse("");
+    return projectSettingsResponse(projectId, request, result);
   }
 
   async function renderProjectEnvironmentStreams(projectId: string): Promise<string> {
@@ -384,32 +411,28 @@ export function createProjectRoutes(deps: {
   }
 
   async function createProjectEnvironmentVariableEndpoint(projectId: string, request: Request): Promise<Response> {
-    const json = requestAcceptsJson(request);
     const environmentVariable = await createProjectEnvironmentVariable(projectId, await projectEnvironmentVariableValues(request));
-    return json ? jsonResponse({ environmentVariable }) : turboStreamResponse(await renderProjectEnvironmentStreams(projectId));
+    return projectSettingsResponse(projectId, request, { environmentVariable }, () => renderProjectEnvironmentStreams(projectId));
   }
 
   async function updateProjectEnvironmentVariableEndpoint(projectId: string, variableId: string, request: Request): Promise<Response> {
-    const json = requestAcceptsJson(request);
     const environmentVariable = await updateProjectEnvironmentVariable(projectId, variableId, await projectEnvironmentVariableValues(request));
-    return json ? jsonResponse({ environmentVariable }) : turboStreamResponse(await renderProjectEnvironmentStreams(projectId));
+    return projectSettingsResponse(projectId, request, { environmentVariable }, () => renderProjectEnvironmentStreams(projectId));
   }
 
   async function deleteProjectEnvironmentVariableEndpoint(projectId: string, variableId: string, request: Request): Promise<Response> {
-    const json = requestAcceptsJson(request);
-    if (json) await readJsonObject(request);
+    if (requestAcceptsJson(request)) await readJsonObject(request);
     const environmentVariable = await deleteProjectEnvironmentVariable(projectId, variableId);
-    return json ? jsonResponse({ deleted: true, environmentVariable }) : turboStreamResponse(await renderProjectEnvironmentStreams(projectId));
+    return projectSettingsResponse(projectId, request, { deleted: true, environmentVariable }, () => renderProjectEnvironmentStreams(projectId));
   }
 
   async function renderProjectSecretStreams(projectId: string): Promise<string> {
     const project = await projectById(projectId);
-    return turboReplaceStream(domId("project_secret_fields", projectId), projectSecretFields(project, await listProjectSecrets(projectId)));
+    const secrets = await listProjectSecrets(projectId);
+    return `${turboReplaceStream(domId("project_secret_fields", projectId), projectSecretFields(project, secrets))}${turboReplaceStream(domId("project_secret_warning", projectId), collapsedSecretWarning(project, secrets))}`;
   }
 
-  type ProjectSecretValues = { envName: string; hostPattern: string; placeholder?: string; secretValue?: string };
-
-  async function projectSecretValues(request: Request, secretValueRequired: boolean): Promise<ProjectSecretValues> {
+  async function projectSecretValues(request: Request): Promise<ProjectSecretInput> {
     if (!requestAcceptsJson(request)) {
       const formData = await request.formData();
       return {
@@ -417,40 +440,43 @@ export function createProjectRoutes(deps: {
         hostPattern: String(formData.get("hostPattern") ?? ""),
         placeholder: String(formData.get("placeholder") ?? ""),
         secretValue: String(formData.get("secretValue") ?? "") || undefined,
+        annotation: String(formData.get("annotation") ?? ""),
+        optional: formData.get("optional") === "true",
       };
     }
     const body = await readJsonObject(request);
+    const optional = body.optional;
+    if (optional !== undefined && !Value.Check(jsonBooleanSchema, optional)) throw invalidArguments("optional must be a boolean");
     return {
       envName: requiredJsonString(body, "envName"),
       hostPattern: requiredJsonString(body, "hostPattern"),
       placeholder: optionalJsonString(body, "placeholder"),
-      secretValue: secretValueRequired ? requiredJsonString(body, "secretValue") : optionalJsonString(body, "secretValue"),
+      secretValue: optionalJsonString(body, "secretValue"),
+      annotation: optionalJsonString(body, "annotation"),
+      optional,
     };
   }
 
   async function createProjectSecretEndpoint(projectId: string, request: Request): Promise<Response> {
-    const json = requestAcceptsJson(request);
-    const values = await projectSecretValues(request, true);
-    const secret = await createProjectSecret(projectId, { ...values, secretValue: values.secretValue! });
-    return json ? jsonResponse({ secret }) : turboStreamResponse(await renderProjectSecretStreams(projectId));
+    const secret = await createProjectSecret(projectId, await projectSecretValues(request));
+    return projectSettingsResponse(projectId, request, { secret }, () => renderProjectSecretStreams(projectId));
   }
 
   async function updateProjectSecretEndpoint(projectId: string, secretId: string, request: Request): Promise<Response> {
-    const json = requestAcceptsJson(request);
-    const secret = await updateProjectSecret(projectId, secretId, await projectSecretValues(request, false));
-    return json ? jsonResponse({ secret }) : turboStreamResponse(await renderProjectSecretStreams(projectId));
+    const secret = await updateProjectSecret(projectId, secretId, await projectSecretValues(request));
+    return projectSettingsResponse(projectId, request, { secret }, () => renderProjectSecretStreams(projectId));
   }
 
   async function deleteProjectSecretEndpoint(projectId: string, secretId: string, request: Request): Promise<Response> {
-    const json = requestAcceptsJson(request);
-    if (json) await readJsonObject(request);
+    if (requestAcceptsJson(request)) await readJsonObject(request);
     const secret = await deleteProjectSecret(projectId, secretId);
-    return json ? jsonResponse({ deleted: true, secret }) : turboStreamResponse(await renderProjectSecretStreams(projectId));
+    return projectSettingsResponse(projectId, request, { deleted: true, secret }, () => renderProjectSecretStreams(projectId));
   }
 
   async function renderProjectSshKeyStreams(projectId: string): Promise<string> {
     const project = await projectById(projectId);
-    return turboReplaceStream(domId("project_ssh_key_fields", projectId), projectSshKeyFields(project, await listProjectSshKeys(projectId)));
+    const warnings = await deps.refreshProjectWarnings(projectId);
+    return `${turboReplaceStream(domId("project_ssh_key_fields", projectId), projectSshKeyFields(project, await listProjectSshKeys(projectId)))}${warnings}`;
   }
 
   async function createProjectSshKeyFromForm(projectId: string, request: Request): Promise<Response> {
