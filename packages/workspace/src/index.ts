@@ -5,9 +5,13 @@ import { dirname, join } from "node:path";
 import { AtelierCoreError, atelierDataPath, createProcessFileLock, dockerHostAtelierDataPath, getAtelierRuntimeContext, gitHubCredentialHelperShellBody, invalidArguments, isJsonObject, requireDocker, runDocker, runDockerBuffer, shellQuote, type AtelierEventBus, type CommandInput, type JsonObject } from "@atelier/core";
 import { runHostObservableCommand, stripTerminalControls, tailTerminalText } from "@atelier/observable-terminal/server";
 import { isWorkspaceAppPort, workspaceGatewayPort, type WorkspaceGateway, type WorkspaceHttpAppBackend, type WorkspaceServerProvisioningHook } from "@atelier/shared";
-import { inspectWorkspaceImage, nativeLinuxDockerPlatform, nestedDockerDaemonInitScript, prepareWorkspaceImageCarrier, resolveDockerImagePreload, resolveWorkspaceImageResolution, type WorkspaceImageResolution } from "@atelier/workspace-image";
+import { inspectWorkspaceImage, resolveWorkspaceImage } from "@atelier/workspace-image";
+import { nestedDockerDaemonInitScript } from "./nested-docker.ts";
 import { Type } from "typebox";
 import { Value } from "typebox/value";
+import { readDockerRuntimeConnection, registerWorkspaceDocker, retireWorkspaceDocker } from "./docker-runtime.ts";
+import { prepareSharedDocker } from "./shared-docker.ts";
+export type { SharedDockerRuntime } from "./shared-docker.ts";
 import { seedConfigInstallScript } from "./startup-scripts.ts";
 import type { WorkspaceCreationContext, WorkspaceDockerMount, WorkspaceDockerPlan, WorkspaceInitInstruction } from "./types.ts";
 export type { WorkspaceCreationContext, WorkspaceDockerMount, WorkspaceDockerPlan, WorkspaceInitInstruction, WorkspaceInitInstructionMap } from "./types.ts";
@@ -55,7 +59,6 @@ const dockerLabelsSchema = Type.Record(Type.String(), Type.String());
 const booleanSchema = Type.Boolean();
 const nonBlankStringSchema = Type.String({ pattern: "\\S" });
 const stringArraySchema = Type.Array(Type.String());
-const nonBlankStringArraySchema = Type.Array(nonBlankStringSchema);
 export const workspaceRoot = "/work";
 export const workspaceVSCodePort = 8000;
 
@@ -229,7 +232,7 @@ async function readWorkspaceInit(context: Awaited<ReturnType<typeof getAtelierRu
 
 export interface RepoWorkspaceManifest {
   version: 1;
-  docker?: { privileged?: boolean; preloadImages?: string[] };
+  docker?: { privileged?: boolean };
   initScripts?: string[];
   seedPiConfig?: {
     authJson?: string;
@@ -272,18 +275,11 @@ export function parseRepoWorkspaceManifest(text: string, path = workspaceManifes
   const record = parsed;
   if (record.version !== 1) throw invalidArguments(`invalid ${path}: unsupported version`);
   if (record.privileged !== undefined) throw invalidArguments(`invalid ${path}: privileged is no longer supported; use docker.privileged`);
-  if (record.isAtelier !== undefined) throw invalidArguments(`invalid ${path}: isAtelier is no longer supported; use docker.preloadImages`);
+  if (record.isAtelier !== undefined) throw invalidArguments(`invalid ${path}: isAtelier is no longer supported`);
   const dockerRecord = optionalRecord(record, "docker", path);
   const privileged = dockerRecord ? optionalBoolean(dockerRecord, "privileged", path, "docker.privileged") : undefined;
-  const preloadImagesValue = dockerRecord?.preloadImages;
-  if (preloadImagesValue !== undefined && !Value.Check(nonBlankStringArraySchema, preloadImagesValue)) {
-    throw invalidArguments(`invalid ${path}: docker.preloadImages must be an array of non-empty strings`);
-  }
-  const preloadImages = preloadImagesValue?.map((spec) => spec.trim());
-  if (preloadImages && preloadImages.length > 0 && privileged !== true) throw invalidArguments(`invalid ${path}: docker.preloadImages requires docker.privileged to be true`);
   const docker: RepoWorkspaceManifest["docker"] | undefined = dockerRecord ? {} : undefined;
   if (docker && privileged !== undefined) docker.privileged = privileged;
-  if (docker && preloadImages) docker.preloadImages = preloadImages;
   const initScripts = record.initScripts;
   if (initScripts !== undefined && !Value.Check(stringArraySchema, initScripts)) throw invalidArguments(`invalid ${path}: initScripts must be an array of strings`);
   const seedPiConfigRecord = optionalRecord(record, "seedPiConfig", path);
@@ -329,7 +325,6 @@ async function applyRepoWorkspaceManifest(sourcePath: string, plan: WorkspaceDoc
   const manifest = await readRepoWorkspaceManifest(sourcePath);
   if (!manifest) return;
   if (manifest.docker?.privileged && !plan.extraArgs.includes("--privileged")) plan.extraArgs.push("--privileged");
-  if (manifest.docker?.preloadImages?.length) plan.preloadDockerImages = [...new Set(manifest.docker.preloadImages)];
   applySeedConfigManifest(manifest, plan);
   plan.initScripts.push(...(manifest.initScripts ?? []));
 }
@@ -389,7 +384,7 @@ export const workspaceSetupProvisioningHook: WorkspaceServerProvisioningHook = {
 };
 
 function dockerMountArg(mount: WorkspaceDockerMount): string {
-  return [`type=${mount.type}`, `src=${mount.source}`, `dst=${mount.target}`, ...(mount.readonly ? ["readonly"] : [])].join(",");
+  return [`type=${mount.type}`, ...(mount.source === undefined ? [] : [`src=${mount.source}`]), `dst=${mount.target}`, ...(mount.readonly ? ["readonly"] : [])].join(",");
 }
 
 function planEnvDockerArgs(env: Record<string, string>): string[] {
@@ -409,6 +404,7 @@ function workspaceCreateDockerArgs(container: string, image: string, publishHost
     ...plan.mounts.flatMap((mount) => ["--mount", dockerMountArg(mount)]),
     "--user", "root",
     image,
+    ...(plan.sharedDocker ? ["bash", "/usr/local/bin/atelier-workspace-docker"] : []),
     "sh", "-lc", workspaceInitScript(plan),
   ];
 }
@@ -525,31 +521,19 @@ export async function createWorkspace(options: CreateWorkspaceOptions = {}): Pro
       await applyRepoWorkspaceManifest(source.worktreePath, activePlan);
       await options.events?.emit("workspace_plan_prepare", { workspaceId: id, init, context, workHostPath: source.worktreePath, workContainerPath: workspaceRoot, plan: activePlan });
     });
-    const carrierPlatform = activePlan.preloadDockerImages?.length ? await nativeLinuxDockerPlatform() : undefined;
-    let imageResolution: WorkspaceImageResolution | undefined;
+    const sharedConnection = await readDockerRuntimeConnection();
+    if (sharedConnection) {
+      await provisionStep(options.events, id, "workspace.docker-runtime", "Register private Docker runtime", () => registerWorkspaceDocker(activePlan, atelierDataPath(getAtelierRuntimeContext(), "workspaces", id, "docker-runtime"), sharedConnection));
+    }
     if (!activePlan.image) {
       const configuration: WorkspaceImageConfigureEvent = { init };
       await options.events?.emit("workspace_image_configure", configuration);
-      imageResolution = await provisionStep(options.events, id, "workspace.image", "Resolve workspace image", () => resolveWorkspaceImageResolution({ workspaceId: id, events: options.events, sourcePath: source.worktreePath, dockerfile: configuration.dockerfile }));
-      activePlan.image = imageResolution.image;
+      activePlan.image = await provisionStep(options.events, id, "workspace.image", "Resolve workspace image", () => resolveWorkspaceImage({ workspaceId: id, events: options.events, sourcePath: source.worktreePath, dockerfile: configuration.dockerfile }));
     }
-    activePlan.initScripts.push(nestedDockerDaemonInitScript());
-    if (activePlan.preloadDockerImages?.length && imageResolution && carrierPlatform) {
-      const preload = await provisionStep(options.events, id, "workspace.docker-images", "Resolve nested Docker images", () => resolveDockerImagePreload({ specs: activePlan.preloadDockerImages!, workspaceResolution: imageResolution, events: options.events, workspaceId: id }), { output: (result) => result.images.map((image) => `${image.sourceRef} ${image.imageId}${image.aliases.length ? `\n  aliases: ${image.aliases.join(", ")}` : ""}`).join("\n") });
-      let carrierProgress = "";
-      const carrier = await provisionStep(options.events, id, "workspace.image-carrier", "Prepare preloaded workspace image", () => prepareWorkspaceImageCarrier({
-        resolution: imageResolution,
-        platform: carrierPlatform,
-        preload,
-        events: options.events,
-        workspaceId: id,
-        onProgress: async (message) => {
-          carrierProgress += `${message}\n`;
-          await options.events?.emit("workspace_provision_step", { workspaceId: id, id: "workspace.image-carrier", output: carrierProgress });
-        },
-      }), { output: (result) => [`Path: ${result.path}`, `Carrier key: ${result.key}`].join("\n") });
-      activePlan.image = carrier.image;
-      activePlan.initScripts.push(...carrier.initScripts);
+    if (activePlan.sharedDocker) {
+      await prepareSharedDocker(activePlan, atelierDataPath(getAtelierRuntimeContext(), "workspaces", id, "docker-runtime"));
+    } else {
+      activePlan.initScripts.push(nestedDockerDaemonInitScript());
     }
     await provisionStep(options.events, id, "workspace.container", "Start workspace container", async () => {
       const image = activePlan.image;
@@ -570,9 +554,15 @@ export async function createWorkspace(options: CreateWorkspaceOptions = {}): Pro
     });
     await provisionStep(options.events, id, "workspace.startup", "Wait for workspace startup", () => waitForWorkspaceStartup(id), { output: (log) => log });
   } catch (error) {
-    await runDocker(["rm", "-f", workspaceContainerName(id)]).catch(() => undefined);
-    await Promise.all((plan?.cleanup ?? []).map((cleanup) => Promise.resolve(cleanup()).catch(() => undefined)));
-    await deleteWorkspaceWorkDir(id).catch(() => undefined);
+    try {
+      const removed = await runDocker(["rm", "-f", "--volumes", workspaceContainerName(id)]);
+      if (removed.exitCode !== 0 && !removed.stderr.includes("No such container")) throw new Error(removed.stderr.trim() || "could not remove failed workspace container");
+      await retireWorkspaceDocker(atelierDataPath(getAtelierRuntimeContext(), "workspaces", id, "docker-runtime"));
+      await Promise.all((plan?.cleanup ?? []).map((cleanup) => cleanup()));
+      await deleteWorkspaceWorkDir(id);
+    } catch (cleanupError) {
+      throw new AggregateError([error, cleanupError], `workspace ${id} provisioning and cleanup failed; ownership records retained`);
+    }
     throw error;
   }
   return { id };
@@ -618,15 +608,11 @@ export async function workspacePortBackend(id: string, port: number, pathAndSear
   return { kind: "http", target, gateway: await workspaceGateway(id) };
 }
 
-async function currentWorkspaceImageId(sourcePath: string, dockerfile?: string): Promise<string | undefined> {
-  return await inspectWorkspaceImage({ sourcePath, dockerfile, preloadImages: (await readRepoWorkspaceManifest(sourcePath))?.docker?.preloadImages });
-}
-
 export async function workspaceImageOutdated(id: string, container = workspaceContainerName(id), events?: AtelierEventBus): Promise<boolean> {
   const configuration: WorkspaceImageConfigureEvent = { init: await readWorkspaceInit(getAtelierRuntimeContext(), id) };
   await events?.emit("workspace_image_configure", configuration);
   const [expectedImageId, actualImage] = await Promise.all([
-    currentWorkspaceImageId(workspaceWorkHostPath(id), configuration.dockerfile),
+    inspectWorkspaceImage({ sourcePath: workspaceWorkHostPath(id), dockerfile: configuration.dockerfile }),
     requireDocker(["inspect", "--format", "{{.Image}}", container]),
   ]);
   return expectedImageId === undefined || actualImage.stdout.trim() !== expectedImageId;
@@ -670,7 +656,8 @@ export async function deleteWorkspace(id: string, options: DeleteWorkspaceOption
     await options.events?.emit("workspace_delete_inspect", { workspaceId: id, issues });
     if (issues.length > 0) throw new AtelierCoreError("workspace_delete_blocked", formatDeleteBlockedMessage(id, issues), { workspaceId: id, issues });
   }
-  if (containerExists) await requireDocker(["rm", "-f", workspaceContainerName(id)]);
+  if (containerExists) await requireDocker(["rm", "-f", "--volumes", workspaceContainerName(id)]);
+  await retireWorkspaceDocker(atelierDataPath(getAtelierRuntimeContext(), "workspaces", id, "docker-runtime"));
   await retireWorkspaceId(id);
   workspaceGatewayCache.delete(workspaceGatewayCacheKey(id));
   await options.events?.emit("workspace_deleted", { workspaceId: id });

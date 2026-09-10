@@ -681,10 +681,12 @@ install_atelier() {
 
   if docker ps -aq --filter "name=^/${atelier_name}$" | grep -q .; then
     info "Replacing existing Atelier container..."
-    docker rm -f "$atelier_name" >/dev/null
+    docker stop --time 30 "$atelier_name" >/dev/null
+    docker rm "$atelier_name" >/dev/null
     success "Existing Atelier container removed"
   fi
 
+  mkdir -p "$atelier_data_dir/docker-runtime"
   info "Starting Atelier..."
   docker run -d \
     --name "$atelier_name" \
@@ -693,6 +695,7 @@ install_atelier() {
     --label "com.atelier.workspace-cgroup-parent=$atelier_workspace_slice" \
     --restart unless-stopped \
     --init \
+    --privileged \
     --cpu-shares 2048 \
     --memory-reservation 1g \
     --oom-score-adj -500 \
@@ -700,6 +703,7 @@ install_atelier() {
     -v /var/run/docker.sock:/var/run/docker.sock \
     --mount "type=bind,src=/var/run/tailscale,dst=/var/run/tailscale" \
     --mount "type=bind,src=$atelier_data_dir,dst=/data/atelier" \
+    --mount "type=bind,src=$atelier_data_dir/docker-runtime,dst=$atelier_data_dir/docker-runtime" \
     --env ATELIER_DATA_DIR=/data/atelier \
     --env "ATELIER_DOCKER_HOST_DATA_DIR=$atelier_data_dir" \
     --env "HOST=127.0.0.1" \

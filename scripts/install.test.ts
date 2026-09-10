@@ -64,3 +64,31 @@ wait "$!" || exit "$?"`);
   expect(result.output).toContain("could not pull Atelier image example/atelier:stable for linux/arm64");
   expect(result.output).not.toContain("UNEXPECTED EXECUTION");
 });
+
+test("installation uses default standalone startup with persistent backing and stops the previous owner", () => {
+  const dir = mkdtempSync(join(tmpdir(), "atelier-install-runtime-"));
+  try {
+    const result = run(`
+atelier_data_dir='${dir}'
+atelier_image=example/atelier:stable
+atelier_public_host=atelier.example
+chown() { :; }
+docker() {
+  printf 'DOCKER %s\\n' "$*" >&2
+  if [ "$1" = ps ]; then
+    case "$*" in *atelier-updater*) ;; *) echo existing ;; esac
+  fi
+}
+install_atelier`);
+    expect(result.status).toBe(0);
+    expect(result.output).toContain("stop --time 30 atelier");
+    expect(result.output).toContain("--privileged");
+    expect(result.output).toContain(`type=bind,src=${dir}/docker-runtime,dst=${dir}/docker-runtime`);
+    const launch = result.output.split("\n").find((line) => line.startsWith("DOCKER run -d "))!;
+    expect(launch.endsWith(" example/atelier:stable")).toBe(true);
+    expect(launch).not.toContain("--nested");
+    expect(launch).not.toContain("--own-snapshotter");
+  } finally {
+    rmSync(dir, { recursive: true, force: true });
+  }
+});

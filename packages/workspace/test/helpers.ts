@@ -42,7 +42,7 @@ export async function cleanupNamespace(namespace: string): Promise<void> {
   });
   if (workspaces.length === 0) return;
 
-  const removed = await docker(["rm", "-f", ...workspaces.map(({ containerId }) => containerId)]);
+  const removed = await docker(["rm", "-f", "--volumes", ...workspaces.map(({ containerId }) => containerId)]);
   if (removed.exitCode !== 0) throw new Error(removed.stderr || removed.stdout);
   await Promise.all(workspaces.map(({ workspaceId }) => rm(dirname(workspaceWorkHostPath(workspaceId)), { recursive: true, force: true })));
 }

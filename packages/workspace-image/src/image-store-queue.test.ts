@@ -84,25 +84,25 @@ describe("Docker image store queue", () => {
     const events = createAtelierEventBus();
     const steps: WorkspaceProvisionStepEvent[] = [];
     events.on("workspace_provision_step", (event) => { steps.push(event); });
-    const report = workspaceImageStoreWaitReporter({ events, workspaceId: "workspace-1", parentId: "workspace.image-carrier" });
+    const report = workspaceImageStoreWaitReporter({ events, workspaceId: "workspace-1", parentId: "workspace.image" });
 
-    await report?.({ status: "waiting", owner: "Pruning old carrier workspace images", elapsedMs: 1_600 });
-    await report?.({ status: "acquired", owner: "Creating a carrier", elapsedMs: 2_400 });
+    await report?.({ status: "waiting", owner: "Pruning old repository workspace images", elapsedMs: 1_600 });
+    await report?.({ status: "acquired", owner: "Building a repository image", elapsedMs: 2_400 });
 
     expect(steps).toEqual([
       {
         workspaceId: "workspace-1",
         id: "workspace.image-maintenance",
         label: "Wait for workspace image maintenance",
-        parentId: "workspace.image-carrier",
+        parentId: "workspace.image",
         status: "running",
-        detail: "Pruning old carrier workspace images · 2s elapsed",
+        detail: "Pruning old repository workspace images · 2s elapsed",
       },
       {
         workspaceId: "workspace-1",
         id: "workspace.image-maintenance",
         label: "Wait for workspace image maintenance",
-        parentId: "workspace.image-carrier",
+        parentId: "workspace.image",
         status: "done",
         detail: "Continued after 2s",
       },

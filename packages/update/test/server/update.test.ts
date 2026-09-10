@@ -374,10 +374,15 @@ describe("update state machine", () => {
     expect(response.status).toBe(303);
     expect(response.headers.get("location")).toBe("https://atelier.test:81/?theme=dracula");
     expect(dockerCalls[0]).toEqual(["ps", "-aq", "--filter", "name=^/atelier-updater-"]);
-    const runCall = dockerCalls.find((call) => call.includes("atelier-update-helper"));
-    expect(runCall).toBeDefined();
-    expect(runCall!).toContain("--release-channel");
-    expect(runCall!).toContain("stable");
+    const runCall = dockerCalls.find((call) => call[0] === "run");
+    expect(runCall).toEqual([
+      "run", "-d", "--rm", "--name", expect.stringMatching(/^atelier-updater-[a-f0-9]{8}$/), "--network", "host",
+      "-v", "/var/run/docker.sock:/var/run/docker.sock",
+      "--user", "0:0", "--entrypoint", "/usr/local/bin/atelier-update-helper",
+      "sha256:old-image",
+      "--server-container", "container-id", "--target-image", "ghcr.io/lucasmeijer/atelier:stable",
+      "--release-channel", "stable", "--return-url", "http://atelier.test/",
+    ]);
     await expect(manager.launchUpdater(new URL("http://atelier.test/update/restart"))).rejects.toThrow("Restart is already in progress");
   });
 

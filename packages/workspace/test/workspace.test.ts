@@ -21,7 +21,7 @@ import {
   type WorkspaceInitInstruction,
 } from "@atelier/workspace";
 import { workspaceGatewayPort, workspaceGatewayTokenHeader, workspaceGatewayPortHeader, workspaceGatewayProtocolHeader, workspaceGatewayHostHeader } from "@atelier/shared";
-import { nativeLinuxDockerPlatform, repositoryWorkspaceImageTag, resolveWorkspaceImage } from "@atelier/workspace-image";
+import { repositoryWorkspaceImageTag, resolveWorkspaceImage } from "@atelier/workspace-image";
 import { registerProjectWorkspaceEvents, setGitIdentity } from "@atelier/projects";
 import { cleanupNamespace, createTestNamespace, docker } from "./helpers.ts";
 
@@ -43,7 +43,10 @@ declare module "@atelier/workspace" {
 setDefaultTimeout(300_000);
 
 const testNamespace = createTestNamespace("test-workspace");
-const nativeDockerTest = await nativeLinuxDockerPlatform() ? test : test.skip;
+const dockerHost = await docker(["info", "--format", "{{.OperatingSystem}}|{{.OSType}}"]);
+expect(dockerHost.exitCode, dockerHost.stderr).toBe(0);
+const [operatingSystem, osType] = dockerHost.stdout.trim().split("|");
+const nativeDockerTest = osType === "linux" && !/docker desktop/i.test(operatingSystem!) ? test : test.skip;
 let reusableWorkspaceId: string | undefined;
 
 async function getReusableWorkspaceId(): Promise<string> {
@@ -265,25 +268,6 @@ docker compose run --rm app cat /data/message`);
 
     await execWorkspaceShell(created.id, "rm .atelier/Dockerfile");
     expect((await listWorkspaces()).workspaces).toContainEqual({ id: created.id, title: null });
-  });
-
-  test("listWorkspaces does not build a missing carrier image", async () => {
-    const created = { id: await getReusableWorkspaceId() };
-    const defaultImage = await resolveWorkspaceImage();
-    const preloadRef = "atelier-list-preload:" + crypto.randomUUID();
-    expect((await docker(["tag", defaultImage, preloadRef])).exitCode).toBe(0);
-    try {
-      if (!await nativeLinuxDockerPlatform()) return;
-      const carriersBefore = (await docker(["image", "ls", "--filter", "label=com.atelier.workspace-image.kind=carrier", "--quiet"])).stdout.trim();
-      const manifest = JSON.stringify({ version: 1, docker: { privileged: true, preloadImages: [preloadRef] } });
-      await execWorkspaceCommand(created.id, ["sh", "-c", "mkdir -p .atelier && cat > .atelier/workspace.json"], { stdin: manifest });
-
-      expect((await listWorkspaces()).workspaces).toContainEqual({ id: created.id, title: null, imageOutdated: true });
-      expect((await docker(["image", "ls", "--filter", "label=com.atelier.workspace-image.kind=carrier", "--quiet"])).stdout.trim()).toBe(carriersBefore);
-    } finally {
-      await execWorkspaceShell(created.id, "rm -f .atelier/workspace.json");
-      await docker(["image", "rm", preloadRef]);
-    }
   });
 
   test("discovery and container start are immediate; a missing gateway times out independently", async () => {

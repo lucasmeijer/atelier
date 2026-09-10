@@ -1,27 +1,16 @@
 # Atelier Docker image
 
-Build and restart a local development Atelier container from the repository root:
-
-```sh
-bun run docker:dev
-```
-
-On Linux this stops any existing Atelier server container, builds `atelier:latest`, and starts an attached host-networked container named `atelier` on <http://127.0.0.1:3000>. Press Ctrl-C to stop and remove the container. Docker-run Atelier uses the default namespace/data path; host-run Atelier is isolated under the `host` namespace and `atelier-host` data path.
-
-Build only a local Atelier runtime image:
+Build the Atelier app and its matching default workspace image:
 
 ```sh
 bun run image:build
 ```
 
-By default the script builds `atelier:<git-description>` and `atelier:latest` from `apps/web/Dockerfile` and embeds the current git commit metadata in `ATELIER_COMMIT_ID` and `ATELIER_COMMIT_DESCRIPTION`. The default workspace image uses a deterministic content tag, so the build reuses it when that tag already exists locally (or in the registry during `image:publish`). Pass `--workspace` to force rebuilding that image.
+By default the script builds `ghcr.io/lucasmeijer/atelier:<git-description>` and `ghcr.io/lucasmeijer/atelier:latest` from `apps/web/Dockerfile` and embeds the current git commit metadata in `ATELIER_COMMIT_ID` and `ATELIER_COMMIT_DESCRIPTION`. The default workspace image uses a deterministic content tag, so the build reuses it when that tag already exists locally (or in the registry during `image:publish`). Pass `--workspace` to force rebuilding that image.
 
 Useful options:
 
 ```sh
-bun run docker:dev -- --bind 127.0.0.1 --port 3000
-bun run docker:dev -- --bind "$(tailscale ip -4)" --port 80
-bun run docker:dev -- --detach
 bun run image:build -- --image ghcr.io/example/atelier --tag v0.1.0 --latest
 bun run image:build -- --tag dev --workspace --progress plain
 bun run image:build -- --tag dev --no-cache --progress plain
@@ -31,7 +20,51 @@ bun run scripts/build-atelier-image.ts --push --image ghcr.io/example/atelier --
 
 `image:publish` is the same build pipeline with `--push` enabled and defaults to `--platform linux/amd64,linux/arm64` for both the app and workspace images. The local Docker Buildx builder must support both platforms (native build nodes or QEMU emulation). Pass `--platform linux/amd64` to explicitly publish only one architecture. Publishing with `--stable` updates the installer’s default channel; changing the build command alone does not update existing registry tags.
 
-The installer pulls the required default workspace image. Repositories that request nested-Docker image preloads get deterministic carrier images built on demand when their first matching workspace is created. Carriers embed a `fuse-overlayfs` nested Docker store and are selected only on native Linux, never Docker Desktop.
+The installer reads the default workspace image reference embedded in the app
+image and pulls that exact image for the Docker host architecture. Shared
+installations reuse retained image layers across private Docker daemons on demand.
+
+## Deploy an unmerged branch normally
+
+Do not use `bun run release` for this: that command deliberately releases
+`origin/main`. From a clean checkout of the desired branch, use the normal image
+pipeline with channel promotion disabled:
+
+```sh
+git switch docker-rewrite
+git pull --ff-only
+bun run check
+bun run image:publish -- --tag docker-rewrite --tag "sha-$(git rev-parse HEAD)" --no-latest --progress plain
+```
+
+This builds/publishes **both complete images**, for amd64 and arm64, and bakes the
+matching content-addressed workspace tag into the app. No runtime-file overlays,
+source mounts, dev server or manually patched workspace are needed. In an Atelier
+workspace, run `bun run release --check` first to prepare/check the FUSE Buildx
+builder, then pass the printed builder name with `--builder <name>` to the image
+command. This check publishes nothing and does not change the current branch.
+
+On the deployment host, pin both the installer and image to the same released
+commit. Do not use `https://lucasmeijer.com/get-atelier` for this branch test: that
+website endpoint serves the installer published from `main`, not this branch.
+
+```sh
+commit='<full-commit-sha>'
+curl -fsSL "https://raw.githubusercontent.com/lucasmeijer/atelier/$commit/scripts/install.sh" -o /root/install-atelier.sh
+sudo bash /root/install-atelier.sh --image "ghcr.io/lucasmeijer/atelier:sha-$commit"
+```
+
+The installer replaces its existing `atelier` container and configures Tailscale
+Serve. Do not run it alongside another independently started Atelier using the
+same application/egress ports. Preserve any existing installation data before
+changing which installation is running. New workspaces use the baked image;
+existing containers are not silently converted.
+
+Use disk-backed storage with enough free capacity for both compressed downloads
+and extracted images. The normal data path is `/var/lib/atelier`; the owned runtime
+rejects `tmpfs`/`ramfs` backing even when it is bind-mounted. A full `/tmp` or a host
+with only a few GB free is not a suitable deployment target. This validation is
+not cache eviction or a disk quota: shared layers can still grow indefinitely.
 
 ## Production resource isolation
 
@@ -39,23 +72,20 @@ The Linux installer requires cgroup v2, systemd, Docker's systemd cgroup driver,
 
 The Atelier server receives a 1 GiB memory reservation, increased CPU weight, and a reduced OOM score. Its workspace-slice label and server resource settings survive self-update. The hard aggregate memory and CPU limits are what keep runaway workspace workloads from consuming the capacity reserved for Atelier and the host; the scheduling weights improve responsiveness during contention.
 
-These guarantees are installed by `scripts/install.sh`. Ad-hoc `docker run` and `bun run docker:dev` launches do not create host cgroups and therefore do not provide the production resource guarantees.
+These guarantees are installed by `scripts/install.sh`. Ad-hoc `docker run` launches do not create host cgroups and therefore do not provide the production resource guarantees.
 
 The resulting container expects access to Docker so it can create Atelier workspace containers. Its entrypoint starts as root, grants the fixed container user `1000:1000` access to the mounted Docker socket, prepares the Atelier data directory, and then runs Atelier as that fixed user. Docker-run workspace containers use the same numeric uid/gid and the `default` namespace. Workspace app ports are published on the Docker host loopback. The Atelier container must run with host networking on Linux so Atelier and host-run Atelier both reach workspace apps at `127.0.0.1:<published-port>`. See [workspace networking](./workspace-networking.md) for the reasoning and experiments behind this model.
 
-A typical local run mounts the host Docker socket and bind-mounts a host data directory. `ATELIER_DOCKER_HOST_DATA_DIR` must be the host path for that same data directory so workspace containers can mount files created by the Atelier container:
+For production and branch evaluation, use the installer above. It supplies the
+persistent same-path runtime mount, `--privileged`, the Tailscale LocalAPI socket,
+and host resource controls. The image starts the shared snapshotter, registry,
+BuildKit and app by default; no ownership flag is needed. A bare `docker run`
+without the required mounts and privileges is not equivalent to an installed Atelier.
 
-```sh
-ATELIER_HOST_DATA_DIR="${XDG_DATA_HOME:-$HOME/.local/share}/atelier"
-mkdir -p "$ATELIER_HOST_DATA_DIR"
-
-docker run --rm -it --init \
-  --network host \
-  -v /var/run/docker.sock:/var/run/docker.sock \
-  --mount "type=bind,src=$ATELIER_HOST_DATA_DIR,dst=/data/atelier" \
-  -e ATELIER_DATA_DIR=/data/atelier \
-  -e ATELIER_DOCKER_HOST_DATA_DIR="$ATELIER_HOST_DATA_DIR" \
-  atelier:latest
-```
+Nested image launches must explicitly pass `--nested` after the image reference
+(and before an optional application command). This mode requires the inherited
+`/.atelier/docker-runtime.json` connection and its socket/backing mounts; it runs
+the app without starting another shared stack. Merely mounting a connection does
+not switch modes. The old `--own-snapshotter` option is no longer accepted.
 
 On hosts without cgroup swap controls, installation is allowed only when `/proc/meminfo` reports zero total swap. Keep swap disabled on these hosts; hosts with swap require working cgroup swap limits. The installer explicitly pulls images for the Docker server’s platform, so a release missing that platform fails at pull time rather than with an `exec format error`.

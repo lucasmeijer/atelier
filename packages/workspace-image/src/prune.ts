@@ -1,7 +1,7 @@
 import { runDocker } from "@atelier/core";
 import { dockerImageStoreQueue } from "./image-store-queue.ts";
 
-export type WorkspaceImageKind = "default" | "repository" | "carrier";
+export type WorkspaceImageKind = "default" | "repository";
 
 export const workspaceImageKindLabel = "com.atelier.workspace-image.kind";
 

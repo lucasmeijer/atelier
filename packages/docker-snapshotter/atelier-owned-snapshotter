@@ -1,0 +1,123 @@
+#!/bin/bash
+# Supervise one installation's Docker infrastructure and unprivileged app command.
+set -euo pipefail
+runtime=$1
+socket_group=$2
+shift 2
+[[ "$runtime" = /* ]] || { echo 'Docker runtime path must be absolute' >&2; exit 1; }
+mountpoint -q "$runtime" || { echo "Docker runtime must be bind-mounted: $runtime" >&2; exit 1; }
+# A bind mount can still be RAM-backed (for example /tmp on systemd hosts).
+# Image downloads plus unpacked layers must not consume the host's tmpfs/RAM.
+filesystem_type="$(stat -f -c %T "$runtime")"
+case "$filesystem_type" in
+  tmpfs|ramfs) echo "Docker runtime requires disk-backed persistent storage, not $filesystem_type: $runtime" >&2; exit 1 ;;
+esac
+# Hold ownership until every service is stopped, even if the adapter exits first.
+exec 9>"$runtime/installation.lock"
+flock -n 9 || { echo 'Docker runtime already owned' >&2; exit 1; }
+umask 077
+mkdir -p "$runtime/store" "$runtime/sockets" "$runtime/buildkit" "$runtime/registry"
+umask 022
+snapshotter_pid=''
+registry_pid=''
+buildkit_pid=''
+app_pid=''
+registry_address=''
+# Called by the EXIT trap.
+# shellcheck disable=SC2329
+cleanup() {
+  trap - EXIT TERM INT
+  # Stop consumers before their dependencies.
+  for pid in "$app_pid" "$buildkit_pid" "$registry_pid" "$snapshotter_pid"; do
+    if [ -n "$pid" ]; then
+      if kill -0 "$pid" 2>/dev/null; then kill -TERM "$pid"; fi
+      wait "$pid" || true
+    fi
+  done
+  if [ -n "$registry_address" ]; then
+    bun /app/packages/docker-snapshotter/registry-runtime.ts release "$runtime"
+  fi
+}
+trap 'cleanup' EXIT
+trap 'exit 143' TERM
+trap 'exit 130' INT
+
+registry_address="$(bun /app/packages/docker-snapshotter/registry-runtime.ts prepare "$runtime")"
+registry_local_address="127.0.0.1:${registry_address##*:}"
+instance="$(cat /proc/sys/kernel/random/uuid)"
+atelier-snapshotter --root "$runtime/store" --socket-dir "$runtime/sockets" --instance-id "$instance" --connection-file /.atelier/docker-runtime.json --registry-address "$registry_address" &
+snapshotter_pid=$!
+deadline=$((SECONDS + 30))
+while true; do
+  kill -0 "$snapshotter_pid"
+  # Match this process, not an old listener left by another installation.
+  if response=$(curl --fail --silent --show-error --max-time 1 --unix-socket "$runtime/sockets/admin.sock" http://localhost/health 2>/dev/null) && [ "$response" = "$instance" ]; then break; fi
+  if [ "$SECONDS" -ge "$deadline" ]; then echo 'snapshotter readiness timed out' >&2; exit 1; fi
+  sleep .05
+done
+
+# Registry uploads can resume across restarts using the same signing secret.
+umask 077
+if [ ! -f "$runtime/registry-secret" ]; then
+  cat /proc/sys/kernel/random/uuid > "$runtime/registry-secret.tmp"
+  mv "$runtime/registry-secret.tmp" "$runtime/registry-secret"
+fi
+# YAML single-quoted scalars escape a quote by doubling it.
+quoted_runtime=${runtime//\'/\'\'}
+cat > "$runtime/registry.yml" <<EOF
+version: 0.1
+storage:
+  filesystem:
+    rootdirectory: '$quoted_runtime/registry'
+http:
+  net: tcp
+  addr: '$registry_local_address'
+  secret: '$(cat "$runtime/registry-secret")'
+  relativeurls: true
+  draintimeout: 5s
+EOF
+# Only the exclusive owner may replace sockets left by a stopped installation.
+rm -f "$runtime/sockets/buildkit.sock"
+umask 022
+atelier-registry serve "$runtime/registry.yml" &
+registry_pid=$!
+cat > "$runtime/buildkit.toml" <<EOF
+[worker.oci]
+  gc = true
+  maxUsedSpace = "20GB"
+  reservedSpace = "2GB"
+  minFreeSpace = "10%"
+
+[registry."$registry_local_address"]
+  http = true
+EOF
+buildkitd --config "$runtime/buildkit.toml" --addr "unix://$runtime/sockets/buildkit.sock" --root "$runtime/buildkit" \
+  --oci-worker=true --containerd-worker=false --oci-worker-net=host &
+buildkit_pid=$!
+
+deadline=$((SECONDS + 30))
+: > "$runtime/buildkit-readiness.log"
+while true; do
+  kill -0 "$snapshotter_pid" "$registry_pid" "$buildkit_pid"
+  if curl --fail --silent --show-error --max-time 1 --noproxy '*' "http://$registry_local_address/v2/" >/dev/null 2>&1 \
+    && workers=$(timeout 2 buildctl --timeout 1 --addr "unix://$runtime/sockets/buildkit.sock" debug workers --format '{{range .}}{{.ID}}{{end}}' 2>"$runtime/buildkit-readiness.log") && [ -n "$workers" ]; then break; fi
+  if [ "$SECONDS" -ge "$deadline" ]; then echo 'Docker build services readiness timed out' >&2; cat "$runtime/buildkit-readiness.log" >&2; exit 1; fi
+  sleep .05
+done
+chgrp "$socket_group" "$runtime" "$runtime/sockets" "$runtime/sockets/"{admin,buildkit}.sock
+chmod 750 "$runtime"
+# Only service sockets, not builder/registry storage, are forwarded into workspaces.
+# Administrative access is trusted; nested users can have different UIDs/GIDs.
+chmod 755 "$runtime/sockets"
+chmod 666 "$runtime/sockets/"{admin,buildkit}.sock
+"$@" &
+app_pid=$!
+set +e
+wait -n -p exited_pid "$snapshotter_pid" "$registry_pid" "$buildkit_pid" "$app_pid"
+status=$?
+set -e
+if [ "$exited_pid" != "$app_pid" ]; then
+  echo "owned Docker service exited while Atelier was running (pid $exited_pid)" >&2
+  exit 1
+fi
+exit "$status"

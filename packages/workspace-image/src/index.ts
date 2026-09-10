@@ -5,15 +5,15 @@ import { dirname, join } from "node:path";
 import { fileURLToPath } from "node:url";
 import { requireDocker, runDocker, shellQuote, type AtelierEventBus } from "@atelier/core";
 import { runHostObservableCommand, tailTerminalText } from "@atelier/observable-terminal/server";
-import { buildWorkspaceImageCarrier, defaultAtelierWorkspaceImageSpecifier, findWorkspaceImageCarrier, nativeLinuxDockerPlatform, type ResolvedDockerImagePreload } from "./carrier.ts";
 import { parseWorkspaceImageMetadata, type WorkspaceImageMetadata } from "./metadata.ts";
 import { pruneSupersededWorkspaceImages, workspaceImageKindLabel, type WorkspaceImageKind } from "./prune.ts";
 import { dockerImageStoreQueue, workspaceImageStoreWaitReporter } from "./image-store-queue.ts";
+import { readDockerRuntimeConnection } from "./runtime-connection.ts";
+import { buildSharedWorkspaceImage, sharedWorkspaceImageTag, type SharedWorkspaceBuild } from "./shared-build.ts";
 import { dockerServerPlatform, nativeImageExists as imageExists } from "./local-images.ts";
 
-export * from "./carrier.ts";
-
-type BuiltWorkspaceImageKind = Exclude<WorkspaceImageKind, "carrier">;
+export * from "./runtime-connection.ts";
+export { readSharedLayerStorage, type SharedLayerStorage, readSharedContentStorage, type SharedContentStorage } from "./storage.ts";
 
 interface WorkspaceImageBuildTask {
   tag: string;
@@ -34,18 +34,6 @@ export interface ResolveWorkspaceImageOptions {
   sourcePath?: string;
   dockerfile?: string;
   buildOutput?: "inherit";
-}
-
-export interface WorkspaceImageResolution {
-  image: string;
-  defaultImage: string;
-}
-
-export interface WorkspaceImageCarrierResolution {
-  image: string;
-  key: string;
-  path: "local hit" | "locally built";
-  initScripts: string[];
 }
 
 const maxBuildOutputBytes = 64 * 1024;
@@ -107,7 +95,7 @@ async function emitImageStep(events: AtelierEventBus | undefined, workspaceId: s
   await events.emit("workspace_provision_step", event);
 }
 
-function dockerBuildArgs(tag: string, kind: BuiltWorkspaceImageKind, dockerfile: string, contextDir: string, options: ResolveWorkspaceImageOptions): string[] {
+function dockerBuildArgs(tag: string, kind: WorkspaceImageKind, dockerfile: string, contextDir: string, options: ResolveWorkspaceImageOptions): string[] {
   return [
     "build",
     ...(options.buildOutput === "inherit" ? ["--progress=plain"] : []),
@@ -119,7 +107,7 @@ function dockerBuildArgs(tag: string, kind: BuiltWorkspaceImageKind, dockerfile:
   ];
 }
 
-function startBuildTask(tag: string, modules: string[], kind: BuiltWorkspaceImageKind, dockerfile: string, contextDir: string, options: ResolveWorkspaceImageOptions): WorkspaceImageBuildTask {
+function startBuildTask(tag: string, modules: string[], kind: WorkspaceImageKind, dockerfile: string, contextDir: string, options: ResolveWorkspaceImageOptions): WorkspaceImageBuildTask {
   const existing = buildTasks.get(tag);
   if (existing) return existing;
 
@@ -168,6 +156,22 @@ async function waitForBuildTask(task: WorkspaceImageBuildTask, options: ResolveW
   }
 }
 
+async function runSharedImageBuild(build: SharedWorkspaceBuild, metadata: WorkspaceImageMetadata, options: ResolveWorkspaceImageOptions): Promise<string> {
+  const task: WorkspaceImageBuildTask = { tag: metadata.tag, modules: metadata.modules, output: "", promise: Promise.resolve() };
+  await emitImageStep(options.events, options.workspaceId, task, "running");
+  try {
+    const image = await dockerImageStoreQueue.run({ label: `Building workspace image ${metadata.tag}`, onWait: workspaceImageStoreWaitReporter({ events: options.events, workspaceId: options.workspaceId, parentId: "workspace.image" }) }, () => buildSharedWorkspaceImage({
+      ...build, noCache: process.env.ATELIER_WORKSPACE_IMAGE_NO_CACHE === "1",
+      onOutput: async (chunk) => { appendOutput(task, chunk); if (options.buildOutput === "inherit") process.stderr.write(chunk); await emitImageStep(options.events, options.workspaceId, task, "running"); },
+    }));
+    await emitImageStep(options.events, options.workspaceId, task, "done");
+    return image;
+  } catch (error) {
+    await emitImageStep(options.events, options.workspaceId, task, "failed", String(error));
+    throw error;
+  }
+}
+
 function generateContext(contextDir: string): void {
   const root = repoRoot();
   const script = join(root, "packages/workspace-image/scripts/build-context.mjs");
@@ -208,8 +212,8 @@ async function inspectDefaultWorkspaceImage(): Promise<string | undefined> {
   return await imageExists(image) ? image : undefined;
 }
 
-async function ensureBuiltImage(contextDir: string, dockerfile: string, metadata: WorkspaceImageMetadata, kind: BuiltWorkspaceImageKind, options: ResolveWorkspaceImageOptions = {}): Promise<string> {
-  if (await imageExists(metadata.tag)) return metadata.tag;
+async function ensureBuiltImage(contextDir: string, dockerfile: string, metadata: WorkspaceImageMetadata, kind: WorkspaceImageKind, options: ResolveWorkspaceImageOptions = {}): Promise<string> {
+  if (process.env.ATELIER_WORKSPACE_IMAGE_NO_CACHE !== "1" && await imageExists(metadata.tag)) return metadata.tag;
   const task = startBuildTask(metadata.tag, metadata.modules, kind, dockerfile, contextDir, options);
   await waitForBuildTask(task, options);
   return metadata.tag;
@@ -221,6 +225,17 @@ async function resolveDefaultWorkspaceImage(options: ResolveWorkspaceImageOption
   const descriptor = await defaultWorkspaceImageDescriptor();
   if (!descriptor.build) {
     await pullImage(descriptor.image, options);
+    return descriptor.image;
+  }
+  // Generated defaults are content-tagged. Both the dev launcher and its server
+  // must reuse an existing local tag instead of independently solving the same image.
+  if (process.env.ATELIER_WORKSPACE_IMAGE_NO_CACHE !== "1" && await imageExists(descriptor.image)) return descriptor.image;
+  const connection = await readDockerRuntimeConnection();
+  if (connection?.buildServices) {
+    const { contextDir, metadata } = descriptor.build;
+    const dockerfile = join(contextDir, "Dockerfile");
+    await runSharedImageBuild({ kind: "default", connection, sourcePath: contextDir, dockerfile, originalDockerfile: dockerfile, tag: metadata.tag }, metadata, options);
+    // Preserve the generated content tag used by subsequent builds.
     return descriptor.image;
   }
   return await ensureBuiltImage(descriptor.build.contextDir, join(descriptor.build.contextDir, "Dockerfile"), descriptor.build.metadata, "default", options);
@@ -307,97 +322,9 @@ async function tagAtelierWorkspaceBase(baseImage: string): Promise<void> {
   if (result.exitCode !== 0) throw new Error(result.stderr.trim() || `docker tag ${baseImage} atelier-workspace failed`);
 }
 
-function uniqueStrings(values: string[]): string[] { return [...new Set(values)]; }
-
-function normalizedPreloadSpecs(specs: string[]): string[] {
-  return uniqueStrings(specs.map((spec) => {
-    const trimmed = spec.trim();
-    if (!trimmed) throw new Error("Docker image preload specs must be non-empty strings");
-    return trimmed;
-  }));
-}
-
-function mergeResolvedPreloadImages(images: ResolvedDockerImagePreload["images"]): ResolvedDockerImagePreload {
-  const merged = new Map<string, ResolvedDockerImagePreload["images"][number]>();
-  for (const image of images) {
-    const key = `${image.sourceRef}\0${image.imageId}`;
-    const existing = merged.get(key);
-    if (!existing) merged.set(key, image);
-    else {
-      existing.aliases = uniqueStrings([...existing.aliases, ...image.aliases]);
-      if (image.spec === defaultAtelierWorkspaceImageSpecifier) existing.spec = image.spec;
-    }
-  }
-  const resolvedImages = [...merged.values()];
-  return { refs: uniqueStrings(resolvedImages.flatMap((image) => [image.sourceRef, ...image.aliases])), images: resolvedImages };
-}
-
-export async function dockerImageId(ref: string): Promise<string> {
+async function dockerImageId(ref: string): Promise<string> {
   const inspected = await requireDocker(["image", "inspect", "--format", "{{.Id}}", ref]);
   return inspected.stdout.trim();
-}
-
-function dockerRefTag(ref: string): string | undefined {
-  const slash = ref.lastIndexOf("/");
-  const colon = ref.lastIndexOf(":");
-  return colon > slash ? ref.slice(colon + 1) : undefined;
-}
-
-export function defaultWorkspaceImageLocalAlias(defaultImage: string): string | undefined {
-  const tag = dockerRefTag(defaultImage);
-  return tag && /^[a-f0-9]{16}$/.test(tag) ? `atelier-workspace:${tag}` : undefined;
-}
-
-async function ensureOuterImage(ref: string, options: Pick<ResolveWorkspaceImageOptions, "events" | "workspaceId">): Promise<void> {
-  if (await imageExists(ref)) return;
-  const platform = await dockerServerPlatform();
-  const pulled = await dockerImageStoreQueue.run({
-    label: `Pulling nested Docker image ${ref}`,
-    onWait: workspaceImageStoreWaitReporter({ events: options.events, workspaceId: options.workspaceId, parentId: "workspace.docker-images" }),
-  }, () => runDocker(["pull", "--platform", platform, ref]));
-  if (pulled.exitCode !== 0) throw new Error(pulled.stderr.trim() || `docker pull ${ref} failed`);
-}
-
-interface DockerImagePreloadOptions { specs: string[]; workspaceResolution: WorkspaceImageResolution; events?: AtelierEventBus; workspaceId?: string }
-
-async function dockerImagePreload(options: DockerImagePreloadOptions, mode: "materialize"): Promise<ResolvedDockerImagePreload>;
-async function dockerImagePreload(options: DockerImagePreloadOptions, mode: "inspect"): Promise<ResolvedDockerImagePreload | undefined>;
-async function dockerImagePreload(options: DockerImagePreloadOptions, mode: "materialize" | "inspect"): Promise<ResolvedDockerImagePreload | undefined> {
-  const specs = normalizedPreloadSpecs(options.specs);
-  const images: ResolvedDockerImagePreload["images"] = [];
-  for (const spec of specs) {
-    const sourceRef = spec === defaultAtelierWorkspaceImageSpecifier ? options.workspaceResolution.defaultImage : spec;
-    if (mode === "materialize") await ensureOuterImage(sourceRef, options);
-    else if (!await imageExists(sourceRef)) return undefined;
-    const aliases: string[] = [];
-    if (spec === defaultAtelierWorkspaceImageSpecifier) {
-      const alias = defaultWorkspaceImageLocalAlias(sourceRef);
-      if (alias && alias !== sourceRef) {
-        if (mode === "materialize") await requireDocker(["tag", sourceRef, alias]);
-        aliases.push(alias);
-      }
-    }
-    images.push({ spec, sourceRef, imageId: await dockerImageId(sourceRef), aliases });
-  }
-  return mergeResolvedPreloadImages(images);
-}
-
-export async function resolveDockerImagePreload(options: DockerImagePreloadOptions): Promise<ResolvedDockerImagePreload> {
-  return await dockerImagePreload(options, "materialize");
-}
-
-async function inspectDockerImagePreload(options: DockerImagePreloadOptions): Promise<ResolvedDockerImagePreload | undefined> {
-  return await dockerImagePreload(options, "inspect");
-}
-
-export function dockerImagePreloadVerificationInitScript(refs: string[]): string {
-  const quoted = refs.map(shellQuote).join(" ");
-  return `for ref in ${quoted}; do docker image inspect "$ref" >/dev/null || { echo "preloaded Docker image is missing: $ref" >&2; exit 1; }; done`;
-}
-
-export async function prepareWorkspaceImageCarrier(options: { resolution: WorkspaceImageResolution; platform: string; preload: ResolvedDockerImagePreload; events?: AtelierEventBus; workspaceId?: string; onProgress?: (message: string) => void | Promise<void> }): Promise<WorkspaceImageCarrierResolution> {
-  const carrier = await buildWorkspaceImageCarrier({ baseImage: options.resolution.image, baseIdentity: await dockerImageId(options.resolution.image), platform: options.platform, preload: options.preload, events: options.events, workspaceId: options.workspaceId, onProgress: options.onProgress });
-  return { image: carrier.image, key: carrier.key, path: carrier.kind, initScripts: [dockerImagePreloadVerificationInitScript(options.preload.refs)] };
 }
 
 export async function workspaceDockerfile(sourcePath: string, override?: string): Promise<string> {
@@ -409,45 +336,43 @@ export async function workspaceDockerfile(sourcePath: string, override?: string)
   return path;
 }
 
-async function inspectWorkspaceImageResolution(options: Pick<ResolveWorkspaceImageOptions, "sourcePath" | "dockerfile"> = {}): Promise<WorkspaceImageResolution | undefined> {
+async function inspectWorkspaceImageReference(options: Pick<ResolveWorkspaceImageOptions, "sourcePath" | "dockerfile"> = {}): Promise<string | undefined> {
   const baseImage = await inspectDefaultWorkspaceImage();
   if (!baseImage) return undefined;
-  if (!options.sourcePath) return { image: baseImage, defaultImage: baseImage };
+  if (!options.sourcePath) return baseImage;
 
   const dockerfile = await workspaceDockerfile(options.sourcePath, options.dockerfile);
-  if (!(await Bun.file(dockerfile).exists())) return { image: baseImage, defaultImage: baseImage };
+  if (!(await Bun.file(dockerfile).exists())) return baseImage;
 
   const metadata = await repoWorkspaceImageMetadata(dockerfile, baseImage);
-  return await imageExists(metadata.tag) ? { image: metadata.tag, defaultImage: baseImage } : undefined;
+  if ((await readDockerRuntimeConnection())?.buildServices) metadata.tag = sharedWorkspaceImageTag(metadata.tag, options.sourcePath);
+  return await imageExists(metadata.tag) ? metadata.tag : undefined;
 }
 
-export async function inspectWorkspaceImage(options: { sourcePath?: string; dockerfile?: string; preloadImages?: string[] } = {}): Promise<string | undefined> {
-  const resolution = await inspectWorkspaceImageResolution(options);
-  if (!resolution) return undefined;
-  if (!options.preloadImages?.length) return await dockerImageId(resolution.image);
-
-  const platform = await nativeLinuxDockerPlatform();
-  if (!platform) return await dockerImageId(resolution.image);
-  const preload = await inspectDockerImagePreload({ specs: options.preloadImages, workspaceResolution: resolution });
-  if (!preload) return undefined;
-  const carrier = await findWorkspaceImageCarrier({ baseIdentity: await dockerImageId(resolution.image), platform, preload });
-  return carrier ? await dockerImageId(carrier) : undefined;
-}
-
-export async function resolveWorkspaceImageResolution(options: ResolveWorkspaceImageOptions = {}): Promise<WorkspaceImageResolution> {
-  const baseImage = await ensureDefaultWorkspaceImage();
-  if (!options.sourcePath) return { image: baseImage, defaultImage: baseImage };
-
-  const dockerfile = await workspaceDockerfile(options.sourcePath, options.dockerfile);
-  if (!(await Bun.file(dockerfile).exists())) return { image: baseImage, defaultImage: baseImage };
-
-  await tagAtelierWorkspaceBase(baseImage);
-  const metadata = await repoWorkspaceImageMetadata(dockerfile, baseImage);
-  const buildDockerfile = await optimizedRepoDockerfile(options.sourcePath, dockerfile);
-  const image = await ensureBuiltImage(options.sourcePath, buildDockerfile, metadata, "repository", options);
-  return { image, defaultImage: baseImage };
+export async function inspectWorkspaceImage(options: Pick<ResolveWorkspaceImageOptions, "sourcePath" | "dockerfile"> = {}): Promise<string | undefined> {
+  const image = await inspectWorkspaceImageReference(options);
+  return image ? await dockerImageId(image) : undefined;
 }
 
 export async function resolveWorkspaceImage(options: ResolveWorkspaceImageOptions = {}): Promise<string> {
-  return (await resolveWorkspaceImageResolution(options)).image;
+  const baseImage = await ensureDefaultWorkspaceImage();
+  if (!options.sourcePath) return baseImage;
+
+  const dockerfile = await workspaceDockerfile(options.sourcePath, options.dockerfile);
+  if (!(await Bun.file(dockerfile).exists())) return baseImage;
+
+  const metadata = await repoWorkspaceImageMetadata(dockerfile, baseImage);
+  const buildDockerfile = await optimizedRepoDockerfile(options.sourcePath, dockerfile);
+  const connection = await readDockerRuntimeConnection();
+  if (connection?.buildServices) {
+    const sourcePath = options.sourcePath;
+    metadata.tag = sharedWorkspaceImageTag(metadata.tag, sourcePath);
+    const image = await runSharedImageBuild({ kind: "repository", connection, sourcePath, dockerfile: buildDockerfile, originalDockerfile: dockerfile, baseImage, tag: metadata.tag }, metadata, options);
+    return image;
+  }
+  await tagAtelierWorkspaceBase(baseImage);
+  const image = await ensureBuiltImage(options.sourcePath, buildDockerfile, metadata, "repository", options);
+  return image;
 }
+
+export { readBuildCacheStorage, type BuildCacheStorage } from "./build-cache.ts";

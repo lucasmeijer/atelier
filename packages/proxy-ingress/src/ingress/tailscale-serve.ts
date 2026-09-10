@@ -37,7 +37,7 @@ export interface TailscaleOriginPublisherOptions {
 
 export type TailscaleServeConfig = JsonObject;
 
-type ServeConfigMutator = (config: TailscaleServeConfig) => boolean;
+type ServeConfigMutator = (config: TailscaleServeConfig) => boolean | Promise<boolean>;
 
 const withTailscaleServeLock = createProcessFileLock({
   label: "Tailscale Serve config",
@@ -162,7 +162,7 @@ export function syncTailscaleServePortConfig(config: TailscaleServeConfig, optio
 export async function mutateTailscaleServeConfig(socketPath: string, mutator: ServeConfigMutator): Promise<void> {
   await withTailscaleServeLock(async () => {
     const config = await readTailscaleServeConfig(socketPath);
-    if (!mutator(config)) return;
+    if (!await mutator(config)) return;
     await writeTailscaleServeConfig(socketPath, config);
   });
 }
@@ -198,6 +198,7 @@ export async function tailscaleLocalApiRequest(socketPath: string, method: "GET"
         else resolve(text);
       });
     });
+    req.setTimeout(5_000, () => req.destroy(new Error(`Tailscale local API ${method} ${path} timed out`)));
     req.on("error", reject);
     if (body !== undefined) req.write(body);
     req.end();

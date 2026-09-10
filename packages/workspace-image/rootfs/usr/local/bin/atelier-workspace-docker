@@ -1,0 +1,87 @@
+#!/bin/bash
+# Own the private daemons and workspace command as one process lifetime.
+set -euo pipefail
+# Private backing must be a creator-owned volume, never the outer writable layer.
+if ! mountpoint -q /var/lib/atelier-private-docker; then
+  echo 'private Docker storage volume is not mounted' >&2
+  exit 1
+fi
+# Delegate cgroup v2 controllers before either private daemon creates children.
+prepare_cgroups() {
+  mkdir -p /sys/fs/cgroup/init
+  # Startup readiness probes can create docker-exec processes in the root group.
+  # Retry that race, but fail rather than waiting indefinitely for delegation.
+  for ((attempt=0; attempt<100; attempt++)); do
+    mapfile -t initial_pids < /sys/fs/cgroup/cgroup.procs
+    for pid in "${initial_pids[@]}"; do
+      if ! echo "$pid" > /sys/fs/cgroup/init/cgroup.procs; then
+        if [ -e "/proc/$pid" ]; then return 1; fi
+      fi
+    done
+    read -ra controllers < /sys/fs/cgroup/cgroup.controllers
+    if printf '+%s ' "${controllers[@]}" > /sys/fs/cgroup/cgroup.subtree_control; then return; fi
+    sleep .01
+  done
+  echo 'could not delegate cgroup v2 controllers' >&2
+  return 1
+}
+prepare_cgroups
+mount --make-rshared /
+mkdir -p /run/containerd /run/docker /var/lib/atelier-private-docker/{snapshots,containerd,docker} /.atelier
+snapshotter_pid='' containerd_pid='' docker_pid='' workspace_pid=''
+# Called by the EXIT trap.
+# shellcheck disable=SC2329
+cleanup() {
+  trap - EXIT TERM INT
+  for pid in "$workspace_pid" "$docker_pid"; do
+    if [ -n "$pid" ] && kill -0 "$pid" 2>/dev/null; then kill -TERM "$pid"; fi
+  done
+  for pid in "$workspace_pid" "$docker_pid"; do
+    if [ -n "$pid" ]; then wait "$pid" || true; fi
+  done
+  if [ -n "$containerd_pid" ] && kill -0 "$containerd_pid" 2>/dev/null; then kill -TERM "$containerd_pid"; fi
+  if [ -n "$containerd_pid" ]; then wait "$containerd_pid" || true; fi
+  if [ -n "$snapshotter_pid" ] && kill -0 "$snapshotter_pid" 2>/dev/null; then kill -TERM "$snapshotter_pid"; fi
+  if [ -n "$snapshotter_pid" ]; then wait "$snapshotter_pid" || true; fi
+}
+trap 'cleanup' EXIT
+trap 'exit 143' TERM
+trap 'exit 130' INT
+IFS= read -r shared_socket < /.atelier/shared-snapshotter-socket
+atelier-snapshotter --local-socket /run/containerd/atelier-snapshotter.sock --local-root /var/lib/atelier-private-docker/snapshots --shared-socket "$shared_socket" > /.atelier/snapshotter.log 2>&1 &
+snapshotter_pid=$!
+containerd --config /.atelier/containerd.toml > /.atelier/containerd.log 2>&1 &
+containerd_pid=$!
+for _ in $(seq 1 300); do
+  kill -0 "$snapshotter_pid" "$containerd_pid"
+  if ctr --address /run/containerd/containerd.sock version >/dev/null 2>&1; then break; fi
+  sleep .1
+done
+ctr --address /run/containerd/containerd.sock version >/dev/null
+# An empty listing can be served from private metadata without contacting the
+# adapter. Prepare/remove proves local writable snapshot allocation is available.
+probe="atelier-startup-$(cat /proc/sys/kernel/random/uuid)"
+ctr --address /run/containerd/containerd.sock --timeout 10s --namespace moby snapshots --snapshotter shared-overlay prepare "$probe" >/dev/null
+ctr --address /run/containerd/containerd.sock --timeout 10s --namespace moby snapshots --snapshotter shared-overlay remove "$probe" >/dev/null
+dockerd --config-file /.atelier/docker-daemon.json > /.atelier/dockerd.log 2>&1 &
+docker_pid=$!
+for _ in $(seq 1 300); do
+  kill -0 "$snapshotter_pid" "$containerd_pid" "$docker_pid"
+  if docker info >/dev/null 2>&1; then break; fi
+  sleep .1
+done
+driver="$(docker info --format '{{.Driver}}')"
+[ "$driver" = shared-overlay ] || { echo "unexpected Docker storage driver: $driver" >&2; exit 1; }
+"$@" &
+workspace_pid=$!
+set +e
+wait -n "$snapshotter_pid" "$containerd_pid" "$docker_pid" "$workspace_pid"
+status=$?
+set -e
+# A daemon exiting successfully is still a failed workspace runtime.
+if kill -0 "$workspace_pid" 2>/dev/null; then
+  echo 'private Docker runtime exited while workspace was running' >&2
+  cat /.atelier/snapshotter.log /.atelier/containerd.log /.atelier/dockerd.log >&2
+  exit 1
+fi
+exit "$status"

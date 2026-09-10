@@ -56,8 +56,6 @@ const workspaceProvisionStepRanks = new Map([
   "workspace.source",
   "workspace.plan",
   "workspace.image",
-  "workspace.docker-images",
-  "workspace.image-carrier",
   "workspace.container",
   "workspace.startup",
   "workspace.gateway",

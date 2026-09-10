@@ -94,6 +94,10 @@
         "@hotwired/stimulus": "3.2.2",
       },
     },
+    "packages/docker-snapshotter": {
+      "name": "@atelier/docker-snapshotter",
+      "version": "0.0.0",
+    },
     "packages/desktop": {
       "name": "@atelier/desktop",
       "dependencies": {
@@ -316,6 +320,8 @@
     "@atelier/core": ["@atelier/core@workspace:packages/core"],
 
     "@atelier/design-system": ["@atelier/design-system@workspace:packages/design-system"],
+
+    "@atelier/docker-snapshotter": ["@atelier/docker-snapshotter@workspace:packages/docker-snapshotter"],
 
     "@atelier/desktop": ["@atelier/desktop@workspace:packages/desktop"],
 

@@ -1,15 +1,14 @@
+import type { SharedDockerRuntime } from "./shared-docker.ts";
 export type { WorkspaceCreationContext } from "@atelier/shared";
 
 export interface WorkspaceInitInstructionMap {}
 
 export type WorkspaceInitInstruction = WorkspaceInitInstructionMap[keyof WorkspaceInitInstructionMap];
 
-export interface WorkspaceDockerMount {
-  type: "bind" | "volume";
-  source: string;
+export type WorkspaceDockerMount = ({ type: "bind"; source: string } | { type: "volume"; source?: string }) & {
   target: string;
   readonly?: boolean;
-}
+};
 
 export interface WorkspaceDockerContainerFile {
   source: string;
@@ -18,6 +17,7 @@ export interface WorkspaceDockerContainerFile {
 
 export interface WorkspaceDockerPlan {
   image?: string;
+  sharedDocker?: SharedDockerRuntime;
   labels: Record<string, string>;
   env: Record<string, string>;
   mounts: WorkspaceDockerMount[];
@@ -26,5 +26,4 @@ export interface WorkspaceDockerPlan {
   initScripts: string[];
   containerFiles: WorkspaceDockerContainerFile[];
   cleanup: Array<() => Promise<void> | void>;
-  preloadDockerImages?: string[];
 }
