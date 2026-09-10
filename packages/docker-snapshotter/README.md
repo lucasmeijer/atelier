@@ -29,9 +29,12 @@ runtimes with that installation; existing workspace stores are not converted.
   needs no host Docker configuration or installer rerun for an existing owned
   installation. Recreate older workspaces with the current image to receive the
   MagicDNS connection, DNS settings and private Docker trust configuration.
-- Workspace creation records a fresh client identity before registering it. The
-  same request is idempotent; retirement cannot be undone by a late registration.
-  Deletion and failed provisioning retire their client after removing the container.
+- Workspace creation records a fresh client identity before registering it. Nested
+  descriptors also identify their creator; registration persists immutable parentage.
+  The same request is idempotent; retirement cannot be undone by a late registration.
+  Deletion and failed provisioning remove the container with `docker rm --volumes`,
+  then retire its client subtree. The entire subtree is tombstoned before cleanup,
+  so interrupted retirement cannot restore descendant sockets or unfinished uploads.
   Cleanup errors preserve the record rather than losing track of retained data.
 - Unix administrative access is trusted within the mounts supplied to workspaces,
   including users with different host-aligned UIDs. It is not a hostile-tenant seam.
@@ -71,12 +74,26 @@ runtimes with that installation; existing workspace stores are not converted.
   directly from the inherited registry address, with their requested aliases restored.
   Explicit upstream digest references retain their original pull path so their
   manifest identity is not changed by platform-filtered republication.
-- Private containerd instances use a supervised workspace-local snapshot coordinator
-  and installation-owned content and diff services
-  through their existing client socket. Image names, metadata, containers and
-  volumes remain private. Immutable compressed blobs are retained centrally;
-  client pruning cannot delete another client's export data. Unfinished uploads
-  are client-scoped and reclaimed on retirement, including interrupted retirement.
+- Private containerd instances use a supervised workspace-local snapshotter and
+  installation-owned content and diff services through their existing client socket.
+  The creator Docker daemon supplies an anonymous volume at
+  `/var/lib/atelier-private-docker`: Docker data, containerd metadata and private
+  snapshot backing live in its `docker`, `containerd` and `snapshots` directories.
+  Parking preserves this volume; deleting the workspace with `--volumes` removes
+  it, including deeper nested Docker volumes and writable snapshots. Unrelated
+  workspaces and installation-owned image backing remain intact.
+- The local snapshotter combines private uppers and private committed ancestors
+  (including Docker init snapshots) with read-only installation image directories.
+  It persists shared ancestry in the upstream OverlayFS backend's own transaction,
+  not a second alias journal. Mount specifications are executed by the workspace
+  runtime; there are no installation-owned per-container execution mounts.
+  Shared image resolution allocates no temporary snapshots. Private image commits
+  and further descendants remain local until acquired through the shared image path.
+- Image names, metadata, containers and volumes remain private. Immutable compressed
+  blobs are retained centrally; client pruning cannot delete another client's export
+  data. Unfinished uploads are client-scoped and reclaimed on subtree retirement,
+  including interrupted retirement. The shared backing bind is read-only inside
+  workspaces; central image extraction runs in the owner's writable namespace.
 - On verified warm hits, the local coordinator registers the exact requested
   compressed blob through the running private containerd, protects it with active
   manifest leases, then asks the shared snapshotter to adopt retained backing.
@@ -85,8 +102,9 @@ runtimes with that installation; existing workspace stores are not converted.
   and retirement under the shared lock.
 - Cold or unverified representations retain the ordinary prepare/acquire/apply/
   commit path. The shared diff service can still skip extraction after content
-  acquisition. Content/diff services, shared alias ownership and recovery remain
-  installation-owned; writable snapshots remain private to each client.
+  acquisition. Content/diff services, shared image aliases and their recovery remain
+  installation-owned. Private filesystem diff generation and application run through
+  containerd's local walking differ, including Docker commit and export.
 - Published build outputs can be reused and preloaded by metadata-only private
   clients without publishing their compressed blobs again. Concurrent
   same-process publications share one push and temporary-tag lifetime.
@@ -117,13 +135,24 @@ runtimes with that installation; existing workspace stores are not converted.
 
 The [performance scenario matrix](PERFORMANCE.md) defines the corresponding
 measurement boundaries and metrics, including concurrent warm creation. The
-local-coordinator comparison measured 23% lower warm
+historical local-coordinator comparison measured 23% lower warm
 creation latency and 57% lower eight-way per-client latency versus the portable
-physical-snapshot path, with zero temporary warm image snapshots.
+physical-snapshot path, with zero temporary warm image snapshots. These numbers
+predate volume-backed private snapshots and are not measurements of that change.
 
 ## Current evidence and limits
 
-The Linux ARM64 experiment exercised cross-workspace reuse, private writes,
+The volume-backed hybrid implementation was exercised with real Docker root
+filesystems on an isolated Linux amd64/ext4 runtime using the production snapshotter
+and workspace supervisor/configuration. Three private clients reused the same 20
+immutable backings. Three-level private writes, active middle-container deletion
+(including physical backing and mount-reference checks), park/resume, pruning,
+local/shared snapshotter SIGKILL recovery, two-generation private image commits,
+registry publication, export and disconnected save/load/run passed. Whiteouts and
+non-root file ownership survived. This was not a full installed Atelier deployment,
+a production network test, an ARM64 hybrid runtime test or a performance benchmark.
+
+The earlier Linux ARM64 experiment exercised cross-workspace reuse, private writes,
 workspace-local binds and ports, deletion and pruning with overlapping owners,
 park/resume, graceful shared-runtime restart, concurrent cold pulls, and a nested
 workspace with its own Docker daemon. Warm real-image pulls transferred only
@@ -169,7 +198,8 @@ Other limits:
   Recovery does not repair corruption left by older, unjournaled versions or
   guarantee application filesystem writes survive host power loss.
 - Existing experimental workspace stores/configurations are not migrated. Recreate
-  those workspaces with the new default image to select the local snapshot proxy.
+  those workspaces with the new default image to select volume-backed private
+  snapshots and forward creator identities for nested retirement.
   The new installation binary must be deployed with the new workspace image. This does not repair
   incomplete archives or image metadata produced by the older early-reuse path.
 - The existing image-outdated check does not detect arbitrary COPY-input edits;
@@ -198,6 +228,11 @@ go build -o dist/docker-snapshotter .
 
 These non-UI tests cover scoped reuse, competing cold commits, private data
 reclamation, exclusive ownership, readiness and restart of the adapter executable.
+Hybrid tests cover mixed private/shared ancestry, namespace isolation, private init
+and image commits, views, parent-removal guards, transactional ancestry preservation,
+root ownership and pending-initialization recovery. Shared-backing tests verify
+read-only resolution without allocations; lineage tests verify subtree tombstones
+before cleanup and resumed retirement after interruption.
 Content tests cover retained blob reads after client GC/restart, independent upload
 references and retirement. Diff tests require matching media type, content and
 parent chain, and verify warm reuse returns the complete uncompressed descriptor

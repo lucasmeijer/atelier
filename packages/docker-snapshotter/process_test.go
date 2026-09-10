@@ -58,6 +58,7 @@ func TestDaemonReadinessAndRestoredClients(t *testing.T) {
 	start := func(identity string, extra ...string) *exec.Cmd {
 		args := append([]string{"run-snapshotter-test-process", "--root", filepath.Join(root, "store"), "--socket-dir", socketDir, "--instance-id", identity}, extra...)
 		cmd := exec.Command(exe, args...)
+		cmd.Stderr = os.Stderr
 		if err := cmd.Start(); err != nil {
 			t.Fatal(err)
 		}
@@ -112,7 +113,7 @@ func TestDaemonReadinessAndRestoredClients(t *testing.T) {
 	if !strings.Contains(string(descriptor), `"registryAddress":"atelier.tailnet.ts.net:42000"`) || !strings.Contains(string(descriptor), filepath.Join(socketDir, "buildkit.sock")) {
 		t.Fatal("missing direct build service connection", string(descriptor))
 	}
-	for _, id := range []string{"a", "b", "b"} {
+	for _, id := range []string{"a", "b", "b", "child&parent=a", "grandchild&parent=child", "child&parent=a"} {
 		req, err := http.NewRequest(http.MethodPost, "http://localhost/register?client="+id, nil)
 		if err != nil {
 			t.Fatal(err)
@@ -159,7 +160,7 @@ func TestDaemonReadinessAndRestoredClients(t *testing.T) {
 	if err := ca.Delete(ctx, blob.Digest); err != nil {
 		t.Fatal(err)
 	}
-	for _, id := range []string{"a", "b"} {
+	for _, id := range []string{"a", "b", "child", "grandchild"} {
 		w, err := contentClient(id).Writer(ctx, content.WithRef("interrupted"))
 		if err != nil {
 			t.Fatal(err)
@@ -184,8 +185,10 @@ func TestDaemonReadinessAndRestoredClients(t *testing.T) {
 	if response.StatusCode != http.StatusNoContent {
 		t.Fatal(response.Status)
 	}
-	if _, err := os.Stat(filepath.Join(socketDir, "a.sock")); !os.IsNotExist(err) {
-		t.Fatal("retired socket remains", err)
+	for _, id := range []string{"a", "child", "grandchild"} {
+		if _, err := os.Stat(filepath.Join(socketDir, id+".sock")); !os.IsNotExist(err) {
+			t.Fatal("retired subtree socket remains", id, err)
+		}
 	}
 	reuse, err := http.NewRequest(http.MethodPost, "http://localhost/register?client=a", nil)
 	if err != nil {
@@ -223,8 +226,10 @@ func TestDaemonReadinessAndRestoredClients(t *testing.T) {
 	if _, err := os.Stat(filepath.Join(socketDir, "b.sock")); err != nil {
 		t.Fatal("live client was not restored:", err)
 	}
-	if _, err := os.Stat(filepath.Join(socketDir, "a.sock")); !os.IsNotExist(err) {
-		t.Fatal("retired client socket restored:", err)
+	for _, id := range []string{"a", "child", "grandchild"} {
+		if _, err := os.Stat(filepath.Join(socketDir, id+".sock")); !os.IsNotExist(err) {
+			t.Fatal("retired subtree client socket restored:", id, err)
+		}
 	}
 	cb := contentClient("b")
 	data, err := content.ReadBlob(ctx, cb, blob)
@@ -239,9 +244,11 @@ func TestDaemonReadinessAndRestoredClients(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	statuses, err = (&clientContent{Store: allBlobs, prefix: "a/"}).ListStatuses(ctx)
-	if err != nil || len(statuses) != 0 {
-		t.Fatalf("retired upload retained: %+v %v", statuses, err)
+	for _, id := range []string{"a", "child", "grandchild"} {
+		statuses, err = (&clientContent{Store: allBlobs, prefix: id + "/"}).ListStatuses(ctx)
+		if err != nil || len(statuses) != 0 {
+			t.Fatalf("retired subtree upload retained for %s: %+v %v", id, statuses, err)
+		}
 	}
 	stop(restarted)
 }
@@ -257,9 +264,10 @@ func TestLocalCoordinatorBootstrapsWithoutContainerdAndOwnsListener(t *testing.T
 		t.Fatal(err)
 	}
 	socket := filepath.Join(root, "local.sock")
-	args := []string{"run-snapshotter-test-process", "--local-socket", socket, "--shared-socket", filepath.Join(root, "shared-not-started.sock"), "--containerd-socket", filepath.Join(root, "containerd-not-started.sock")}
+	args := []string{"run-snapshotter-test-process", "--local-root", filepath.Join(root, "private"), "--local-socket", socket, "--shared-socket", filepath.Join(root, "shared-not-started.sock"), "--containerd-socket", filepath.Join(root, "containerd-not-started.sock")}
 	start := func() *exec.Cmd {
 		cmd := exec.Command(exe, args...)
+		cmd.Stderr = os.Stderr
 		if err := cmd.Start(); err != nil {
 			t.Fatal(err)
 		}

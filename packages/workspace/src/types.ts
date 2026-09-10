@@ -5,12 +5,10 @@ export interface WorkspaceInitInstructionMap {}
 
 export type WorkspaceInitInstruction = WorkspaceInitInstructionMap[keyof WorkspaceInitInstructionMap];
 
-export interface WorkspaceDockerMount {
-  type: "bind" | "volume";
-  source: string;
+export type WorkspaceDockerMount = ({ type: "bind"; source: string } | { type: "volume"; source?: string }) & {
   target: string;
   readonly?: boolean;
-}
+};
 
 export interface WorkspaceDockerContainerFile {
   source: string;

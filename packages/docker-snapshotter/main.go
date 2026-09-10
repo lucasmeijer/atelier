@@ -47,6 +47,7 @@ type State struct {
 	Clients  map[string]map[string]Alias
 	Chains   map[string]Chain
 	Retired  map[string]bool
+	Parents  map[string]string `json:",omitempty"`
 }
 type Store struct {
 	sync.Mutex
@@ -395,7 +396,8 @@ func lockStore(root string) (*os.File, error) {
 }
 
 func main() {
-	localSocket := flag.String("local-socket", "", "run workspace-local coordinator on this socket")
+	localSocket := flag.String("local-socket", "", "run workspace-local snapshotter on this socket")
+	localRoot := flag.String("local-root", "", "workspace volume directory for private snapshots")
 	sharedSocket := flag.String("shared-socket", "", "installation client socket for local coordinator")
 	containerdSocket := flag.String("containerd-socket", "/run/containerd/containerd.sock", "private containerd callback socket")
 	root := flag.String("root", "", "absolute backend store")
@@ -407,12 +409,12 @@ func main() {
 	flag.Parse()
 	slog.SetDefault(slog.New(slog.NewJSONHandler(os.Stdout, nil)))
 	if *localSocket != "" {
-		for _, path := range []string{*localSocket, *sharedSocket, *containerdSocket} {
+		for _, path := range []string{*localSocket, *sharedSocket, *containerdSocket, *localRoot} {
 			if !filepath.IsAbs(path) {
-				panic("absolute coordinator socket paths required")
+				panic("absolute local snapshotter socket and storage paths required")
 			}
 		}
-		runLocal(*sharedSocket, *containerdSocket, *localSocket)
+		runLocal(*sharedSocket, *containerdSocket, *localSocket, *localRoot)
 		return
 	}
 	if !filepath.IsAbs(*root) || !filepath.IsAbs(*dir) {
@@ -423,10 +425,10 @@ func main() {
 	owner, e := lockStore(*root)
 	must(e)
 	defer owner.Close()
-	backend, e := overlay.NewSnapshotter(filepath.Join(*root, "overlayfs"))
+	backend, e := overlay.NewSnapshotter(filepath.Join(*root, "overlayfs"), overlay.WithUpperdirLabel)
 	must(e)
 	defer backend.Close()
-	s := &Store{backend: backend, path: filepath.Join(*root, "aliases.json"), state: State{Clients: map[string]map[string]Alias{}, Chains: map[string]Chain{}, Retired: map[string]bool{}}}
+	s := &Store{backend: backend, path: filepath.Join(*root, "aliases.json"), state: State{Clients: map[string]map[string]Alias{}, Chains: map[string]Chain{}, Retired: map[string]bool{}, Parents: map[string]string{}}}
 	if b, e := os.ReadFile(s.path); e == nil {
 		must(json.Unmarshal(b, &s.state))
 	} else if !os.IsNotExist(e) {
@@ -453,20 +455,17 @@ func main() {
 			clientIDs[id] = true
 		}
 	}
-	register := func(id string) error {
+	register := func(id, parent string) error {
 		if !clientPattern.MatchString(id) || len(filepath.Join(*dir, id+".sock")) >= 108 {
 			return errdefs.ErrInvalidArgument
 		}
 		s.Lock()
 		defer s.Unlock()
-		if s.state.Retired[id] {
-			return errdefs.ErrFailedPrecondition
+		if err := s.claimClient(id, parent); err != nil {
+			return err
 		}
 		if servers[id] != nil {
 			return nil
-		}
-		if s.state.Clients[id] == nil {
-			s.state.Clients[id] = map[string]Alias{}
 		}
 		clientID := id
 		g := grpc.NewServer(grpc.WaitForHandlers(true), grpc.UnaryInterceptor(func(ctx context.Context, req any, info *grpc.UnaryServerInfo, h grpc.UnaryHandler) (any, error) {
@@ -482,6 +481,7 @@ func main() {
 		}))
 		api.RegisterSnapshotsServer(g, snapshotservice.FromSnapshotter(&Client{s, id}))
 		registerWarm(g, &sharedWarm{client: &Client{s, id}, blobs: blobs})
+		registerImageLayers(g, &Client{s, id})
 		contentapi.RegisterContentServer(g, contentserver.New(&clientContent{Store: blobs.Store, prefix: id + "/"}))
 		diffapi.RegisterDiffServer(g, &sharedDiff{client: &Client{s, id}, blobs: blobs})
 		l := listen(filepath.Join(*dir, id+".sock"))
@@ -497,7 +497,7 @@ func main() {
 	}
 
 	for id := range clientIDs {
-		must(register(id))
+		must(register(id, s.state.Parents[id]))
 	}
 	s.save()
 	mux := http.NewServeMux()
@@ -513,7 +513,7 @@ func main() {
 	mux.HandleFunc("POST /register", func(w http.ResponseWriter, r *http.Request) {
 		serviceLock.Lock()
 		defer serviceLock.Unlock()
-		if err := register(r.URL.Query().Get("client")); err != nil {
+		if err := register(r.URL.Query().Get("client"), r.URL.Query().Get("parent")); err != nil {
 			status := http.StatusInternalServerError
 			if errdefs.IsInvalidArgument(err) {
 				status = http.StatusBadRequest
@@ -534,17 +534,20 @@ func main() {
 			http.Error(w, "invalid client identity", http.StatusBadRequest)
 			return
 		}
-		if e := s.retire(r.Context(), id); e != nil {
-			http.Error(w, e.Error(), http.StatusInternalServerError)
+		ids, err := s.retireTree(r.Context(), id)
+		if err != nil {
+			http.Error(w, err.Error(), http.StatusInternalServerError)
 			return
 		}
-		if server := servers[id]; server != nil {
-			server.Stop()
-			delete(servers, id)
-		}
-		if e := blobs.retire(r.Context(), id); e != nil {
-			http.Error(w, e.Error(), http.StatusInternalServerError)
-			return
+		for _, client := range ids {
+			if server := servers[client]; server != nil {
+				server.Stop()
+				delete(servers, client)
+			}
+			if err := blobs.retire(r.Context(), client); err != nil {
+				http.Error(w, err.Error(), http.StatusInternalServerError)
+				return
+			}
 		}
 		w.WriteHeader(204)
 	})

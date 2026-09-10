@@ -5,6 +5,7 @@ import (
 	"context"
 	"encoding/json"
 	"net"
+	"os"
 	"path/filepath"
 	"strings"
 	"sync"
@@ -66,7 +67,7 @@ func newLocalFixture(t *testing.T) *localFixture {
 	ctx, cancel := context.WithTimeout(namespaces.WithNamespace(context.Background(), "moby"), 10*time.Second)
 	t.Cleanup(cancel)
 	root := t.TempDir()
-	backend, err := overlay.NewSnapshotter(filepath.Join(root, "overlay"))
+	backend, err := overlay.NewSnapshotter(filepath.Join(root, "overlay"), overlay.WithUpperdirLabel)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -101,9 +102,15 @@ func newLocalFixture(t *testing.T) *localFixture {
 	warm := &sharedWarm{client: &Client{s, "B"}, blobs: blobs}
 	sharedServer := grpc.NewServer()
 	registerWarm(sharedServer, warm)
+	registerImageLayers(sharedServer, warm.client)
 	api.RegisterSnapshotsServer(sharedServer, snapshotservice.FromSnapshotter(warm.client))
 	shared := testRPC(t, sharedServer)
-	local := &localSnapshotter{SnapshotsServer: snapshotservice.FromSnapshotter(proxy.NewSnapshotter(api.NewSnapshotsClient(shared), "shared-overlay")), shared: shared}
+	hybrid, err := newHybridSnapshotter(filepath.Join(root, "private"), proxy.NewSnapshotter(api.NewSnapshotsClient(shared), "shared-overlay"), func(ctx context.Context, key string) ([]string, error) { return resolveSharedLayers(ctx, shared, key) })
+	if err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(func() { hybrid.Close() })
+	local := &localSnapshotter{hybrid: hybrid, SnapshotsServer: snapshotservice.FromSnapshotter(hybrid), shared: shared}
 	localServer := grpc.NewServer()
 	api.RegisterSnapshotsServer(localServer, local)
 	localConn := testRPC(t, localServer)
@@ -172,7 +179,7 @@ func TestLocalWarmRegistersBeforeAdoptionThroughMetadata(t *testing.T) {
 	if err := f.s.retire(f.ctx, "A"); err != nil {
 		t.Fatal(err)
 	}
-	if _, err := f.db.GarbageCollect(f.ctx); err != nil {
+	if _, err := f.db.GarbageCollect(context.Background()); err != nil {
 		t.Fatal(err)
 	}
 	if _, err := f.db.ContentStore().Info(f.ctx, f.desc.Digest); err != nil {
@@ -332,6 +339,7 @@ func (p *pausedContent) Writer(ctx context.Context, opts ...content.WriterOpt) (
 }
 func TestLocalCallbackOverlapsPrivateSnapshotGC(t *testing.T) {
 	f := newLocalFixture(t)
+	sequence := f.s.state.Sequence
 	paused := &pausedContent{Store: f.local.content, entered: make(chan struct{}, 1), release: make(chan struct{})}
 	f.local.content = paused
 	sn := f.db.Snapshotter("shared-overlay")
@@ -352,7 +360,7 @@ func TestLocalCallbackOverlapsPrivateSnapshotGC(t *testing.T) {
 		t.Fatal(err)
 	}
 	gc := make(chan error, 1)
-	go func() { _, err := f.db.GarbageCollect(f.ctx); gc <- err }()
+	go func() { _, err := f.db.GarbageCollect(context.Background()); gc <- err }()
 	close(paused.release)
 	select {
 	case err := <-done:
@@ -369,5 +377,126 @@ func TestLocalCallbackOverlapsPrivateSnapshotGC(t *testing.T) {
 		}
 	case <-f.ctx.Done():
 		t.Fatal("GC deadlocked")
+	}
+	if f.s.state.Sequence != sequence {
+		t.Fatal("private snapshot lifecycle mutated installation backing")
+	}
+}
+
+func TestLocalWarmCannotShadowPrivateSnapshot(t *testing.T) {
+	f := newLocalFixture(t)
+	if _, err := f.local.Prepare(f.ctx, &api.PrepareSnapshotRequest{Key: "private"}); err != nil {
+		t.Fatal(err)
+	}
+	request := &api.PrepareSnapshotRequest{Key: "private", Labels: f.request.Labels}
+	if _, err := f.local.Prepare(f.ctx, request); !errdefs.IsAlreadyExists(errgrpc.ToNative(err)) {
+		t.Fatalf("warm request shadowed private key: %v", err)
+	}
+	if _, err := f.warm.client.Stat(f.ctx, "private"); !errdefs.IsNotFound(err) {
+		t.Fatalf("warm request installed competing shared alias: %v", err)
+	}
+	request = &api.PrepareSnapshotRequest{Key: "invalid", Labels: map[string]string{refLabel: f.target, sharedParentLabel: "forged"}}
+	if _, err := f.local.Prepare(f.ctx, request); !errdefs.IsInvalidArgument(errgrpc.ToNative(err)) {
+		t.Fatalf("warm path accepted reserved labels: %v", err)
+	}
+}
+
+func TestLocalMetadataNamespacesAndBackgroundGC(t *testing.T) {
+	f := newLocalFixture(t)
+	sn := f.db.Snapshotter("shared-overlay")
+	first := f.ctx
+	second := namespaces.WithNamespace(context.Background(), "other")
+	// Namespace isolation belongs to containerd's metadata snapshotter. Its
+	// globally unique backend keys remain usable when GC drops the namespace.
+	roots := map[string]string{"containerd.io/gc.root": "test"}
+	a, err := sn.Prepare(first, "same-name", "", snapshots.WithLabels(roots))
+	if err != nil {
+		t.Fatal(err)
+	}
+	b, err := sn.Prepare(second, "same-name", "", snapshots.WithLabels(roots))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if a[0].Source == b[0].Source {
+		t.Fatal("metadata namespaces shared a private writable directory")
+	}
+	if _, err := sn.Stat(first, "same-name"); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := sn.Stat(second, "same-name"); err != nil {
+		t.Fatal(err)
+	}
+	var backendNames []string
+	if err := f.local.hybrid.Walk(context.Background(), func(_ context.Context, i snapshots.Info) error {
+		backendNames = append(backendNames, i.Name)
+		return nil
+	}); err != nil {
+		t.Fatal(err)
+	}
+	if len(backendNames) != 2 {
+		t.Fatalf("global GC cannot see both namespaces: %v", backendNames)
+	}
+	if err := sn.Remove(first, "same-name"); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := f.db.GarbageCollect(context.Background()); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := os.Stat(a[0].Source); !os.IsNotExist(err) {
+		t.Fatalf("background GC stranded first private upper: %v", err)
+	}
+	if _, err := os.Stat(b[0].Source); err != nil {
+		t.Fatalf("GC removed other namespace private upper: %v", err)
+	}
+	if _, err := sn.Stat(second, "same-name"); err != nil {
+		t.Fatal(err)
+	}
+	if err := sn.Remove(second, "same-name"); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := f.db.GarbageCollect(context.Background()); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := os.Stat(b[0].Source); !os.IsNotExist(err) {
+		t.Fatalf("background GC stranded second private upper: %v", err)
+	}
+	// The supervisor's local startup API probe is also intentionally unnamespaced.
+	if _, err := f.local.Prepare(context.Background(), &api.PrepareSnapshotRequest{Key: "startup-probe"}); err != nil {
+		t.Fatal(err)
+	}
+	if err := f.local.hybrid.Remove(context.Background(), "startup-probe"); err != nil {
+		t.Fatal(err)
+	}
+}
+
+func TestLocalWarmRegistrationCannotRacePrivateOwnership(t *testing.T) {
+	f := newLocalFixture(t)
+	paused := &pausedContent{Store: f.local.content, entered: make(chan struct{}, 1), release: make(chan struct{})}
+	f.local.content = paused
+	done := make(chan error, 1)
+	go func() { _, err := f.local.Prepare(f.ctx, f.request); done <- err }()
+	select {
+	case <-paused.entered:
+	case <-f.ctx.Done():
+		t.Fatal("warm registration never started")
+	}
+	if _, err := f.local.Prepare(f.ctx, &api.PrepareSnapshotRequest{Key: f.request.Key}); err != nil {
+		t.Fatal(err)
+	}
+	close(paused.release)
+	select {
+	case err := <-done:
+		if !errdefs.IsAlreadyExists(errgrpc.ToNative(err)) {
+			t.Fatalf("private owner not respected: %v", err)
+		}
+	case <-f.ctx.Done():
+		t.Fatal("warm adoption deadlocked")
+	}
+	if _, err := f.warm.client.Stat(f.ctx, f.request.Key); !errdefs.IsNotFound(err) {
+		t.Fatalf("warm adoption published competing shared alias: %v", err)
+	}
+	info, err := f.local.hybrid.Stat(f.ctx, f.request.Key)
+	if err != nil || info.Kind != snapshots.KindActive {
+		t.Fatalf("private winner changed: %+v %v", info, err)
 	}
 }

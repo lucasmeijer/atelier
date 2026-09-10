@@ -7,7 +7,6 @@ import (
 	"log/slog"
 	"os"
 	"os/signal"
-	"path/filepath"
 	"syscall"
 
 	contentapi "github.com/containerd/containerd/api/services/content/v1"
@@ -19,6 +18,7 @@ import (
 	contentproxy "github.com/containerd/containerd/v2/core/content/proxy"
 	"github.com/containerd/containerd/v2/core/leases"
 	leaseproxy "github.com/containerd/containerd/v2/core/leases/proxy"
+	"github.com/containerd/containerd/v2/core/snapshots"
 	"github.com/containerd/containerd/v2/core/snapshots/proxy"
 	"github.com/containerd/containerd/v2/pkg/namespaces"
 	"github.com/containerd/containerd/v2/pkg/oci"
@@ -32,12 +32,26 @@ import (
 
 type localSnapshotter struct {
 	api.SnapshotsServer
+	hybrid  *hybridSnapshotter
 	shared  grpc.ClientConnInterface
 	content content.Store
 	leases  leases.Manager
 }
 
 func (l *localSnapshotter) Prepare(ctx context.Context, r *api.PrepareSnapshotRequest) (*api.PrepareSnapshotResponse, error) {
+	if _, err := requestedInfo([]snapshots.Opt{snapshots.WithLabels(r.Labels)}); err != nil {
+		return nil, errgrpc.ToGRPC(err)
+	}
+	if r.Labels[refLabel] == "" {
+		return l.SnapshotsServer.Prepare(ctx, r)
+	}
+	localParent, err := l.hybrid.privateImageRequest(ctx, r.Key, r.Parent)
+	if err != nil {
+		return nil, errgrpc.ToGRPC(err)
+	}
+	if localParent {
+		return l.SnapshotsServer.Prepare(ctx, r)
+	}
 	ns, err := namespaces.NamespaceRequired(ctx)
 	if err != nil {
 		return nil, errgrpc.ToGRPC(err)
@@ -55,10 +69,26 @@ func (l *localSnapshotter) Prepare(ctx context.Context, r *api.PrepareSnapshotRe
 	if err := l.register(ctx, r, desc); err != nil {
 		return nil, errgrpc.ToGRPC(err)
 	}
-	if err := l.shared.Invoke(ctx, "/"+warmService+"/Adopt", r, &emptypb.Empty{}); err != nil {
+	if err := l.adopt(ctx, r); err != nil {
 		return nil, err
 	}
 	return nil, errgrpc.ToGRPC(errdefs.ErrAlreadyExists)
+}
+
+// Content registration can overlap private snapshot creation. Recheck ownership
+// and publish the shared alias under the same graph lock as private mutations.
+// Adopt performs no containerd callbacks; registration must remain outside.
+func (l *localSnapshotter) adopt(ctx context.Context, r *api.PrepareSnapshotRequest) error {
+	l.hybrid.mu.Lock()
+	defer l.hybrid.mu.Unlock()
+	privateParent, err := l.hybrid.privateImageRequestLocked(ctx, r.Key, r.Parent)
+	if err != nil {
+		return errgrpc.ToGRPC(err)
+	}
+	if privateParent {
+		return errgrpc.ToGRPC(fmt.Errorf("image parent became private during registration: %w", errdefs.ErrFailedPrecondition))
+	}
+	return l.shared.Invoke(ctx, "/"+warmService+"/Adopt", r, &emptypb.Empty{})
 }
 
 // Snapshot proxy requests do not carry the pull lease. Find every live lease
@@ -129,8 +159,9 @@ func (l *localSnapshotter) register(ctx context.Context, r *api.PrepareSnapshotR
 
 // Listen before containerd starts. grpc.NewClient is lazy: readiness must not
 // wait for a callback connection to the daemon that depends on this listener.
-func runLocal(sharedPath, containerdPath, socket string) {
-	owner, err := lockStore(filepath.Dir(socket))
+func runLocal(sharedPath, containerdPath, socket, localRoot string) {
+	must(os.MkdirAll(localRoot, 0700))
+	owner, err := lockStore(localRoot)
 	must(err)
 	defer owner.Close()
 	shared, err := grpc.NewClient("unix://"+sharedPath, grpc.WithTransportCredentials(insecure.NewCredentials()))
@@ -139,9 +170,14 @@ func runLocal(sharedPath, containerdPath, socket string) {
 	local, err := grpc.NewClient("unix://"+containerdPath, grpc.WithTransportCredentials(insecure.NewCredentials()))
 	must(err)
 	defer local.Close()
+	var sharedSnapshots snapshots.Snapshotter = proxy.NewSnapshotter(api.NewSnapshotsClient(shared), "shared-overlay")
+	hybrid, err := newHybridSnapshotter(localRoot, sharedSnapshots, func(ctx context.Context, key string) ([]string, error) { return resolveSharedLayers(ctx, shared, key) })
+	must(err)
+	defer hybrid.Close()
 	g := grpc.NewServer(grpc.WaitForHandlers(true))
 	api.RegisterSnapshotsServer(g, &localSnapshotter{
-		SnapshotsServer: snapshotservice.FromSnapshotter(proxy.NewSnapshotter(api.NewSnapshotsClient(shared), "shared-overlay")),
+		SnapshotsServer: snapshotservice.FromSnapshotter(hybrid),
+		hybrid:          hybrid,
 		shared:          shared, content: contentproxy.NewContentStore(contentapi.NewContentClient(local)), leases: leaseproxy.NewLeaseManager(leaseapi.NewLeasesClient(local)),
 	})
 	listener := listen(socket)

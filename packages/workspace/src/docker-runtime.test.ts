@@ -10,14 +10,14 @@ function plan(): WorkspaceDockerPlan {
 }
 test("registration is recorded before dispatch, forwarded to nested workspaces and retired from disk", async () => {
   const dir = await mkdtemp(join(tmpdir(), "docker-runtime-"));
-  const calls: string[] = [];
+  const calls: Array<{ operation: string; client: string; parent: string | null }> = [];
   const connection: DockerRuntimeConnection = { version: 1, adminSocket: join(dir, "admin.sock"), socketDirectory: dir, snapshotterRoot: join(dir, "store"), depth: 0, buildServices: { buildkitSocket: join(dir, "buildkit.sock"), registryAddress: "atelier.tailnet.ts.net:42000" } };
   const metadata = join(dir, "workspace");
   const server = Bun.serve({ unix: connection.adminSocket, async fetch(req) {
     const url = new URL(req.url);
     const saved = JSON.parse(await readFile(join(metadata, "registration.json"), "utf8"));
     expect(saved.clientId).toBe(url.searchParams.get("client"));
-    calls.push(url.pathname);
+    calls.push({ operation: url.pathname, client: saved.clientId, parent: url.searchParams.get("parent") });
     return new Response(null, { status: 204 });
   } });
   try {
@@ -34,13 +34,22 @@ test("registration is recorded before dispatch, forwarded to nested workspaces a
     expect(p.sharedDocker?.bridgeCIDR).toBe("10.231.0.1/24");
     expect(p.containerFiles[0]!.target).toBe(dockerRuntimeConnectionPath);
     const nested = await readDockerRuntimeConnection(p.containerFiles[0]!.source);
-    expect(nested).toEqual({ ...connection, depth: 1 });
-    await retireWorkspaceDocker(metadata);
-    expect(calls).toEqual(["/register", "/retire"]);
     const first = JSON.parse(await readFile(join(metadata, "registration.json"), "utf8"));
-    await registerWorkspaceDocker(plan(), metadata, nested!);
+    expect(nested).toEqual({ ...connection, clientId: first.clientId, depth: 1 });
+    await retireWorkspaceDocker(metadata);
+    expect(calls).toEqual([
+      { operation: "/register", client: first.clientId, parent: null },
+      { operation: "/retire", client: first.clientId, parent: null },
+    ]);
+    const childPlan = plan();
+    await registerWorkspaceDocker(childPlan, metadata, nested!);
     const second = JSON.parse(await readFile(join(metadata, "registration.json"), "utf8"));
     expect(first.clientId).not.toBe(second.clientId);
+    expect(calls[2]).toEqual({ operation: "/register", client: second.clientId, parent: first.clientId });
+    const grandchild = await readDockerRuntimeConnection(childPlan.containerFiles[0]!.source);
+    expect(grandchild).toEqual({ ...connection, clientId: second.clientId, depth: 2 });
+    await retireWorkspaceDocker(metadata);
+    expect(calls[3]).toEqual({ operation: "/retire", client: second.clientId, parent: null });
   } finally { await server.stop(true); await rm(dir, { recursive: true }); }
 });
 

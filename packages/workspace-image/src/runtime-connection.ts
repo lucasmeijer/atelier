@@ -23,6 +23,7 @@ export function dockerRegistryAddress(connection: DockerRuntimeConnection): stri
 export const dockerRuntimeConnectionSchema = Type.Object({
   version: Type.Literal(1), adminSocket: absolutePath, snapshotterRoot: absolutePath,
   socketDirectory: absolutePath, depth: Type.Integer({ minimum: 0, maximum: 11 }),
+  clientId: Type.Optional(Type.String({ pattern: "^[a-f0-9]{24}$" })),
   buildServices: Type.Optional(Type.Object({ buildkitSocket: absolutePath, registryAddress: registryAddressSchema })),
 });
 export type DockerRuntimeConnection = Static<typeof dockerRuntimeConnectionSchema>;

@@ -404,7 +404,7 @@ export const workspaceSetupProvisioningHook: WorkspaceServerProvisioningHook = {
 };
 
 function dockerMountArg(mount: WorkspaceDockerMount): string {
-  return [`type=${mount.type}`, `src=${mount.source}`, `dst=${mount.target}`, ...(mount.readonly ? ["readonly"] : [])].join(",");
+  return [`type=${mount.type}`, ...(mount.source === undefined ? [] : [`src=${mount.source}`]), `dst=${mount.target}`, ...(mount.readonly ? ["readonly"] : [])].join(",");
 }
 
 function planEnvDockerArgs(env: Record<string, string>): string[] {
@@ -616,7 +616,7 @@ export async function createWorkspace(options: CreateWorkspaceOptions = {}): Pro
     await provisionStep(options.events, id, "workspace.startup", "Wait for workspace startup", () => waitForWorkspaceStartup(id), { output: (log) => log });
   } catch (error) {
     try {
-      const removed = await runDocker(["rm", "-f", workspaceContainerName(id)]);
+      const removed = await runDocker(["rm", "-f", "--volumes", workspaceContainerName(id)]);
       if (removed.exitCode !== 0 && !removed.stderr.includes("No such container")) throw new Error(removed.stderr.trim() || "could not remove failed workspace container");
       await retireWorkspaceDocker(atelierDataPath(getAtelierRuntimeContext(), "workspaces", id, "docker-runtime"));
       await Promise.all((plan?.cleanup ?? []).map((cleanup) => cleanup()));
@@ -721,7 +721,7 @@ export async function deleteWorkspace(id: string, options: DeleteWorkspaceOption
     await options.events?.emit("workspace_delete_inspect", { workspaceId: id, issues });
     if (issues.length > 0) throw new AtelierCoreError("workspace_delete_blocked", formatDeleteBlockedMessage(id, issues), { workspaceId: id, issues });
   }
-  if (containerExists) await requireDocker(["rm", "-f", workspaceContainerName(id)]);
+  if (containerExists) await requireDocker(["rm", "-f", "--volumes", workspaceContainerName(id)]);
   await retireWorkspaceDocker(atelierDataPath(getAtelierRuntimeContext(), "workspaces", id, "docker-runtime"));
   await retireWorkspaceId(id);
   workspaceGatewayCache.delete(workspaceGatewayCacheKey(id));

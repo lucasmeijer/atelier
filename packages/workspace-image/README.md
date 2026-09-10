@@ -44,10 +44,20 @@ connection to nested Atelier processes. Atelier running from source inside a
 workspace inherits that connection instead of starting a second adapter. Nesting uses distinct network ranges, with a current limit of 11
 private-runtime levels.
 
-Parking preserves the registration and private Docker state. Deletion removes the
-container before retiring its client. Failed provisioning also retires the client;
-if cleanup fails, its ownership record is retained for a later forced deletion
-rather than discarded. Existing workspace stores are not converted.
+The creator daemon attaches an anonymous volume at
+`/var/lib/atelier-private-docker`. Docker's data root, containerd metadata and local
+snapshot backing are all inside it, so nested volumes have disk-backed storage
+rather than being placed in the outer container's writable filesystem. The local
+snapshotter composes private writable/init layers with installation-owned immutable
+image directories, which are mounted read-only at the same absolute path.
+
+Parking preserves the registration and private Docker volume. Deletion removes the
+container with `docker rm --volumes` before retiring its shared client subtree.
+Nested descriptors carry their creator's client identity; descendant aliases and
+unfinished shared uploads are retired too. Failed provisioning uses the same
+cleanup; if it fails, ownership records are retained for a later forced deletion
+rather than discarded. Existing workspace stores are not converted. Recreate old
+workspaces to receive the private volume and nested ownership descriptor.
 
 Shared-registry preloads publish the selected tagged or local images before
 workspace startup, then pull their exact registry digests directly from the inherited

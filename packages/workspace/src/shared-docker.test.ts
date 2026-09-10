@@ -2,7 +2,7 @@ import { expect, test } from "bun:test";
 import { mkdtemp, readFile, rm } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
-import { prepareSharedDocker, sharedDockerConfiguration, type SharedDockerRuntime } from "./shared-docker.ts";
+import { prepareSharedDocker, privateDockerRoot, sharedDockerConfiguration, type SharedDockerRuntime } from "./shared-docker.ts";
 import type { WorkspaceDockerPlan } from "./types.ts";
 
 const runtime: SharedDockerRuntime = {
@@ -24,8 +24,10 @@ test("private Docker selects its private containerd and the supervised local sna
   expect(config.containerd).toContain('[proxy_plugins.shared-diff]');
   expect(config.containerd).toContain('default = ["shared-diff", "walking"]');
   expect(config.containerd).toContain('[proxy_plugins.shared-overlay]\n  type = "snapshot"\n  address = "/run/containerd/atelier-snapshotter.sock"');
+  expect(config.containerd).toContain(`root = "${privateDockerRoot}/containerd"`);
   expect(config.sharedSocket).toBe(`${runtime.snapshotterSocket}\n`);
   const docker = JSON.parse(config.docker);
+  expect(docker["data-root"]).toBe(`${privateDockerRoot}/docker`);
   expect(docker.containerd).toBe("/run/containerd/containerd.sock");
   expect(docker["storage-driver"]).toBe("shared-overlay");
   expect(docker.features["containerd-snapshotter"]).toBe(true);
@@ -41,8 +43,9 @@ test("provisioning supplies restartable socket mount, same-path backing and ephe
     await prepareSharedDocker(p, directory);
     expect(p.extraArgs).toEqual(["--privileged", "--tmpfs", "/run"]);
     expect(p.mounts).toEqual([
+      { type: "volume", target: privateDockerRoot },
       { type: "bind", source: "/installation/sockets", target: "/installation/sockets", readonly: true },
-      { type: "bind", source: runtime.snapshotterRoot, target: runtime.snapshotterRoot },
+      { type: "bind", source: runtime.snapshotterRoot, target: runtime.snapshotterRoot, readonly: true },
     ]);
     expect(p.containerFiles.map((file) => file.target)).toEqual(["/.atelier/containerd.toml", "/.atelier/docker-daemon.json", "/.atelier/shared-snapshotter-socket"]);
     expect(await readFile(p.containerFiles[0]!.source, "utf8")).toBe(sharedDockerConfiguration(runtime).containerd);
@@ -54,5 +57,36 @@ test("provisioning supplies restartable socket mount, same-path backing and ephe
 test("invalid shared paths fail instead of selecting a private cache", () => {
   for (const snapshotterRoot of ["relative", "/storage,readonly", "/storage\ninvalid"]) {
     expect(() => sharedDockerConfiguration({ ...runtime, snapshotterRoot })).toThrow("shared Docker paths");
+  }
+});
+
+test("repository mounts cannot replace private storage or its backing subdirectories", async () => {
+  const directory = await mkdtemp(join(tmpdir(), "shared-docker-conflict-"));
+  try {
+    for (const target of [privateDockerRoot, `${privateDockerRoot}/snapshots`, `${privateDockerRoot}/docker/volumes`, `${privateDockerRoot}/../atelier-private-docker/`]) {
+      const p = plan();
+      p.mounts.push({ type: "bind", source: "/repository/storage", target });
+      await expect(prepareSharedDocker(p, directory)).rejects.toThrow("mount conflicts with private Docker storage");
+      expect(p.containerFiles).toEqual([]);
+    }
+  } finally {
+    await rm(directory, { recursive: true });
+  }
+});
+
+test("shared backing and socket mounts cannot occupy private storage", async () => {
+  const directory = await mkdtemp(join(tmpdir(), "shared-docker-runtime-conflict-"));
+  try {
+    for (const conflicting of [
+      { ...runtime, snapshotterRoot: privateDockerRoot },
+      { ...runtime, snapshotterRoot: `${privateDockerRoot}/snapshots` },
+      { ...runtime, snapshotterSocket: `${privateDockerRoot}/sockets/client.sock` },
+    ]) {
+      const p = plan();
+      p.sharedDocker = conflicting;
+      await expect(prepareSharedDocker(p, directory)).rejects.toThrow("shared Docker mount conflicts");
+    }
+  } finally {
+    await rm(directory, { recursive: true });
   }
 });

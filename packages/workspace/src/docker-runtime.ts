@@ -17,7 +17,9 @@ async function optionalFile(path: string): Promise<string | undefined> {
   }
 }
 async function request(connection: DockerRuntimeConnection, operation: "register" | "retire", clientId: string): Promise<void> {
-  const response = await fetch(`http://localhost/${operation}?${new URLSearchParams({ client: clientId })}`, {
+  const query = new URLSearchParams({ client: clientId });
+  if (operation === "register" && connection.clientId) query.set("parent", connection.clientId);
+  const response = await fetch(`http://localhost/${operation}?${query}`, {
     method: "POST", unix: connection.adminSocket, signal: AbortSignal.timeout(30_000),
   });
   if (!response.ok) throw new Error(`snapshotter ${operation} failed (${response.status}): ${await response.text()}`);
@@ -41,7 +43,7 @@ export async function registerWorkspaceDocker(plan: WorkspaceDockerPlan, directo
       plan.env[key] = [...new Set([...(plan.env[key]?.split(",") ?? []), registryHost])].join(",");
     }
   }
-  const nested = { ...connection, depth: connection.depth + 1 };
+  const nested = { ...connection, clientId, depth: connection.depth + 1 };
   const source = join(directory, "connection.json");
   await writeFile(source, JSON.stringify(nested));
   plan.containerFiles.push({ source, target: dockerRuntimeConnectionPath });
