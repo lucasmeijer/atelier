@@ -491,3 +491,5 @@ export async function resolveWorkspaceImageResolution(options: ResolveWorkspaceI
 export async function resolveWorkspaceImage(options: ResolveWorkspaceImageOptions = {}): Promise<string> {
   return (await resolveWorkspaceImageResolution(options)).image;
 }
+
+export { readBuildCacheStorage, type BuildCacheStorage } from "./build-cache.ts";

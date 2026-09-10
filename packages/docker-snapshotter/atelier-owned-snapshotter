@@ -82,6 +82,12 @@ umask 022
 atelier-registry serve "$runtime/registry.yml" &
 registry_pid=$!
 cat > "$runtime/buildkit.toml" <<EOF
+[worker.oci]
+  gc = true
+  maxUsedSpace = "20GB"
+  reservedSpace = "2GB"
+  minFreeSpace = "10%"
+
 [registry."$registry_local_address"]
   http = true
 EOF
