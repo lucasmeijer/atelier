@@ -64,28 +64,36 @@ export class RealAgentRuntime extends BaseAgentRuntime {
   private pendingAcceptedPrompt?: symbol;
   private readonly terminalSessionOperations = new Set<Promise<void>>();
   private disposal?: Promise<void>;
+  private unsubscribeCosts?: () => void;
+  private settledCost: number;
   private unsubscribeTranscript?: () => void;
 
   constructor(agent: WorkspaceAgentConversationInfo, private session: any, private toolsForModel: AgentToolDefinitionView[], private serviceTiers: AgentServiceTierState, options: WorkspaceAgentRuntimeOptions = {}, private delegation: AgentSessionDelegation = { dispose: async () => {} }) {
     super(agent, options);
+    this.settledCost = this.session.getSessionStats?.().cost ?? 0;
     this.ctx.model = this.currentModel();
     this.selectBranch();
     try {
       this.subscribeToSession();
-      this.attachTranscript();
+      this.attachContributions();
     } catch (error) {
       this.unsubscribeSession?.();
-      this.detachTranscript();
+      this.detachContributions();
       throw error;
     }
   }
 
-  private attachTranscript(): void {
+  private attachContributions(): void {
+    this.unsubscribeCosts = this.delegation.attachment?.costs?.subscribe(() => {
+      void this.refreshStats().catch((error) => console.error("Could not refresh Agent costs", normalizedPromiseError(error)));
+    });
     this.captureContributedRows();
     this.unsubscribeTranscript = this.delegation.transcript?.subscribe(() => this.refreshContributedRows());
   }
 
-  private detachTranscript(): void {
+  private detachContributions(): void {
+    this.unsubscribeCosts?.();
+    this.unsubscribeCosts = undefined;
     const unsubscribe = this.unsubscribeTranscript;
     this.unsubscribeTranscript = undefined;
     unsubscribe?.();
@@ -181,6 +189,7 @@ export class RealAgentRuntime extends BaseAgentRuntime {
 
   protected async statsView(): Promise<AgentStatsView> {
     const stats = this.session.getSessionStats?.();
+    const costs = await this.delegation.attachment?.costs?.snapshot();
     const context = this.session.getContextUsage?.();
     const model = this.session.model;
     const estimate = this.postCompactionEstimate;
@@ -202,7 +211,9 @@ export class RealAgentRuntime extends BaseAgentRuntime {
       compactAvailable: manualCompactionAvailable(context?.tokens, branch.at(-1)?.type),
       inputTokens: stats?.tokens?.input ?? 0,
       outputTokens: stats?.tokens?.output ?? 0,
-      cost: stats?.cost ?? 0,
+      cost: costs?.cost ?? this.settledCost,
+      descendantCost: costs?.descendantCost,
+      isSubagent: costs?.isSubagent,
       modelName: model?.name ?? model?.id,
       thinkingLevel,
       thinkingLevels,
@@ -374,6 +385,7 @@ export class RealAgentRuntime extends BaseAgentRuntime {
         break;
       }
       case "agent_settled":
+        this.settledCost = this.session.getSessionStats?.().cost ?? 0;
         // agent_end only ends an agent-core loop. Pi may still compact and
         // continue without another user, even when agent_end.willRetry is false.
         if (!this.turnTiming) break;
@@ -524,7 +536,7 @@ export class RealAgentRuntime extends BaseAgentRuntime {
   }
 
   private async finishDisposal(): Promise<void> {
-    this.detachTranscript();
+    this.detachContributions();
     const unsubscribe = this.unsubscribeSession;
     this.unsubscribeSession = undefined;
     unsubscribe?.();
@@ -584,7 +596,7 @@ export class RealAgentRuntime extends BaseAgentRuntime {
       throw error;
     }
     this.unsubscribeSession?.();
-    this.detachTranscript();
+    this.detachContributions();
     try {
       await this.delegation.dispose();
     } catch (error) {
@@ -593,16 +605,17 @@ export class RealAgentRuntime extends BaseAgentRuntime {
     }
     this.delegation = created.delegation;
     this.session = created.session;
+    this.settledCost = this.session.getSessionStats?.().cost ?? 0;
     this.toolsForModel = created.toolViews;
     this.serviceTiers = created.serviceTiers;
     this.sessionFile = agent.path;
     this.selectBranch();
     try {
       this.subscribeToSession();
-      this.attachTranscript();
+      this.attachContributions();
     } catch (error) {
       this.unsubscribeSession?.();
-      this.detachTranscript();
+      this.detachContributions();
       try { await created.session.abort(); } finally { await created.delegation.dispose(); }
       throw error;
     }

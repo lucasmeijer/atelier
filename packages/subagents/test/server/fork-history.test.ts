@@ -72,7 +72,7 @@ describe("Codex fork-history selection and filtering", () => {
   test("session seeding persists only filtered history and does not re-fork an existing child", () => {
     const child = { id: "child", parentId: "root", rootId: "root", taskName: "review", task: "Review", depth: 1, thinkingLevel: "off", status: "completed" as const, forkTurns: "all" };
     const coordinator = new SubagentRuntime({ agents: [child], messages: [] }, { async save() {}, async peer() { throw new Error("No inference needed"); } });
-    const attachment = bindSubagentSession("filter-seeding", "root", { messages: history, subscribe: () => () => {} }, coordinator);
+    const attachment = bindSubagentSession("filter-seeding", "root", { messages: history, sessionManager: SessionManager.inMemory(), subscribe: () => () => {} }, coordinator);
     const manager = SessionManager.inMemory();
     try {
       forkSubagentHistory("filter-seeding", child, manager);
@@ -92,7 +92,7 @@ describe("Codex fork-history selection and filtering", () => {
     for (const forkTurns of ["none", "1", "all"]) {
       const child = { id: "child", parentId: "root", rootId: "root", taskName: "preview", task: "Preview", depth: 1, thinkingLevel: "off", status: "completed" as const, forkTurns };
       const coordinator = new SubagentRuntime({ agents: [child], messages: [] }, { async save() {}, async peer() { throw new Error("No inference needed"); } });
-      const attachment = bindSubagentSession("empty-fork", "root", { messages: [], subscribe: () => () => {} }, coordinator);
+      const attachment = bindSubagentSession("empty-fork", "root", { messages: [], sessionManager: SessionManager.inMemory(), subscribe: () => () => {} }, coordinator);
       try {
         const manager = SessionManager.inMemory();
         forkSubagentHistory("empty-fork", child, manager);
@@ -109,7 +109,7 @@ describe("Codex fork-history selection and filtering", () => {
     parent.appendCompaction("Earlier context", kept, 200);
     parent.appendMessage(final);
     parent.branchWithSummary(parent.getLeafId(), "Abandoned branch context");
-    const attachment = bindSubagentSession("compacted-filter-seeding", "root", { messages: parent.buildSessionContext().messages, subscribe: () => () => {} }, coordinator);
+    const attachment = bindSubagentSession("compacted-filter-seeding", "root", { messages: parent.buildSessionContext().messages, sessionManager: parent, subscribe: () => () => {} }, coordinator);
     const manager = SessionManager.inMemory();
     try {
       forkSubagentHistory("compacted-filter-seeding", child, manager);

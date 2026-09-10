@@ -161,7 +161,7 @@ test("Anthropic's real request serializer receives user-message envelopes withou
 test("session attachments unsubscribe and cannot unbind a replacement session", async () => {
   const { bindSubagentSession, rootAgentStatus } = await import("../../src/server/subagents.ts");
   let subscriptions = 0;
-  const session = () => ({ messages: [], isStreaming: false, subscribe() { subscriptions++; return () => { subscriptions--; }; } });
+  const session = () => ({ messages: [], sessionManager: { getEntries: () => [] }, isStreaming: false, subscribe() { subscriptions++; return () => { subscriptions--; }; } });
   const coordinator = new SubagentRuntime({ agents: [], messages: [] }, { async save() {}, async peer() { throw new Error("No inference requested"); } });
   const first = bindSubagentSession("attachment-test", "root", session(), coordinator);
   const replacement = bindSubagentSession("attachment-test", "root", session(), coordinator);

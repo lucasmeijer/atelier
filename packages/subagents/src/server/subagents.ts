@@ -1,3 +1,4 @@
+import { SubagentCosts } from "./costs.ts";
 import { openSubagentHistory, subagentHistoryDirectory } from "./history-store.ts";
 import { inheritedContextEntryType, selectForkHistory } from "./fork-history.ts";
 import type { AgentSessionAttachment } from "@atelier/agent/server";
@@ -26,6 +27,7 @@ const stateSchema = Type.Object({ agents: Type.Array(recordSchema), messages: Ty
   delivery: Type.Union([Type.Literal("queued"), Type.Literal("delivered"), Type.Literal("failed")]), error: Type.Optional(Type.String()), toolCallId: Type.Optional(Type.String()), dispatchMode: Type.Optional(Type.Union([Type.Literal("immediate"), Type.Literal("queued")])), dispatchReason: Type.Optional(Type.Union([Type.Literal("idle-task"), Type.Literal("idle-message"), Type.Literal("working"), Type.Literal("waiting")])),
 })) });
 const coordinators = new Map<string, Promise<SubagentRuntime>>();
+const costs = new WeakMap<SubagentRuntime, SubagentCosts>();
 const peers = new Map<string, SubagentPeer>();
 const sessions = new Map<string, any>();
 const loaded = new Map<string, SubagentRuntime>();
@@ -124,6 +126,12 @@ export function getSubagents(workspaceId: string, events?: AtelierEventBus): Pro
  * Queue-only traffic never starts idle inference. During a run it steers at the next tool boundary. */
 export function bindSubagentSession(workspaceId: string, id: string, session: any, coordinator: SubagentRuntime): AgentSessionAttachment {
   sessions.set(`${workspaceId}:${id}`, session);
+  let accounting = costs.get(coordinator);
+  if (!accounting) {
+    accounting = new SubagentCosts(() => coordinator.state.agents, async (childId) => join(await subagentHistoryDirectory(workspaceId), `${childId}.jsonl`));
+    costs.set(coordinator, accounting);
+  }
+  accounting.update(id, session.sessionManager.getEntries());
   let requestsThisTurn = 0;
   // Pi has no public custom-message queue accessor. Track only live submissions,
   // removing them when Pi adds them to context (never reconstruct from receipts).
@@ -178,6 +186,7 @@ export function bindSubagentSession(workspaceId: string, id: string, session: an
       operation = coordinator.delivered(event.message.details.subagentMessageId);
     }
     if (event.type === "agent_settled") {
+      accounting.update(id, session.sessionManager.getEntries());
       const last = session.messages.findLast((message: any) => message.role === "assistant");
       const outcome = last?.stopReason === "error" ? "failed" : last?.stopReason === "aborted" ? "interrupted" : "completed";
       operation = coordinator.finished(id, last?.errorMessage || finalAssistantText(last?.content ?? []), outcome);
@@ -185,6 +194,7 @@ export function bindSubagentSession(workspaceId: string, id: string, session: an
     void operation?.catch((error) => console.error("Subagent lifecycle failed", { workspaceId, id, error }));
   });
   return {
+    costs: { snapshot: () => accounting.snapshot(id), subscribe: (listener) => accounting.subscribe(id, listener) },
     createModelRequest() {
       const bridge = new SubagentModelInput();
       let included: SubagentState["messages"] = [];
