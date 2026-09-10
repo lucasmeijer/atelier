@@ -1,4 +1,3 @@
-import { createRegistryRelay } from "./registry-relay.ts";
 import { createHash } from "node:crypto";
 import { mkdtemp, readFile, writeFile, rm } from "node:fs/promises";
 import { tmpdir } from "node:os";
@@ -8,70 +7,63 @@ import { Type } from "typebox";
 import { Value } from "typebox/value";
 import { dockerServerPlatform } from "./local-images.ts";
 import { workspaceImageKindLabel } from "./prune.ts";
-import type { DockerRuntimeConnection } from "./runtime-connection.ts";
+import { dockerRegistryAddress, loopbackRegistryAddress, type DockerRuntimeConnection } from "./runtime-connection.ts";
 
 const digestSchema = Type.String({ pattern: "^sha256:[a-f0-9]{64}$" });
-const servicesSchema = Type.Object({ registryAddress: Type.String({ pattern: "^127\\.0\\.0\\.1:[0-9]+$" }) });
 const metadataSchema = Type.Object({ "containerimage.digest": digestSchema });
-const relays = new Map<string, Bun.Server<undefined>>();
 const publications = new Map<string, Promise<string>>();
-function registryRelay(socket: string): string {
-  let server = relays.get(socket);
-  if (!server) { server = createRegistryRelay(socket); server.unref(); relays.set(socket, server); }
-  return `127.0.0.1:${server.port}`;
-}
 
 export function sharedWorkspaceImageTag(tag: string, sourcePath: string): string {
   return `${tag}-${createHash("sha256").update(sourcePath).digest("hex").slice(0, 16)}`;
 }
 
 const manifestAccept = "application/vnd.oci.image.manifest.v1+json, application/vnd.oci.image.index.v1+json, application/vnd.docker.distribution.manifest.v2+json, application/vnd.docker.distribution.manifest.list.v2+json";
-async function manifestDigest(socket: string, repo: string, tag: string): Promise<string | undefined> {
-  const response = await fetch(`http://localhost/v2/${repo}/manifests/${tag}`, { unix: socket, method: "HEAD", headers: { accept: manifestAccept } });
+async function manifestDigest(address: string, repo: string, tag: string): Promise<string | undefined> {
+  const response = await fetch(`http://${address}/v2/${repo}/manifests/${tag}`, { method: "HEAD", headers: { accept: manifestAccept } });
   if (response.status === 404) return undefined;
   if (!response.ok) throw new Error(`registry image lookup failed: ${response.status}`);
   return Value.Parse(digestSchema, response.headers.get("docker-content-digest"));
 }
 
-async function publishImageReference(id: string, registrySocket: string, localAddress: string): Promise<string> {
+async function publishImageReference(id: string, address: string): Promise<string> {
   // RepoDigests alone do not prove publication. The builder records its actual
   // published outputs so metadata-only private stores never have to re-export them.
-  const built = await manifestDigest(registrySocket, "atelier/workspaces", `image-${id.slice(7)}`);
+  const built = await manifestDigest(address, "atelier/workspaces", `image-${id.slice(7)}`);
   if (built) return `atelier/workspaces@${built}`;
   const repo = `atelier/bases/${id.slice(7)}`;
-  let digest = await manifestDigest(registrySocket, repo, "image");
+  let digest = await manifestDigest(address, repo, "image");
   if (!digest) {
-    const local = `${localAddress}/${repo}:image`;
+    const local = `${address}/${repo}:image`;
     await requireDocker(["tag", id, local]);
     await requireDocker(["push", local]);
     await requireDocker(["image", "rm", local]);
-    digest = await manifestDigest(registrySocket, repo, "image");
+    digest = await manifestDigest(address, repo, "image");
     if (!digest) throw new Error("registry did not retain the published image");
   }
   return `${repo}@${digest}`;
 }
 
-async function rememberBuiltImage(socket: string, id: string, digest: string): Promise<void> {
-  const response = await fetch(`http://localhost/v2/atelier/workspaces/manifests/${digest}`, { unix: socket, headers: { accept: manifestAccept } });
+async function rememberBuiltImage(address: string, id: string, digest: string): Promise<void> {
+  const response = await fetch(`http://${address}/v2/atelier/workspaces/manifests/${digest}`, { headers: { accept: manifestAccept } });
   if (!response.ok) throw new Error(`registry build lookup failed: ${response.status}`);
   const type = response.headers.get("content-type");
   if (!type) throw new Error("registry build manifest lacks its media type");
-  const saved = await fetch(`http://localhost/v2/atelier/workspaces/manifests/image-${id.slice(7)}`, { unix: socket, method: "PUT", headers: { "content-type": type }, body: await response.arrayBuffer() });
+  const saved = await fetch(`http://${address}/v2/atelier/workspaces/manifests/image-${id.slice(7)}`, { method: "PUT", headers: { "content-type": type }, body: await response.arrayBuffer() });
   if (!saved.ok) throw new Error(`registry build indexing failed: ${saved.status}`);
 }
 
 /** Publish the selected Docker image; return a digest reference relative to the
- * installation registry, never the creator's temporary loopback authority. */
+ * installation registry. */
 export async function publishSharedImage(connection: DockerRuntimeConnection, image: string): Promise<string> {
   if (!connection.buildServices) throw new Error("shared image publication requires a registry connection");
   const id = Value.Parse(digestSchema, (await requireDocker(["image", "inspect", "--format", "{{.Id}}", image])).stdout.trim());
-  const socket = connection.buildServices.registrySocket;
-  const key = `${socket}\0${id}`;
+  const address = dockerRegistryAddress(connection);
+  const key = `${address}\0${id}`;
   let publication = publications.get(key);
   if (!publication) {
     // Concurrent preloads share one temporary Docker tag; keep its lifetime owned
     // by one publication rather than removing it beneath another push.
-    publication = publishImageReference(id, socket, registryRelay(socket)).finally(() => publications.delete(key));
+    publication = publishImageReference(id, address).finally(() => publications.delete(key));
     publications.set(key, publication);
   }
   return await publication;
@@ -93,12 +85,10 @@ export type SharedWorkspaceBuild = SharedBuildOptions & ({ kind: "default" } | {
  * the creator's Docker daemon. Existing tags never bypass the BuildKit solver. */
 export async function buildSharedWorkspaceImage(options: SharedWorkspaceBuild): Promise<string> {
   if (!options.connection.buildServices) throw new Error("shared build connection lacks registry transport");
-  // Discover the owner's address live rather than persisting it in each workspace.
-  const discovery = await fetch("http://localhost/build-services", { unix: options.connection.adminSocket, signal: AbortSignal.timeout(30_000) });
-  if (!discovery.ok) throw new Error(`shared build discovery failed: ${discovery.status}`);
-  const services = { ...options.connection.buildServices, ...Value.Parse(servicesSchema, await discovery.json()) };
-  const localAddress = registryRelay(services.registrySocket);
-  const base = options.kind === "repository" ? `${services.registryAddress}/${await publishSharedImage(options.connection, options.baseImage)}` : undefined;
+  const services = options.connection.buildServices;
+  const builderAddress = loopbackRegistryAddress(services.registryAddress);
+  const creatorAddress = dockerRegistryAddress(options.connection);
+  const base = options.kind === "repository" ? `${builderAddress}/${await publishSharedImage(options.connection, options.baseImage)}` : undefined;
   const directory = await mkdtemp(join(tmpdir(), "atelier-shared-build-"));
   try {
     await writeFile(join(directory, "Dockerfile"), await readFile(options.dockerfile));
@@ -111,7 +101,7 @@ export async function buildSharedWorkspaceImage(options: SharedWorkspaceBuild): 
       ...(base ? ["--opt", "frontend.caps=moby.buildkit.frontend.contexts+forward", "--opt", `context:atelier-workspace=docker-image://${base}`] : []),
       "--opt", `platform=${await dockerServerPlatform()}`, "--opt", `label:${workspaceImageKindLabel}=${options.kind}`,
       ...(options.noCache ? ["--no-cache"] : []), "--progress", "plain", "--metadata-file", metadata,
-      "--output", `type=image,name=${services.registryAddress}/atelier/workspaces,push=true,push-by-digest=true`,
+      "--output", `type=image,name=${builderAddress}/atelier/workspaces,push=true,push-by-digest=true`,
     ], { stdout: "pipe", stderr: "pipe", stdin: "ignore" });
     let output = "";
     const publish = async (text: string) => { output = (output + text).slice(-64 * 1024); await options.onOutput?.(text); };
@@ -126,11 +116,11 @@ export async function buildSharedWorkspaceImage(options: SharedWorkspaceBuild): 
     if (code !== 0) throw new Error(`shared workspace build failed with exit code ${code}\n${output}`);
     const result = Value.Parse(metadataSchema, JSON.parse(await readFile(metadata, "utf8")));
     const digest = result["containerimage.digest"];
-    const local = `${localAddress}/atelier/workspaces@${digest}`;
+    const local = `${creatorAddress}/atelier/workspaces@${digest}`;
     const immutable = `atelier-workspace:${digest.slice(7)}`;
     await requireDocker(["pull", local]);
     const id = Value.Parse(digestSchema, (await requireDocker(["image", "inspect", "--format", "{{.Id}}", local])).stdout.trim());
-    await rememberBuiltImage(services.registrySocket, id, digest);
+    await rememberBuiltImage(creatorAddress, id, digest);
     await requireDocker(["tag", local, immutable]);
     await requireDocker(["tag", local, options.tag]);
     await requireDocker(["image", "rm", local]);

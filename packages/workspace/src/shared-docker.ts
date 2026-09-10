@@ -1,5 +1,6 @@
 import { dirname, isAbsolute, join } from "node:path";
 import { mkdir, writeFile } from "node:fs/promises";
+import { tailscaleDnsAddress } from "../../workspace-image/src/runtime-connection.ts";
 import type { WorkspaceDockerPlan } from "./types.ts";
 
 /** Supplied by the installation owner, not repository configuration. Paths are Docker-host paths. */
@@ -49,6 +50,7 @@ disabled_plugins = ["io.containerd.cri.v1.images", "io.containerd.cri.v1.runtime
       pidfile: "/run/docker.pid",
       bip: runtime.bridgeCIDR,
       "default-address-pools": [{ base: runtime.addressPool, size: 24 }],
+      dns: [tailscaleDnsAddress],
       "insecure-registries": runtime.insecureRegistries ?? [],
     }, null, 2),
   };

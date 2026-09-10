@@ -574,8 +574,7 @@ export async function createWorkspace(options: CreateWorkspaceOptions = {}): Pro
       const preload = await provisionStep(options.events, id, "workspace.docker-images", "Resolve Docker image prewarming", () => resolveDockerImagePreload({ specs: activePlan.preloadDockerImages!, workspaceResolution: resolution, events: options.events, workspaceId: id }));
       if (sharedConnection?.buildServices) {
         const sharedPreload = await provisionStep(options.events, id, "workspace.docker-publish", "Publish Docker preloads", () => prepareSharedImagePreload(sharedConnection, preload));
-        activePlan.containerFiles.push(...sharedPreload.containerFiles);
-        activePlan.initScripts.unshift(...sharedPreload.initScripts);
+        activePlan.initScripts.unshift(...sharedPreload);
       } else {
         activePlan.initScripts.unshift(...preload.images.map((image) => [`docker pull ${shellQuote(image.sourceRef)}`, ...image.aliases.map((alias) => `docker tag ${shellQuote(image.sourceRef)} ${shellQuote(alias)}`)].join("\n")));
       }

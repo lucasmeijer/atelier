@@ -29,7 +29,9 @@ if [ -S /var/run/docker.sock ]; then
 fi
 
 atelier_data_dir="${ATELIER_DATA_DIR:-/data/atelier}"
-mkdir -p "$atelier_data_dir"
+mkdir -p "$atelier_data_dir/proxy"
+# The root registry publisher and app share the existing Serve configuration lock.
+chown "$atelier_uid:$atelier_gid" "$atelier_data_dir/proxy"
 
 printf '%s ALL=(root) NOPASSWD: /usr/local/bin/atelier-tailscale-serve-helper\n' "$atelier_user" >/etc/sudoers.d/atelier-tailscale-serve
 chmod 440 /etc/sudoers.d/atelier-tailscale-serve

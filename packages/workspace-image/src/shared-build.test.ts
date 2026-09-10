@@ -12,15 +12,13 @@ test("shared builds require the declared registry transport", async () => {
   await expect(buildSharedWorkspaceImage({ kind: "repository", connection: { version: 1, adminSocket: "/s/admin.sock", socketDirectory: "/s", snapshotterRoot: "/store", depth: 1 }, sourcePath: "/context", dockerfile: "/Dockerfile", originalDockerfile: "/Dockerfile", baseImage: "base", tag: "result" })).rejects.toThrow("lacks registry transport");
 });
 
-test("build client solves each request, preserves ignore rules and pulls the published digest", async () => {
+for (const depth of [0, 1]) test(`build client at depth ${depth} uses owner-loopback for BuildKit and the correct creator endpoint`, async () => {
   const dir = await mkdtemp(join(tmpdir(), "shared-build-test-"));
-  const socket = join(dir, "registry.sock");
   let published = false;
   let indexed = false;
   let uploads = 0;
   let pulls = 0;
-  const admin = Bun.serve({ unix: join(dir, "admin.sock"), fetch() { return Response.json({ registryAddress: "127.0.0.1:12345" }); } });
-  const registry = Bun.serve({ unix: socket, fetch(request) {
+  const registry = Bun.serve({ hostname: "0.0.0.0", port: 0, fetch(request) {
     const path = new URL(request.url).pathname;
     if (request.method === "PUT") {
       if (path.startsWith("/v2/atelier/workspaces/")) indexed = true;
@@ -37,6 +35,9 @@ test("build client solves each request, preserves ignore rules and pulls the pub
     if (request.headers.has("x-fixture-docker")) pulls++;
     return new Response("fixture manifest", { headers: { "content-type": "application/vnd.oci.image.manifest.v1+json" } });
   } });
+  const address = `127.0.0.2:${registry.port}`;
+  const builderAddress = `127.0.0.1:${registry.port}`;
+  const creatorAddress = depth === 0 ? builderAddress : address;
   try {
     await mkdir(join(dir, "context"));
     await writeFile(join(dir, "context/Dockerfile"), "FROM atelier-workspace\nCOPY value /value\n");
@@ -44,13 +45,14 @@ test("build client solves each request, preserves ignore rules and pulls the pub
     await writeFile(join(dir, "context/Dockerfile.dockerignore"), "specific-ignore\n");
     await writeFile(join(dir, "docker"), `#!${process.execPath}
       const a = process.argv.slice(2);
+      if ((a[0] === "push" || a[0] === "pull") && !a[1].startsWith(${JSON.stringify(creatorAddress)} + "/")) throw Error("wrong creator registry endpoint");
       if (a[0] === 'version') console.log('linux/amd64');
       if (a[0] === 'image' && a[1] === 'inspect') console.log(a.at(-1)==='unpublished-base'?${JSON.stringify(baseDigest)}:${JSON.stringify(builtId)});
       if (a[0] === 'push' || a[0] === 'pull') {
         const [host, ...parts] = a[1].split('/');
         const path = a[0] === 'push' ? parts.join('/').replace(':image','/manifests/image') : parts.join('/').replace('@','/manifests/');
         const response = await fetch('http://'+host+'/v2/'+path, {headers:{'x-fixture-docker':'1'},method:a[0]==='push'?'PUT':'GET',body:a[0]==='push'?'fixture':undefined});
-        if(!response.ok) throw Error('registry relay failed');
+        if(!response.ok) throw Error('registry request failed');
         await response.text();
       }
     `, { mode: 0o755 });
@@ -63,13 +65,13 @@ test("build client solves each request, preserves ignore rules and pulls the pub
     `, { mode: 0o755 });
     await writeFile(join(dir, "client.ts"), `
       import {buildSharedWorkspaceImage,publishSharedImage} from ${JSON.stringify(import.meta.dir + "/shared-build.ts")};
-      const options = {kind:"repository" as const,connection:{version:1,adminSocket:${JSON.stringify(join(dir, "admin.sock"))},snapshotterRoot:'/store',socketDirectory:${JSON.stringify(dir)},depth:1,buildServices:{registrySocket:${JSON.stringify(socket)},buildkitSocket:'/s/buildkit.sock'}},sourcePath:${JSON.stringify(join(dir, "context"))},dockerfile:${JSON.stringify(join(dir, "context/Dockerfile"))},originalDockerfile:${JSON.stringify(join(dir, "context/Dockerfile"))},baseImage:'unpublished-base',tag:'fixture-result'};
+      const options = {kind:"repository" as const,connection:{version:1,adminSocket:${JSON.stringify(join(dir, "admin.sock"))},snapshotterRoot:'/store',socketDirectory:${JSON.stringify(dir)},depth:${depth},buildServices:{registryAddress:${JSON.stringify(address)},buildkitSocket:'/s/buildkit.sock'}},sourcePath:${JSON.stringify(join(dir, "context"))},dockerfile:${JSON.stringify(join(dir, "context/Dockerfile"))},originalDockerfile:${JSON.stringify(join(dir, "context/Dockerfile"))},baseImage:'unpublished-base',tag:'fixture-result'};
       await Promise.all([publishSharedImage(options.connection,"unpublished-base"),publishSharedImage(options.connection,"unpublished-base")]);
       for(let i=0;i<2;i++) { if(i===1) await import("node:fs/promises").then(fs=>fs.unlink(options.originalDockerfile+".dockerignore")); console.log(await buildSharedWorkspaceImage(options)); }
       console.log(await buildSharedWorkspaceImage({...options,kind:"default"}));
       console.log(await publishSharedImage(options.connection,"cached-result"));
     `);
-    const child = Bun.spawn([Bun.which("bun")!, join(dir, "client.ts")], { env: { ...Bun.env, PATH: `${dir}:${Bun.env.PATH}` }, stdout: "pipe", stderr: "pipe", timeout: 15_000 });
+    const child = Bun.spawn([Bun.which("bun")!, join(dir, "client.ts")], { env: { ...Bun.env, NO_PROXY: "127.0.0.1,127.0.0.2", no_proxy: "127.0.0.1,127.0.0.2", PATH: `${dir}:${Bun.env.PATH}` }, stdout: "pipe", stderr: "pipe", timeout: 15_000 });
     const [code, stdout, stderr] = await Promise.all([child.exited, new Response(child.stdout).text(), new Response(child.stderr).text()]);
     expect(stderr).toBe("");
     expect(code).toBe(0);
@@ -78,12 +80,12 @@ test("build client solves each request, preserves ignore rules and pulls the pub
     expect(builds).toHaveLength(3);
     for (const [index, build] of builds.entries()) {
       expect(JSON.parse(build).ignore).toBe(index === 0 ? "specific-ignore\n" : "default-ignore\n");
-      const binding = `context:atelier-workspace=docker-image://127.0.0.1:12345/atelier/bases/${baseDigest.slice(7)}@${baseDigest}`;
+      const binding = `context:atelier-workspace=docker-image://${builderAddress}/atelier/bases/${baseDigest.slice(7)}@${baseDigest}`;
       expect(JSON.parse(build).args.includes(binding)).toBe(index < 2);
       expect(JSON.parse(build).args).toContain(`label:com.atelier.workspace-image.kind=${index < 2 ? "repository" : "default"}`);
-      expect(JSON.parse(build).args).toContain("type=image,name=127.0.0.1:12345/atelier/workspaces,push=true,push-by-digest=true");
+      expect(JSON.parse(build).args).toContain(`type=image,name=${builderAddress}/atelier/workspaces,push=true,push-by-digest=true`);
     }
     expect(uploads).toBe(1);
     expect(pulls).toBe(3);
-  } finally { await admin.stop(true); await registry.stop(true); await rm(dir, { recursive: true }); }
+  } finally { await registry.stop(true); await rm(dir, { recursive: true }); }
 });

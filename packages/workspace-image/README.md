@@ -50,8 +50,8 @@ if cleanup fails, its ownership record is retained for a later forced deletion
 rather than discarded. Existing workspace stores are not converted.
 
 Shared-registry preloads publish the selected tagged or local images before
-workspace startup, then pull their exact registry digests through the inherited
-socket and install the requested aliases. Locally built, unpublished images work;
+workspace startup, then pull their exact registry digests directly from the inherited
+MagicDNS registry address through Tailscale Serve and install the requested aliases. Locally built, unpublished images work;
 moving a source tag after selection does not change the preloaded image. These
 pulls finish before user initialization scripts run. No carrier image is generated.
 

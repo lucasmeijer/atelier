@@ -29,6 +29,7 @@ test("private Docker selects its private containerd and the supervised local sna
   expect(docker.containerd).toBe("/run/containerd/containerd.sock");
   expect(docker["storage-driver"]).toBe("shared-overlay");
   expect(docker.features["containerd-snapshotter"]).toBe(true);
+  expect(docker.dns).toEqual(["100.100.100.100"]);
   expect(docker.bip).toBe(runtime.bridgeCIDR);
   expect(docker["insecure-registries"]).toEqual([]);
 });

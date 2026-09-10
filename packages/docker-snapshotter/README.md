@@ -24,21 +24,37 @@ runtimes with that installation; existing workspace stores are not converted.
   Failure of any owned service stops the app and its remaining services visibly.
   Normal shutdown stops the app, builder, registry and snapshotter in that order;
   the app's exit status is preserved. Restart restores non-retired client sockets.
-- The self-update installer contract has changed. Upgrading from the previous
-  contract requires rerunning the installer. Subsequent self-updates retain the
-  runtime mount, ownership option and privileged execution.
+- The installer contract remains `owned-snapshotter-v1`: this transport change
+  needs no host Docker configuration or installer rerun for an existing owned
+  installation. Recreate older workspaces with the current image to receive the
+  MagicDNS connection, DNS settings and private Docker trust configuration.
 - Workspace creation records a fresh client identity before registering it. The
   same request is idempotent; retirement cannot be undone by a late registration.
   Deletion and failed provisioning retire their client after removing the container.
   Cleanup errors preserve the record rather than losing track of retained data.
 - Unix administrative access is trusted within the mounts supplied to workspaces,
   including users with different host-aligned UIDs. It is not a hostile-tenant seam.
-- Builder cache and registry data persist in the existing installation runtime
-  mount. Their Unix sockets travel with the inherited connection; their storage
-  directories are not mounted into workspaces. The builder uses a loopback-only
-  registry bridge with a stable, automatically assigned port; no public registry
-  port is exposed. Creators bridge their own loopback to the inherited socket and
-  must share a network namespace with their Docker daemon (as installed).
+- Builder cache and registry data persist in the installation runtime mount;
+  their storage directories are not mounted into workspaces. BuildKit retains its
+  inherited Unix socket. The registry listens only on `127.0.0.1`, on a port
+  allocated in 42000–42999 and persisted in `registry-port`.
+- The owner configures Tailscale Serve TCP forwarding on the same port. It uses
+  the existing LocalAPI/Serve configuration lock, preserves unrelated HTTPS
+  routes, rejects conflicting services and Funnel exposure, and removes only its
+  own forwarding rule during shutdown. Startup republishes the rule; Tailscale
+  retains its background configuration across tailscaled restarts.
+- Host Docker and the installation-owned BuildKit worker use loopback. Workspace
+  Docker and nested creators use the inherited MagicDNS hostname and port. No
+  Tailscale IP is persisted, so changing the node IP does not require changing
+  clients. Renaming the node's MagicDNS hostname still requires recreating
+  workspaces that reference the old name.
+- Workspace containers and their Docker daemons use Tailscale DNS
+  (`100.100.100.100`). Private daemons trust HTTP for the exact registry hostname
+  and port, and workspace proxy bypass entries include that hostname. Host
+  Docker needs no extra HTTP trust configuration, daemon reload or restart.
+- The entire machine and tailnet are trusted. Registry HTTP has no authentication;
+  Tailscale encrypts traffic crossing the tailnet. No custom registry relays,
+  certificates, new environment variables or manual firewall rules are required.
 - BuildKit has its own cache, separate from shared image-runtime layers. Direct builds
   can reuse that cache across clients and root-container restarts; changed COPY
   inputs invalidate their dependent build steps.
@@ -51,7 +67,7 @@ runtimes with that installation; existing workspace stores are not converted.
   generated tag. Pre-baked image pulls and the standalone release-image scripts
   remain unchanged. Existing workspaces keep their current Docker stores.
 - Tagged/local preload images are published before startup and pulled by digest
-  through the workspace's inherited socket, with their requested aliases restored.
+  directly from the inherited registry address, with their requested aliases restored.
   Explicit upstream digest references retain their original pull path so their
   manifest identity is not changed by platform-filtered republication.
 - Private containerd instances use a supervised workspace-local snapshot coordinator
@@ -123,13 +139,23 @@ A bounded two-service Compose check exercised service DNS, published ports,
 workspace-local bind paths and a named volume surviving `compose down`.
 See [the portability evidence](PORTABILITY.md) for scope and reproduction details.
 
-A bounded root-owned service check also exercised registry blob persistence,
+Before the direct-TCP change, a bounded root-owned service check also exercised registry blob persistence,
 BuildKit cache reuse after restart, COPY invalidation, unprivileged clients using
 only inherited sockets, concurrent independent owners, duplicate-owner rejection
 and app shutdown after each service's failure. A later repository-build check used
 both a root creator and a workspace-local creator, verifying digest identity,
 COPY invalidation, ignored-input reuse and an unpublished local base. It did not
 run a full nested app.
+
+The Serve transport was checked on a real Linux ARM64 Tailscale host: host
+loopback pushes/pulls without Docker configuration changes, MagicDNS access from
+nested Docker daemons, digest identity, a 140 MiB download with checksum validation,
+registry restart, and forwarding-rule recreation without changing existing HTTPS
+routes. The implemented supervisor was also exercised with a real Atelier workspace
+preload and builds from both root and workspace creators; shutdown removed only
+its registry rule and restart reused the same port. Tailscaled restart and actual
+node IP changes were not forced on the shared host; mocked LocalAPI tests cover
+stable connection identity when the reported IP changes.
 
 Other limits:
 

@@ -402,7 +402,7 @@ func main() {
 	dir := flag.String("socket-dir", "", "absolute socket directory")
 	clients := flag.String("clients", "", "comma separated fixed client IDs")
 	connectionFile := flag.String("connection-file", "", "publish installation connection descriptor")
-	buildServices := flag.Bool("build-services", false, "advertise installation-owned BuildKit and registry sockets")
+	registryAddress := flag.String("registry-address", "", "installation-owned TCP registry address; also advertise BuildKit socket")
 	instance := flag.String("instance-id", fmt.Sprint(os.Getpid()), "readiness identity")
 	flag.Parse()
 	slog.SetDefault(slog.New(slog.NewJSONHandler(os.Stdout, nil)))
@@ -500,18 +500,9 @@ func main() {
 		must(register(id))
 	}
 	s.save()
-	registryAddress := ""
 	mux := http.NewServeMux()
 	mux.HandleFunc("GET /health", func(w http.ResponseWriter, r *http.Request) {
 		fmt.Fprint(w, *instance)
-	})
-	mux.HandleFunc("GET /build-services", func(w http.ResponseWriter, r *http.Request) {
-		if !*buildServices {
-			http.NotFound(w, r)
-			return
-		}
-		w.Header().Set("Content-Type", "application/json")
-		must(json.NewEncoder(w).Encode(map[string]string{"registryAddress": registryAddress}))
 	})
 	mux.HandleFunc("GET /state", func(w http.ResponseWriter, r *http.Request) {
 		s.Lock()
@@ -557,21 +548,10 @@ func main() {
 		}
 		w.WriteHeader(204)
 	})
-	if *buildServices {
-		server, listener, err := registryBridge(*root, filepath.Join(*dir, "registry.sock"))
-		must(err)
-		registryAddress = listener.Addr().String()
-		defer server.Close()
-		go func() {
-			if err := server.Serve(listener); err != http.ErrServerClosed {
-				must(err)
-			}
-		}()
-	}
 	if *connectionFile != "" {
 		connection := map[string]any{"version": 1, "adminSocket": filepath.Join(*dir, "admin.sock"), "snapshotterRoot": *root, "socketDirectory": *dir, "depth": 0}
-		if *buildServices {
-			connection["buildServices"] = map[string]string{"buildkitSocket": filepath.Join(*dir, "buildkit.sock"), "registrySocket": filepath.Join(*dir, "registry.sock")}
+		if *registryAddress != "" {
+			connection["buildServices"] = map[string]string{"buildkitSocket": filepath.Join(*dir, "buildkit.sock"), "registryAddress": *registryAddress}
 		}
 		descriptor, err := json.Marshal(connection)
 		must(err)
