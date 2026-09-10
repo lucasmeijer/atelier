@@ -120,7 +120,10 @@ func TestRecoveryAcrossBackendTransactions(t *testing.T) {
 				if e := a.Commit(ctx, "image", "extract"); e != nil {
 					t.Fatal(e)
 				}
-				if _, e := b.Prepare(ctx, "image", "", label); !errdefs.IsAlreadyExists(e) {
+				if _, e := b.Prepare(ctx, "extract", "", label); e != nil {
+					t.Fatal(e)
+				}
+				if e := b.Commit(ctx, "image", "extract"); e != nil {
 					t.Fatal(e)
 				}
 				opts := []snapshots.Opt{}

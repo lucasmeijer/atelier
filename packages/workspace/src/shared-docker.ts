@@ -21,9 +21,17 @@ export function sharedDockerConfiguration(runtime: SharedDockerRuntime) {
     containerd: `version = 3
 root = "/var/lib/containerd"
 state = "/run/containerd"
-disabled_plugins = ["io.containerd.cri.v1.images", "io.containerd.cri.v1.runtime"]
+disabled_plugins = ["io.containerd.cri.v1.images", "io.containerd.cri.v1.runtime", "io.containerd.content.v1.content"]
 [grpc]
   address = "/run/containerd/containerd.sock"
+[proxy_plugins.shared-content]
+  type = "content"
+  address = ${JSON.stringify(runtime.snapshotterSocket)}
+[proxy_plugins.shared-diff]
+  type = "diff"
+  address = ${JSON.stringify(runtime.snapshotterSocket)}
+[plugins."io.containerd.service.v1.diff-service"]
+  default = ["shared-diff", "walking"]
 [proxy_plugins.shared-overlay]
   type = "snapshot"
   address = ${JSON.stringify(runtime.snapshotterSocket)}

@@ -1,7 +1,7 @@
 # Workspace Docker snapshotter
 
-The Atelier container image includes the experimental snapshotter, BuildKit and
-local registry. The Linux installer starts
+The Atelier container image includes the experimental snapshotter, shared content
+store/diff service, BuildKit and local registry. The Linux installer starts
 one installation-owned instance of each alongside the app. New workspaces automatically register their private
 runtimes with that installation; existing workspace stores are not converted.
 
@@ -54,8 +54,16 @@ runtimes with that installation; existing workspace stores are not converted.
   through the workspace's inherited socket, with their requested aliases restored.
   Explicit upstream digest references retain their original pull path so their
   manifest identity is not changed by platform-filtered republication.
+- Private containerd instances use installation-owned content and diff services
+  through their existing client socket. Image names, metadata, containers and
+  volumes remain private. Immutable compressed blobs are retained centrally;
+  client pruning cannot delete another client's export data. Unfinished uploads
+  are client-scoped and reclaimed on retirement, including interrupted retirement.
+- Pulls register all image blobs before reusing an unpacked chain. The shared diff
+  service skips extraction only for a previously verified blob and matching parent
+  chain. This preserves warm reuse without creating unexportable images.
 - Published build outputs can be reused and preloaded by metadata-only private
-  clients without exporting their missing compressed blobs again. Concurrent
+  clients without publishing their compressed blobs again. Concurrent
   same-process publications share one push and temporary-tag lifetime.
 
 ## Observable behavior we care about
@@ -82,6 +90,9 @@ runtimes with that installation; existing workspace stores are not converted.
 - A saved image must load and run in a fresh, disconnected runtime. Reporting
   successful export/import while producing an unusable image is not acceptable.
 
+The [performance scenario matrix](PERFORMANCE.md) defines the corresponding
+measurement boundaries and metrics, including concurrent warm creation.
+
 ## Current evidence and limits
 
 The Linux ARM64 experiment exercised cross-workspace reuse, private writes,
@@ -90,10 +101,16 @@ park/resume, graceful shared-runtime restart, concurrent cold pulls, and a neste
 workspace with its own Docker daemon. Warm real-image pulls transferred only
 manifest/config metadata and did not extract image layers.
 
-The last export requirement is **not met**: `docker save` and `docker load` both
-reported success for an incomplete archive, but running the imported image failed.
-Pushing to another repository in the same registry worked; this does not establish
-export to an unrelated registry or offline portability.
+The export failure is fixed for the shared-content runtime. An ARM64 Docker
+29.1.3/containerd 2.2.2 check saved a warm-pulled image, loaded it into a fresh
+network-disabled ordinary Docker runtime with no shared-store mounts, and ran it.
+A locally committed two-layer image preserved an added file and a whiteout through
+push to a separate registry, warm pull, save, offline load and run. This still
+worked after deleting the original client and SIGKILL/restarting the adapter.
+A fresh post-restart client reused both layers with no registry blob requests.
+A bounded two-service Compose check exercised service DNS, published ports,
+workspace-local bind paths and a named volume surviving `compose down`.
+See [the portability evidence](PORTABILITY.md) for scope and reproduction details.
 
 A bounded root-owned service check also exercised registry blob persistence,
 BuildKit cache reuse after restart, COPY invalidation, unprivileged clients using
@@ -113,14 +130,13 @@ Other limits:
   retirement finishes on restart, without reclaiming other clients’ image layers.
   Recovery does not repair corruption left by older, unjournaled versions or
   guarantee application filesystem writes survive host power loss.
-- First publication of an image whose private Docker store lacks compressed blobs
-  is still subject to the export limitation above. Images already known to the
-  registry, including newly indexed build outputs, avoid that export. Older build
-  outputs can acquire the index by being solved again through the shared builder.
+- Existing experimental workspace stores/configurations are not migrated. Recreate
+  those workspaces to select the shared content/diff plugins. This does not repair
+  incomplete archives or image metadata produced by the older early-reuse path.
 - The existing image-outdated check does not detect arbitrary COPY-input edits;
   actual repository builds do re-solve those inputs. Shared-mode creator images
   are not automatically pruned while they may be awaiting container creation.
-- Cached image layers are retained indefinitely. Disk budgets and eviction are
+- Cached image layers and compressed blobs are retained indefinitely. Disk budgets and eviction are
   not implemented. Private container layers are reclaimed on normal cleanup.
 - Concurrent cold requests can duplicate downloading and extraction work before
   retaining one completed copy.
@@ -129,7 +145,7 @@ Other limits:
   records allow deletion to be retried after the adapter becomes available.
 - Snapshot parent rebasing is unsupported. This is not a complete implementation
   of every snapshotter extension.
-- Compose as a whole, Docker Desktop, other runtime versions/platforms and
+- Compose beyond the bounded check above, Docker Desktop, other runtime versions/platforms and
   30-workspace load have not been validated.
 
 ## Local checks
@@ -143,6 +159,10 @@ go build -o dist/docker-snapshotter .
 
 These non-UI tests cover scoped reuse, competing cold commits, private data
 reclamation, exclusive ownership, readiness and restart of the adapter executable.
+Content tests cover retained blob reads after client GC/restart, independent upload
+references and retirement. Diff tests require matching media type, content and
+parent chain, and verify warm reuse returns the complete uncompressed descriptor
+without extraction.
 Crash tests SIGKILL a subprocess before and after real backend prepare, view,
 commit, duplicate-layer commit, removal and retirement transactions, then reopen
 the store and verify aliases, ownership and repeated recovery. A bounded ARM64

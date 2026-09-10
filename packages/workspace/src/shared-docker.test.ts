@@ -18,6 +18,11 @@ function plan(): WorkspaceDockerPlan {
 test("private Docker selects its private containerd and the supplied shared snapshotter", () => {
   const config = sharedDockerConfiguration(runtime);
   expect(config.containerd).toContain('address = "/installation/sockets/workspace-a.sock"');
+  expect(config.containerd).toContain('"io.containerd.content.v1.content"');
+  expect(config.containerd).toContain('[proxy_plugins.shared-content]');
+  expect(config.containerd).toContain('type = "content"');
+  expect(config.containerd).toContain('[proxy_plugins.shared-diff]');
+  expect(config.containerd).toContain('default = ["shared-diff", "walking"]');
   const docker = JSON.parse(config.docker);
   expect(docker.containerd).toBe("/run/containerd/containerd.sock");
   expect(docker["storage-driver"]).toBe("shared-overlay");

@@ -18,11 +18,14 @@ import (
 	"syscall"
 	"time"
 
+	contentapi "github.com/containerd/containerd/api/services/content/v1"
+	diffapi "github.com/containerd/containerd/api/services/diff/v1"
 	api "github.com/containerd/containerd/api/services/snapshots/v1"
 	"github.com/containerd/containerd/v2/contrib/snapshotservice"
 	"github.com/containerd/containerd/v2/core/mount"
 	"github.com/containerd/containerd/v2/core/snapshots"
 	"github.com/containerd/containerd/v2/pkg/filters"
+	"github.com/containerd/containerd/v2/plugins/services/content/contentserver"
 	"github.com/containerd/containerd/v2/plugins/snapshots/overlay"
 	"github.com/containerd/errdefs"
 	digest "github.com/opencontainers/go-digest"
@@ -178,22 +181,8 @@ func (c *Client) create(ctx context.Context, k, p string, view bool, opts ...sna
 			return nil, fmt.Errorf("invalid chain reference: %w", errdefs.ErrInvalidArgument)
 		}
 	}
-	if ch, ok := c.s.state.Chains[target]; ok && !view {
-		if ch.Parent != bp {
-			return nil, fmt.Errorf("chain parent mismatch: %w", errdefs.ErrFailedPrecondition)
-		}
-		bi, e := c.s.backend.Stat(ctx, ch.Backing)
-		if e != nil {
-			return nil, e
-		}
-		i.Kind = snapshots.KindCommitted
-		i.Created = bi.Created
-		i.Updated = bi.Updated
-		c.s.state.Clients[c.id][k] = Alias{i, ch.Backing, target}
-		c.s.save()
-		slog.Info("reuse", "client", c.id, "key", k, "parent", p, "snapshot.ref", target, "backing", ch.Backing, "hit", true)
-		return nil, errdefs.ErrAlreadyExists
-	}
+	// Always let containerd fetch/register the content before committing reuse.
+	// Early AlreadyExists skips blobs as well as extraction, making exports empty.
 	b := fmt.Sprintf("physical-%d", c.s.state.Sequence+1)
 	kind := "prepare"
 	if view {
@@ -432,6 +421,13 @@ func main() {
 		must(e)
 	}
 	must(s.restore(context.Background()))
+	blobs, e := openBlobs(filepath.Join(*root, "content"))
+	must(e)
+	for id, retired := range s.state.Retired {
+		if retired {
+			must(blobs.retire(context.Background(), id))
+		}
+	}
 	var serviceLock sync.Mutex
 	servers := map[string]*grpc.Server{}
 	clientIDs := map[string]bool{}
@@ -461,7 +457,7 @@ func main() {
 			s.state.Clients[id] = map[string]Alias{}
 		}
 		clientID := id
-		g := grpc.NewServer(grpc.UnaryInterceptor(func(ctx context.Context, req any, info *grpc.UnaryServerInfo, h grpc.UnaryHandler) (any, error) {
+		g := grpc.NewServer(grpc.WaitForHandlers(true), grpc.UnaryInterceptor(func(ctx context.Context, req any, info *grpc.UnaryServerInfo, h grpc.UnaryHandler) (any, error) {
 			t := time.Now()
 			r, e := h(ctx, req)
 			slog.Info("rpc", "client", clientID, "method", info.FullMethod, "request", fmt.Sprint(req), "error", fmt.Sprint(e), "duration_us", time.Since(t).Microseconds())
@@ -473,6 +469,8 @@ func main() {
 			return e
 		}))
 		api.RegisterSnapshotsServer(g, snapshotservice.FromSnapshotter(&Client{s, id}))
+		contentapi.RegisterContentServer(g, contentserver.New(&clientContent{Store: blobs.Store, prefix: id + "/"}))
+		diffapi.RegisterDiffServer(g, &sharedDiff{client: &Client{s, id}, blobs: blobs})
 		l := listen(filepath.Join(*dir, id+".sock"))
 		go func() {
 			if err := g.Serve(l); err != nil && err != grpc.ErrServerStopped {
@@ -539,6 +537,10 @@ func main() {
 		if server := servers[id]; server != nil {
 			server.Stop()
 			delete(servers, id)
+		}
+		if e := blobs.retire(r.Context(), id); e != nil {
+			http.Error(w, e.Error(), http.StatusInternalServerError)
+			return
 		}
 		w.WriteHeader(204)
 	})

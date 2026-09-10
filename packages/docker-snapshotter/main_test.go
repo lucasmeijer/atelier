@@ -33,8 +33,11 @@ func TestScopedReuseLifecycle(t *testing.T) {
 	if _, e = c.Stat(ctx, "committed"); !errdefs.IsNotFound(e) {
 		t.Fatalf("leaked A alias: %v", e)
 	}
-	if _, e = c.Prepare(ctx, "same-key", "", opt); !errdefs.IsAlreadyExists(e) {
-		t.Fatalf("no early hit: %v", e)
+	if _, e = c.Prepare(ctx, "extract", "", opt); e != nil {
+		t.Fatal(e)
+	}
+	if e = c.Commit(ctx, "same-key", "extract"); e != nil {
+		t.Fatal(e)
 	}
 	count := 0
 	e = c.Walk(ctx, func(_ context.Context, i snapshots.Info) error {
@@ -79,7 +82,10 @@ func TestScopedReuseLifecycle(t *testing.T) {
 	if _, e = b.Stat(ctx, before); e != nil {
 		t.Fatal(e)
 	}
-	if _, e = c.Prepare(ctx, "adopt-again", "", opt); !errdefs.IsAlreadyExists(e) {
+	if _, e = c.Prepare(ctx, "extract-again", "", opt); e != nil {
+		t.Fatal(e)
+	}
+	if e = c.Commit(ctx, "adopt-again", "extract-again"); e != nil {
 		t.Fatal(e)
 	}
 }

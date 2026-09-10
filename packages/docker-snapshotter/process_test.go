@@ -1,8 +1,15 @@
 package main
 
 import (
+	"bytes"
 	"context"
 	"flag"
+	"github.com/containerd/containerd/v2/core/content"
+	"github.com/containerd/containerd/v2/core/content/proxy"
+	digest "github.com/opencontainers/go-digest"
+	ocispec "github.com/opencontainers/image-spec/specs-go/v1"
+	"google.golang.org/grpc"
+	"google.golang.org/grpc/credentials/insecure"
 	"io"
 	"net"
 	"net/http"
@@ -143,6 +150,39 @@ func TestDaemonReadinessAndRestoredClients(t *testing.T) {
 		t.Fatal("invalid identity accepted")
 	}
 
+	contentClient := func(id string) content.Store {
+		t.Helper()
+		conn, err := grpc.NewClient("unix://"+filepath.Join(socketDir, id+".sock"), grpc.WithTransportCredentials(insecure.NewCredentials()))
+		if err != nil {
+			t.Fatal(err)
+		}
+		t.Cleanup(func() { conn.Close() })
+		return proxy.NewContentStore(conn)
+	}
+	ctx, cancel := context.WithTimeout(context.Background(), 20*time.Second)
+	defer cancel()
+	payload := []byte("exportable after owner retirement and adapter restart")
+	blob := ocispec.Descriptor{Digest: digest.FromBytes(payload), Size: int64(len(payload))}
+	ca := contentClient("a")
+	if err := content.WriteBlob(ctx, ca, "export", bytes.NewReader(payload), blob); err != nil {
+		t.Fatal(err)
+	}
+	if err := ca.Delete(ctx, blob.Digest); err != nil {
+		t.Fatal(err)
+	}
+	for _, id := range []string{"a", "b"} {
+		w, err := contentClient(id).Writer(ctx, content.WithRef("interrupted"))
+		if err != nil {
+			t.Fatal(err)
+		}
+		if _, err := w.Write([]byte("unfinished upload")); err != nil {
+			t.Fatal(err)
+		}
+		if err := w.Close(); err != nil {
+			t.Fatal(err)
+		}
+	}
+
 	request, err := http.NewRequest(http.MethodPost, "http://localhost/retire?client=a", nil)
 	if err != nil {
 		t.Fatal(err)
@@ -196,6 +236,23 @@ func TestDaemonReadinessAndRestoredClients(t *testing.T) {
 	}
 	if _, err := os.Stat(filepath.Join(socketDir, "a.sock")); !os.IsNotExist(err) {
 		t.Fatal("retired client socket restored:", err)
+	}
+	cb := contentClient("b")
+	data, err := content.ReadBlob(ctx, cb, blob)
+	if err != nil || !bytes.Equal(data, payload) {
+		t.Fatalf("shared content lost after retirement/restart: %q %v", data, err)
+	}
+	statuses, err := cb.ListStatuses(ctx, "ref==interrupted")
+	if err != nil || len(statuses) != 1 {
+		t.Fatalf("other client's upload lost: %+v %v", statuses, err)
+	}
+	allBlobs, err := openBlobs(filepath.Join(root, "store/content"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	statuses, err = (&clientContent{Store: allBlobs, prefix: "a/"}).ListStatuses(ctx)
+	if err != nil || len(statuses) != 0 {
+		t.Fatalf("retired upload retained: %+v %v", statuses, err)
 	}
 	stop(restarted)
 }
