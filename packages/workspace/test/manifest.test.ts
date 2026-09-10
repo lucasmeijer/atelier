@@ -40,25 +40,13 @@ describe("workspace manifest init scripts", () => {
   });
 });
 
-describe("workspace manifest Docker image preload", () => {
-  test("is optional and accepts an empty array", () => {
+describe("workspace manifest Docker configuration", () => {
+  test("accepts optional Docker privilege", () => {
     expect(parse({ version: 1 })).toEqual({ version: 1 });
-    expect(parse({ version: 1, docker: { preloadImages: [] } })).toEqual({ version: 1, docker: { preloadImages: [] } });
-  });
-
-  test("accepts literal, magic, mixed, and duplicate specs", () => {
-    expect(parse({ version: 1, docker: { privileged: true, preloadImages: ["default-atelier-workspace-image", "ubuntu:24.04", "ubuntu:24.04"] } }).docker?.preloadImages)
-      .toEqual(["default-atelier-workspace-image", "ubuntu:24.04", "ubuntu:24.04"]);
-  });
-
-  test("rejects malformed preload values", () => {
-    expectInvalid({ version: 1, docker: { privileged: true, preloadImages: "ubuntu:24.04" } }, "must be an array");
-    expectInvalid({ version: 1, docker: { privileged: true, preloadImages: [1] } }, "non-empty strings");
-    expectInvalid({ version: 1, docker: { privileged: true, preloadImages: ["  "] } }, "non-empty strings");
-  });
-
-  test("requires explicit nested Docker privilege", () => {
-    expectInvalid({ version: 1, docker: { preloadImages: ["ubuntu:24.04"] } }, "requires docker.privileged");
+    expect(parse({ version: 1, docker: {} }).docker).toEqual({});
+    for (const privileged of [true, false]) {
+      expect(parse({ version: 1, docker: { privileged } }).docker).toEqual({ privileged });
+    }
   });
 
   test("rejects a non-boolean Docker privilege", () => {

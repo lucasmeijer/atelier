@@ -61,7 +61,7 @@ export async function publishSharedImage(connection: DockerRuntimeConnection, im
   const key = `${address}\0${id}`;
   let publication = publications.get(key);
   if (!publication) {
-    // Concurrent preloads share one temporary Docker tag; keep its lifetime owned
+    // Concurrent base publications share one temporary Docker tag; keep its lifetime owned
     // by one publication rather than removing it beneath another push.
     publication = publishImageReference(id, address).finally(() => publications.delete(key));
     publications.set(key, publication);

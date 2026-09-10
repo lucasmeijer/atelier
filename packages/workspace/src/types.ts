@@ -26,5 +26,4 @@ export interface WorkspaceDockerPlan {
   initScripts: string[];
   containerFiles: WorkspaceDockerContainerFile[];
   cleanup: Array<() => Promise<void> | void>;
-  preloadDockerImages?: string[];
 }

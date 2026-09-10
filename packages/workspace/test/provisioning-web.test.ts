@@ -20,18 +20,6 @@ describe("workspace provisioning presentation", () => {
     expect(html).toContain("Run workspace startup integrations");
   });
 
-  test("places conditional image preparation steps before container startup", () => {
-    const store = createWorkspaceProvisioningStore({ onChange() {}, seedSteps: [] });
-    store.seed("workspace-1");
-    store.apply({ workspaceId: "workspace-1", id: "workspace.docker-images", label: "Resolve nested Docker images", status: "done" });
-    store.apply({ workspaceId: "workspace-1", id: "workspace.image-carrier", label: "Prepare preloaded workspace image", status: "running" });
-
-    const html = store.render("workspace-1");
-
-    expect(html.indexOf("Resolve nested Docker images")).toBeLessThan(html.indexOf("Prepare preloaded workspace image"));
-    expect(html.indexOf("Prepare preloaded workspace image")).toBeLessThan(html.indexOf("Start workspace container"));
-  });
-
   test("renders running, complete, failed, and terminal states semantically", () => {
     const store = createWorkspaceProvisioningStore({ onChange() {}, seedSteps: [] });
     store.apply({ workspaceId: "workspace-1", id: "done", label: "Done", status: "done", output: "Finished output", terminal: { kind: "host-tmux", session: "finished-session" } });
@@ -49,13 +37,4 @@ describe("workspace provisioning presentation", () => {
     expect(html).toContain('aria-label="Failed"');
   });
 
-  test("shows running output directly instead of hiding it behind a disclosure", () => {
-    const store = createWorkspaceProvisioningStore({ onChange() {}, seedSteps: [] });
-    store.apply({ workspaceId: "workspace-1", id: "workspace.image-carrier", label: "Prepare preloaded workspace image", status: "running", output: "Loading nested Docker images…\n" });
-
-    const html = store.render("workspace-1");
-
-    expect(html).toContain("Loading nested Docker images…");
-    expect(html).not.toContain("View output");
-  });
 });

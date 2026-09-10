@@ -73,10 +73,6 @@ runtimes with that installation; existing workspace stores are not converted.
 - Runtime default-image generation uses the shared builder too, preserving its
   generated tag. Pre-baked image pulls and the standalone release-image scripts
   remain unchanged. Existing workspaces keep their current Docker stores.
-- Tagged/local preload images are published before startup and pulled by digest
-  directly from the inherited registry address, with their requested aliases restored.
-  Explicit upstream digest references retain their original pull path so their
-  manifest identity is not changed by platform-filtered republication.
 - Private containerd instances use a supervised workspace-local snapshotter and
   installation-owned content and diff services through their existing client socket.
   The creator Docker daemon supplies an anonymous volume at
@@ -108,7 +104,7 @@ runtimes with that installation; existing workspace stores are not converted.
   acquisition. Content/diff services, shared image aliases and their recovery remain
   installation-owned. Private filesystem diff generation and application run through
   containerd's local walking differ, including Docker commit and export.
-- Published build outputs can be reused and preloaded by metadata-only private
+- Published build outputs can be reused as build inputs by metadata-only private
   clients without publishing their compressed blobs again. Concurrent
   same-process publications share one push and temporary-tag lifetime.
 

@@ -21,9 +21,8 @@ bun run scripts/build-atelier-image.ts --push --image ghcr.io/example/atelier --
 `image:publish` is the same build pipeline with `--push` enabled and defaults to `--platform linux/amd64,linux/arm64` for both the app and workspace images. The local Docker Buildx builder must support both platforms (native build nodes or QEMU emulation). Pass `--platform linux/amd64` to explicitly publish only one architecture. Publishing with `--stable` updates the installer’s default channel; changing the build command alone does not update existing registry tags.
 
 The installer reads the default workspace image reference embedded in the app
-image and pulls that exact image for the Docker host architecture. In shared
-installations, tagged/local nested-Docker preloads are published to the shared
-registry and pulled through Tailscale Serve; ordinary upstream pulls are unchanged.
+image and pulls that exact image for the Docker host architecture. Shared
+installations reuse retained image layers across private Docker daemons on demand.
 
 ## Deploy an unmerged branch normally
 

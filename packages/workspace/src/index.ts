@@ -5,7 +5,8 @@ import { dirname, join } from "node:path";
 import { AtelierCoreError, atelierDataPath, createProcessFileLock, dockerHostAtelierDataPath, getAtelierRuntimeContext, gitHubCredentialHelperShellBody, invalidArguments, isJsonObject, requireDocker, runDocker, runDockerBuffer, shellQuote, type AtelierEventBus, type CommandInput, type JsonObject } from "@atelier/core";
 import { runHostObservableCommand, stripTerminalControls, tailTerminalText } from "@atelier/observable-terminal/server";
 import { isWorkspaceAppPort, workspaceGatewayPort, type WorkspaceGateway, type WorkspaceHttpAppBackend, type WorkspaceServerProvisioningHook } from "@atelier/shared";
-import { ensureDefaultWorkspaceImage, inspectWorkspaceImage, nativeLinuxDockerPlatform, nestedDockerDaemonInitScript, prepareWorkspaceImageCarrier, prepareSharedImagePreload, resolveDockerImagePreload, resolveWorkspaceImageResolution, type WorkspaceImageResolution } from "@atelier/workspace-image";
+import { inspectWorkspaceImage, resolveWorkspaceImage } from "@atelier/workspace-image";
+import { nestedDockerDaemonInitScript } from "./nested-docker.ts";
 import { Type } from "typebox";
 import { Value } from "typebox/value";
 import { readDockerRuntimeConnection, registerWorkspaceDocker, retireWorkspaceDocker } from "./docker-runtime.ts";
@@ -58,7 +59,6 @@ const dockerLabelsSchema = Type.Record(Type.String(), Type.String());
 const booleanSchema = Type.Boolean();
 const nonBlankStringSchema = Type.String({ pattern: "\\S" });
 const stringArraySchema = Type.Array(Type.String());
-const nonBlankStringArraySchema = Type.Array(nonBlankStringSchema);
 export const workspaceRoot = "/work";
 export const workspaceVSCodePort = 8000;
 
@@ -232,7 +232,7 @@ async function readWorkspaceInit(context: Awaited<ReturnType<typeof getAtelierRu
 
 export interface RepoWorkspaceManifest {
   version: 1;
-  docker?: { privileged?: boolean; preloadImages?: string[] };
+  docker?: { privileged?: boolean };
   initScripts?: string[];
   seedPiConfig?: {
     authJson?: string;
@@ -275,18 +275,11 @@ export function parseRepoWorkspaceManifest(text: string, path = workspaceManifes
   const record = parsed;
   if (record.version !== 1) throw invalidArguments(`invalid ${path}: unsupported version`);
   if (record.privileged !== undefined) throw invalidArguments(`invalid ${path}: privileged is no longer supported; use docker.privileged`);
-  if (record.isAtelier !== undefined) throw invalidArguments(`invalid ${path}: isAtelier is no longer supported; use docker.preloadImages`);
+  if (record.isAtelier !== undefined) throw invalidArguments(`invalid ${path}: isAtelier is no longer supported`);
   const dockerRecord = optionalRecord(record, "docker", path);
   const privileged = dockerRecord ? optionalBoolean(dockerRecord, "privileged", path, "docker.privileged") : undefined;
-  const preloadImagesValue = dockerRecord?.preloadImages;
-  if (preloadImagesValue !== undefined && !Value.Check(nonBlankStringArraySchema, preloadImagesValue)) {
-    throw invalidArguments(`invalid ${path}: docker.preloadImages must be an array of non-empty strings`);
-  }
-  const preloadImages = preloadImagesValue?.map((spec) => spec.trim());
-  if (preloadImages && preloadImages.length > 0 && privileged !== true) throw invalidArguments(`invalid ${path}: docker.preloadImages requires docker.privileged to be true`);
   const docker: RepoWorkspaceManifest["docker"] | undefined = dockerRecord ? {} : undefined;
   if (docker && privileged !== undefined) docker.privileged = privileged;
-  if (docker && preloadImages) docker.preloadImages = preloadImages;
   const initScripts = record.initScripts;
   if (initScripts !== undefined && !Value.Check(stringArraySchema, initScripts)) throw invalidArguments(`invalid ${path}: initScripts must be an array of strings`);
   const seedPiConfigRecord = optionalRecord(record, "seedPiConfig", path);
@@ -332,7 +325,6 @@ async function applyRepoWorkspaceManifest(sourcePath: string, plan: WorkspaceDoc
   const manifest = await readRepoWorkspaceManifest(sourcePath);
   if (!manifest) return;
   if (manifest.docker?.privileged && !plan.extraArgs.includes("--privileged")) plan.extraArgs.push("--privileged");
-  if (manifest.docker?.preloadImages?.length) plan.preloadDockerImages = [...new Set(manifest.docker.preloadImages)];
   applySeedConfigManifest(manifest, plan);
   plan.initScripts.push(...(manifest.initScripts ?? []));
 }
@@ -533,45 +525,15 @@ export async function createWorkspace(options: CreateWorkspaceOptions = {}): Pro
     if (sharedConnection) {
       await provisionStep(options.events, id, "workspace.docker-runtime", "Register private Docker runtime", () => registerWorkspaceDocker(activePlan, atelierDataPath(getAtelierRuntimeContext(), "workspaces", id, "docker-runtime"), sharedConnection));
     }
-    const carrierPlatform = !activePlan.sharedDocker && activePlan.preloadDockerImages?.length ? await nativeLinuxDockerPlatform() : undefined;
-    let imageResolution: WorkspaceImageResolution | undefined;
     if (!activePlan.image) {
       const configuration: WorkspaceImageConfigureEvent = { init };
       await options.events?.emit("workspace_image_configure", configuration);
-      imageResolution = await provisionStep(options.events, id, "workspace.image", "Resolve workspace image", () => resolveWorkspaceImageResolution({ workspaceId: id, events: options.events, sourcePath: source.worktreePath, dockerfile: configuration.dockerfile }));
-      activePlan.image = imageResolution.image;
+      activePlan.image = await provisionStep(options.events, id, "workspace.image", "Resolve workspace image", () => resolveWorkspaceImage({ workspaceId: id, events: options.events, sourcePath: source.worktreePath, dockerfile: configuration.dockerfile }));
     }
     if (activePlan.sharedDocker) {
       await prepareSharedDocker(activePlan, atelierDataPath(getAtelierRuntimeContext(), "workspaces", id, "docker-runtime"));
     } else {
       activePlan.initScripts.push(nestedDockerDaemonInitScript());
-    }
-    if (activePlan.sharedDocker && activePlan.preloadDockerImages?.length) {
-      const resolution = imageResolution ?? { image: activePlan.image!, defaultImage: activePlan.preloadDockerImages.includes("default-atelier-workspace-image") ? await ensureDefaultWorkspaceImage() : activePlan.image! };
-      const preload = await provisionStep(options.events, id, "workspace.docker-images", "Resolve Docker image prewarming", () => resolveDockerImagePreload({ specs: activePlan.preloadDockerImages!, workspaceResolution: resolution, events: options.events, workspaceId: id }));
-      if (sharedConnection?.buildServices) {
-        const sharedPreload = await provisionStep(options.events, id, "workspace.docker-publish", "Publish Docker preloads", () => prepareSharedImagePreload(sharedConnection, preload));
-        activePlan.initScripts.unshift(...sharedPreload);
-      } else {
-        activePlan.initScripts.unshift(...preload.images.map((image) => [`docker pull ${shellQuote(image.sourceRef)}`, ...image.aliases.map((alias) => `docker tag ${shellQuote(image.sourceRef)} ${shellQuote(alias)}`)].join("\n")));
-      }
-    }
-    if (activePlan.preloadDockerImages?.length && imageResolution && carrierPlatform) {
-      const preload = await provisionStep(options.events, id, "workspace.docker-images", "Resolve nested Docker images", () => resolveDockerImagePreload({ specs: activePlan.preloadDockerImages!, workspaceResolution: imageResolution, events: options.events, workspaceId: id }), { output: (result) => result.images.map((image) => `${image.sourceRef} ${image.imageId}${image.aliases.length ? `\n  aliases: ${image.aliases.join(", ")}` : ""}`).join("\n") });
-      let carrierProgress = "";
-      const carrier = await provisionStep(options.events, id, "workspace.image-carrier", "Prepare preloaded workspace image", () => prepareWorkspaceImageCarrier({
-        resolution: imageResolution,
-        platform: carrierPlatform,
-        preload,
-        events: options.events,
-        workspaceId: id,
-        onProgress: async (message) => {
-          carrierProgress += `${message}\n`;
-          await options.events?.emit("workspace_provision_step", { workspaceId: id, id: "workspace.image-carrier", output: carrierProgress });
-        },
-      }), { output: (result) => [`Path: ${result.path}`, `Carrier key: ${result.key}`].join("\n") });
-      activePlan.image = carrier.image;
-      activePlan.initScripts.push(...carrier.initScripts);
     }
     await provisionStep(options.events, id, "workspace.container", "Start workspace container", async () => {
       const image = activePlan.image;
@@ -646,15 +608,11 @@ export async function workspacePortBackend(id: string, port: number, pathAndSear
   return { kind: "http", target, gateway: await workspaceGateway(id) };
 }
 
-async function currentWorkspaceImageId(sourcePath: string, dockerfile?: string): Promise<string | undefined> {
-  return await inspectWorkspaceImage({ sourcePath, dockerfile, preloadImages: await readDockerRuntimeConnection() ? undefined : (await readRepoWorkspaceManifest(sourcePath))?.docker?.preloadImages });
-}
-
 export async function workspaceImageOutdated(id: string, container = workspaceContainerName(id), events?: AtelierEventBus): Promise<boolean> {
   const configuration: WorkspaceImageConfigureEvent = { init: await readWorkspaceInit(getAtelierRuntimeContext(), id) };
   await events?.emit("workspace_image_configure", configuration);
   const [expectedImageId, actualImage] = await Promise.all([
-    currentWorkspaceImageId(workspaceWorkHostPath(id), configuration.dockerfile),
+    inspectWorkspaceImage({ sourcePath: workspaceWorkHostPath(id), dockerfile: configuration.dockerfile }),
     requireDocker(["inspect", "--format", "{{.Image}}", container]),
   ]);
   return expectedImageId === undefined || actualImage.stdout.trim() !== expectedImageId;

@@ -1,8 +1,7 @@
 {
   "version": 1,
   "docker": {
-    "privileged": true,
-    "preloadImages": ["default-atelier-workspace-image"]
+    "privileged": true
   },
   "seedPiConfig": {
     "authJson": "/home/atelier/.local/share/atelier-host/pi-config/auth.json",

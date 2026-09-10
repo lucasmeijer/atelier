@@ -3,7 +3,7 @@ import { mkdtemp, rm, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 
-for (const scenario of ["preloaded", "missing", "different-tag", "no-cache"] as const) {
+for (const scenario of ["cached", "missing", "different-tag", "no-cache"] as const) {
   test(`default image resolution: ${scenario}`, async () => {
     const directory = await mkdtemp(join(tmpdir(), "default-image-test-"));
     const namespace = directory.split("/").at(-1)!;
@@ -24,7 +24,7 @@ for (const scenario of ["preloaded", "missing", "different-tag", "no-cache"] as 
         mock.module(localPath, () => ({...local, nativeImageExists: async tag => {
           checks.push(tag);
           // A different deterministic tag must not count as the requested image.
-          return ${JSON.stringify(scenario)} === 'different-tag' ? tag === 'atelier-workspace:old-default' : ${scenario === "preloaded" || scenario === "no-cache"};
+          return ${JSON.stringify(scenario)} === 'different-tag' ? tag === 'atelier-workspace:old-default' : ${scenario === "cached" || scenario === "no-cache"};
         }}));
         mock.module(runtimePath, () => ({...runtime, readDockerRuntimeConnection: async () => {
           connections++;
@@ -41,7 +41,7 @@ for (const scenario of ["preloaded", "missing", "different-tag", "no-cache"] as 
       `);
       // Separate processes model the dev launcher and the server. A cache hit
       // must succeed in both, without contacting shared infrastructure.
-      for (let attempt = 0; attempt < (scenario === "preloaded" ? 2 : 1); attempt++) {
+      for (let attempt = 0; attempt < (scenario === "cached" ? 2 : 1); attempt++) {
         const child = Bun.spawn([process.execPath, client], {
           env: { ...process.env, ATELIER_NAMESPACE: namespace, ATELIER_WORKSPACE_IMAGE_NO_CACHE: scenario === "no-cache" ? "1" : "0" },
           stdout: "pipe", stderr: "pipe", timeout: 15_000,
@@ -53,8 +53,8 @@ for (const scenario of ["preloaded", "missing", "different-tag", "no-cache"] as 
         expect(result.first).toMatch(/^atelier-workspace:[a-f0-9]{16}$/);
         expect(result.second).toBe(result.first);
         expect(result.checks).toEqual(scenario === "no-cache" ? [] : [result.first]);
-        expect(result.connections).toBe(scenario === "preloaded" ? 0 : 1);
-        expect(result.builds).toEqual(scenario === "preloaded" ? [] : [{ kind: "default", tag: result.first, noCache: scenario === "no-cache" }]);
+        expect(result.connections).toBe(scenario === "cached" ? 0 : 1);
+        expect(result.builds).toEqual(scenario === "cached" ? [] : [{ kind: "default", tag: result.first, noCache: scenario === "no-cache" }]);
       }
     } finally {
       await rm(directory, { recursive: true });
