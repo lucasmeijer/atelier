@@ -170,6 +170,41 @@ require_root() {
   success "Running as root"
 }
 
+require_interactive_terminal() {
+  local terminal_fd
+
+  if ! { exec {terminal_fd}</dev/tty; } 2>/dev/null; then
+    cat >&2 <<'EOF'
+error: Atelier installation requires an interactive terminal for setup questions.
+No changes have been made by this installer.
+
+Run this installer inside tmux on the machine where you are installing Atelier:
+
+  tmux new-session -d -s atelier-install
+
+Rerun your original installer command, including its options, in that session
+using tmux send-keys. Monitor output and respond to setup questions with:
+
+  tmux capture-pane -p -t atelier-install -S -100
+  tmux send-keys -t atelier-install 'YOUR ANSWER' Enter
+
+Show the user the live terminal when your tools support it; otherwise relay
+progress and any required actions. Share Tailscale sign-in links with the user
+for approval. Keep monitoring until the installer succeeds or fails; starting
+the tmux session does not mean installation is complete.
+
+To view the session interactively:
+
+  tmux attach-session -t atelier-install
+
+Install tmux first if it is not available. --help and --pull-only do not require
+a terminal.
+EOF
+    exit 1
+  fi
+  exec {terminal_fd}<&-
+}
+
 command_exists() {
   command -v "$1" >/dev/null 2>&1
 }
@@ -401,7 +436,7 @@ confirm_tailscale_setup() {
 
   log "$question"
   printf 'Continue? [Y/n]: '
-  IFS= read -r answer </dev/tty || fail "Tailscale setup needs an interactive terminal; set up Tailscale manually, then rerun this installer"
+  IFS= read -r answer </dev/tty || fail "could not read Tailscale setup confirmation from terminal"
   case "$answer" in
     ""|y|Y|yes|YES|Yes) ;;
     *) fail "installation cancelled; Atelier requires a connected Tailscale tailnet" ;;
@@ -730,6 +765,7 @@ main() {
     return
   fi
 
+  require_interactive_terminal
   require_supported_host
   require_tailscale
   check_ssh_latency
