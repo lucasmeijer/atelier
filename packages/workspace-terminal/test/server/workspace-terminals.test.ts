@@ -49,3 +49,36 @@ describe("workspace terminals", () => {
     expect((await listTmuxSessions(workspaceId)).some((session) => session.name === terminal.tmuxSession)).toBe(false);
   });
 });
+
+// Server-side installation/command lifecycle checks, not terminal rendering tests.
+describe("terminal intro installation", () => {
+  test("reuses the native executable across new interactive sessions", async () => {
+    const first = await createWorkspaceTerminal(workspaceId);
+    const installed = await execWorkspaceShell(workspaceId, "stat -c '%i:%Y' /.atelier/terminal-intro/*");
+    expect(installed.exitCode).toBe(0);
+    expect(installed.stdout.trim().split("\n")).toHaveLength(1);
+
+    const second = await createWorkspaceTerminal(workspaceId);
+    const reused = await execWorkspaceShell(workspaceId, "stat -c '%i:%Y' /.atelier/terminal-intro/*");
+    expect(reused.exitCode).toBe(0);
+    expect(reused.stdout).toBe(installed.stdout);
+    const executable = await execWorkspaceShell(workspaceId, "/.atelier/terminal-intro/* --help");
+    expect(executable.exitCode).toBe(0);
+
+    await deleteWorkspaceTerminal(workspaceId, first.id);
+    await deleteWorkspaceTerminal(workspaceId, second.id);
+  });
+
+  test("explicit commands execute without waiting for a terminal viewer", async () => {
+    const marker = `/tmp/terminal-command-${crypto.randomUUID()}`;
+    const terminal = await createWorkspaceTerminal(workspaceId, { command: `printf ready > ${marker}` });
+    const completed = await execWorkspaceShell(workspaceId, `for attempt in $(seq 1 100); do
+  if [ -f ${marker} ]; then cat ${marker}; exit 0; fi
+  sleep 0.05
+done
+exit 1`);
+    expect(completed.exitCode).toBe(0);
+    expect(completed.stdout).toBe("ready");
+    await deleteWorkspaceTerminal(workspaceId, terminal.id);
+  });
+});

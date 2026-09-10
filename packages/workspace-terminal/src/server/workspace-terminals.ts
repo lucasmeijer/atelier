@@ -5,6 +5,7 @@ import { buildKillSessionCommand, buildListSessionsCommand, buildObservableSessi
 import { execWorkspaceShell, workspaceRoot } from "@atelier/workspace";
 import { Type, type Static } from "typebox";
 import { Value } from "typebox/value";
+import { newInteractiveTerminalCommand } from "./terminal-intro.ts";
 
 const workspaceTerminalSchema = Type.Object({
   id: Type.String(),
@@ -91,11 +92,11 @@ function normalizeCwd(cwd?: string): string {
   return value;
 }
 
-function sessionCommand(command?: string): string {
+async function sessionCommand(command?: string): Promise<{ setup: string; command: string }> {
   const trimmed = command?.trim();
-  if (!trimmed) return "/bin/bash";
+  if (!trimmed) return newInteractiveTerminalCommand();
   const script = `${trimmed}\nstatus=$?\nprintf '\\n[process exited with code %s]\\n' "$status"\nexec /bin/bash`;
-  return `/bin/bash -lc ${shellQuote(script)}`;
+  return { setup: "", command: `/bin/bash -lc ${shellQuote(script)}` };
 }
 
 function newTerminal(terminals: WorkspaceTerminal[], title: string, tmuxSession: string, sessionRelationship: WorkspaceTerminal["sessionRelationship"]): WorkspaceTerminal {
@@ -108,14 +109,15 @@ export async function createWorkspaceTerminal(workspaceId: string, options: Work
   const terminals = await listWorkspaceTerminals(workspaceId);
   const sessions = await listTmuxSessions(workspaceId);
   const tmuxSession = availableTitle(sessions.map((session) => session.name), options.title);
-  const result = await execWorkspaceShell(workspaceId, buildObservableSessionCommand({
+  const launch = await sessionCommand(options.command);
+  const result = await execWorkspaceShell(workspaceId, `${launch.setup}\n${buildObservableSessionCommand({
     session: tmuxSession,
     cwd: normalizeCwd(options.cwd),
-    command: sessionCommand(options.command),
+    command: launch.command,
     passthrough: true,
     status: false,
     historyLimit: workspaceTerminalHistoryLimit,
-  }));
+  })}`);
   if (result.exitCode !== 0) throw new AtelierCoreError("terminal_create_failed", result.stderr.trim() || `could not create terminal: ${tmuxSession}`);
 
   const terminal = newTerminal(terminals, options.title?.trim() || "Terminal", tmuxSession, "owned");
