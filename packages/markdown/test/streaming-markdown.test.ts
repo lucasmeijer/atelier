@@ -63,7 +63,6 @@ describe("streaming Markdown", () => {
     expect(html).toContain("&lt;script&gt;");
     expect(html).not.toContain("<script>");
     expect(html).toContain('target="_blank"');
-    expect(html).toContain("files-view/open");
     expect(html).toContain("data-agent-proxy-path-value");
   });
 });

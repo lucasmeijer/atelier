@@ -24,6 +24,7 @@ import { createWorkspacePresentationStore, generateWorkspaceId, listWorkspaces, 
 import { createWorkspaceProvisioningStore } from "@atelier/workspace/server/provisioning";
 import {
   workspaceModuleModalFrameId,
+  parseWorkspaceFileTarget,
   atelierCableConnectionHeader,
   CableTopics,
   emptyWorkspaceCommandInputSchema,
@@ -49,6 +50,7 @@ import { workspaceModules } from "./workspace-modules.ts";
 import { handleSettingsRequest, renderDevelopmentSettingsDialog, renderSettingsDialog } from "./settings/routes.ts";
 import { handleOnboardingRequest, renderOnboardingDialog } from "./onboarding/routes.ts";
 import { atelierOpenApi } from "./openapi.ts";
+import { openWorkspaceFile } from "./file-navigation.ts";
 import { parseCloseWorkViewRequest, parseReorderWorkViewRequest } from "./work-view-api.ts";
 import { Type } from "typebox";
 import { Value } from "typebox/value";
@@ -1251,6 +1253,11 @@ export function createWebApp(deps: WebAppDeps): WebApp {
 
     let params: string[] | undefined;
 
+    if ((params = match(/^\/workspaces\/([^/]+)\/file\/open$/))) {
+      if (request.method !== "GET") return response("Method not allowed", { status: 405, headers: { allow: "GET" } });
+      return await openWorkspaceFile(routeParam(params, 0), parseWorkspaceFileTarget(url.searchParams),
+        (workspaceId, reference) => openWorkspaceModuleWorkView(workspaceId, reference, request));
+    }
 
     if (url.pathname === "/agent-workspaces" && request.method === "POST") return await createEmptyAgentWorkspaceEndpoint(request);
 

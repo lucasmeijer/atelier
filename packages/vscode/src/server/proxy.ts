@@ -1,3 +1,4 @@
+import { pathToFileURL } from "node:url";
 import { Type } from "typebox";
 import { Value } from "typebox/value";
 import type { WorkspaceHttpAppBackend } from "@atelier/shared";
@@ -116,6 +117,22 @@ async function ensureRecentVSCodeServer(workspaceId: string): Promise<void> {
 export async function patchVSCodeWorkspaceAppResponse(app: WorkspaceAppHost, response: Response, request: Request): Promise<Response> {
   if (app.appKey !== vscodeAppKey || !response.ok) return response;
   if (!response.headers.get("content-type")?.includes("text/html")) return response;
+  const requestUrl = new URL(request.url);
+  const file = requestUrl.searchParams.get("atelierOpenFile");
+  if (file !== null) {
+    await response.body?.cancel();
+    if (!file.startsWith("/")) return new Response("File path must be absolute", { status: 422 });
+    const origin = new URL(publicWorkspaceAppOrigin(request));
+    const resource = new URL(`vscode-remote://${origin.host}`);
+    resource.pathname = pathToFileURL(file).pathname;
+    const payload = [["openFile", resource.href]];
+    if (requestUrl.searchParams.get("atelierGotoLine") === "1") payload.push(["gotoLineMode", "true"]);
+    const destination = new URL(requestUrl.pathname + requestUrl.search, origin);
+    destination.searchParams.delete("atelierOpenFile");
+    destination.searchParams.delete("atelierGotoLine");
+    destination.searchParams.set("payload", JSON.stringify(payload));
+    return new Response(null, { status: 302, headers: { location: destination.href, "cache-control": "no-store" } });
+  }
   const themeDefaults = themeDefaultsForRequest(request);
   const text = await response.text();
   const configPattern = /(<meta id="vscode-workbench-web-configuration" data-settings=")([^"]+)(">)/;

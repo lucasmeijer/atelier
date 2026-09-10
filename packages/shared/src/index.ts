@@ -11,13 +11,7 @@ export { hopByHopHeaderNames, isHopByHopHeader, stripHopByHopHeaders } from "./p
 
 export const atelierName = "Atelier" as const;
 
-export function workspaceFileOpenUrl(workspaceId: string, path: string, position: { line?: number; column?: number } = {}, filesViewId?: string): string {
-  const query = new URLSearchParams({ path });
-  if (position.line) query.set("line", String(position.line));
-  if (position.column) query.set("column", String(position.column));
-  if (filesViewId) query.set("filesView", filesViewId);
-  return `/workspaces/${encodeURIComponent(workspaceId)}/files-view/open?${query}`;
-}
+export { workspaceFileOpenUrl, parseWorkspaceFileTarget, type WorkspaceFileTarget } from "./file-target.ts";
 
 export function domId(...parts: string[]): string {
   return parts.join("_").replace(/[^a-zA-Z0-9_-]/g, "_");

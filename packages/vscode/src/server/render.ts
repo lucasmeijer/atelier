@@ -1,4 +1,5 @@
-import { domId, escapeHtml } from "@atelier/shared";
+import { randomUUID } from "node:crypto";
+import { domId, escapeHtml, turboStream, type WorkspaceFileTarget } from "@atelier/shared";
 
 export function vscodeViewKey(title: string): string {
   return `vscode:${title}`;
@@ -21,4 +22,20 @@ export function renderVSCodePane(workspaceId: string, title: string): string {
       </div>
     </div>
   </div>`;
+}
+
+export function renderVSCodeNavigationSignal(workspaceId: string): string {
+  return `<span id="${domId("vscode_navigation", workspaceId)}" hidden></span>`;
+}
+
+export function vscodeFileNavigationStream(workspaceId: string, title: string, target: WorkspaceFileTarget): string {
+  const line = target.line ?? (target.column ? 1 : undefined);
+  const query = new URLSearchParams({
+    atelierOpenFile: line ? `${target.path}:${line}:${target.column ?? 1}` : target.path,
+    // Repeated links must still navigate after the user switches files inside VS Code.
+    atelierNavigation: randomUUID(),
+  });
+  if (line) query.set("atelierGotoLine", "1");
+  return turboStream("update", domId("vscode_navigation", workspaceId),
+    `<span data-controller="vscode-navigate" data-vscode-navigate-pane-id-value="${domId("vscode_pane", workspaceId, title)}" data-vscode-navigate-path-value="${escapeHtml(`/?${query}`)}"></span>`);
 }
