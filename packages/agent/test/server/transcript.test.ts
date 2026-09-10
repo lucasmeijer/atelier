@@ -155,20 +155,19 @@ describe("persisted run boundaries", () => {
   const summary: TranscriptRecord = { kind: "timing", turnEntryId: "initial", outcome: "completed", timestamp: 6000,
     timing: { elapsedMs: 5100, toolMs: 2000, inferenceMs: 3100, outputTokens: 50, usageComplete: true } };
 
-  test("steering shares a block and the final answer follows the steering user", () => {
+  test("steering is nested at consumption between earlier and later activity", () => {
     const items = buildTranscript([...initial,
       { kind: "assistant", id: "after", parts: [{ type: "thinking", text: "After steering" }, { type: "text", text: "Final answer" }], stopReason: "stop", timestamp: 5000 }, summary,
     ]);
-    expect(items.map((item) => item.type)).toEqual(["user", "working", "user", "text"]);
+    expect(items.map((item) => item.type)).toEqual(["user", "working", "text"]);
     expect(items[1]).toMatchObject({ key: "initial:working", startedAt: 900, completedAt: 6000,
-      items: [{ text: "Before steering" }, { text: "After steering" }], timing: summary.timing });
-    expect(items[2]).toMatchObject({ key: "steer", text: "Focus here" });
-    expect(items[3]).toMatchObject({ text: "Final answer", final: true });
+      items: [{ text: "Before steering" }, { type: "user", key: "steer", text: "Focus here", steering: true, rewindEntryId: "steer", timestamp: 3000 }, { text: "After steering" }], timing: summary.timing });
+    expect(items[2]).toMatchObject({ text: "Final answer", final: true });
   });
 
   test("unfinished history still groups steering without needing a completion summary", () => {
     const items = buildTranscript(initial);
-    expect(items.map((item) => item.type)).toEqual(["user", "working", "user"]);
+    expect(items.map((item) => item.type)).toEqual(["user", "working"]);
     expect(items[1]).toMatchObject({ key: "initial:working", stoppedAt: 3000 });
   });
 
@@ -181,7 +180,11 @@ describe("persisted run boundaries", () => {
       { kind: "runStart", turnEntryId: "next", startedAt: 7000, timestamp: 7001 },
     ]);
     expect(items.filter((item) => item.type === "working").map((item) => item.key)).toEqual(["initial:working", "next:working"]);
-    expect(items.map((item) => item.type)).toEqual(["user", "working", "user", "text", "user", "text", "user", "working"]);
+    expect(items.map((item) => item.type)).toEqual(["user", "working", "text", "text", "user", "working"]);
+    expect(items[1]).toMatchObject({ items: [
+      { type: "thinking" }, { type: "user", key: "steer", steering: true }, { type: "user", key: "steer2", steering: true },
+    ] });
+    expect(items[4]).toMatchObject({ type: "user", key: "next", steering: undefined });
   });
 
   test("a retry followed by steering stays inside the same run", () => {
@@ -189,8 +192,8 @@ describe("persisted run boundaries", () => {
       { kind: "assistant", id: "retry", parts: [], stopReason: "error", errorMessage: "Retryable", timestamp: 2000 }, initial[3]!,
       { kind: "assistant", id: "answer", parts: [{ type: "text", text: "Recovered" }], stopReason: "stop", timestamp: 5000 }, summary,
     ]);
-    expect(items.map((item) => item.type)).toEqual(["user", "working", "user", "text"]);
-    expect(items[1]).toMatchObject({ items: [{ type: "error", text: "Retryable" }] });
+    expect(items.map((item) => item.type)).toEqual(["user", "working", "text"]);
+    expect(items[1]).toMatchObject({ items: [{ type: "error", text: "Retryable" }, { type: "user", key: "steer", steering: true }] });
   });
 });
 
@@ -204,8 +207,8 @@ test("run membership includes steering entries for contributed activity placemen
   const items = applyTranscriptContributions(buildTranscript(records), {
     rows: [{ item: { type: "extension", key: "delivered", render: () => "", timestamp: 2100 }, placement: { turnEntryId: "steer", relation: "during-turn" } }], anchors: [],
   });
-  expect(items.map((item) => item.type)).toEqual(["user", "working", "user"]);
-  expect(items[1]).toMatchObject({ inputEntryIds: ["first", "steer"], items: [{ type: "extension", key: "delivered" }] });
+  expect(items.map((item) => item.type)).toEqual(["user", "working"]);
+  expect(items[1]).toMatchObject({ inputEntryIds: ["first", "steer"], items: [{ type: "user", key: "steer", steering: true }, { type: "extension", key: "delivered" }] });
 });
 
 test("a new persisted run after an interrupted run is not mistaken for steering", () => {
@@ -219,7 +222,7 @@ test("a new persisted run after an interrupted run is not mistaken for steering"
     { kind: "timing", turnEntryId: "new", outcome: "completed", timestamp: 6001,
       timing: { elapsedMs: 1001, toolMs: 0, inferenceMs: 1001, outputTokens: 2, usageComplete: true } },
   ]);
-  expect(items.map((item) => item.type)).toEqual(["user", "working", "user", "user", "working", "text"]);
+  expect(items.map((item) => item.type)).toEqual(["user", "working", "user", "working", "text"]);
   const blocks = items.filter((item) => item.type === "working");
   expect(blocks[0]).toMatchObject({ key: "old:working", inputEntryIds: ["old", "steer"], stoppedAt: 5000 });
   expect(blocks[1]).toMatchObject({ key: "new:working", inputEntryIds: ["new"], completedAt: 6001 });

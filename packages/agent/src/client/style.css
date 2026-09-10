@@ -47,6 +47,7 @@
   max-width: 100%; width: fit-content; margin-left: auto; color: var(--text-bright); background: var(--elev); border: 1px solid var(--line); border-radius: var(--radius-surface);
   padding: 8px 12px;
 }
+.agent-user-label { color: var(--text-muted); font-size: var(--text-code); margin-bottom: 4px; }
 .agent-user-attachments { display: flex; gap: 6px; margin-top: 6px; flex-wrap: wrap; }
 .agent-user-attachments img { max-height: 90px; max-width: 160px; border-radius: var(--radius-control); border: 1px solid var(--line); }
 

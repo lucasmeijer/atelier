@@ -876,8 +876,11 @@ test("consumed steering keeps the run subscription and publishes only one summar
   emit({ type: "message_update", assistantMessageEvent: { type: "thinking_delta", delta: "Still on the same subscription" } });
   expect(deliveries.length).toBeGreaterThan(beforeActivity);
   emit({ type: "message_end", message: { role: "assistant", content: [{ type: "text", text: "After steering" }], stopReason: "stop", usage: { output: 3 } } });
-  expect(runtime.inspectLiveItems().map((item) => item.type)).toEqual(["user", "working", "user", "text"]);
-  expect(runtime.inspectLiveItems()[2]).toMatchObject({ text: "Steer now", rewindEntryId: "steering-pi-id" });
+  expect(runtime.inspectLiveItems().map((item) => item.type)).toEqual(["user", "working", "text"]);
+  expect(runtime.inspectLiveItems()[1]).toMatchObject({ items: [
+    { type: "user", text: "Steer now", rewindEntryId: "steering-pi-id", steering: true },
+    { type: "thinking" },
+  ] });
   emit({ type: "agent_end", willRetry: false });
   emit({ type: "agent_settled" });
   expect(timings).toHaveLength(1);
