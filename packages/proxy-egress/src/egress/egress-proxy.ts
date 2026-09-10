@@ -12,30 +12,22 @@ import { createWorkspaceSecretContext, forgetWorkspaceSecretContext, getWorkspac
 import type { AtelierEventBus } from "@atelier/core";
 import { isHopByHopHeader, stripHopByHopHeaders } from "@atelier/shared";
 import { authenticateProxyRequest, ensureWorkspaceProxyAuthToken, forgetWorkspaceProxyAuthToken } from "./auth-store.ts";
+import { workspaceLocalProxyInitScript, workspaceLocalProxyUrl } from "./local-proxy.ts";
 import { defaultNoProxyEntries, uniqueNoProxyEntries } from "./no-proxy.ts";
 import { ensureLeafCertificate, ensureMitmCa, type MitmCa } from "./mitm-ca.ts";
 
 export const atelierWorkspaceProxyPort = 58123;
-type AtelierWorkspaceProxy = { port: number; close(): Promise<void> };
 
 const workspaceMitmCaPath = "/run/atelier-mitm-ca.crt";
 
-let sharedProxy: Promise<AtelierWorkspaceProxy> | undefined;
+let sharedProxy: Promise<void> | undefined;
 const mitmTargetServers = new Map<string, Promise<MitmTargetServer>>();
 
 type MitmConnectionContext = { workspaceId: string; hostname: string };
 type MitmTargetServer = { server: ReturnType<typeof createHttpsServer>; port: number; connections: Map<number, MitmConnectionContext>; renewAt: number };
 
-function workspaceProxyHost(): string {
-  return getAtelierRuntimeContext().dockerBridgeHost;
-}
-
-function workspaceProxyUrl(workspaceId: string, token: string): string {
-  return `http://${encodeURIComponent(workspaceId)}:${encodeURIComponent(token)}@${workspaceProxyHost()}:${atelierWorkspaceProxyPort}`;
-}
-
-async function workspaceProxyEnv(workspaceId: string, token: string): Promise<Record<string, string>> {
-  const proxy = workspaceProxyUrl(workspaceId, token);
+function workspaceProxyEnv() {
+  const proxy = workspaceLocalProxyUrl;
   const noProxy = uniqueNoProxyEntries(defaultNoProxyEntries()).join(",");
   return {
     HTTP_PROXY: proxy,
@@ -64,10 +56,18 @@ export function registerWorkspaceProxyEvents(events: AtelierEventBus): void {
     const proxyAuthToken = await ensureWorkspaceProxyAuthToken(workspaceId);
     await ensureAtelierWorkspaceProxy();
     await ensureMitmCa(runtimeContext);
-    Object.assign(plan.env, await workspaceProxyEnv(workspaceId, proxyAuthToken));
+    Object.assign(plan.env, workspaceProxyEnv());
+    // Repository init scripts can already use the proxy environment, so the
+    // forwarder must start before any of them (and before nested dockerd).
     plan.mounts.push({ type: "bind", source: dockerHostAtelierDataPath(runtimeContext, "proxy-ca", "atelier-mitm-ca.pem"), target: workspaceMitmCaPath, readonly: true });
-    plan.initScripts.push(`cat ${workspaceMitmCaPath} >> /etc/ssl/certs/ca-certificates.crt`);
-    plan.initScripts.push(`su atelier -c ${shellQuote('git config --global http.proxy "$HTTPS_PROXY"; git config --global http.proxyAuthMethod basic')}`);
+    plan.initScripts.unshift(
+      workspaceLocalProxyInitScript({
+        host: runtimeContext.dockerBridgeHost, port: atelierWorkspaceProxyPort,
+        username: workspaceId, password: proxyAuthToken,
+      }),
+      `cat ${workspaceMitmCaPath} >> /etc/ssl/certs/ca-certificates.crt`,
+      `su atelier -c ${shellQuote('git config --global http.proxy "$HTTPS_PROXY"')}`,
+    );
     plan.cleanup.push(async () => cleanupWorkspaceProxy(workspaceId));
   });
 
@@ -79,7 +79,7 @@ async function cleanupWorkspaceProxy(workspaceId: string): Promise<void> {
   forgetWorkspaceSecretContext(workspaceId);
 }
 
-export async function ensureAtelierWorkspaceProxy(): Promise<AtelierWorkspaceProxy> {
+export async function ensureAtelierWorkspaceProxy(): Promise<void> {
   if (sharedProxy) return sharedProxy;
   sharedProxy = startAtelierWorkspaceProxy().catch((error) => {
     sharedProxy = undefined;
@@ -88,14 +88,7 @@ export async function ensureAtelierWorkspaceProxy(): Promise<AtelierWorkspacePro
   return sharedProxy;
 }
 
-async function stopAtelierWorkspaceProxy(): Promise<void> {
-  const proxy = await sharedProxy?.catch(() => undefined);
-  sharedProxy = undefined;
-  await proxy?.close();
-  await closeMitmTargetServers();
-}
-
-async function startAtelierWorkspaceProxy(): Promise<AtelierWorkspaceProxy> {
+async function startAtelierWorkspaceProxy(): Promise<void> {
   const ca = await ensureMitmCa();
   const server = createServer((req, res) => void handleProxyHttpRequest(req, res).catch((thrown) => {
     const error = thrown instanceof Error ? thrown : new Error(String(thrown));
@@ -111,7 +104,6 @@ async function startAtelierWorkspaceProxy(): Promise<AtelierWorkspaceProxy> {
     server.listen(atelierWorkspaceProxyPort, "0.0.0.0", () => { server.off("error", reject); resolve(); });
   });
   server.unref();
-  return { port: atelierWorkspaceProxyPort, close: () => new Promise((resolve) => server.close(() => resolve())) };
 }
 
 async function handleProxyHttpRequest(req: IncomingMessage, res: ServerResponse): Promise<void> {
@@ -223,12 +215,6 @@ async function startMitmTargetServer(ca: MitmCa, hostname: string): Promise<Mitm
   // AddressInfo rather than the string address used by Unix-domain sockets.
   const address = server.address() as AddressInfo;
   return { server, port: address.port, connections, renewAt: leaf.renewAt };
-}
-
-async function closeMitmTargetServers(): Promise<void> {
-  const servers = await Promise.all(Array.from(mitmTargetServers.values()).map((server) => server.catch(() => undefined)));
-  mitmTargetServers.clear();
-  await Promise.all(servers.filter((server): server is MitmTargetServer => Boolean(server)).map((target) => new Promise<void>((resolve) => target.server.close(() => resolve()))));
 }
 
 async function handleProxyHttp(workspaceId: string, req: IncomingMessage, res: ServerResponse): Promise<void> {

@@ -1,0 +1,8 @@
+{
+  "aptPackages": [
+    "tinyproxy-bin"
+  ],
+  "run": [
+    "install -m 755 /usr/bin/tinyproxy /usr/local/bin/atelier-egress-proxy"
+  ]
+}
