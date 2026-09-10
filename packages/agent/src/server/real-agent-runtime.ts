@@ -292,15 +292,9 @@ export class RealAgentRuntime extends BaseAgentRuntime {
           this.turnTiming = new TurnTiming(performance.now());
           this.terminalOutcome = "completed";
         }
-        if (!this.live && !this.pendingAcceptedPrompt) {
-          const records = recordsFromSessionEntries(this.session.sessionManager.getBranch());
-          const startIndex = records.findLastIndex((record) => record.kind === "user" || record.kind === "taskStart");
-          const start = records[startIndex];
-          const finished = records.slice(startIndex + 1).some((record) => record.kind === "timing");
-          // A newly triggered task is persisted after agent_start. Do not
-          // re-advertise the previous completed block while waiting for it.
-          if (start && (start.kind === "user" || start.kind === "taskStart") && !finished) this.beginPersistedRun(start.id);
-        }
+        // Loop startup carries no input identity. Bind the run only when Pi
+        // consumes and persists its user/task message (message_end). Retries
+        // keep the existing run; historical context never starts a new one.
         this.setBusy(true);
         break;
       case "turn_start":

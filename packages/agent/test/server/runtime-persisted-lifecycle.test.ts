@@ -23,7 +23,6 @@ function harness() {
   // Real Pi storage is important: omitted timing persistence hid an invalid
   // agent_end -> completed-run guard in the old lifecycle mocks.
   const manager = SessionManager.inMemory("/work");
-  const startId = manager.appendMessage({ role: "user", content: "Start", timestamp: Date.now() });
   let listener!: (event: any) => void;
   const session = {
     sessionManager: manager, isStreaming: false, systemPrompt: "", model: undefined,
@@ -37,7 +36,12 @@ function harness() {
   const runtime = new PersistedRuntime({ workspaceId: "persisted-lifecycle", conversationId: crypto.randomUUID(),
     label: "Agent", title: "Persisted", path: "/unused.jsonl" }, session, [], new AgentServiceTierState(manager), { events });
   return {
-    manager, runtime, startId, finished: () => finished,
+    manager, runtime, finished: () => finished,
+    async start() {
+      await this.emit({ type: "agent_start" });
+      await this.emit({ type: "message_end", message: { role: "user", content: "Start", timestamp: Date.now() } });
+      return manager.getBranch().findLast((entry) => entry.type === "message" && entry.message.role === "user")!.id;
+    },
     timings: () => manager.getBranch().filter((entry) => entry.type === "custom" && entry.customType === turnTimingEntryType),
     async emit(event: any) {
       if (event.type === "agent_start") session.isStreaming = true;
@@ -60,7 +64,7 @@ function assistant(stopReason: "stop" | "error" | "toolUse", content: any[], out
 
 test("overflow continues the persisted run despite agent_end.willRetry=false", async () => {
   const h = harness();
-  await h.emit({ type: "agent_start" });
+  const startId = await h.start();
   const notification = currentNotificationTurn(h.runtime);
   const deliveries: string[] = [];
   const subscription = h.runtime.subscribeTurn((payload) => deliveries.push(payload));
@@ -73,11 +77,11 @@ test("overflow continues the persisted run despite agent_end.willRetry=false", a
   expect(h.finished()).toBe(0);
   expect(h.runtime.isStreaming).toBe(true);
   await h.emit({ type: "compaction_start", reason: "overflow" });
-  h.manager.appendCompaction("Compacted context", h.startId, 10000);
+  h.manager.appendCompaction("Compacted context", startId, 10000);
   await h.emit({ type: "compaction_end", reason: "overflow", result: { estimatedTokensAfter: 100 }, willRetry: true });
   await h.emit({ type: "agent_start" });
   expect(currentNotificationTurn(h.runtime)).toEqual(notification);
-  expect(h.runtime.liveItems().filter((item) => item.type === "working").map((item) => item.key)).toEqual([`${h.startId}:working`]);
+  expect(h.runtime.liveItems().filter((item) => item.type === "working").map((item) => item.key)).toEqual([`${startId}:working`]);
   const before = deliveries.length;
   await h.emit({ type: "turn_start" });
   await h.emit({ type: "message_start", message: { role: "assistant" } });
@@ -88,10 +92,10 @@ test("overflow continues the persisted run despite agent_end.willRetry=false", a
   expect(h.timings()).toEqual([]);
   await h.emit({ type: "agent_settled" });
   expect(h.timings()).toHaveLength(1);
-  expect(h.timings()[0]).toMatchObject({ data: { turnEntryId: h.startId, outcome: "completed", outputTokens: 5 } });
+  expect(h.timings()[0]).toMatchObject({ data: { turnEntryId: startId, outcome: "completed", outputTokens: 5 } });
   expect(h.finished()).toBe(1);
   expect(h.runtime.liveItems()).toEqual([]);
-  expect(h.runtime.history().filter((item) => item.type === "working").map((item) => item.key)).toEqual([`${h.startId}:working`]);
+  expect(h.runtime.history().filter((item) => item.type === "working").map((item) => item.key)).toEqual([`${startId}:working`]);
   subscription.unsubscribe();
   await h.runtime.dispose();
 });
@@ -99,7 +103,7 @@ test("overflow continues the persisted run despite agent_end.willRetry=false", a
 for (const aborted of [false, true]) {
   test(`overflow compaction ${aborted ? "cancellation" : "failure"} finishes only when Pi settles`, async () => {
     const h = harness();
-    await h.emit({ type: "agent_start" });
+    const startId = await h.start();
     await h.emit({ type: "message_end", message: assistant("error", []) });
     await h.emit({ type: "agent_end", willRetry: false });
     await h.emit({ type: "compaction_start", reason: "overflow" });
@@ -109,7 +113,7 @@ for (const aborted of [false, true]) {
     expect(h.finished()).toBe(0);
     await h.emit({ type: "agent_settled" });
     expect(h.timings()).toHaveLength(1);
-    expect(h.timings()[0]).toMatchObject({ data: { turnEntryId: h.startId, outcome: "stopped" } });
+    expect(h.timings()[0]).toMatchObject({ data: { turnEntryId: startId, outcome: "stopped" } });
     expect(h.finished()).toBe(1);
     expect(h.runtime.history().find((item) => item.type === "error")).toMatchObject({ text: "Context window exceeded" });
     await h.runtime.dispose();
@@ -118,7 +122,7 @@ for (const aborted of [false, true]) {
 
 test("streamed tool identity remains resolvable when live state is discarded", async () => {
   const h = harness();
-  await h.emit({ type: "agent_start" });
+  await h.start();
   await h.emit({ type: "message_start", message: { role: "assistant" } });
   const toolCall = { type: "toolCall", id: "call1", name: "read", arguments: { path: "/file" } };
   await h.emit({ type: "message_update", assistantMessageEvent: { type: "toolcall_start", contentIndex: 0,
