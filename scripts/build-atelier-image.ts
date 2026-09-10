@@ -271,7 +271,7 @@ const defaultBuildArgs = [
   // release needs users to rerun the installer instead of applying the update
   // from inside Atelier. Use a human-readable value and bump the suffix, e.g.
   // "tailscale-serve-localhost-v3", when the contract changes again.
-  "ATELIER_SELF_UPDATE_COMPATIBILITY=owned-snapshotter-v1",
+  "ATELIER_SELF_UPDATE_COMPATIBILITY=owned-snapshotter-v2",
 ];
 const allBuildArgs = [...defaultBuildArgs, ...options.buildArgs];
 

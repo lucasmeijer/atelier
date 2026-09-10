@@ -54,11 +54,24 @@ test("self-update preserves owned snapshotter deployment", async () => {
   const { replacementCreateArgs } = await import("../../src/server/docker.ts");
   const args = replacementCreateArgs({
     Id: "server", Image: "old", Name: "/atelier",
-    Config: { Cmd: ["--own-snapshotter"], Env: ["ATELIER_DOCKER_HOST_DATA_DIR=/srv/atelier"] },
+    Config: { Cmd: ["bun", "run", "apps/web/src/server/main.ts"], Env: ["ATELIER_DOCKER_HOST_DATA_DIR=/srv/atelier"] },
     HostConfig: { Init: true, Privileged: true },
     Mounts: [{ Type: "bind", Source: "/srv/atelier/docker-runtime", Destination: "/srv/atelier/docker-runtime", RW: true }],
   }, "new");
   expect(args).toContain("--privileged");
   expect(args).toContain("type=bind,src=/srv/atelier/docker-runtime,dst=/srv/atelier/docker-runtime");
-  expect(args.slice(-2)).toEqual(["new", "--own-snapshotter"]);
+  expect(args.slice(-4)).toEqual(["new", "bun", "run", "apps/web/src/server/main.ts"]);
+});
+
+test("self-update preserves explicit nested startup", async () => {
+  const { replacementCreateArgs } = await import("../../src/server/docker.ts");
+  const args = replacementCreateArgs({
+    Id: "server", Image: "old", Name: "/atelier",
+    Config: { Cmd: ["--nested"] },
+    HostConfig: { Init: true, Privileged: false },
+    Mounts: [{ Type: "bind", Source: "/inherited/docker-runtime.json", Destination: "/.atelier/docker-runtime.json", RW: false }],
+  }, "new");
+  expect(args).not.toContain("--privileged");
+  expect(args).toContain("type=bind,src=/inherited/docker-runtime.json,dst=/.atelier/docker-runtime.json,readonly");
+  expect(args.slice(-2)).toEqual(["new", "--nested"]);
 });

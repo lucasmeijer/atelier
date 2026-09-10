@@ -675,7 +675,7 @@ install_atelier() {
     --env "PORT=$atelier_port" \
     --env "ATELIER_PUBLIC_URL=https://$atelier_public_host" \
     --env ATELIER_TAILSCALE_SERVE=1 \
-    "$atelier_image" --own-snapshotter >/dev/null
+    "$atelier_image" >/dev/null
   success "Atelier container started"
 }
 

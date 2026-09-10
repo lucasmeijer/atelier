@@ -45,11 +45,14 @@ workspace, run `bun run release --check` first to prepare/check the FUSE Buildx
 builder, then pass the printed builder name with `--builder <name>` to the image
 command. This check publishes nothing and does not change the current branch.
 
-On the deployment host, use this branch's installer with the exact commit image:
+On the deployment host, pin both the installer and image to the same released
+commit. Do not use `https://lucasmeijer.com/get-atelier` for this branch test: that
+website endpoint serves the installer published from `main`, not this branch.
 
 ```sh
-curl -fsSL https://raw.githubusercontent.com/lucasmeijer/atelier/docker-rewrite/scripts/install.sh -o /root/install-atelier.sh
-sudo bash /root/install-atelier.sh --image ghcr.io/lucasmeijer/atelier:sha-<full-commit-sha>
+commit='<full-commit-sha>'
+curl -fsSL "https://raw.githubusercontent.com/lucasmeijer/atelier/$commit/scripts/install.sh" -o /root/install-atelier.sh
+sudo bash /root/install-atelier.sh --image "ghcr.io/lucasmeijer/atelier:sha-$commit"
 ```
 
 The installer replaces its existing `atelier` container and configures Tailscale
@@ -76,7 +79,14 @@ The resulting container expects access to Docker so it can create Atelier worksp
 
 For production and branch evaluation, use the installer above. It supplies the
 persistent same-path runtime mount, `--privileged`, the Tailscale LocalAPI socket,
-`--own-snapshotter`, and host resource controls. A bare `docker run` without these
-is not equivalent to an installed Atelier.
+and host resource controls. The image starts the shared snapshotter, registry,
+BuildKit and app by default; no ownership flag is needed. A bare `docker run`
+without the required mounts and privileges is not equivalent to an installed Atelier.
+
+Nested image launches must explicitly pass `--nested` after the image reference
+(and before an optional application command). This mode requires the inherited
+`/.atelier/docker-runtime.json` connection and its socket/backing mounts; it runs
+the app without starting another shared stack. Merely mounting a connection does
+not switch modes. The old `--own-snapshotter` option is no longer accepted.
 
 On hosts without cgroup swap controls, installation is allowed only when `/proc/meminfo` reports zero total swap. Keep swap disabled on these hosts; hosts with swap require working cgroup swap limits. The installer explicitly pulls images for the Docker server’s platform, so a release missing that platform fails at pull time rather than with an `exec format error`.

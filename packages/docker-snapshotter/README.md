@@ -7,15 +7,15 @@ runtimes with that installation; existing workspace stores are not converted.
 
 ## Installation behavior
 
-- Root installations use the container entrypoint's `--own-snapshotter` option.
+- Root installations start the owned services by default, without an entrypoint flag.
   The app waits for the snapshotter, registry and a BuildKit worker to become ready
   and continues to run as an unprivileged user. Services run as root in the same
   container; no sibling service containers are launched.
-- Starting the image without that option does not create another adapter. Nested
-  installations use the connection supplied by their containing workspace. The
-  containing workspace supplies the connection and socket mounts. An explicitly
-  independent installation must instead supply its own persistent runtime mount
-  and the ownership option.
+- Nested image launches must pass `--nested`. They use the connection supplied by
+  their containing workspace, which supplies the connection and socket mounts.
+  Startup fails if `/.atelier/docker-runtime.json` is missing or unreadable. There
+  is no automatic mode detection or fallback. An independent installation omits
+  the flag and must supply its own persistent runtime mount and privileges.
 - Owned startup requires dedicated persistent backing at the same absolute path
   seen by Docker. RAM-backed `tmpfs`/`ramfs` mounts are rejected before services
   start. The installer supplies the disk-backed bind mount and privileged execution.
@@ -25,10 +25,13 @@ runtimes with that installation; existing workspace stores are not converted.
   Failure of any owned service stops the app and its remaining services visibly.
   Normal shutdown stops the app, builder, registry and snapshotter in that order;
   the app's exit status is preserved. Restart restores non-retired client sockets.
-- The installer contract remains `owned-snapshotter-v1`: this transport change
-  needs no host Docker configuration or installer rerun for an existing owned
-  installation. Recreate older workspaces with the current image to receive the
-  MagicDNS connection, DNS settings and private Docker trust configuration.
+- The installer contract is `owned-snapshotter-v2`: standalone startup is now the
+  default and `--own-snapshotter` is no longer accepted. Reinstall older deployments
+  using the matching installer rather than self-updating with their old startup
+  command. Nested launches must explicitly select `--nested`. No host Docker
+  configuration changes are required. Recreate older workspaces with the current
+  image to receive the MagicDNS connection, DNS settings and private Docker trust
+  configuration.
 - Workspace creation records a fresh client identity before registering it. Nested
   descriptors also identify their creator; registration persists immutable parentage.
   The same request is idempotent; retirement cannot be undone by a late registration.

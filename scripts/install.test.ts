@@ -65,7 +65,7 @@ wait "$!" || exit "$?"`);
   expect(result.output).not.toContain("UNEXPECTED EXECUTION");
 });
 
-test("installation explicitly owns a persistently mounted snapshotter and stops the previous owner", () => {
+test("installation uses default standalone startup with persistent backing and stops the previous owner", () => {
   const dir = mkdtempSync(join(tmpdir(), "atelier-install-runtime-"));
   try {
     const result = run(`
@@ -84,7 +84,10 @@ install_atelier`);
     expect(result.output).toContain("stop --time 30 atelier");
     expect(result.output).toContain("--privileged");
     expect(result.output).toContain(`type=bind,src=${dir}/docker-runtime,dst=${dir}/docker-runtime`);
-    expect(result.output).toContain("example/atelier:stable --own-snapshotter");
+    const launch = result.output.split("\n").find((line) => line.startsWith("DOCKER run -d "))!;
+    expect(launch.endsWith(" example/atelier:stable")).toBe(true);
+    expect(launch).not.toContain("--nested");
+    expect(launch).not.toContain("--own-snapshotter");
   } finally {
     rmSync(dir, { recursive: true, force: true });
   }

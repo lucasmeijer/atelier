@@ -1,12 +1,25 @@
 #!/bin/sh
 set -eu
 
-own_snapshotter=0
-if [ "${1:-}" = --own-snapshotter ]; then
-  own_snapshotter=1
-  shift
-fi
+nested=0
+case "${1:-}" in
+  --nested)
+    nested=1
+    shift
+    if [ ! -r /.atelier/docker-runtime.json ]; then
+      echo "error: --nested requires an inherited runtime connection at /.atelier/docker-runtime.json" >&2
+      exit 1
+    fi
+    ;;
+  --*)
+    echo "error: unknown Atelier entrypoint option: $1 (expected --nested or an application command)" >&2
+    exit 1
+    ;;
+esac
 if [ "$#" -eq 0 ]; then set -- bun run apps/web/src/server/main.ts; fi
+if [ "$nested" -eq 0 ]; then
+  runtime="${ATELIER_DOCKER_HOST_DATA_DIR:?standalone Atelier requires Docker-host data path and a persistent runtime bind}/docker-runtime"
+fi
 
 atelier_uid=1000
 atelier_gid=1000
@@ -38,8 +51,7 @@ chmod 440 /etc/sudoers.d/atelier-tailscale-serve
 
 HOME="$(getent passwd "$atelier_uid" | cut -d: -f6)"
 export HOME
-if [ "$own_snapshotter" -eq 1 ]; then
-  runtime="${ATELIER_DOCKER_HOST_DATA_DIR:?owned snapshotter requires Docker-host data path}/docker-runtime"
+if [ "$nested" -eq 0 ]; then
   exec /usr/local/bin/atelier-owned-snapshotter "$runtime" "$atelier_gid" gosu "$atelier_user" "$@"
 fi
 exec gosu "$atelier_user" "$@"
