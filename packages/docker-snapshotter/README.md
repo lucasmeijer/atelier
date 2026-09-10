@@ -17,7 +17,8 @@ runtimes with that installation; existing workspace stores are not converted.
   independent installation must instead supply its own persistent runtime mount
   and the ownership option.
 - Owned startup requires dedicated persistent backing at the same absolute path
-  seen by Docker. The installer supplies the bind mount and privileged execution.
+  seen by Docker. RAM-backed `tmpfs`/`ramfs` mounts are rejected before services
+  start. The installer supplies the disk-backed bind mount and privileged execution.
   No host shared-mount setup or additional systemd unit is required.
 - A second owner of the same store fails instead of replacing the first owner's
   listeners. Ownership covers the whole stack until all its services have stopped.

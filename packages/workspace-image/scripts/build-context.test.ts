@@ -40,6 +40,18 @@ describe("workspace image content identity", () => {
     expect(await Bun.file(join(output, "metadata.json")).text()).not.toBe(before.metadata);
   });
 
+  test("private daemon startup script is packaged and changes the default image identity", async () => {
+    const before = await generateInCheckout("atelier-daemon-context-");
+    const relative = "packages/workspace-image/rootfs/usr/local/bin/atelier-workspace-docker";
+    const source = join(before.fixture, relative);
+    await appendFile(source, "\n# image identity probe\n");
+    const output = join(before.fixture, "output");
+    const result = Bun.spawnSync(["bun", join(before.fixture, "packages/workspace-image/scripts/build-context.mjs"), output]);
+    expect(result.exitCode).toBe(0);
+    expect(await Bun.file(join(output, "files/base/rootfs/usr/local/bin/atelier-workspace-docker")).text()).toBe(await Bun.file(source).text());
+    expect(await Bun.file(join(output, "metadata.json")).text()).not.toBe(before.metadata);
+  });
+
   test("equivalent checkouts at different absolute paths produce identical output", async () => {
     const [left, right] = await Promise.all([generateInCheckout("atelier-context-a-"), generateInCheckout("atelier-context-b-")]);
     expect(left.metadata).toBe(right.metadata);

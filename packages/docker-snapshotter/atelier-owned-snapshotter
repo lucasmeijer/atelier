@@ -6,6 +6,12 @@ socket_group=$2
 shift 2
 [[ "$runtime" = /* ]] || { echo 'Docker runtime path must be absolute' >&2; exit 1; }
 mountpoint -q "$runtime" || { echo "Docker runtime must be bind-mounted: $runtime" >&2; exit 1; }
+# A bind mount can still be RAM-backed (for example /tmp on systemd hosts).
+# Image downloads plus unpacked layers must not consume the host's tmpfs/RAM.
+filesystem_type="$(stat -f -c %T "$runtime")"
+case "$filesystem_type" in
+  tmpfs|ramfs) echo "Docker runtime requires disk-backed persistent storage, not $filesystem_type: $runtime" >&2; exit 1 ;;
+esac
 # Hold ownership until every service is stopped, even if the adapter exits first.
 exec 9>"$runtime/installation.lock"
 flock -n 9 || { echo 'Docker runtime already owned' >&2; exit 1; }
