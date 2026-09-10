@@ -43,17 +43,21 @@ type Alias struct {
 }
 type Chain struct{ Backing, Parent string }
 type State struct {
-	Sequence uint64
-	Clients  map[string]map[string]Alias
-	Chains   map[string]Chain
-	Retired  map[string]bool
-	Parents  map[string]string `json:",omitempty"`
+	Sequence             uint64
+	Clients              map[string]map[string]Alias
+	Chains               map[string]Chain
+	Retired              map[string]bool
+	Parents              map[string]string    `json:",omitempty"`
+	UnusedSince          map[string]time.Time `json:",omitempty"`
+	GCFailure            *GCFailure           `json:",omitempty"`
+	PendingLayerRemovals map[string]string    `json:",omitempty"`
 }
 type Store struct {
 	sync.Mutex
-	backend snapshots.Snapshotter
-	state   State
-	path    string
+	backend    snapshots.Snapshotter
+	state      State
+	path       string
+	gcRequests chan struct{}
 }
 type Client struct {
 	s  *Store
@@ -61,6 +65,7 @@ type Client struct {
 }
 
 func (s *Store) save() {
+	s.updateUnusedLayers()
 	must(durableJSON(s.path, s.state))
 }
 func must(e error) {
@@ -253,6 +258,7 @@ func (c *Client) Commit(ctx context.Context, name, key string, opts ...snapshots
 	}); e != nil {
 		return e
 	}
+	c.s.requestLayerGC()
 	slog.Info("commit", "client", c.id, "key", key, "name", name, "snapshot.ref", a.Target, "backing", b)
 	return nil
 }
@@ -273,6 +279,7 @@ func (c *Client) Remove(ctx context.Context, k string) error {
 	if e := c.s.removeAlias(ctx, c.id, k, a); e != nil {
 		return e
 	}
+	c.s.requestLayerGC()
 	slog.Info("remove", "client", c.id, "key", k, "backing", a.Backing, "retained", retained(a))
 	return nil
 }
@@ -371,6 +378,7 @@ func (s *Store) retire(ctx context.Context, id string) error {
 	s.state.Clients[id] = map[string]Alias{}
 	s.state.Retired[id] = true
 	s.save()
+	s.requestLayerGC()
 	slog.Info("retire", "client", id)
 	return nil
 }
@@ -499,8 +507,13 @@ func main() {
 	for id := range clientIDs {
 		must(register(id, s.state.Parents[id]))
 	}
+	s.Lock()
 	s.save()
+	s.Unlock()
+	stopLayerGC := s.startLayerGC()
+	defer stopLayerGC()
 	mux := http.NewServeMux()
+	s.registerStorageAPI(mux)
 	mux.HandleFunc("GET /health", func(w http.ResponseWriter, r *http.Request) {
 		fmt.Fprint(w, *instance)
 	})
@@ -563,6 +576,9 @@ func main() {
 		must(os.Rename(*connectionFile+".tmp", *connectionFile))
 	}
 	admin := &http.Server{Handler: mux}
+	stop := make(chan os.Signal, 1)
+	signal.Notify(stop, syscall.SIGTERM, syscall.SIGINT)
+	defer signal.Stop(stop)
 	al := listen(filepath.Join(*dir, "admin.sock"))
 	go func() {
 		e := admin.Serve(al)
@@ -572,8 +588,6 @@ func main() {
 	}()
 
 	slog.Info("ready", "root", *root, "socket_dir", *dir, "clients", clientIDs, "version", "containerd-v2.2.2")
-	stop := make(chan os.Signal, 1)
-	signal.Notify(stop, syscall.SIGTERM, syscall.SIGINT)
 	<-stop
 	must(admin.Shutdown(context.Background()))
 	serviceLock.Lock()

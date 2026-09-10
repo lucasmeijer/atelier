@@ -19,8 +19,9 @@ const overlayUpperdirLabel = "containerd.io/snapshot/overlay.upperdir"
 // Resolve returns immutable changeset directories in OverlayFS lowerdir order.
 // These describe backing, not mounts to execute. In particular, resolving an
 // image must never allocate a View or a disposable writable snapshot centrally.
-// Backing is installation-retained even after its client's alias is removed.
-// Any future eviction policy must protect locally referenced backing as well.
+// Backing can be cached after its client's alias is removed, but GC may evict it.
+// Hybrid private descendants must retain their shared parent alias for its full
+// lifetime; their resolved lower directories are protected through that alias.
 type imageLayersServer interface {
 	Resolve(context.Context, *api.MountsRequest) (*api.MountsResponse, error)
 }

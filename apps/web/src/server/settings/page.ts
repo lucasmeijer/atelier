@@ -11,6 +11,7 @@ import { renderOnboardingDialog } from "../onboarding/routes.ts";
 import { workspaceModules } from "../workspace-modules.ts";
 import { remove, replace, response, stream, update, wantsStream } from "./http.ts";
 import { listSettingsContributions, registerSettingsContribution } from "./registry.ts";
+import { systemHealthSettings } from "./system-health.ts";
 
 function devSettingsEnabled(): boolean {
   return process.env.NODE_ENV !== "production";
@@ -82,6 +83,7 @@ async function renderDevelopmentSettings(): Promise<string> {
   return `${keypressProbeSettings}<section class="settings-sec settings-sec-development">${destructiveActions}</section>`;
 }
 
+registerSettingsContribution(systemHealthSettings);
 registerSettingsContribution({ id: "theme", label: "Theme", order: 10, render: renderThemeSettings });
 registerSettingsContribution({ id: "git-identity", label: "Git identity", order: 20, render: renderGitIdentitySettings });
 for (const module of workspaceModules) {
@@ -89,7 +91,7 @@ for (const module of workspaceModules) {
 }
 
 function settingsDialogHtml(titleCaption: string, bodyHtml: string, sectionId?: string): string {
-  const sectionAttributes = sectionId ? ` data-controller="scroll-into-view" data-scroll-into-view-target-id-value="${escapeHtml(`settings-sec-${sectionId}`)}"` : "";
+  const sectionAttributes = sectionId ? ` data-controller="scroll-into-view" data-scroll-into-view-target-id-value="${escapeHtml(`settings-sec-${sectionId}`)}" data-action="turbo:frame-load->scroll-into-view#frameLoaded"` : "";
   return dialogHtml({
     element: {
       id: "settings_dialog",

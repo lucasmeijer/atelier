@@ -70,6 +70,11 @@ func (l *localSnapshotter) Prepare(ctx context.Context, r *api.PrepareSnapshotRe
 		return nil, errgrpc.ToGRPC(err)
 	}
 	if err := l.adopt(ctx, r); err != nil {
+		if errdefs.IsNotFound(errgrpc.ToNative(err)) {
+			// GC may evict unused backing between Lookup and Adopt. Content is
+			// already registered; use ordinary unpack rather than fail the pull.
+			return l.SnapshotsServer.Prepare(ctx, r)
+		}
 		return nil, err
 	}
 	return nil, errgrpc.ToGRPC(errdefs.ErrAlreadyExists)
@@ -180,11 +185,15 @@ func runLocal(sharedPath, containerdPath, socket, localRoot string) {
 		hybrid:          hybrid,
 		shared:          shared, content: contentproxy.NewContentStore(contentapi.NewContentClient(local)), leases: leaseproxy.NewLeaseManager(leaseapi.NewLeasesClient(local)),
 	})
-	listener := listen(socket)
+	// Readiness is observable as soon as the socket opens. Install shutdown
+	// handling first so an immediate stop cannot take the default signal action.
 	stop := make(chan os.Signal, 1)
 	signal.Notify(stop, syscall.SIGINT, syscall.SIGTERM)
 	defer signal.Stop(stop)
+	listener := listen(socket)
 	go func() { <-stop; g.GracefulStop() }()
 	slog.Info("local-ready", "socket", socket)
-	must(g.Serve(listener))
+	if err := g.Serve(listener); err != nil && err != grpc.ErrServerStopped {
+		must(err)
+	}
 }

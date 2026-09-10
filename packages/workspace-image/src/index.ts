@@ -16,6 +16,7 @@ import { dockerServerPlatform, nativeImageExists as imageExists } from "./local-
 export * from "./carrier.ts";
 export * from "./runtime-connection.ts";
 export { prepareSharedImagePreload } from "./shared-preload.ts";
+export { readSharedLayerStorage, type SharedLayerStorage } from "./storage.ts";
 
 type BuiltWorkspaceImageKind = Exclude<WorkspaceImageKind, "carrier">;
 

@@ -183,6 +183,15 @@ class ScrollIntoViewController extends Controller<HTMLElement> {
   declare readonly hasTargetIdValue: boolean;
 
   connect(): void {
+    this.scroll();
+  }
+
+  frameLoaded(event: Event): void {
+    const target = this.hasTargetIdValue ? document.getElementById(this.targetIdValue)! : this.element;
+    if (event.target instanceof Node && target.contains(event.target)) this.scroll();
+  }
+
+  private scroll(): void {
     const target = this.hasTargetIdValue ? document.getElementById(this.targetIdValue)! : this.element;
     requestAnimationFrame(() => target.scrollIntoView({ block: "start" }));
   }

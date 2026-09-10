@@ -54,7 +54,7 @@ func (b killedBackend) Remove(ctx context.Context, k string) error {
 }
 func openRecoveryStore(t *testing.T, root string) *Store {
 	t.Helper()
-	b, e := overlay.NewSnapshotter(filepath.Join(root, "overlay"))
+	b, e := overlay.NewSnapshotter(filepath.Join(root, "overlay"), overlay.WithUpperdirLabel)
 	if e != nil {
 		t.Fatal(e)
 	}
@@ -88,6 +88,8 @@ func recoveryOperation(t *testing.T, s *Store, op string) {
 		e = c.Remove(ctx, "active")
 	case "retire":
 		e = s.retire(ctx, "A")
+	case "gc":
+		_, e = s.collectLayersTo(ctx, 0)
 	}
 	if e != nil {
 		t.Fatal(e)

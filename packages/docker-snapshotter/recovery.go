@@ -131,6 +131,7 @@ func (s *Store) mutate(ctx context.Context, op mutation, change func()) error {
 	must(json.Unmarshal(b, &next))
 	s.state = next
 	change()
+	s.updateUnusedLayers()
 	pending := intent{op, s.state}
 	s.state = previous
 	must(durableJSON(s.path+".intent", pending))

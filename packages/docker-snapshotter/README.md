@@ -208,8 +208,20 @@ Other limits:
 - The existing image-outdated check does not detect arbitrary COPY-input edits;
   actual repository builds do re-solve those inputs. Shared-mode creator images
   are not automatically pruned while they may be awaiting container creation.
-- Cached image layers and compressed blobs are retained indefinitely. Disk budgets and eviction are
-  not implemented. Private container layers are reclaimed on normal cleanup.
+- Shared unpacked image layers have a hardcoded 10 GB (decimal) soft target. GC removes
+  oldest-unused eligible layers until within target, preserving client aliases, their ancestors,
+  and in-progress unpack references. Parked clients count as used; referenced storage may exceed
+  the target without blocking pulls. Compressed blobs, registry publications and BuildKit cache
+  are outside this collector. Private container layers are reclaimed on normal cleanup.
+- The administrative Unix socket exposes `GET /storage` for fresh measurements and `POST /gc`
+  for immediate target-based collection. Both report `usedBytes`, `unusedBytes`, `totalBytes`,
+  `targetBytes`, `measuredAt`, and optional `gcFailure` (`message`, `at`); GC also reports
+  `reclaimedBytes`. Counts are allocated changeset bytes, deduplicated across clients, including
+  active image extraction and pending physical deletions, not total installation disk usage.
+  GC runs after startup recovery, coalesced commits/reference releases, and every 15 minutes.
+  Failed physical deletion remains tracked and retried; GC failures survive restarts until a
+  successful collection. Settings → System health refreshes installation-wide measurements
+  independently of collection, including in nested Atelier instances.
 - Concurrent cold requests can duplicate downloading and extraction work before
   retaining one completed copy.
 - Dynamic registration, normal deletion and failed-provision cleanup are integrated.
