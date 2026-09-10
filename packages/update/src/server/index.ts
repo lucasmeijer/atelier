@@ -193,8 +193,11 @@ export class UpdateManager {
       const result = await docker([
         "run", "-d", "--rm", "--name", name, "--network", "host",
         "-v", "/var/run/docker.sock:/var/run/docker.sock",
+        // The helper needs Docker access, not another installation-owned runtime.
+        // Bypass the server entrypoint and its socket-group/user setup explicitly.
+        "--user", "0:0", "--entrypoint", "/usr/local/bin/atelier-update-helper",
         this.runtime.imageId,
-        "atelier-update-helper", "--server-container", this.runtime.containerId, "--target-image", targetImageForChannel(this.releaseChannel), "--release-channel", this.releaseChannel, "--return-url", returnUrl.toString(),
+        "--server-container", this.runtime.containerId, "--target-image", targetImageForChannel(this.releaseChannel), "--release-channel", this.releaseChannel, "--return-url", returnUrl.toString(),
       ]);
       if (result.code !== 0) throw new Error(result.stderr.trim() || "could not start update helper");
       const theme = url.searchParams.get("theme") ?? "";
