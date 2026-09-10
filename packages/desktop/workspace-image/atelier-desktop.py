@@ -126,7 +126,8 @@ def supervise(ready_fd):
             wait_ready(lambda: subprocess.run(["xdpyinfo"], env=env, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL).returncode == 0, children, "Xvfb")
             launch("Openbox", ["openbox", "--config-file", "/opt/atelier/desktop/openbox.xml"])
             wait_ready(lambda: b"_NET_SUPPORTING_WM_CHECK(WINDOW)" in subprocess.check_output(["xprop", "-root", "_NET_SUPPORTING_WM_CHECK"], env=env), children, "Openbox")
-            launch("Chromium", ["dbus-run-session", "--", "chromium", "--gtk-version=3", f"--user-data-dir={ROOT / 'profile'}", "--class=AtelierDesktop", "--no-first-run", "--no-default-browser-check", "--disable-dev-shm-usage", "--start-maximized", "--remote-debugging-address=127.0.0.1", f"--remote-debugging-port={CDP_PORT}", "about:blank"])
+            # Suppress the Chrome for Testing banner (also suppresses startup flag warnings).
+            launch("Chromium", ["dbus-run-session", "--", "chromium", "--test-type=gpu", "--gtk-version=3", f"--user-data-dir={ROOT / 'profile'}", "--class=AtelierDesktop", "--no-first-run", "--no-default-browser-check", "--disable-dev-shm-usage", "--start-maximized", "--remote-debugging-address=127.0.0.1", f"--remote-debugging-port={CDP_PORT}", "about:blank"])
             wait_ready(cdp_ready, children, "Chromium CDP")
             launch("x11vnc", ["x11vnc", "-display", DISPLAY, "-auth", str(auth), "-listen", "127.0.0.1", "-rfbport", str(VNC_PORT), "-forever", "-shared", "-nopw", "-noxdamage", "-xkb"])
             wait_ready(lambda: port_ready(VNC_PORT), children, "VNC")
