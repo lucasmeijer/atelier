@@ -303,7 +303,6 @@ export interface AgentWorkspaceParameters {
 
 export interface WorkspaceCreationContext extends Record<string, unknown> {
   agent?: AgentWorkspaceParameters;
-  fork?: { sourceWorkspaceId: string };
 }
 
 export interface WorkspaceServerModuleContext {

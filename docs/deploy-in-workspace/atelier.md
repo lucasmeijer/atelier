@@ -80,7 +80,7 @@ Read `examples.md`, inspect the requested changes, and draft concise release not
 
 A repository can add `.atelier/setup.sh` to install dependencies or perform other one-time setup for each freshly cloned workspace. Atelier runs the script with `sh` as the `atelier` user from `/work`, after the container starts and before the workspace becomes ready or its initial agent starts.
 
-Setup runs in a tmux session and its live output appears in the workspace creation screen. A non-zero exit marks workspace creation as failed. Copied/forked workspaces skip setup because their files and installed dependencies are copied from the source workspace.
+Setup runs in a tmux session and its live output appears in the workspace creation screen. A non-zero exit marks workspace creation as failed.
 
 ```sh
 #!/bin/sh
@@ -161,7 +161,7 @@ This is useful for screenshots, images, videos, HTML pages, and other outputs.
 
 ## 7. Git and Repositories
 
-Atelier clones repository workspaces from the saved Git URL. Git submodules are synchronized, initialized, and checked out recursively as part of the reusable project checkout, so fresh workspaces include submodule contents without additional setup. Forked workspaces preserve the source workspace's initialized submodules.
+Atelier clones repository workspaces from the saved Git URL. Git submodules are synchronized, initialized, and checked out recursively as part of the reusable project checkout, so fresh workspaces include submodule contents without additional setup.
 
 For GitHub repositories and HTTPS GitHub submodules, Atelier can use the GitHub token configured in Settings. The token is handled by Atelier for Git operations, is only offered to HTTPS requests for `github.com`, and is not stored as the real token in the workspace environment.
 
