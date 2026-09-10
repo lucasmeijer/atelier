@@ -8,11 +8,11 @@ export { renderDevelopmentSettingsDialog, renderSettingsDialog };
 export async function handleSettingsRequest(
   request: Request,
   url: URL,
-  options: { forceDeleteAllWorkspaces?: () => Promise<WorkspaceCleanupResult> } = {},
+  options: { forceDeleteAllWorkspaces?: () => Promise<WorkspaceCleanupResult>; renderModelPickerUpdates: () => Promise<string> },
 ): Promise<Response | undefined> {
   const response = await handleSettingsPageRequest(request, url, options)
     ?? await handleGitHubSettingsRequest(request, url)
-    ?? await handleModelSettingsRequest(request, url);
+    ?? await handleModelSettingsRequest(request, url, options.renderModelPickerUpdates);
   if (response) return response;
 
   for (const contribution of listSettingsContributions()) {

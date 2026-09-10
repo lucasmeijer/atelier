@@ -278,8 +278,28 @@ export function createPiModelRuntime(): Promise<ModelRuntime> {
 export type PiAuthPrompt = AuthPrompt;
 type PiAuthInteraction = AuthInteraction;
 
+export class ProviderCatalogueRefreshError extends Error {
+  constructor(cause: unknown) {
+    super(`Provider connected, but the online model catalogue refresh failed: ${cause instanceof Error ? cause.message : String(cause)}`, { cause });
+    this.name = "ProviderCatalogueRefreshError";
+  }
+}
+
+async function refreshConnectedProviderCatalogue(runtime: ModelRuntime, provider: string, signal?: AbortSignal): Promise<void> {
+  try {
+    const result = await runtime.refresh({ providers: [provider], allowNetwork: true, force: true, signal });
+    if (result.aborted) throw new Error("Catalogue refresh was interrupted.");
+    const errors = [...result.errors.values()];
+    if (errors.length) throw new AggregateError(errors, errors.map((error) => error.message).join("; "));
+  } catch (error) {
+    throw new ProviderCatalogueRefreshError(error);
+  }
+}
+
 export async function loginPiOAuthProvider(providerId: string, interaction: PiAuthInteraction): Promise<void> {
-  await (await createPiModelRuntime()).login(providerId, "oauth", interaction);
+  const runtime = await createPiModelRuntime();
+  await runtime.login(providerId, "oauth", interaction);
+  await refreshConnectedProviderCatalogue(runtime, providerId, interaction.signal);
 }
 
 async function validateModelProviderApiKey(provider: string, key: string): Promise<void> {
@@ -299,10 +319,12 @@ export async function connectModelProviderApiKey(provider: string, key: string, 
   const trimmed = key.trim();
   if (!trimmed) throw new Error("API key is required");
   if (options.validate !== false) await validateModelProviderApiKey(provider, trimmed);
-  await (await createPiModelRuntime()).login(provider, "api_key", {
+  const runtime = await createPiModelRuntime();
+  await runtime.login(provider, "api_key", {
     prompt: async (prompt) => prompt.type === "select" ? prompt.options[0]?.id ?? "" : trimmed,
     notify: () => {},
   });
+  await refreshConnectedProviderCatalogue(runtime, provider);
 }
 export async function disconnectModelProvider(provider: string): Promise<void> {
   await (await createPiModelRuntime()).logout(provider);

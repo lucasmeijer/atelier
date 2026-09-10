@@ -286,34 +286,38 @@ class ServerFilterController extends Controller {
   }
 }
 
-class ModelCatalogueController extends Controller {
-  private observer?: MutationObserver;
+class ProviderAccordionController extends Controller {
+  static targets = ["provider"];
+  declare readonly providerTargets: HTMLElement[];
 
-  connect(): void {
-    this.observer = new MutationObserver(() => this.sortModels());
-    this.observer.observe(this.element, { childList: true, subtree: true });
-    this.sortModels();
+  providerTargetConnected(provider: HTMLElement): void {
+    if (provider.querySelector("[aria-expanded=true]")) this.closeOthers(provider);
   }
 
-  disconnect(): void {
-    this.observer?.disconnect();
+  toggle(event: Event): void {
+    // SAFETY: This action is bound only to provider disclosure buttons.
+    const button = event.currentTarget as HTMLButtonElement;
+    const provider = button.closest<HTMLElement>("[data-provider-accordion-target=provider]")!;
+    const open = button.getAttribute("aria-expanded") !== "true";
+    this.setOpen(provider, open);
+    if (open) {
+      this.closeOthers(provider);
+      // Lazy frames handle first load; re-query loaded lists to re-sort favorites.
+      if (provider.querySelector("turbo-frame[complete]")) {
+        provider.querySelector<HTMLFormElement>(".managed-list__filter")!.requestSubmit();
+      }
+    }
   }
 
-  private sortModels(): void {
-    const items = this.element.querySelector<HTMLElement>(".managed-list__items");
-    if (!items) return;
-    const current = Array.from(items.querySelectorAll<HTMLElement>(":scope > .model-catalogue-row"));
-    const sorted = [...current].sort((a, b) => {
-      const aRank = a.dataset.popularityRank === undefined ? Number.MAX_SAFE_INTEGER : Number(a.dataset.popularityRank);
-      const bRank = b.dataset.popularityRank === undefined ? Number.MAX_SAFE_INTEGER : Number(b.dataset.popularityRank);
-      const aConnected = a.querySelector<HTMLElement>(":scope > .model-provider-state")?.dataset.connected === "true";
-      const bConnected = b.querySelector<HTMLElement>(":scope > .model-provider-state")?.dataset.connected === "true";
-      return aRank - bRank || Number(bConnected) - Number(aConnected) || (a.dataset.modelSort ?? "").localeCompare(b.dataset.modelSort ?? "");
-    });
-    if (current.every((model, index) => model === sorted[index])) return;
-    for (const model of sorted) items.append(model);
-    const more = items.querySelector<HTMLElement>(":scope > .model-catalogue-more");
-    if (more) items.append(more);
+  private closeOthers(provider: HTMLElement): void {
+    for (const other of this.providerTargets) {
+      if (other !== provider) this.setOpen(other, false);
+    }
+  }
+
+  private setOpen(provider: HTMLElement, open: boolean): void {
+    provider.querySelector("[aria-expanded]")!.setAttribute("aria-expanded", String(open));
+    provider.querySelector<HTMLElement>(".model-provider-body")!.hidden = !open;
   }
 }
 
@@ -444,7 +448,7 @@ export function registerWorkspaceSettingsControllers(): void {
     "project-settings": ProjectSettingsController,
     "settings-prefetch": SettingsPrefetchController,
     "server-filter": ServerFilterController,
-    "model-catalogue": ModelCatalogueController,
+    "provider-accordion": ProviderAccordionController,
     "onboarding": OnboardingController,
     "clipboard": ClipboardController,
     "agent-model-setup": AgentModelSetupController,

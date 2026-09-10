@@ -43,3 +43,9 @@ export function getPopularModelRank(provider: string, id: string): number | unde
   const rank = hardcodedPopularModels.findIndex((model) => model.provider === provider && model.id === id);
   return rank < 0 ? undefined : rank;
 }
+
+/** Provider order follows its first appearance in the curated popular-model list. */
+export function getPopularProviderRank(provider: string): number | undefined {
+  const rank = hardcodedPopularModels.findIndex((model) => model.provider === provider);
+  return rank < 0 ? undefined : rank;
+}

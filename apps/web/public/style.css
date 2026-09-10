@@ -399,9 +399,6 @@ button { border: 0; background: none; cursor: pointer; }
 .settings-provider-icon { width: 34px; height: 34px; border-radius: var(--radius-control); display: grid; place-items: center; background: var(--provider-color); color: #fff; font-weight: var(--weight-bold); flex-shrink: 0; }
 .settings-provider-icon .brand-icon { width: 18px; height: 18px; }
 .settings-provider-icon .brand-icon-fallback { width: 100%; height: 100%; }
-.settings-model-provider-icon { width: 28px; height: 28px; display: grid; place-items: center; border-radius: var(--radius-control); background: var(--provider-color); color: #fff; }
-.settings-model-provider-icon .brand-icon { width: 14px; height: 14px; }
-.settings-model-provider-icon .brand-icon-fallback { width: 100%; height: 100%; font-size: var(--text-body); }
 .github-connection .managed-list__item:has(.github-connect-form) { align-items: flex-start; padding: 12px; }
 .github-connect-form--row { margin-top: 16px; padding-top: 16px; border-top: 1px solid var(--line); }
 .github-connect-form p { margin: 0; }
@@ -435,22 +432,24 @@ button.settings-link:disabled { opacity: .45; cursor: default; filter: none; }
 .onboarding-completion-title { margin: 0; color: var(--text-bright); font: inherit; }
 
 /* Model setup */
-.configured-model-section:empty { display: none; }
-.model-setup-section h2 { margin: 0; color: var(--text-bright); font-size: var(--text-title); font-weight: var(--weight-bold); letter-spacing: -.3px; }
-.model-provider-state { display: none; }
-.model-provider-actions > span, .model-catalogue-action > span { align-items: center; gap: 8px; }
-.model-provider-actions form, .model-catalogue-action form { margin: 0; }
-.model-provider-connected-actions { display: none; }
-.model-provider-disconnected-actions { display: flex; }
-.model-provider-actions:has(.model-provider-state[data-connected="true"]) .model-provider-connected-actions,
-.model-catalogue-row:has(> .model-provider-state[data-connected="true"]) .model-provider-connected-actions { display: flex; }
-.model-provider-actions:has(.model-provider-state[data-connected="true"]) .model-provider-disconnected-actions,
-.model-catalogue-row:has(> .model-provider-state[data-connected="true"]) .model-provider-disconnected-actions { display: none; }
-.model-catalogue-feedback { margin: 0; padding: 12px; border-bottom: 1px solid var(--line); overflow-wrap: anywhere; }
-.model-catalogue-loading { display: none; align-items: center; justify-content: center; gap: var(--space-sm); padding: var(--space-md); border-bottom: 1px solid var(--line); color: var(--text); }
-.model-catalogue-results[busy] > .model-catalogue-loading { display: flex; }
-.model-catalogue-results[busy] > .managed-list__items { opacity: .55; }
-.model-catalogue-more { justify-content: center; border-top: 1px solid var(--line); text-align: center; }
+.model-provider-groups, .model-popular-providers { display: grid; gap: 4px; min-width: 0; }
+.model-other-providers-body { display: grid; gap: 8px; padding: 8px; min-width: 0; }
+.model-providers { display: grid; gap: 4px; min-width: 0; padding: 8px; max-height: min(520px, 60vh); }
+.model-providers, .model-provider-models { overflow-y: scroll; scrollbar-gutter: stable; }
+.model-providers:focus-visible, .model-provider-models:focus-visible { outline: 2px solid var(--accent); outline-offset: -2px; }
+.model-provider-connection-note { margin: 0; color: var(--text); font: inherit; }
+.model-provider-header { display: flex; align-items: center; gap: 8px; padding-block: 4px; }
+.model-provider-name { flex: 1; min-width: 0; }
+.model-provider-status { flex: 0 0 auto; white-space: nowrap; }
+.model-provider-header form, .model-favorite-row form { margin: 0; }
+.model-provider-body { padding: 8px; display: flex; flex-direction: column; gap: 8px; }
+.model-provider-body[hidden] { display: none; }
+.model-provider-results { display: block; }
+.model-provider-models { max-height: min(260px, 40vh); }
+.model-favorite-row { display: flex; align-items: center; gap: 8px; padding: 4px 8px; color: var(--text); font: inherit; }
+.model-favorite-row + .model-favorite-row { border-top: 1px solid var(--line); }
+.model-favorite-name { flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.model-provider-auth-methods { display: flex; flex-wrap: wrap; gap: 8px; }
 .custom-models-settings { margin-top: 4px; padding-top: 4px; }
 .custom-models-settings > summary { width: fit-content; padding: 8px 0; color: var(--text-muted); font-size: var(--text-small); cursor: pointer; }
 .custom-models-settings > summary:hover { color: var(--accent); text-decoration: underline; text-underline-offset: 2px; }
@@ -462,9 +461,6 @@ button.settings-link:disabled { opacity: .45; cursor: default; filter: none; }
 .custom-models-form .settings-error { margin: 0; color: var(--danger); white-space: pre-wrap; }
 .custom-models-form .custom-models-status { margin: 0; color: var(--success); }
 .custom-models-actions { display: flex; justify-content: flex-end; }
-.model-catalogue-row:has(> .model-provider-state[data-connected="false"]) .settings-model-provider-icon,
-.configured-model-row:has(.model-provider-state[data-connected="false"]) .settings-model-provider-icon { filter: grayscale(1); }
-
 @media (max-width: 700px) {
   .settings-sec { padding: 16px; }
   .settings-development-back { padding: 10px 16px; }
@@ -477,14 +473,10 @@ button.settings-link:disabled { opacity: .45; cursor: default; filter: none; }
   .settings-sec-theme { align-items: center; flex-direction: row; }
   .settings-sec-theme > :is(.settings-select, [data-popup-select-trigger]) { width: auto; max-width: min(190px, 60%); }
   .settings-field { align-items: stretch; flex-direction: column; gap: 6px; padding: 8px 0; }
-  .settings-sec-github .managed-list__content,
-  .configured-model-row .managed-list__content { min-width: 0; }
+  .settings-sec-github .managed-list__content { min-width: 0; }
   .github-connect-controls { align-items: stretch; flex-direction: column; }
   .github-connect-controls .button, .settings-oauth-card > .button { width: 100%; }
-  .settings-sec-github .managed-list__actions,
-  .configured-model-row .model-provider-actions { min-width: 0; align-self: center; }
-  .model-provider-actions > span { min-width: 0; }
-  .model-provider-connected-actions { justify-content: flex-end; }
+  .settings-sec-github .managed-list__actions { min-width: 0; align-self: center; }
   .settings-dev-link { padding: 16px; }
 }
 

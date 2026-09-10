@@ -28,7 +28,7 @@ export { resolveWorkspacePortProxyBackend } from "./workspace-proxy.ts";
 export { agentConversationKey } from "./render-context.ts";
 export { renderAgentPane, renderAgentPaneComposer, renderLaunchComposer, renderLaunchComposerSettings } from "./render-composer.ts";
 export { agentWorkspaceModule, agentWorkspaceModule as atelierServerModule, workspaceAgentTabProvider } from "./web.ts";
-export { prepareNewWorkspaceAgentParameters, rememberNewWorkspaceAgentSettings } from "./model-state.ts";
+export { modelRefValue, parseModelRef, prepareNewWorkspaceAgentParameters, rememberNewWorkspaceAgentSettings } from "./model-state.ts";
 export {
   createDeleteCurrentWorkspaceTool,
   createWorkspaceAgentTools,
@@ -42,6 +42,7 @@ export {
 export { agentStaticFiles } from "./static.ts";
 export {
   connectModelProviderApiKey,
+  ProviderCatalogueRefreshError,
   createPiModelRuntime,
   disconnectModelProvider,
   getConfiguredAgentModels,
@@ -57,7 +58,7 @@ export {
   type ConfiguredAgentModel,
   type CustomModelsSaveResult,
 } from "./pi-config-models.ts";
-export { getPopularModelRank, getProviderApiKeyExample } from "./hardcoded-provider-knowledge.ts";
+export { getPopularModelRank, getPopularProviderRank, getProviderApiKeyExample } from "./hardcoded-provider-knowledge.ts";
 
 
 export { configureAgentDelegation, resolveAgentConversation, type AgentDelegation, type AgentSessionPreparation, type AgentSessionAttachment, type AgentModelRequestTransform, type AgentDelegationTranscript, type AgentToolPresentation } from "./delegation.ts";

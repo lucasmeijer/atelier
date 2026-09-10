@@ -1150,6 +1150,18 @@ export function createWebApp(deps: WebAppDeps): WebApp {
     return turboStreamResponse(responseStream);
   }
 
+  async function renderModelPickerUpdates(request: Request): Promise<string> {
+    const invalidations: string[] = [];
+    for (const entry of registry.list().filter((workspace) => workspace.phase === "ready")) {
+      const presentation = await fixedWorkspacePresentation(entry.id);
+      for (const conversation of presentation.agentConversations) {
+        invalidations.push(workspacePreparationInvalidatedTurboStream(entry.id, conversation.id));
+      }
+    }
+    const html = invalidations.join("") + turboReplaceStream(launchComposerSettingsFrameId, await launchComposerSettingsFrame());
+    return deliverShellMutation(request, html);
+  }
+
   async function agentBodyEndpoint(workspaceId: string, conversationId: string): Promise<Response> {
     requireWorkspace(workspaceId);
     const bodyHtml = await agentTabs.render({ workspaceId, conversationId });
@@ -1236,7 +1248,7 @@ export function createWebApp(deps: WebAppDeps): WebApp {
       return value;
     };
 
-    const settingsResponse = await handleSettingsRequest(request, url, { forceDeleteAllWorkspaces: forceDeleteAllWorkspacesFromSettings });
+    const settingsResponse = await handleSettingsRequest(request, url, { forceDeleteAllWorkspaces: forceDeleteAllWorkspacesFromSettings, renderModelPickerUpdates: () => renderModelPickerUpdates(request) });
     if (settingsResponse) return settingsResponse;
 
     const onboardingResponse = await handleOnboardingRequest(request, url);

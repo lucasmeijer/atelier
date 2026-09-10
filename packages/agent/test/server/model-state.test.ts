@@ -1,5 +1,5 @@
 import { describe, expect, test } from "bun:test";
-import { selectAvailableConfiguredModel, type AgentModelOptionView } from "../../src/server/model-state.ts";
+import { modelRefValue, parseModelRef, selectAvailableConfiguredModel, type AgentModelOptionView } from "../../src/server/model-state.ts";
 
 const model = (provider: string, id: string, options: { selected?: boolean; available?: boolean } = {}): AgentModelOptionView => ({
   provider,
@@ -28,5 +28,18 @@ describe("new workspace model selection", () => {
       id: available.id,
     })).toEqual({ provider: "connected", id: "requested" });
     expect(selectAvailableConfiguredModel([model("disconnected", "only", { selected: true, available: false })])).toBeUndefined();
+  });
+});
+
+describe("model references", () => {
+  test("round-trips provider-qualified IDs, including IDs with separators", () => {
+    const reference = { provider: "custom", id: "namespace::model" };
+    expect(parseModelRef(modelRefValue(reference))).toEqual(reference);
+  });
+
+  test("rejects references missing a provider, model, or separator", () => {
+    for (const value of ["", "model", "::model", "provider::"]) {
+      expect(parseModelRef(value)).toBeUndefined();
+    }
   });
 });
