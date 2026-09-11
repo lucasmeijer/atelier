@@ -78,6 +78,7 @@ declare module "@atelier/core" {
     workspace_source_prepare: WorkspaceSourcePrepareEvent;
     workspace_plan_prepare: WorkspacePlanPrepareEvent;
     workspace_created: WorkspaceCreatedEvent;
+    workspace_deleting: WorkspaceDeletedEvent;
     workspace_deleted: WorkspaceDeletedEvent;
     workspace_delete_inspect: WorkspaceDeleteInspectEvent;
     workspace_user_activity: WorkspaceUserActivityEvent;

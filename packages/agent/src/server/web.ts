@@ -7,7 +7,7 @@ import {
   registerWorkspaceAgentTool,
 } from "./tools.ts";
 import { createAgentTermSocketSession } from "./bash-tmux.ts";
-import { getWorkspaceAgentRuntime, closeWorkspaceAgentConversation, removeWorkspaceAgentRuntimes, restoreWorkspaceAgentRuntime, subscribeWorkspaceViewBusy } from "./runtime.ts";
+import { getWorkspaceAgentRuntime, closeWorkspaceAgentConversation, restoreWorkspaceAgentRuntime, subscribeWorkspaceViewBusy } from "./runtime.ts";
 import { registerAgentEvents } from "./agent-events.ts";
 import { handleAgentRequest } from "./routes.ts";
 import { workspaceFileEndpoint } from "./workspace-files.ts";
@@ -237,7 +237,6 @@ export const agentWorkspaceModule: WorkspaceModule = {
       return await resolveWorkspacePortProxyBackend(app.workspaceId, Number(portMatch[1]), requestUrl.pathname, requestUrl.search);
     });
     subscribeWorkspaceViewBusy(({ workspaceId, viewKey, busy }) => context.registry.setViewBusy(workspaceId, viewKey, busy));
-    context.onWorkspaceRemoved(removeWorkspaceAgentRuntimes);
     context.onWorkspaceRemoved(removeWorkspaceInitialPromptDrafts);
     registerWorkspaceAgentTool("delete_current_workspace", (workspaceId) => createDeleteCurrentWorkspaceTool(workspaceId, async (force) => await context.deleteCurrentWorkspace(workspaceId, force)));
   },

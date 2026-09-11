@@ -670,6 +670,8 @@ export async function deleteWorkspace(id: string, options: DeleteWorkspaceOption
     await options.events?.emit("workspace_delete_inspect", { workspaceId: id, issues });
     if (issues.length > 0) throw new AtelierCoreError("workspace_delete_blocked", formatDeleteBlockedMessage(id, issues), { workspaceId: id, issues });
   }
+  // Join workspace consumers while their container and persisted files still exist.
+  await options.events?.emit("workspace_deleting", { workspaceId: id });
   if (containerExists) await requireDocker(["rm", "-f", "--volumes", workspaceContainerName(id)]);
   await retireWorkspaceDocker(atelierDataPath(getAtelierRuntimeContext(), "workspaces", id, "docker-runtime"));
   await retireWorkspaceId(id);

@@ -447,6 +447,30 @@ docker compose run --rm app cat /data/message`);
     expect(error.code).toBe("workspace_not_found");
   });
 
+  test("deleteWorkspace awaits teardown before removing the container", async () => {
+    const created = await createDisposableWorkspace();
+    const events = createAtelierEventBus();
+    let teardownFinished = false;
+    events.on("workspace_deleting", async ({ workspaceId }) => {
+      await new Promise((resolve) => setTimeout(resolve, 10));
+      const result = await execWorkspaceCommand(workspaceId, ["echo", "still available"]);
+      expect(result.stdout.trim()).toBe("still available");
+      teardownFinished = true;
+    });
+    events.on("workspace_deleted", () => { expect(teardownFinished).toBe(true); });
+    await deleteWorkspace(created.id, { force: true, events });
+    expect(teardownFinished).toBe(true);
+  });
+
+  test("failed teardown leaves the container available for retry", async () => {
+    const created = await createDisposableWorkspace();
+    const events = createAtelierEventBus();
+    events.on("workspace_deleting", async () => { throw new Error("teardown failed"); });
+    await expect(deleteWorkspace(created.id, { force: true, events })).rejects.toThrow("teardown failed");
+    expect((await execWorkspaceCommand(created.id, ["true"])).exitCode).toBe(0);
+    await deleteWorkspace(created.id, { force: true });
+  });
+
   test("deleteWorkspace fails with uncommitted changes unless forced", async () => {
     const created = await createDisposableWorkspace();
     const setup = await execWorkspaceCommand(created.id, ["sh", "-lc", "cd /work && git init && printf hello > changed.txt"]);

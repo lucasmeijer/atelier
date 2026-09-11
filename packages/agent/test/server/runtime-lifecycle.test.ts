@@ -1,6 +1,6 @@
 import { currentNotificationTurn, setTurnNotification } from "../../src/server/turn-notifications.ts";
 import { createAtelierEventBus } from "@atelier/core";
-import { expect, test } from "bun:test";
+import { expect, spyOn, test } from "bun:test";
 import { RealAgentRuntime } from "../../src/server/real-agent-runtime.ts";
 import type { AgentStatsView } from "../../src/server/render-composer.ts";
 import { AgentServiceTierState } from "../../src/server/service-tier.ts";
@@ -993,4 +993,46 @@ test("an early-final answer that fails is demoted to inner non-final activity", 
   expect(inner?.type === "working" && inner.items.find((item) => item.type === "text")).toMatchObject({ final: false, text });
   emit({ type: "agent_end", willRetry: false });
   emit({ type: "agent_settled" });
+});
+
+test("disposal joins a completion event already awaiting workspace subscribers", async () => {
+  const harness = fakeSession(deferred());
+  const events = createAtelierEventBus();
+  const runtime = runtimeFor(harness.session, events);
+  const completion = deferred<void>();
+  let entered = false;
+  events.on("workspace_agent_turn_finished", async () => {
+    entered = true;
+    await completion.promise;
+  });
+  harness.emit({ type: "agent_start" });
+  harness.emit({ type: "agent_settled" });
+  expect(entered).toBe(true);
+  let disposed = false;
+  const disposal = runtime.dispose().then(() => { disposed = true; });
+  await new Promise((resolve) => setTimeout(resolve, 0));
+  expect(disposed).toBe(false);
+  completion.resolve();
+  await disposal;
+  expect(disposed).toBe(true);
+});
+
+test("rejected completion subscribers are reported at the session event boundary", async () => {
+  const harness = fakeSession(deferred());
+  const events = createAtelierEventBus();
+  const runtime = runtimeFor(harness.session, events);
+  const failure = new Error("workspace completion refresh failed");
+  events.on("workspace_agent_turn_finished", async () => { throw failure; });
+  const logged = spyOn(console, "error").mockImplementation(() => {});
+  try {
+    harness.emit({ type: "agent_start" });
+    harness.emit({ type: "agent_settled" });
+    await runtime.dispose();
+    expect(logged).toHaveBeenCalledWith(
+      `Could not process Agent session event agent_settled for workspace ${runtime.workspaceId}, conversation ${runtime.conversationId}`,
+      failure,
+    );
+  } finally {
+    logged.mockRestore();
+  }
 });

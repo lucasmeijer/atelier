@@ -29,8 +29,8 @@ export function restoreWorkspaceAgentRuntime(workspaceId: string, conversationId
 }
 
 export async function removeWorkspaceAgentRuntimes(workspaceId: string): Promise<void> {
-  await agentDelegation?.removingWorkspace(workspaceId);
   removedWorkspaceIds.add(workspaceId);
+  await agentDelegation?.removingWorkspace(workspaceId);
   const matching = [...runtimes.entries()].filter(([key]) => key.startsWith(`${workspaceId}\u0000`));
   for (const [key] of matching) runtimes.delete(key);
   const settled = await Promise.allSettled(matching.map(([, runtime]) => runtime));

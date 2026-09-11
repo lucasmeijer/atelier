@@ -111,7 +111,11 @@ export class RealAgentRuntime extends BaseAgentRuntime {
 
   private subscribeToSession(): void {
     this.unsubscribeSession = this.session.subscribe((event: any) => {
-      void this.handleEvent(event);
+      if (this.disposal) return;
+      // Pi does not await subscribers; own their lifetime so disposal can join them.
+      void this.trackTerminalSessionOperation(this.handleEvent(event)).catch((error) => {
+        console.error(`Could not process Agent session event ${event.type} for workspace ${this.workspaceId}, conversation ${this.conversationId}`, normalizedPromiseError(error));
+      });
     });
   }
 

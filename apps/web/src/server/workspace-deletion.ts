@@ -39,6 +39,7 @@ export function createWorkspaceDeletion(options: {
       registry.remove(id);
       return undefined;
     } catch (error) {
+      console.error(`Workspace ${id} deletion failed`, error);
       const message = error instanceof Error ? error.message : String(error);
       await setState(id, { status: "failed", forced, operation: "deleting", error: message });
       return message;

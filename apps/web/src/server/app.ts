@@ -127,7 +127,6 @@ export function createWebApp(deps: WebAppDeps): WebApp {
     destroy: deps.destroyWorkspace,
     changed(id, state) {
       if (state.status === "blocked") return broadcastBlockedDeletion(id, state);
-      if (state.status === "failed" && state.operation === "deleting") logError(`could not delete workspace ${id}: ${state.error}`);
       broadcastDeletionPresentation(id);
     },
   });

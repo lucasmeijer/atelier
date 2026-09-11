@@ -6,11 +6,12 @@ import { stageInitialPrompt } from "./initial-prompt-draft.ts";
 import { parseModelRef } from "./model-state.ts";
 import { getModelThinkingLevel } from "./pi-config-models.ts";
 import { expandPromptTemplate } from "./prompt-templates.ts";
-import { getWorkspaceAgentRuntime } from "./runtime.ts";
+import { getWorkspaceAgentRuntime, removeWorkspaceAgentRuntimes } from "./runtime.ts";
 import { resumeInterruptedAgentSessions } from "./restart-recovery.ts";
 import { ensureDefaultWorkspaceAgentConversation } from "./session-store.ts";
 
 export function registerAgentEvents(events: AtelierEventBus): void {
+  events.on("workspace_deleting", ({ workspaceId }) => removeWorkspaceAgentRuntimes(workspaceId));
   events.on("atelier_host_started", ({ workspaces }) => {
     void resumeInterruptedAgentSessions(workspaces, events).catch((error) => {
       console.error("Could not inspect interrupted Agent sessions after Atelier restarted", error);
