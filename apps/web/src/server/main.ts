@@ -239,8 +239,12 @@ app = createWebApp({
   provisioningHooks,
   workspaceRemovedHandlers,
   async provisionWorkspace(id, options) {
-    await createWorkspace({ id, events: atelierEvents, init: options?.init, context: options?.context });
-    await startWorkspaceGateway(id, registry, workspaceStartupOperations);
+    const created = await createWorkspace({ id, events: atelierEvents, init: options?.init, context: options?.context, waitForContinue: options?.waitForContinue });
+    if (created.startupError) {
+      registry.setIssue(id, "gateway", `${created.startupError} Continued despite startup failure; gateway-dependent features may be unavailable.`);
+    } else {
+      await startWorkspaceGateway(id, registry, workspaceStartupOperations);
+    }
     await runWorkspaceProvisioningHooks(provisioningHooks, { workspaceId: id, creationContext: options?.context, events: atelierEvents, waitForContinue: options?.waitForContinue });
     await atelierEvents.emit("workspace_provision_step", { workspaceId: id, id: "workspace.integrations", label: "Run workspace startup integrations", status: "running" });
     await atelierEvents.emit("workspace_created", { workspaceId: id, init: options?.init, context: options?.context });

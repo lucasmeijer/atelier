@@ -96,6 +96,41 @@ describe("core workspaces", () => {
     expect((await listWorkspaces()).workspaces).toContainEqual({ id: created.id, title: null });
   });
 
+  test("startup failure waits for confirmation and preserves the container for repair", async () => {
+    const events = createAtelierEventBus();
+    const id = generateWorkspaceId();
+    const paused = Promise.withResolvers<void>();
+    const continuation = Promise.withResolvers<void>();
+    const observed: Array<{ id: string; awaitingContinue?: boolean; error?: string; status?: string }> = [];
+    events.on("workspace_plan_prepare", ({ plan }) => {
+      plan.initScripts.push("echo 'intentional startup failure' >&2; exit 23");
+    });
+    events.on("workspace_provision_step", (event) => {
+      observed.push(event);
+      if (event.id === "workspace.startup" && event.awaitingContinue) paused.resolve();
+    });
+    let completed = false;
+    const creation = createWorkspace({ id, events, waitForContinue(stepId) {
+      expect(stepId).toBe("workspace.startup");
+      return continuation.promise;
+    } }).then((result) => { completed = true; return result; });
+    try {
+      await Promise.race([paused.promise, creation.then(() => { throw new Error("creation did not pause"); })]);
+      expect(completed).toBe(false);
+      const running = await docker(["inspect", "--format", "{{.State.Running}}", workspaceContainerName(id)]);
+      expect(running.stdout.trim()).toBe("true");
+      expect(observed).toContainEqual(expect.objectContaining({ id: "workspace.startup", status: "failed", awaitingContinue: true, error: expect.stringContaining("intentional startup failure") }));
+      continuation.resolve();
+      expect((await creation).startupError).toContain("intentional startup failure");
+      expect(observed).toContainEqual(expect.objectContaining({ id: "workspace.startup", status: "failed", awaitingContinue: false }));
+      expect((await execWorkspaceShell(id, "printf repair-shell")).stdout).toBe("repair-shell");
+    } finally {
+      continuation.resolve();
+      await creation;
+      await deleteWorkspace(id, { force: true });
+    }
+  });
+
   test("publishes only the gateway and reaches loopback-only apps on arbitrary ports", async () => {
     const id = await getReusableWorkspaceId();
     const published = await docker(["port", workspaceContainerName(id)]);

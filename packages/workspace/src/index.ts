@@ -62,13 +62,13 @@ const stringArraySchema = Type.Array(Type.String());
 export const workspaceRoot = "/work";
 export const workspaceVSCodePort = 8000;
 
-export interface WorkspaceNewResult { id: string }
+export interface WorkspaceNewResult { id: string; startupError?: string }
 export interface WorkspaceListResult { workspaces: Array<{ id: string; title: string | null; parked?: boolean; init?: WorkspaceInitInstruction; imageOutdated?: boolean }> }
 export interface WorkspaceExecResult { exitCode: number; stdout: string; stderr: string; durationMs: number }
 export type WorkspaceExecBufferResult = Omit<WorkspaceExecResult, "stdout"> & { stdout: Buffer }
 export interface WorkspaceCommandOptions { workdir?: string; user?: "atelier" | "root"; stdin?: CommandInput }
 export interface DeleteWorkspaceOptions { force?: boolean; events?: AtelierEventBus }
-export interface CreateWorkspaceOptions { id?: string; events?: AtelierEventBus; init?: WorkspaceInitInstruction; context?: WorkspaceCreationContext }
+export interface CreateWorkspaceOptions { id?: string; events?: AtelierEventBus; init?: WorkspaceInitInstruction; context?: WorkspaceCreationContext; waitForContinue?(stepId: string): Promise<void> }
 
 function namespace(): string { return process.env.ATELIER_NAMESPACE || "host"; }
 export function generateWorkspaceId(): string { return crypto.randomUUID().replaceAll("-", "").slice(0, 8); }
@@ -124,7 +124,7 @@ async function ensureWorkspaceFilesystem(id: string): Promise<void> {
 
 async function waitForWorkspaceStartup(id: string): Promise<string> {
   const timeoutSeconds = Math.ceil(workspaceStartupTimeoutMs / 1000);
-  const result = await runDocker(["exec", "--user", "root", workspaceContainerName(id), "sh", "-lc", `deadline=$(( $(date +%s) + ${timeoutSeconds} )); while [ "$(date +%s)" -le "$deadline" ]; do if test -f /.atelier/ready; then cat /.atelier/startup.log; exit 0; fi; if systemctl is-failed --quiet atelier-init.service atelier-gateway.service; then break; fi; sleep 0.05; done; tail -n 120 /.atelier/startup.log; journalctl --no-pager -n 120 -u atelier-init.service -u atelier-gateway.service; exit 1`]);
+  const result = await runDocker(["exec", "--user", "root", workspaceContainerName(id), "sh", "-lc", `deadline=$(( $(date +%s) + ${timeoutSeconds} )); while [ "$(date +%s)" -le "$deadline" ]; do if test -f /.atelier/ready; then cat /.atelier/startup.log; exit 0; fi; if test -S /run/systemd/private && systemctl is-failed --quiet atelier-init.service atelier-gateway.service; then break; fi; sleep 0.05; done; tail -n 120 /.atelier/startup.log; journalctl --no-pager -n 120 -u atelier-init.service -u atelier-gateway.service; exit 1`]);
   const log = result.stdout.trim();
   if (result.exitCode === 0) return log;
   const output = result.stderr.trim();
@@ -304,10 +304,11 @@ export function parseRepoWorkspaceManifest(text: string, path = workspaceManifes
 
 function applySeedConfigManifest(manifest: RepoWorkspaceManifest, plan: WorkspaceDockerPlan): void {
   const runtime = getAtelierRuntimeContext();
+  // systemd mounts a fresh /tmp during boot, hiding files copied there before start.
   const entries = [
-    manifest.seedPiConfig?.authJson ? { source: atelierDataPath(runtime, "pi-config", "auth.json"), staging: "/tmp/atelier-seed-pi-auth.json", target: manifest.seedPiConfig.authJson } : undefined,
-    manifest.seedPiConfig?.modelsJson ? { source: atelierDataPath(runtime, "pi-config", "models.json"), staging: "/tmp/atelier-seed-pi-models.json", target: manifest.seedPiConfig.modelsJson } : undefined,
-    manifest.seedAtelierConfig?.projectsJson ? { source: atelierDataPath(runtime, "projects.json"), staging: "/tmp/atelier-seed-projects.json", target: manifest.seedAtelierConfig.projectsJson } : undefined,
+    manifest.seedPiConfig?.authJson ? { source: atelierDataPath(runtime, "pi-config", "auth.json"), staging: "/.atelier/seed-pi-auth.json", target: manifest.seedPiConfig.authJson } : undefined,
+    manifest.seedPiConfig?.modelsJson ? { source: atelierDataPath(runtime, "pi-config", "models.json"), staging: "/.atelier/seed-pi-models.json", target: manifest.seedPiConfig.modelsJson } : undefined,
+    manifest.seedAtelierConfig?.projectsJson ? { source: atelierDataPath(runtime, "projects.json"), staging: "/.atelier/seed-projects.json", target: manifest.seedAtelierConfig.projectsJson } : undefined,
   ].filter((entry): entry is { source: string; staging: string; target: string } => Boolean(entry));
   for (const entry of entries) {
     plan.containerFiles.push({ source: entry.source, target: entry.staging });
@@ -500,6 +501,7 @@ export async function createWorkspace(options: CreateWorkspaceOptions = {}): Pro
   const init = options.init;
   const source = await provisionStep(options.events, id, "workspace.workdir", "Create workspace directory", () => createWorkspaceWorkDir(id));
   let plan: WorkspaceDockerPlan | undefined;
+  let startupError: string | undefined;
   try {
     await writeWorkspaceInit(getAtelierRuntimeContext(), id, init);
     await provisionStep(options.events, id, "workspace.source", "Prepare workspace source", async () => {
@@ -548,7 +550,23 @@ export async function createWorkspace(options: CreateWorkspaceOptions = {}): Pro
       }
       await requireDocker(["start", container]);
     });
-    await provisionStep(options.events, id, "workspace.startup", "Wait for workspace startup", () => waitForWorkspaceStartup(id), { output: (log) => log });
+    try {
+      await provisionStep(options.events, id, "workspace.startup", "Wait for workspace startup", () => waitForWorkspaceStartup(id), { output: (log) => log });
+    } catch (error) {
+      if (!options.waitForContinue) throw error;
+      startupError = error instanceof Error ? error.message : String(error);
+      const continuation = options.waitForContinue("workspace.startup");
+      await options.events?.emit("workspace_provision_step", {
+        workspaceId: id, id: "workspace.startup", status: "failed", error: startupError,
+        detail: "The container is available for repair. Initialization and gateway-dependent features may be unavailable.",
+        awaitingContinue: true,
+      });
+      await continuation;
+      await options.events?.emit("workspace_provision_step", {
+        workspaceId: id, id: "workspace.startup", status: "failed",
+        detail: "Continuing despite startup failure", awaitingContinue: false,
+      });
+    }
   } catch (error) {
     try {
       const removed = await runDocker(["rm", "-f", "--volumes", workspaceContainerName(id)]);
@@ -561,7 +579,7 @@ export async function createWorkspace(options: CreateWorkspaceOptions = {}): Pro
     }
     throw error;
   }
-  return { id };
+  return startupError === undefined ? { id } : { id, startupError };
 }
 
 const workspaceGatewayCache = new Map<string, Promise<WorkspaceGateway>>();
