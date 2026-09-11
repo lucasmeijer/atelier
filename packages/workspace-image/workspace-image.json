@@ -67,7 +67,7 @@
   "files": [
     { "from": "rootfs/usr/local/bin/chromium", "to": "/usr/local/bin/chromium", "mode": "0755", "afterRun": true },
     { "from": "rootfs/usr/local/bin/atelier-workspace-init", "to": "/usr/local/bin/atelier-workspace-init", "mode": "0755" },
-    { "from": "rootfs/usr/local/bin/atelier-workspace-snapshotter", "to": "/usr/local/bin/atelier-workspace-snapshotter", "mode": "0755" }
+    { "from": "rootfs/usr/local/bin/atelier-workspace-start-snapshotter", "to": "/usr/local/bin/atelier-workspace-start-snapshotter", "mode": "0755" }
   ],
   "run": [
     "ln -sf /usr/bin/fdfind /usr/local/bin/fd",

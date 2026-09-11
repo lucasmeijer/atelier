@@ -248,7 +248,8 @@ Requires Linux and Go 1.25.1 or later. From this directory:
 
 ```sh
 go test -count=1 ./...
-go build -o dist/docker-snapshotter .
+go build -o dist/atelier-shared-snapshotter .
+go build -o dist/atelier-workspace-snapshotter ./cmd/atelier-workspace-snapshotter
 ```
 
 These non-UI tests cover scoped reuse, competing cold commits, private data
@@ -267,5 +268,6 @@ commit, duplicate-layer commit, removal and retirement transactions, then reopen
 the store and verify aliases, ownership and repeated recovery. A bounded ARM64
 Docker probe also preserved a running container’s private writes across snapshotter
 SIGKILL/restart and retained metadata-only warm pulls. These checks do not establish
-full app crash recovery or end-to-end Docker compatibility. The image build runs
-them before compiling the executable; they can also be run separately from Bun.
+full app crash recovery or end-to-end Docker compatibility. The Atelier image build
+runs the full suite; the workspace image build runs only workspace and common-module
+tests. Both run tests before compiling their executable, separately from Bun.

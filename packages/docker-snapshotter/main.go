@@ -7,7 +7,6 @@ import (
 	"flag"
 	"fmt"
 	"log/slog"
-	"net"
 	"net/http"
 	"os"
 	"os/signal"
@@ -28,11 +27,11 @@ import (
 	"github.com/containerd/containerd/v2/plugins/services/content/contentserver"
 	"github.com/containerd/containerd/v2/plugins/snapshots/overlay"
 	"github.com/containerd/errdefs"
+	"github.com/lucasmeijer/atelier/packages/docker-snapshotter/internal/process"
+	"github.com/lucasmeijer/atelier/packages/docker-snapshotter/internal/protocol"
 	digest "github.com/opencontainers/go-digest"
 	"google.golang.org/grpc"
 )
-
-const refLabel = "containerd.io/snapshot.ref"
 
 var clientPattern = regexp.MustCompile(`^[a-zA-Z0-9_-]{1,48}$`)
 
@@ -66,12 +65,7 @@ type Client struct {
 
 func (s *Store) save() {
 	s.updateUnusedLayers()
-	must(durableJSON(s.path, s.state))
-}
-func must(e error) {
-	if e != nil {
-		panic(e)
-	}
+	process.Must(durableJSON(s.path, s.state))
 }
 func clone(i snapshots.Info) snapshots.Info {
 	m := map[string]string{}
@@ -181,7 +175,7 @@ func (c *Client) create(ctx context.Context, k, p string, view bool, opts ...sna
 			return nil, e
 		}
 	}
-	target := i.Labels[refLabel]
+	target := i.Labels[protocol.RefLabel]
 	if target != "" {
 		if e := digest.Digest(target).Validate(); e != nil {
 			return nil, fmt.Errorf("invalid chain reference: %w", errdefs.ErrInvalidArgument)
@@ -227,7 +221,7 @@ func (c *Client) Commit(ctx context.Context, name, key string, opts ...snapshots
 		}
 	}
 	if a.Target != "" {
-		i.Labels[refLabel] = a.Target
+		i.Labels[protocol.RefLabel] = a.Target
 	}
 	bp := ""
 	if a.Info.Parent != "" {
@@ -382,32 +376,8 @@ func (s *Store) retire(ctx context.Context, id string) error {
 	slog.Info("retire", "client", id)
 	return nil
 }
-func listen(path string) net.Listener {
-	if e := os.Remove(path); e != nil && !os.IsNotExist(e) {
-		must(e)
-	}
-	l, e := net.Listen("unix", path)
-	must(e)
-	must(os.Chmod(path, 0600))
-	return l
-}
-func lockStore(root string) (*os.File, error) {
-	f, err := os.OpenFile(filepath.Join(root, "owner.lock"), os.O_CREATE|os.O_RDWR, 0600)
-	if err != nil {
-		return nil, err
-	}
-	if err := syscall.Flock(int(f.Fd()), syscall.LOCK_EX|syscall.LOCK_NB); err != nil {
-		f.Close()
-		return nil, fmt.Errorf("snapshotter store already owned: %w", err)
-	}
-	return f, nil
-}
 
 func main() {
-	localSocket := flag.String("local-socket", "", "run workspace-local snapshotter on this socket")
-	localRoot := flag.String("local-root", "", "workspace volume directory for private snapshots")
-	sharedSocket := flag.String("shared-socket", "", "installation client socket for local coordinator")
-	containerdSocket := flag.String("containerd-socket", "/run/containerd/containerd.sock", "private containerd callback socket")
 	root := flag.String("root", "", "absolute backend store")
 	dir := flag.String("socket-dir", "", "absolute socket directory")
 	clients := flag.String("clients", "", "comma separated fixed client IDs")
@@ -416,33 +386,24 @@ func main() {
 	instance := flag.String("instance-id", fmt.Sprint(os.Getpid()), "readiness identity")
 	flag.Parse()
 	slog.SetDefault(slog.New(slog.NewJSONHandler(os.Stdout, nil)))
-	if *localSocket != "" {
-		for _, path := range []string{*localSocket, *sharedSocket, *containerdSocket, *localRoot} {
-			if !filepath.IsAbs(path) {
-				panic("absolute local snapshotter socket and storage paths required")
-			}
-		}
-		runLocal(*sharedSocket, *containerdSocket, *localSocket, *localRoot)
-		return
-	}
 	if !filepath.IsAbs(*root) || !filepath.IsAbs(*dir) {
 		panic("absolute root and socket-dir required")
 	}
-	must(os.MkdirAll(*root, 0700))
-	must(os.MkdirAll(*dir, 0700))
-	owner, e := lockStore(*root)
-	must(e)
+	process.Must(os.MkdirAll(*root, 0700))
+	process.Must(os.MkdirAll(*dir, 0700))
+	owner, e := process.LockStore(*root)
+	process.Must(e)
 	defer owner.Close()
 	backend, e := overlay.NewSnapshotter(filepath.Join(*root, "overlayfs"), overlay.WithUpperdirLabel)
-	must(e)
+	process.Must(e)
 	defer backend.Close()
 	s := &Store{backend: backend, path: filepath.Join(*root, "aliases.json"), state: State{Clients: map[string]map[string]Alias{}, Chains: map[string]Chain{}, Retired: map[string]bool{}, Parents: map[string]string{}}}
 	if b, e := os.ReadFile(s.path); e == nil {
-		must(json.Unmarshal(b, &s.state))
+		process.Must(json.Unmarshal(b, &s.state))
 	} else if !os.IsNotExist(e) {
-		must(e)
+		process.Must(e)
 	}
-	must(s.restore(context.Background()))
+	process.Must(s.restore(context.Background()))
 	var legacyClients []string
 	for id := range s.state.Clients {
 		if !s.state.Retired[id] {
@@ -450,10 +411,10 @@ func main() {
 		}
 	}
 	blobs, e := openBlobs(filepath.Join(*root, "content"), legacyClients...)
-	must(e)
+	process.Must(e)
 	for id, retired := range s.state.Retired {
 		if retired {
-			must(blobs.retire(context.Background(), id))
+			process.Must(blobs.retire(context.Background(), id))
 		}
 	}
 	var serviceLock sync.Mutex
@@ -493,12 +454,13 @@ func main() {
 			slog.Info("rpc", "client", clientID, "method", info.FullMethod, "error", fmt.Sprint(e), "duration_us", time.Since(t).Microseconds())
 			return e
 		}))
-		api.RegisterSnapshotsServer(g, snapshotservice.FromSnapshotter(&Client{s, id}))
-		registerWarm(g, &sharedWarm{client: &Client{s, id}, blobs: blobs})
-		registerImageLayers(g, &Client{s, id})
+		client := &Client{s, id}
+		api.RegisterSnapshotsServer(g, snapshotservice.FromSnapshotter(client))
+		protocol.RegisterWarm(g, &sharedWarm{client: client, blobs: blobs})
+		protocol.RegisterImageLayers(g, &sharedImageLayers{client})
 		contentapi.RegisterContentServer(g, contentserver.New(&clientContent{blobStore: blobs, prefix: id + "/"}))
-		diffapi.RegisterDiffServer(g, &sharedDiff{client: &Client{s, id}, blobs: blobs})
-		l := listen(filepath.Join(*dir, id+".sock"))
+		diffapi.RegisterDiffServer(g, &sharedDiff{client: client, blobs: blobs})
+		l := process.Listen(filepath.Join(*dir, id+".sock"))
 		go func() {
 			if err := g.Serve(l); err != nil && err != grpc.ErrServerStopped {
 				panic(err)
@@ -511,7 +473,7 @@ func main() {
 	}
 
 	for id := range clientIDs {
-		must(register(id, s.state.Parents[id]))
+		process.Must(register(id, s.state.Parents[id]))
 	}
 	s.Lock()
 	s.save()
@@ -530,7 +492,7 @@ func main() {
 		s.Lock()
 		defer s.Unlock()
 		w.Header().Set("Content-Type", "application/json")
-		must(json.NewEncoder(w).Encode(s.state))
+		process.Must(json.NewEncoder(w).Encode(s.state))
 	})
 	mux.HandleFunc("POST /register", func(w http.ResponseWriter, r *http.Request) {
 		serviceLock.Lock()
@@ -579,26 +541,26 @@ func main() {
 			connection["buildServices"] = map[string]string{"buildkitSocket": filepath.Join(*dir, "buildkit.sock"), "registryAddress": *registryAddress}
 		}
 		descriptor, err := json.Marshal(connection)
-		must(err)
-		must(os.MkdirAll(filepath.Dir(*connectionFile), 0755))
-		must(os.WriteFile(*connectionFile+".tmp", descriptor, 0644))
-		must(os.Rename(*connectionFile+".tmp", *connectionFile))
+		process.Must(err)
+		process.Must(os.MkdirAll(filepath.Dir(*connectionFile), 0755))
+		process.Must(os.WriteFile(*connectionFile+".tmp", descriptor, 0644))
+		process.Must(os.Rename(*connectionFile+".tmp", *connectionFile))
 	}
 	admin := &http.Server{Handler: mux}
 	stop := make(chan os.Signal, 1)
 	signal.Notify(stop, syscall.SIGTERM, syscall.SIGINT)
 	defer signal.Stop(stop)
-	al := listen(filepath.Join(*dir, "admin.sock"))
+	al := process.Listen(filepath.Join(*dir, "admin.sock"))
 	go func() {
 		e := admin.Serve(al)
 		if e != http.ErrServerClosed {
-			must(e)
+			process.Must(e)
 		}
 	}()
 
 	slog.Info("ready", "root", *root, "socket_dir", *dir, "clients", clientIDs, "version", "containerd-v2.2.2")
 	<-stop
-	must(admin.Shutdown(context.Background()))
+	process.Must(admin.Shutdown(context.Background()))
 	serviceLock.Lock()
 	for _, g := range servers {
 		g.GracefulStop()

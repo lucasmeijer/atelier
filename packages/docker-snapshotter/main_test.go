@@ -8,6 +8,8 @@ import (
 	"github.com/containerd/containerd/v2/core/snapshots"
 	"github.com/containerd/containerd/v2/plugins/snapshots/overlay"
 	"github.com/containerd/errdefs"
+	"github.com/lucasmeijer/atelier/packages/docker-snapshotter/internal/process"
+	"github.com/lucasmeijer/atelier/packages/docker-snapshotter/internal/protocol"
 	digest "github.com/opencontainers/go-digest"
 )
 
@@ -23,7 +25,7 @@ func TestScopedReuseLifecycle(t *testing.T) {
 	a := &Client{s, "A"}
 	c := &Client{s, "B"}
 	target := digest.FromString("first diff").String()
-	opt := snapshots.WithLabels(map[string]string{refLabel: target})
+	opt := snapshots.WithLabels(map[string]string{protocol.RefLabel: target})
 	if _, e = a.Prepare(ctx, "same-key", "", opt); e != nil {
 		t.Fatal(e)
 	}
@@ -100,7 +102,7 @@ func TestConcurrentColdCommit(t *testing.T) {
 	s := &Store{backend: b, path: filepath.Join(root, "aliases.json"), state: State{Clients: map[string]map[string]Alias{"A": {}, "B": {}}, Chains: map[string]Chain{}, Retired: map[string]bool{}}}
 	a := &Client{s, "A"}
 	c := &Client{s, "B"}
-	opt := snapshots.WithLabels(map[string]string{refLabel: digest.FromString("shared").String()})
+	opt := snapshots.WithLabels(map[string]string{protocol.RefLabel: digest.FromString("shared").String()})
 	for _, cl := range []*Client{a, c} {
 		if _, e := cl.Prepare(ctx, "same", "", opt); e != nil {
 			t.Fatal(e)
@@ -126,7 +128,7 @@ func TestPrivateCommittedInitReclaimed(t *testing.T) {
 	defer b.Close()
 	s := &Store{backend: b, path: filepath.Join(root, "aliases.json"), state: State{Clients: map[string]map[string]Alias{"A": {}}, Chains: map[string]Chain{}, Retired: map[string]bool{}}}
 	a := &Client{s, "A"}
-	opt := snapshots.WithLabels(map[string]string{refLabel: digest.FromString("image").String()})
+	opt := snapshots.WithLabels(map[string]string{protocol.RefLabel: digest.FromString("image").String()})
 	if _, e = a.Prepare(ctx, "extract", "", opt); e != nil {
 		t.Fatal(e)
 	}
@@ -174,19 +176,19 @@ func TestPrivateCommittedInitReclaimed(t *testing.T) {
 
 func TestExclusiveStoreOwnership(t *testing.T) {
 	root := t.TempDir()
-	first, err := lockStore(root)
+	first, err := process.LockStore(root)
 	if err != nil {
 		t.Fatal(err)
 	}
 	defer first.Close()
-	if second, err := lockStore(root); err == nil {
+	if second, err := process.LockStore(root); err == nil {
 		second.Close()
 		t.Fatal("two owners acquired the same store")
 	}
 	if err := first.Close(); err != nil {
 		t.Fatal(err)
 	}
-	next, err := lockStore(root)
+	next, err := process.LockStore(root)
 	if err != nil {
 		t.Fatal(err)
 	}

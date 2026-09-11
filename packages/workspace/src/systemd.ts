@@ -81,7 +81,7 @@ Description=Atelier local snapshotter adapter
 ${limits}
 
 [Service]
-ExecStart=/usr/local/bin/atelier-workspace-snapshotter
+ExecStart=/usr/local/bin/atelier-workspace-start-snapshotter
 ${restart}
 Delegate=yes
 TasksMax=infinity

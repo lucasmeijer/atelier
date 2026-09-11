@@ -9,6 +9,7 @@ import (
 
 	"github.com/containerd/containerd/v2/core/snapshots"
 	"github.com/containerd/errdefs"
+	"github.com/lucasmeijer/atelier/packages/docker-snapshotter/internal/process"
 )
 
 // One durable intent covers the only operation in flight under Store's lock.
@@ -125,16 +126,16 @@ func (s *Store) mutate(ctx context.Context, op mutation, change func()) error {
 	// Keep the currently published state untouched until backend outcome is known.
 	previous := s.state
 	b, err := json.Marshal(previous)
-	must(err)
+	process.Must(err)
 	// Unmarshal into a fresh value: maps must not alias previous.
 	var next State
-	must(json.Unmarshal(b, &next))
+	process.Must(json.Unmarshal(b, &next))
 	s.state = next
 	change()
 	s.updateUnusedLayers()
 	pending := intent{op, s.state}
 	s.state = previous
-	must(durableJSON(s.path+".intent", pending))
+	process.Must(durableJSON(s.path+".intent", pending))
 	switch op.Kind {
 	case "prepare":
 		_, err = s.backend.Prepare(ctx, op.Key, op.Parent, snapshots.WithLabels(op.Labels))
@@ -149,7 +150,7 @@ func (s *Store) mutate(ctx context.Context, op mutation, change func()) error {
 	}
 	// Even an error (including cancellation) may follow a committed backend
 	// transaction. Resolve using a live context, just as on process restart.
-	must(s.recover(context.Background()))
+	process.Must(s.recover(context.Background()))
 	return err
 }
 

@@ -9,12 +9,12 @@ ARG TARGETARCH
 WORKDIR /src
 COPY packages/docker-snapshotter/go.mod packages/docker-snapshotter/go.sum ./
 RUN go mod download
-COPY packages/docker-snapshotter/*.go ./
+COPY packages/docker-snapshotter/ ./
 RUN go test -count=1 ./... \
- && CGO_ENABLED=0 GOOS=$TARGETOS GOARCH=$TARGETARCH go build -trimpath -o /out/atelier-snapshotter .
+ && CGO_ENABLED=0 GOOS=$TARGETOS GOARCH=$TARGETARCH go build -trimpath -o /out/atelier-shared-snapshotter .
 
 FROM scratch AS docker-infrastructure
-COPY --from=snapshotter-build /out/atelier-snapshotter /usr/local/bin/atelier-snapshotter
+COPY --from=snapshotter-build /out/atelier-shared-snapshotter /usr/local/bin/atelier-shared-snapshotter
 COPY --from=buildkit-dist /usr/bin/buildkitd /usr/bin/buildctl /usr/bin/buildkit-runc /usr/local/bin/
 COPY --from=registry-dist /bin/registry /usr/local/bin/atelier-registry
 COPY --chmod=755 packages/docker-snapshotter/atelier-owned-snapshotter /usr/local/bin/atelier-owned-snapshotter

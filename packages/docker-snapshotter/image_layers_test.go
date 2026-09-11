@@ -11,6 +11,7 @@ import (
 	"github.com/containerd/containerd/v2/core/snapshots"
 	"github.com/containerd/containerd/v2/plugins/snapshots/overlay"
 	"github.com/containerd/errdefs"
+	"github.com/lucasmeijer/atelier/packages/docker-snapshotter/internal/protocol"
 	digest "github.com/opencontainers/go-digest"
 	"google.golang.org/grpc"
 )
@@ -28,7 +29,7 @@ func TestResolveSharedImageLayers(t *testing.T) {
 	parent := ""
 	var want []string
 	for _, key := range []string{"base", "top"} {
-		if _, err := client.Prepare(ctx, "extract", parent, snapshots.WithLabels(map[string]string{refLabel: digest.FromString(key).String()})); err != nil {
+		if _, err := client.Prepare(ctx, "extract", parent, snapshots.WithLabels(map[string]string{protocol.RefLabel: digest.FromString(key).String()})); err != nil {
 			t.Fatal(err)
 		}
 		if err := client.Commit(ctx, key, "extract"); err != nil {
@@ -42,7 +43,7 @@ func TestResolveSharedImageLayers(t *testing.T) {
 		parent = key
 	}
 	server := grpc.NewServer()
-	registerImageLayers(server, client)
+	protocol.RegisterImageLayers(server, &sharedImageLayers{client})
 	conn := testRPC(t, server)
 	before, err := os.ReadFile(store.path)
 	if err != nil {
@@ -50,7 +51,7 @@ func TestResolveSharedImageLayers(t *testing.T) {
 	}
 	sequence := store.state.Sequence
 	for range 2 {
-		got, err := resolveSharedLayers(ctx, conn, "top")
+		got, err := protocol.ResolveSharedLayers(ctx, conn, "top")
 		if err != nil || !reflect.DeepEqual(got, want) {
 			t.Fatalf("layers %v, want %v: %v", got, want, err)
 		}
@@ -76,14 +77,14 @@ func TestResolveSharedImageLayers(t *testing.T) {
 			}
 			key = "private-init"
 		}
-		if _, err := resolveSharedLayers(ctx, conn, key); !errdefs.IsFailedPrecondition(err) {
+		if _, err := protocol.ResolveSharedLayers(ctx, conn, key); !errdefs.IsFailedPrecondition(err) {
 			t.Fatalf("resolved private backing %q: %v", key, err)
 		}
 	}
 	if err := store.retire(ctx, "A"); err != nil {
 		t.Fatal(err)
 	}
-	if _, err := resolveSharedLayers(ctx, conn, "top"); !errdefs.IsFailedPrecondition(err) {
+	if _, err := protocol.ResolveSharedLayers(ctx, conn, "top"); !errdefs.IsFailedPrecondition(err) {
 		t.Fatalf("retired client still resolves images: %v", err)
 	}
 	for _, path := range want {

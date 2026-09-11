@@ -18,6 +18,8 @@ import (
 	api "github.com/containerd/containerd/api/services/snapshots/v1"
 	"github.com/containerd/containerd/v2/core/snapshots"
 	"github.com/containerd/errdefs"
+	"github.com/lucasmeijer/atelier/packages/docker-snapshotter/internal/protocol"
+	"github.com/lucasmeijer/atelier/packages/docker-snapshotter/internal/workspace"
 	digest "github.com/opencontainers/go-digest"
 	"google.golang.org/grpc"
 )
@@ -35,7 +37,7 @@ func gcStore(t *testing.T, root string) *Store {
 func gcLayer(t *testing.T, c *Client, name, parent string) (string, string) {
 	t.Helper()
 	ctx := context.Background()
-	if _, err := c.Prepare(ctx, "unpack", parent, snapshots.WithLabels(map[string]string{refLabel: digest.FromString(name).String()})); err != nil {
+	if _, err := c.Prepare(ctx, "unpack", parent, snapshots.WithLabels(map[string]string{protocol.RefLabel: digest.FromString(name).String()})); err != nil {
 		t.Fatal(err)
 	}
 	info, err := c.s.backend.Stat(ctx, c.s.state.Clients[c.id]["unpack"].Backing)
@@ -163,7 +165,7 @@ func TestGCProtectsColdUnpackTargetAndAncestors(t *testing.T) {
 	_, basePath := gcLayer(t, a, "base", "")
 	_, topPath := gcLayer(t, a, "top", "base")
 	gcLayer(t, b, "base", "")
-	if _, err := b.Prepare(ctx, "cold", "base", snapshots.WithLabels(map[string]string{refLabel: digest.FromString("top").String()})); err != nil {
+	if _, err := b.Prepare(ctx, "cold", "base", snapshots.WithLabels(map[string]string{protocol.RefLabel: digest.FromString("top").String()})); err != nil {
 		t.Fatal(err)
 	}
 	// The applier can now skip extraction using A's completed chain.
@@ -197,8 +199,8 @@ func TestGCProtectsHybridPrivateDescendantsAcrossRestart(t *testing.T) {
 	c := &Client{s, "A"}
 	_, path := gcLayer(t, c, "base", "")
 	root := filepath.Join(t.TempDir(), "private")
-	open := func() *hybridSnapshotter {
-		h, err := newHybridSnapshotter(root, c, func(ctx context.Context, key string) ([]string, error) {
+	open := func() *workspace.Hybrid {
+		h, err := workspace.NewHybrid(root, c, func(ctx context.Context, key string) ([]string, error) {
 			result, err := (&sharedImageLayers{c}).Resolve(ctx, &api.MountsRequest{Key: key})
 			if err != nil {
 				return nil, err
@@ -258,14 +260,14 @@ type gcBeforeAdopt struct {
 }
 
 func (c gcBeforeAdopt) Invoke(ctx context.Context, method string, args, reply any, opts ...grpc.CallOption) error {
-	if method == "/"+warmService+"/Adopt" {
+	if method == "/"+protocol.WarmService+"/Adopt" {
 		c.collect()
 	}
 	return c.ClientConnInterface.Invoke(ctx, method, args, reply, opts...)
 }
 func TestGCBetweenWarmLookupAndAdoptUsesOrdinaryUnpack(t *testing.T) {
 	f := newLocalFixture(t)
-	f.local.shared = gcBeforeAdopt{f.local.shared, func() {
+	f.local.shared.ClientConnInterface = gcBeforeAdopt{f.local.shared.ClientConnInterface, func() {
 		if err := f.s.retire(f.ctx, "A"); err != nil {
 			t.Fatal(err)
 		}
@@ -567,7 +569,7 @@ func TestGCReclaimedBytesExcludeConcurrentUnpackGrowth(t *testing.T) {
 	if err := c.Remove(ctx, "unused"); err != nil {
 		t.Fatal(err)
 	}
-	if _, err := c.Prepare(ctx, "unpacking", "", snapshots.WithLabels(map[string]string{refLabel: digest.FromString("growing").String()})); err != nil {
+	if _, err := c.Prepare(ctx, "unpacking", "", snapshots.WithLabels(map[string]string{protocol.RefLabel: digest.FromString("growing").String()})); err != nil {
 		t.Fatal(err)
 	}
 	s.backend = &growingUnpackUsage{Snapshotter: s.backend, active: s.state.Clients["A"]["unpacking"].Backing}

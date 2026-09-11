@@ -3,6 +3,8 @@ import { watch } from "node:fs";
 import { lstat, readdir, readFile, rename, rm } from "node:fs/promises";
 import { join, relative, resolve, sep } from "node:path";
 
+import { isWorkspaceSnapshotterInput, workspaceSnapshotterInputs } from "../../../packages/workspace-image/scripts/snapshotter-inputs.ts";
+
 const cwd = resolve(new URL("..", import.meta.url).pathname);
 const repoRoot = resolve(cwd, "../..");
 const packagesDir = resolve(repoRoot, "packages");
@@ -137,7 +139,7 @@ function isWorkspaceImageInputChange(path: string): boolean {
   return rel.endsWith(`${sep}workspace-image.json`)
     || rel.startsWith(`workspace-image${sep}scripts${sep}`)
     || rel.startsWith(`workspace-image${sep}rootfs${sep}`)
-    || (rel.startsWith(`docker-snapshotter${sep}`) && /\.(go|mod|sum)$/.test(rel) && rel.split(sep).length === 2)
+    || (rel.startsWith(`docker-snapshotter${sep}`) && isWorkspaceSnapshotterInput(rel.slice(`docker-snapshotter${sep}`.length)))
     || rel.includes(`${sep}workspace-image${sep}`);
 }
 
@@ -161,9 +163,7 @@ async function workspaceImageInputFiles(): Promise<string[]> {
     if (await Bun.file(imageFiles).exists()) await collectFiles(imageFiles, files);
   }
   const snapshotter = join(packagesDir, "docker-snapshotter");
-  for (const name of await readdir(snapshotter)) {
-    if (/\.(go|mod|sum)$/.test(name)) files.push(join(snapshotter, name));
-  }
+  for (const name of await workspaceSnapshotterInputs(snapshotter)) files.push(join(snapshotter, name));
   await collectFiles(join(packagesDir, "workspace-image", "rootfs"), files);
   const scripts = join(packagesDir, "workspace-image", "scripts");
   if (await Bun.file(scripts).exists()) await collectFiles(scripts, files);

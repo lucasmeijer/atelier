@@ -1,4 +1,4 @@
-package main
+package workspace
 
 // The private overlay backend is the source of truth for private snapshots.
 // Ancestry crossing into the immutable store is persisted in the same metadata
@@ -12,6 +12,7 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"maps"
 	"os"
 	"path/filepath"
 	"strings"
@@ -24,6 +25,7 @@ import (
 	"github.com/containerd/containerd/v2/plugins/snapshots/overlay"
 	"github.com/containerd/containerd/v2/plugins/snapshots/overlay/overlayutils"
 	"github.com/containerd/errdefs"
+	"github.com/lucasmeijer/atelier/packages/docker-snapshotter/internal/protocol"
 	digest "github.com/opencontainers/go-digest"
 )
 
@@ -33,7 +35,9 @@ const sharedLayersLabel = privatePrefix + "layers"
 const initializeLabel = privatePrefix + "initialize"
 const upperLabel = "containerd.io/snapshot/overlay.upperdir"
 
-type hybridSnapshotter struct {
+// Hybrid owns private snapshot backing and resolves immutable image ancestry
+// through the shared snapshotter. Closing it closes only the private backend.
+type Hybrid struct {
 	mu           sync.Mutex
 	mountOptions []string
 	private      snapshots.Snapshotter
@@ -41,7 +45,9 @@ type hybridSnapshotter struct {
 	resolve      func(context.Context, string) ([]string, error)
 }
 
-func newHybridSnapshotter(root string, shared snapshots.Snapshotter, resolve func(context.Context, string) ([]string, error)) (*hybridSnapshotter, error) {
+// NewHybrid opens private backing and recovers pending initialization before use.
+// The caller owns the shared snapshotter and resolver lifetimes.
+func NewHybrid(root string, shared snapshots.Snapshotter, resolve func(context.Context, string) ([]string, error)) (*Hybrid, error) {
 	p, err := overlay.NewSnapshotter(root, overlay.WithUpperdirLabel)
 	if err != nil {
 		return nil, err
@@ -67,7 +73,7 @@ func newHybridSnapshotter(root string, shared snapshots.Snapshotter, resolve fun
 	if userxattr {
 		options = append(options, "userxattr")
 	}
-	h := &hybridSnapshotter{private: p, shared: shared, resolve: resolve, mountOptions: options}
+	h := &Hybrid{private: p, shared: shared, resolve: resolve, mountOptions: options}
 	var pending []string
 	if err := walkPrivate(p, context.Background(), func(_ context.Context, i snapshots.Info) error {
 		if i.Labels[initializeLabel] != "" {
@@ -87,7 +93,7 @@ func newHybridSnapshotter(root string, shared snapshots.Snapshotter, resolve fun
 	return h, nil
 }
 func logicalInfo(i snapshots.Info) snapshots.Info {
-	i = clone(i)
+	i.Labels = maps.Clone(i.Labels)
 	if i.Parent == "" {
 		i.Parent = i.Labels[sharedParentLabel]
 	}
@@ -112,14 +118,13 @@ func requestedInfo(opts []snapshots.Opt) (snapshots.Info, error) {
 	}
 	return i, nil
 }
-func (h *hybridSnapshotter) Stat(ctx context.Context, key string) (snapshots.Info, error) {
+func (h *Hybrid) Stat(ctx context.Context, key string) (snapshots.Info, error) {
 	h.mu.Lock()
 	defer h.mu.Unlock()
 	return h.stat(ctx, key)
 }
-func (h *hybridSnapshotter) stat(ctx context.Context, key string) (snapshots.Info, error) {
-	k := key
-	i, err := h.private.Stat(ctx, k)
+func (h *Hybrid) stat(ctx context.Context, key string) (snapshots.Info, error) {
+	i, err := h.private.Stat(ctx, key)
 	if errdefs.IsNotFound(err) {
 		return h.shared.Stat(ctx, key)
 	}
@@ -128,33 +133,31 @@ func (h *hybridSnapshotter) stat(ctx context.Context, key string) (snapshots.Inf
 	}
 	return logicalInfo(i), nil
 }
-func (h *hybridSnapshotter) Prepare(ctx context.Context, key, parent string, opts ...snapshots.Opt) ([]mount.Mount, error) {
+func (h *Hybrid) Prepare(ctx context.Context, key, parent string, opts ...snapshots.Opt) ([]mount.Mount, error) {
 	return h.create(ctx, key, parent, false, opts...)
 }
-func (h *hybridSnapshotter) View(ctx context.Context, key, parent string, opts ...snapshots.Opt) ([]mount.Mount, error) {
+func (h *Hybrid) View(ctx context.Context, key, parent string, opts ...snapshots.Opt) ([]mount.Mount, error) {
 	return h.create(ctx, key, parent, true, opts...)
 }
-func (h *hybridSnapshotter) create(ctx context.Context, key, parent string, view bool, opts ...snapshots.Opt) ([]mount.Mount, error) {
+func (h *Hybrid) create(ctx context.Context, key, parent string, view bool, opts ...snapshots.Opt) ([]mount.Mount, error) {
 	h.mu.Lock()
 	defer h.mu.Unlock()
 	i, err := requestedInfo(opts)
 	if err != nil {
 		return nil, err
 	}
-	k := key
 	if _, err := h.stat(ctx, key); err == nil {
 		return nil, errdefs.ErrAlreadyExists
 	} else if !errdefs.IsNotFound(err) {
 		return nil, err
 	}
-	if target := i.Labels[refLabel]; target != "" {
+	if target := i.Labels[protocol.RefLabel]; target != "" {
 		if err := digest.Digest(target).Validate(); err != nil {
 			return nil, fmt.Errorf("invalid image reference: %w", errdefs.ErrInvalidArgument)
 		}
 		privateParent := false
 		if parent != "" {
-			pk := parent
-			if _, err := h.private.Stat(ctx, pk); err == nil {
+			if _, err := h.private.Stat(ctx, parent); err == nil {
 				privateParent = true
 			} else if !errdefs.IsNotFound(err) {
 				return nil, err
@@ -176,8 +179,7 @@ func (h *hybridSnapshotter) create(ctx context.Context, key, parent string, view
 	localParent := ""
 	var layers []string
 	if parent != "" {
-		pk := parent
-		p, err := h.private.Stat(ctx, pk)
+		p, err := h.private.Stat(ctx, parent)
 		if errdefs.IsNotFound(err) {
 			p, err = h.shared.Stat(ctx, parent)
 			if err != nil {
@@ -202,7 +204,7 @@ func (h *hybridSnapshotter) create(ctx context.Context, key, parent string, view
 		} else if err != nil {
 			return nil, err
 		} else {
-			localParent = pk
+			localParent = parent
 			if p.Labels[sharedLayersLabel] != "" {
 				i.Labels[sharedLayersLabel] = p.Labels[sharedLayersLabel]
 			}
@@ -212,37 +214,36 @@ func (h *hybridSnapshotter) create(ctx context.Context, key, parent string, view
 		i.Labels[initializeLabel] = "true"
 	}
 	if view {
-		_, err = h.private.View(ctx, k, localParent, snapshots.WithLabels(i.Labels))
+		_, err = h.private.View(ctx, key, localParent, snapshots.WithLabels(i.Labels))
 	} else {
-		_, err = h.private.Prepare(ctx, k, localParent, snapshots.WithLabels(i.Labels))
+		_, err = h.private.Prepare(ctx, key, localParent, snapshots.WithLabels(i.Labels))
 	}
 	if err != nil {
 		return nil, err
 	}
-	rollback := func(err error) ([]mount.Mount, error) { return nil, errors.Join(err, h.private.Remove(ctx, k)) }
+	rollback := func(err error) ([]mount.Mount, error) { return nil, errors.Join(err, h.private.Remove(ctx, key)) }
 	if !view && len(layers) > 0 {
-		if err := h.initialize(ctx, k); err != nil {
+		if err := h.initialize(ctx, key); err != nil {
 			return rollback(err)
 		}
 	}
-	m, err := h.mounts(ctx, k)
+	m, err := h.mounts(ctx, key)
 	if err != nil {
 		return rollback(err)
 	}
 	return m, nil
 }
-func (h *hybridSnapshotter) Mounts(ctx context.Context, key string) ([]mount.Mount, error) {
+func (h *Hybrid) Mounts(ctx context.Context, key string) ([]mount.Mount, error) {
 	h.mu.Lock()
 	defer h.mu.Unlock()
-	k := key
-	if _, err := h.private.Stat(ctx, k); errdefs.IsNotFound(err) {
+	if _, err := h.private.Stat(ctx, key); errdefs.IsNotFound(err) {
 		return h.shared.Mounts(ctx, key)
 	} else if err != nil {
 		return nil, err
 	}
-	return h.mounts(ctx, k)
+	return h.mounts(ctx, key)
 }
-func (h *hybridSnapshotter) mounts(ctx context.Context, key string) ([]mount.Mount, error) {
+func (h *Hybrid) mounts(ctx context.Context, key string) ([]mount.Mount, error) {
 	i, err := h.private.Stat(ctx, key)
 	if err != nil {
 		return nil, err
@@ -291,18 +292,16 @@ func (h *hybridSnapshotter) mounts(ctx context.Context, key string) ([]mount.Mou
 	options = append(options, h.mountOptions...)
 	return []mount.Mount{{Type: "overlay", Source: "overlay", Options: options}}, nil
 }
-func (h *hybridSnapshotter) Commit(ctx context.Context, name, key string, opts ...snapshots.Opt) error {
+func (h *Hybrid) Commit(ctx context.Context, name, key string, opts ...snapshots.Opt) error {
 	h.mu.Lock()
 	defer h.mu.Unlock()
 	requested, err := requestedInfo(opts)
 	if err != nil {
 		return err
 	}
-	k := key
-	raw, err := h.private.Stat(ctx, k)
+	raw, err := h.private.Stat(ctx, key)
 	if errdefs.IsNotFound(err) {
-		n := name
-		if _, err := h.private.Stat(ctx, n); err == nil {
+		if _, err := h.private.Stat(ctx, name); err == nil {
 			return errdefs.ErrAlreadyExists
 		} else if !errdefs.IsNotFound(err) {
 			return err
@@ -322,10 +321,9 @@ func (h *hybridSnapshotter) Commit(ctx context.Context, name, key string, opts .
 			requested.Labels[label] = value
 		}
 	}
-	n := name
-	return h.private.Commit(ctx, n, k, snapshots.WithLabels(requested.Labels))
+	return h.private.Commit(ctx, name, key, snapshots.WithLabels(requested.Labels))
 }
-func (h *hybridSnapshotter) Update(ctx context.Context, i snapshots.Info, paths ...string) (snapshots.Info, error) {
+func (h *Hybrid) Update(ctx context.Context, i snapshots.Info, paths ...string) (snapshots.Info, error) {
 	h.mu.Lock()
 	defer h.mu.Unlock()
 	if _, err := requestedInfo([]snapshots.Opt{snapshots.WithLabels(i.Labels)}); err != nil {
@@ -336,16 +334,14 @@ func (h *hybridSnapshotter) Update(ctx context.Context, i snapshots.Info, paths 
 			return snapshots.Info{}, errdefs.ErrInvalidArgument
 		}
 	}
-	k := i.Name
-	raw, err := h.private.Stat(ctx, k)
+	raw, err := h.private.Stat(ctx, i.Name)
 	if errdefs.IsNotFound(err) {
 		return h.shared.Update(ctx, i, paths...)
 	}
 	if err != nil {
 		return snapshots.Info{}, err
 	}
-	i = clone(i)
-	i.Name = k
+	i.Labels = maps.Clone(i.Labels)
 	if i.Labels == nil {
 		i.Labels = map[string]string{}
 	}
@@ -360,23 +356,21 @@ func (h *hybridSnapshotter) Update(ctx context.Context, i snapshots.Info, paths 
 	}
 	return logicalInfo(updated), nil
 }
-func (h *hybridSnapshotter) Usage(ctx context.Context, key string) (snapshots.Usage, error) {
+func (h *Hybrid) Usage(ctx context.Context, key string) (snapshots.Usage, error) {
 	h.mu.Lock()
 	defer h.mu.Unlock()
-	k := key
-	if _, err := h.private.Stat(ctx, k); errdefs.IsNotFound(err) {
+	if _, err := h.private.Stat(ctx, key); errdefs.IsNotFound(err) {
 		return h.shared.Usage(ctx, key)
 	} else if err != nil {
 		return snapshots.Usage{}, err
 	}
-	return h.private.Usage(ctx, k)
+	return h.private.Usage(ctx, key)
 }
-func (h *hybridSnapshotter) Remove(ctx context.Context, key string) error {
+func (h *Hybrid) Remove(ctx context.Context, key string) error {
 	h.mu.Lock()
 	defer h.mu.Unlock()
-	k := key
-	if _, err := h.private.Stat(ctx, k); err == nil {
-		return h.private.Remove(ctx, k)
+	if _, err := h.private.Stat(ctx, key); err == nil {
+		return h.private.Remove(ctx, key)
 	} else if !errdefs.IsNotFound(err) {
 		return err
 	}
@@ -390,7 +384,7 @@ func (h *hybridSnapshotter) Remove(ctx context.Context, key string) error {
 	}
 	return h.shared.Remove(ctx, key)
 }
-func (h *hybridSnapshotter) Walk(ctx context.Context, fn snapshots.WalkFunc, fs ...string) error {
+func (h *Hybrid) Walk(ctx context.Context, fn snapshots.WalkFunc, fs ...string) error {
 	h.mu.Lock()
 	var items []snapshots.Info
 	err := h.shared.Walk(ctx, func(_ context.Context, i snapshots.Info) error { items = append(items, i); return nil })
@@ -443,7 +437,7 @@ func snapshotFilter(i snapshots.Info) filters.Adaptor {
 		return "", false
 	})
 }
-func (h *hybridSnapshotter) Cleanup(ctx context.Context) error {
+func (h *Hybrid) Cleanup(ctx context.Context) error {
 	h.mu.Lock()
 	defer h.mu.Unlock()
 	err := h.private.(snapshots.Cleaner).Cleanup(ctx)
@@ -452,12 +446,12 @@ func (h *hybridSnapshotter) Cleanup(ctx context.Context) error {
 	}
 	return err
 }
-func (h *hybridSnapshotter) Close() error { return h.private.Close() }
+func (h *Hybrid) Close() error { return h.private.Close() }
 
 // Initialization is a persisted pending operation: after a crash, replay it
 // before serving requests. Once published, Mounts must not reset permissions a
 // container has changed in its upper directory.
-func (h *hybridSnapshotter) initialize(ctx context.Context, key string) error {
+func (h *Hybrid) initialize(ctx context.Context, key string) error {
 	raw, err := h.private.Stat(ctx, key)
 	if err != nil {
 		return err
@@ -499,15 +493,14 @@ func walkPrivate(p snapshots.Snapshotter, ctx context.Context, fn snapshots.Walk
 // Warm acquisition calls back into containerd, so release the graph mutex
 // before that work. A private image ancestor is never eligible for adoption
 // from the installation, even when its content chain happens to match.
-func (h *hybridSnapshotter) privateImageRequest(ctx context.Context, key, parent string) (bool, error) {
+func (h *Hybrid) privateImageRequest(ctx context.Context, key, parent string) (bool, error) {
 	h.mu.Lock()
 	defer h.mu.Unlock()
 	return h.privateImageRequestLocked(ctx, key, parent)
 }
 
-func (h *hybridSnapshotter) privateImageRequestLocked(ctx context.Context, key, parent string) (bool, error) {
-	k := key
-	if _, err := h.private.Stat(ctx, k); err == nil {
+func (h *Hybrid) privateImageRequestLocked(ctx context.Context, key, parent string) (bool, error) {
+	if _, err := h.private.Stat(ctx, key); err == nil {
 		return false, errdefs.ErrAlreadyExists
 	} else if !errdefs.IsNotFound(err) {
 		return false, err
@@ -515,8 +508,7 @@ func (h *hybridSnapshotter) privateImageRequestLocked(ctx context.Context, key, 
 	if parent == "" {
 		return false, nil
 	}
-	p := parent
-	if _, err := h.private.Stat(ctx, p); err == nil {
+	if _, err := h.private.Stat(ctx, parent); err == nil {
 		return true, nil
 	} else if errdefs.IsNotFound(err) {
 		return false, nil

@@ -13,6 +13,7 @@ import (
 	"github.com/containerd/containerd/v2/pkg/oci"
 	"github.com/containerd/containerd/v2/plugins/snapshots/overlay"
 	"github.com/containerd/errdefs"
+	"github.com/lucasmeijer/atelier/packages/docker-snapshotter/internal/protocol"
 	digest "github.com/opencontainers/go-digest"
 	"github.com/opencontainers/image-spec/identity"
 	ocispec "github.com/opencontainers/image-spec/specs-go/v1"
@@ -53,7 +54,7 @@ func TestApplyReuseRequiresContentAndMatchingChain(t *testing.T) {
 	target := identity.ChainID([]digest.Digest{parent, applied.Digest})
 	prepare := func(c *Client, key, parent string, target digest.Digest) []mount.Mount {
 		t.Helper()
-		m, err := c.Prepare(ctx, key, parent, snapshots.WithLabels(map[string]string{refLabel: target.String()}))
+		m, err := c.Prepare(ctx, key, parent, snapshots.WithLabels(map[string]string{protocol.RefLabel: target.String()}))
 		if err != nil {
 			t.Fatal(err)
 		}

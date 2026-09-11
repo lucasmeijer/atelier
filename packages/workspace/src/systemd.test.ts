@@ -26,6 +26,7 @@ test("shared Docker activates its dependencies without binding gateway lifetime 
   expect(units["atelier-containerd.service"]).toContain("Wants=atelier-snapshotter.service");
   expect(units["atelier-containerd.service"]).toContain("KillMode=process");
   expect(units["atelier-snapshotter.service"]).toContain("Restart=on-failure");
+  expect(units["atelier-snapshotter.service"]).toContain("ExecStart=/usr/local/bin/atelier-workspace-start-snapshotter");
   expect(workspaceSystemdUnits(false)["docker.service"]).toContain("-H fd:// --live-restore");
 });
 

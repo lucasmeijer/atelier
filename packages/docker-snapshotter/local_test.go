@@ -26,6 +26,8 @@ import (
 	"github.com/containerd/containerd/v2/plugins/snapshots/overlay"
 	"github.com/containerd/errdefs"
 	"github.com/containerd/errdefs/pkg/errgrpc"
+	"github.com/lucasmeijer/atelier/packages/docker-snapshotter/internal/protocol"
+	"github.com/lucasmeijer/atelier/packages/docker-snapshotter/internal/workspace"
 	digest "github.com/opencontainers/go-digest"
 	ocispec "github.com/opencontainers/image-spec/specs-go/v1"
 	bolt "go.etcd.io/bbolt"
@@ -50,12 +52,25 @@ func testRPC(t *testing.T, g *grpc.Server) *grpc.ClientConn {
 	return conn
 }
 
+// Mutable forwarding dependencies let integration tests interrupt callbacks
+// without exposing the workspace coordinator's implementation.
+type switchContent struct{ content.Store }
+type switchLeases struct{ leases.Manager }
+type switchConnection struct{ grpc.ClientConnInterface }
+type localHarness struct {
+	api.SnapshotsServer
+	hybrid  *workspace.Hybrid
+	shared  *switchConnection
+	content *switchContent
+	leases  *switchLeases
+}
+
 type localFixture struct {
 	ctx            context.Context
 	s              *Store
 	blobs          *blobStore
 	warm           *sharedWarm
-	local          *localSnapshotter
+	local          *localHarness
 	db             *metadata.DB
 	desc, manifest ocispec.Descriptor
 	target         string
@@ -85,7 +100,7 @@ func newLocalFixture(t *testing.T) *localFixture {
 	}
 	blobs.applied[diffCacheKey(desc)] = applied
 	seed := &Client{s, "A"}
-	if _, err := seed.Prepare(ctx, "extract", "", snapshots.WithLabels(map[string]string{refLabel: applied.Digest.String()})); err != nil {
+	if _, err := seed.Prepare(ctx, "extract", "", snapshots.WithLabels(map[string]string{protocol.RefLabel: applied.Digest.String()})); err != nil {
 		t.Fatal(err)
 	}
 	if err := seed.Commit(ctx, "seed", "extract"); err != nil {
@@ -101,16 +116,19 @@ func newLocalFixture(t *testing.T) *localFixture {
 	}
 	warm := &sharedWarm{client: &Client{s, "B"}, blobs: blobs}
 	sharedServer := grpc.NewServer()
-	registerWarm(sharedServer, warm)
-	registerImageLayers(sharedServer, warm.client)
+	protocol.RegisterWarm(sharedServer, warm)
+	protocol.RegisterImageLayers(sharedServer, &sharedImageLayers{warm.client})
 	api.RegisterSnapshotsServer(sharedServer, snapshotservice.FromSnapshotter(warm.client))
 	shared := testRPC(t, sharedServer)
-	hybrid, err := newHybridSnapshotter(filepath.Join(root, "private"), proxy.NewSnapshotter(api.NewSnapshotsClient(shared), "shared-overlay"), func(ctx context.Context, key string) ([]string, error) { return resolveSharedLayers(ctx, shared, key) })
+	hybrid, err := workspace.NewHybrid(filepath.Join(root, "private"), proxy.NewSnapshotter(api.NewSnapshotsClient(shared), "shared-overlay"), func(ctx context.Context, key string) ([]string, error) {
+		return protocol.ResolveSharedLayers(ctx, shared, key)
+	})
 	if err != nil {
 		t.Fatal(err)
 	}
 	t.Cleanup(func() { hybrid.Close() })
-	local := &localSnapshotter{hybrid: hybrid, SnapshotsServer: snapshotservice.FromSnapshotter(hybrid), shared: shared}
+	local := &localHarness{hybrid: hybrid, shared: &switchConnection{shared}, content: &switchContent{}, leases: &switchLeases{}}
+	local.SnapshotsServer = workspace.NewCoordinator(hybrid, local.shared, local.content, local.leases)
 	localServer := grpc.NewServer()
 	api.RegisterSnapshotsServer(localServer, local)
 	localConn := testRPC(t, localServer)
@@ -125,8 +143,8 @@ func newLocalFixture(t *testing.T) *localFixture {
 	}
 	contentServer := grpc.NewServer()
 	contentapi.RegisterContentServer(contentServer, contentserver.New(db.ContentStore()))
-	local.content = contentproxy.NewContentStore(contentapi.NewContentClient(testRPC(t, contentServer)))
-	local.leases = metadata.NewLeaseManager(db)
+	local.content.Store = contentproxy.NewContentStore(contentapi.NewContentClient(testRPC(t, contentServer)))
+	local.leases.Manager = metadata.NewLeaseManager(db)
 	for _, id := range []string{"pull-one", "pull-two"} {
 		lease, err := local.leases.Create(ctx, leases.WithID(id))
 		if err != nil {
@@ -136,7 +154,7 @@ func newLocalFixture(t *testing.T) *localFixture {
 			t.Fatal(err)
 		}
 	}
-	return &localFixture{ctx: ctx, s: s, blobs: blobs, warm: warm, local: local, db: db, desc: desc, manifest: manifest, target: applied.Digest.String(), request: &api.PrepareSnapshotRequest{Key: "extract", Labels: map[string]string{refLabel: applied.Digest.String(), manifestLabel: manifest.Digest.String(), layerLabel: desc.Digest.String()}}}
+	return &localFixture{ctx: ctx, s: s, blobs: blobs, warm: warm, local: local, db: db, desc: desc, manifest: manifest, target: applied.Digest.String(), request: &api.PrepareSnapshotRequest{Key: "extract", Labels: map[string]string{protocol.RefLabel: applied.Digest.String(), protocol.ManifestLabel: manifest.Digest.String(), protocol.LayerLabel: desc.Digest.String()}}}
 }
 
 func TestLocalWarmRegistersBeforeAdoptionThroughMetadata(t *testing.T) {
@@ -157,7 +175,7 @@ func TestLocalWarmRegistersBeforeAdoptionThroughMetadata(t *testing.T) {
 		t.Fatal("allocated physical warm snapshot")
 	}
 	info, err := f.db.ContentStore().Info(f.ctx, f.desc.Digest)
-	if err != nil || info.Labels[uncompressedLabel] != f.target {
+	if err != nil || info.Labels[protocol.UncompressedLabel] != f.target {
 		t.Fatalf("incomplete content metadata: %+v %v", info, err)
 	}
 	for _, id := range []string{"pull-one", "pull-two"} {
@@ -274,12 +292,12 @@ func (s *endingLeaseContent) Writer(ctx context.Context, opts ...content.WriterO
 }
 func TestLocalConcurrentPullFinishingDuringRegistration(t *testing.T) {
 	f := newLocalFixture(t)
-	f.local.content = &endingLeaseContent{Store: f.local.content, manager: f.local.leases}
+	f.local.content.Store = &endingLeaseContent{Store: f.local.content.Store, manager: f.local.leases}
 	if _, err := f.local.Prepare(f.ctx, f.request); !errdefs.IsAlreadyExists(errgrpc.ToNative(err)) {
 		t.Fatalf("remaining pull failed: %v", err)
 	}
 	info, err := f.db.ContentStore().Info(f.ctx, f.desc.Digest)
-	if err != nil || info.Labels[uncompressedLabel] != f.target {
+	if err != nil || info.Labels[protocol.UncompressedLabel] != f.target {
 		t.Fatalf("missing registered content: %+v %v", info, err)
 	}
 }
@@ -299,8 +317,8 @@ func TestWarmUsesExactAlternateCompressionAndRechecksBlob(t *testing.T) {
 	if err := content.WriteBlob(f.ctx, f.blobs, "alt-manifest", bytes.NewReader(data), manifest); err != nil {
 		t.Fatal(err)
 	}
-	f.request.Labels[layerLabel] = alt.Digest.String()
-	f.request.Labels[manifestLabel] = manifest.Digest.String()
+	f.request.Labels[protocol.LayerLabel] = alt.Digest.String()
+	f.request.Labels[protocol.ManifestLabel] = manifest.Digest.String()
 	if _, err := f.warm.Lookup(f.ctx, f.request); !errdefs.IsNotFound(err) {
 		t.Fatalf("used original compression's verification: %v", err)
 	}
@@ -340,8 +358,8 @@ func (p *pausedContent) Writer(ctx context.Context, opts ...content.WriterOpt) (
 func TestLocalCallbackOverlapsPrivateSnapshotGC(t *testing.T) {
 	f := newLocalFixture(t)
 	sequence := f.s.state.Sequence
-	paused := &pausedContent{Store: f.local.content, entered: make(chan struct{}, 1), release: make(chan struct{})}
-	f.local.content = paused
+	paused := &pausedContent{Store: f.local.content.Store, entered: make(chan struct{}, 1), release: make(chan struct{})}
+	f.local.content.Store = paused
 	sn := f.db.Snapshotter("shared-overlay")
 	done := make(chan error, 1)
 	go func() {
@@ -395,7 +413,7 @@ func TestLocalWarmCannotShadowPrivateSnapshot(t *testing.T) {
 	if _, err := f.warm.client.Stat(f.ctx, "private"); !errdefs.IsNotFound(err) {
 		t.Fatalf("warm request installed competing shared alias: %v", err)
 	}
-	request = &api.PrepareSnapshotRequest{Key: "invalid", Labels: map[string]string{refLabel: f.target, sharedParentLabel: "forged"}}
+	request = &api.PrepareSnapshotRequest{Key: "invalid", Labels: map[string]string{protocol.RefLabel: f.target, "atelier.internal.private.parent": "forged"}}
 	if _, err := f.local.Prepare(f.ctx, request); !errdefs.IsInvalidArgument(errgrpc.ToNative(err)) {
 		t.Fatalf("warm path accepted reserved labels: %v", err)
 	}
@@ -471,8 +489,8 @@ func TestLocalMetadataNamespacesAndBackgroundGC(t *testing.T) {
 
 func TestLocalWarmRegistrationCannotRacePrivateOwnership(t *testing.T) {
 	f := newLocalFixture(t)
-	paused := &pausedContent{Store: f.local.content, entered: make(chan struct{}, 1), release: make(chan struct{})}
-	f.local.content = paused
+	paused := &pausedContent{Store: f.local.content.Store, entered: make(chan struct{}, 1), release: make(chan struct{})}
+	f.local.content.Store = paused
 	done := make(chan error, 1)
 	go func() { _, err := f.local.Prepare(f.ctx, f.request); done <- err }()
 	select {

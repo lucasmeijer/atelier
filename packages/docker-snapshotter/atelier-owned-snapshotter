@@ -45,7 +45,7 @@ trap 'exit 130' INT
 registry_address="$(bun /app/packages/docker-snapshotter/registry-runtime.ts prepare "$runtime")"
 registry_local_address="127.0.0.1:${registry_address##*:}"
 instance="$(cat /proc/sys/kernel/random/uuid)"
-atelier-snapshotter --root "$runtime/store" --socket-dir "$runtime/sockets" --instance-id "$instance" --connection-file /.atelier/docker-runtime.json --registry-address "$registry_address" &
+atelier-shared-snapshotter --root "$runtime/store" --socket-dir "$runtime/sockets" --instance-id "$instance" --connection-file /.atelier/docker-runtime.json --registry-address "$registry_address" &
 snapshotter_pid=$!
 deadline=$((SECONDS + 30))
 while true; do

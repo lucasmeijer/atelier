@@ -13,6 +13,7 @@ import (
 	"github.com/containerd/containerd/v2/core/snapshots"
 	"github.com/containerd/containerd/v2/plugins/snapshots/overlay"
 	"github.com/containerd/errdefs"
+	"github.com/lucasmeijer/atelier/packages/docker-snapshotter/internal/protocol"
 	digest "github.com/opencontainers/go-digest"
 )
 
@@ -115,7 +116,7 @@ func TestRecoveryAcrossBackendTransactions(t *testing.T) {
 				s := openRecoveryStore(t, root)
 				a := &Client{s, "A"}
 				b := &Client{s, "B"}
-				label := snapshots.WithLabels(map[string]string{refLabel: digest.FromString("base").String()})
+				label := snapshots.WithLabels(map[string]string{protocol.RefLabel: digest.FromString("base").String()})
 				if _, e := a.Prepare(ctx, "extract", "", label); e != nil {
 					t.Fatal(e)
 				}
@@ -130,7 +131,7 @@ func TestRecoveryAcrossBackendTransactions(t *testing.T) {
 				}
 				opts := []snapshots.Opt{}
 				if op == "deduplicate" || op == "shared-commit" {
-					opts = append(opts, snapshots.WithLabels(map[string]string{refLabel: digest.FromString("child").String()}))
+					opts = append(opts, snapshots.WithLabels(map[string]string{protocol.RefLabel: digest.FromString("child").String()}))
 				}
 				if _, e := a.Prepare(ctx, "active", "image", opts...); e != nil {
 					t.Fatal(e)

@@ -1,4 +1,4 @@
-package main
+package workspace
 
 import (
 	"context"
@@ -15,12 +15,13 @@ import (
 	"github.com/containerd/containerd/v2/pkg/namespaces"
 	"github.com/containerd/containerd/v2/plugins/snapshots/overlay"
 	"github.com/containerd/errdefs"
+	"github.com/lucasmeijer/atelier/packages/docker-snapshotter/internal/protocol"
 	digest "github.com/opencontainers/go-digest"
 )
 
 type hybridFixture struct {
 	ctx    context.Context
-	h      *hybridSnapshotter
+	h      *Hybrid
 	shared snapshots.Snapshotter
 	root   string
 	layers []string
@@ -48,7 +49,7 @@ func newHybridFixture(t *testing.T) *hybridFixture {
 		}
 		f.layers = append([]string{info.Labels[upperLabel]}, f.layers...)
 	}
-	f.h, err = newHybridSnapshotter(f.root, f.shared, func(context.Context, string) ([]string, error) { return f.layers, nil })
+	f.h, err = NewHybrid(f.root, f.shared, func(context.Context, string) ([]string, error) { return f.layers, nil })
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -65,8 +66,7 @@ func option(m []mount.Mount, prefix string) string {
 }
 func (t *hybridFixture) upper(test *testing.T, key string) string {
 	test.Helper()
-	k := key
-	i, err := t.h.private.Stat(t.ctx, k)
+	i, err := t.h.private.Stat(t.ctx, key)
 	if err != nil {
 		test.Fatal(err)
 	}
@@ -182,7 +182,7 @@ func TestHybridRestartLabelsAndViews(t *testing.T) {
 	if err := f.h.Close(); err != nil {
 		t.Fatal(err)
 	}
-	f.h, err = newHybridSnapshotter(f.root, f.shared, func(context.Context, string) ([]string, error) {
+	f.h, err = NewHybrid(f.root, f.shared, func(context.Context, string) ([]string, error) {
 		t.Fatal("restart resolved cached ancestry again")
 		return nil, nil
 	})
@@ -237,7 +237,7 @@ func TestHybridViewsAndPrivateImages(t *testing.T) {
 	if err := f.h.Commit(f.ctx, "private-image", "commit-active"); err != nil {
 		t.Fatal(err)
 	}
-	if _, err := f.h.Prepare(f.ctx, "child-extract", "private-image", snapshots.WithLabels(map[string]string{refLabel: digest.FromString("child").String()})); err != nil {
+	if _, err := f.h.Prepare(f.ctx, "child-extract", "private-image", snapshots.WithLabels(map[string]string{protocol.RefLabel: digest.FromString("child").String()})); err != nil {
 		t.Fatal(err)
 	}
 	if err := f.h.Commit(f.ctx, "private-child", "child-extract"); err != nil {
@@ -265,7 +265,7 @@ func TestHybridPendingInitializationRecoveryAndRollback(t *testing.T) {
 		t.Fatal(err)
 	}
 	var err error
-	f.h, err = newHybridSnapshotter(f.root, f.shared, func(context.Context, string) ([]string, error) { return f.layers, nil })
+	f.h, err = NewHybrid(f.root, f.shared, func(context.Context, string) ([]string, error) { return f.layers, nil })
 	if err != nil {
 		t.Fatal(err)
 	}
