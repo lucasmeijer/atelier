@@ -78,6 +78,7 @@ function toolSummaryMetadataHtml(tool: ToolView): string {
 }
 
 export interface ActiveToolContent {
+  status: string;
   summary: string;
   metadata: string;
   detail?: string;
@@ -98,6 +99,7 @@ export function renderActiveToolContent(ctx: AgentRenderContext, key: string, or
   const tool = toolForRender(original);
   const presentation = toolPresentation(tool);
   return {
+    status: statusHtml(tool.status),
     summary: escapeHtml(toolSummaryText(tool)),
     metadata: toolSummaryMetadataHtml(tool),
     detail: presentation.showsDetail ? renderToolDetail(ctx, key, tool, 100) : undefined,
@@ -116,7 +118,7 @@ export function renderToolCard(ctx: AgentRenderContext, key: string, original: T
   const tool = toolForRender(original);
   const label = { kind: "text" as const, text: toolSummaryText(tool) };
   const labelOptions = {
-    leadingHtml: `<span class="agent-tool-status">${statusHtml(tool.status)}</span>`,
+    leadingHtml: `<span id="${ids.itemSummaryStatus(ctx, key)}" class="agent-tool-status">${statusHtml(tool.status)}</span>`,
     labelId: ids.itemSummaryContent(ctx, key),
     trailingHtml: `<span id="${ids.itemSummaryMetadata(ctx, key)}">${toolSummaryMetadataHtml(tool)}</span>`,
   };

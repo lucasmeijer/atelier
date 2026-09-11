@@ -28,6 +28,7 @@ export const ids = {
   itemTextStable: (ctx: AgentRenderContext, key: string) => domId(`${prefix(ctx)}_itemtext_stable`, key),
   itemTextTail: (ctx: AgentRenderContext, key: string) => domId(`${prefix(ctx)}_itemtext_tail`, key),
   itemSummaryContent: (ctx: AgentRenderContext, key: string) => domId(`${prefix(ctx)}_summary_content`, key),
+  itemSummaryStatus: (ctx: AgentRenderContext, key: string) => domId(`${prefix(ctx)}_summary_status`, key),
   itemSummaryMetadata: (ctx: AgentRenderContext, key: string) => domId(`${prefix(ctx)}_summary_metadata`, key),
   detailFrame: (ctx: AgentRenderContext, key: string) => domId(`${prefix(ctx)}_detail`, key),
   stats: (ctx: AgentRenderContext) => `${prefix(ctx)}_stats`,
