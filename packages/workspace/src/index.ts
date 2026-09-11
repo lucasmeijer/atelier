@@ -6,7 +6,7 @@ import { AtelierCoreError, atelierDataPath, createProcessFileLock, dockerHostAte
 import { runHostObservableCommand, stripTerminalControls, tailTerminalText } from "@atelier/observable-terminal/server";
 import { isWorkspaceAppPort, workspaceGatewayPort, type WorkspaceGateway, type WorkspaceHttpAppBackend, type WorkspaceServerProvisioningHook } from "@atelier/shared";
 import { inspectWorkspaceImage, resolveWorkspaceImage } from "@atelier/workspace-image";
-import { nestedDockerDaemonInitScript } from "./nested-docker.ts";
+import { prepareWorkspaceSystemd } from "./systemd.ts";
 import { Type } from "typebox";
 import { Value } from "typebox/value";
 import { readDockerRuntimeConnection, registerWorkspaceDocker, retireWorkspaceDocker } from "./docker-runtime.ts";
@@ -124,7 +124,7 @@ async function ensureWorkspaceFilesystem(id: string): Promise<void> {
 
 async function waitForWorkspaceStartup(id: string): Promise<string> {
   const timeoutSeconds = Math.ceil(workspaceStartupTimeoutMs / 1000);
-  const result = await runDocker(["exec", "--user", "root", workspaceContainerName(id), "sh", "-lc", `deadline=$(( $(date +%s) + ${timeoutSeconds} )); while [ "$(date +%s)" -le "$deadline" ]; do if test -f /.atelier/ready; then cat /.atelier/startup.log; exit 0; fi; sleep 0.05; done; tail -n 120 /.atelier/startup.log; exit 1`]);
+  const result = await runDocker(["exec", "--user", "root", workspaceContainerName(id), "sh", "-lc", `deadline=$(( $(date +%s) + ${timeoutSeconds} )); while [ "$(date +%s)" -le "$deadline" ]; do if test -f /.atelier/ready; then cat /.atelier/startup.log; exit 0; fi; if systemctl is-failed --quiet atelier-init.service atelier-gateway.service; then break; fi; sleep 0.05; done; tail -n 120 /.atelier/startup.log; journalctl --no-pager -n 120 -u atelier-init.service -u atelier-gateway.service; exit 1`]);
   const log = result.stdout.trim();
   if (result.exitCode === 0) return log;
   const output = result.stderr.trim();
@@ -394,7 +394,6 @@ function planEnvDockerArgs(env: Record<string, string>): string[] {
 function workspaceCreateDockerArgs(container: string, image: string, publishHost: string, gatewayHostPort: number, plan: WorkspaceDockerPlan): string[] {
   return [
     "create",
-    "--init",
     "--restart", "unless-stopped",
     "--name", container,
     ...Object.entries(plan.labels).flatMap(([name, value]) => ["--label", `${name}=${value}`]),
@@ -404,8 +403,7 @@ function workspaceCreateDockerArgs(container: string, image: string, publishHost
     ...plan.mounts.flatMap((mount) => ["--mount", dockerMountArg(mount)]),
     "--user", "root",
     image,
-    ...(plan.sharedDocker ? ["bash", "/usr/local/bin/atelier-workspace-docker"] : []),
-    "sh", "-lc", workspaceInitScript(plan),
+    "/usr/local/bin/atelier-workspace-init",
   ];
 }
 
@@ -491,7 +489,6 @@ function workspaceInitScript(plan: WorkspaceDockerPlan): string {
     ...plan.initScripts.map((script, index) => workspaceInitStepScript(`init-${index + 1}`, script)),
     "startup_log_step gateway.start",
     "trap - EXIT",
-    "exec /usr/local/bin/atelier-workspace-gateway",
   ].join("\n");
 }
 
@@ -532,9 +529,8 @@ export async function createWorkspace(options: CreateWorkspaceOptions = {}): Pro
     }
     if (activePlan.sharedDocker) {
       await prepareSharedDocker(activePlan, atelierDataPath(getAtelierRuntimeContext(), "workspaces", id, "docker-runtime"));
-    } else {
-      activePlan.initScripts.push(nestedDockerDaemonInitScript());
     }
+    await prepareWorkspaceSystemd(activePlan, atelierDataPath(getAtelierRuntimeContext(), "workspaces", id, "systemd"), workspaceInitScript(activePlan));
     await provisionStep(options.events, id, "workspace.container", "Start workspace container", async () => {
       const image = activePlan.image;
       if (!image) throw new AtelierCoreError("workspace_image_missing", "workspace image was not resolved");

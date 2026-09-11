@@ -1,0 +1,23 @@
+#!/bin/bash
+# Bootstrap the container, then hand PID 1 and service supervision to systemd.
+set -euo pipefail
+mkdir -p /.atelier /run/systemd
+rm -f /.atelier/ready
+printf 'docker\n' > /run/systemd/container
+# System services do not inherit PID 1's environment. Preserve the workspace's
+# supplied environment, including multiline values, without shell evaluation.
+python3 - <<'PY'
+import os
+with open('/.atelier/environment', 'w', opener=lambda path, flags: os.open(path, flags, 0o600)) as file:
+    for key, value in os.environ.items():
+        if key.isascii() and key.replace('_', 'a').isalnum() and not key[0].isdigit():
+            escaped = value.replace('\\', '\\\\').replace('"', '\\"').replace('`', '\\`').replace('$', '\\$')
+            file.write(f'{key}="{escaped}"\n')
+PY
+if [ -f /.atelier/shared-snapshotter-socket ]; then
+  mountpoint -q /var/lib/atelier-private-docker
+  mount --make-rshared /
+  mkdir -p /var/lib/atelier-private-docker/{snapshots,containerd,docker}
+fi
+systemctl enable docker.socket atelier-gateway.service
+exec /sbin/init

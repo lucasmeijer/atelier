@@ -41,7 +41,8 @@ disabled_plugins = ["io.containerd.cri.v1.images", "io.containerd.cri.v1.runtime
   address = "/run/containerd/atelier-snapshotter.sock"
 `,
     docker: JSON.stringify({
-      hosts: ["unix:///run/docker.sock"],
+      hosts: ["fd://"],
+      "live-restore": true,
       containerd: "/run/containerd/containerd.sock",
       "containerd-namespace": "moby",
       "containerd-plugins-namespace": "plugins.moby",
@@ -80,7 +81,6 @@ export async function prepareSharedDocker(plan: WorkspaceDockerPlan, directory: 
     plan.containerFiles.push({ source, target: `/.atelier/${name}` });
   }
   if (!plan.extraArgs.includes("--privileged")) plan.extraArgs.push("--privileged");
-  plan.extraArgs.push("--tmpfs", "/run");
   // No source: the creator daemon allocates an anonymous volume, removed with
   // this workspace by docker rm --volumes. Stop/restart preserves it.
   plan.mounts.push({ type: "volume", target: privateDockerRoot });

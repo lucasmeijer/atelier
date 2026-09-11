@@ -1,0 +1,5 @@
+#!/bin/bash
+set -euo pipefail
+IFS= read -r shared_socket < /.atelier/shared-snapshotter-socket
+mkdir -p /run/containerd
+exec atelier-snapshotter --local-socket /run/containerd/atelier-snapshotter.sock --local-root /var/lib/atelier-private-docker/snapshots --shared-socket "$shared_socket"

@@ -41,7 +41,7 @@ test("provisioning supplies restartable socket mount, same-path backing and ephe
   try {
     const p = plan();
     await prepareSharedDocker(p, directory);
-    expect(p.extraArgs).toEqual(["--privileged", "--tmpfs", "/run"]);
+    expect(p.extraArgs).toEqual(["--privileged"]);
     expect(p.mounts).toEqual([
       { type: "volume", target: privateDockerRoot },
       { type: "bind", source: "/installation/sockets", target: "/installation/sockets", readonly: true },
