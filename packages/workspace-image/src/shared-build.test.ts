@@ -42,7 +42,15 @@ for (const depth of [0, 1]) test(`build client at depth ${depth} publishes and r
     await writeFile(join(dir, "context/.dockerignore"), "default-ignore\n");
     await writeFile(join(dir, "context/Dockerfile.dockerignore"), "specific-ignore\n");
     await writeFile(join(dir, "docker"), `#!${process.execPath}
+      import { existsSync, writeFileSync, appendFileSync } from 'node:fs';
       const a = process.argv.slice(2);
+      appendFileSync(${JSON.stringify(join(dir, "docker.jsonl"))}, JSON.stringify(a)+'\\n');
+      if (a[0] === 'image' && a[1] === 'inspect' && a.includes('{{.Os}}/{{.Architecture}}')) {
+        if (!existsSync(${JSON.stringify(join(dir, "loaded"))})) process.exit(1);
+        console.log('linux/amd64');
+        process.exit(0);
+      }
+      if (a[0] === 'tag' && a[2] === ${JSON.stringify(`atelier-workspace:${imageDigest.slice(7)}`)}) writeFileSync(${JSON.stringify(join(dir, "loaded"))}, '');
       if ((a[0] === "push" || a[0] === "pull") && !a[1].startsWith(${JSON.stringify(address)} + "/")) throw Error("wrong creator registry endpoint");
       if (a[0] === 'version') console.log('linux/amd64');
       if (a[0] === 'image' && a[1] === 'inspect') console.log(a.at(-1)==='unpublished-base'?${JSON.stringify(baseDigest)}:${JSON.stringify(builtId)});
@@ -66,6 +74,8 @@ for (const depth of [0, 1]) test(`build client at depth ${depth} publishes and r
       const options = {kind:"repository" as const,connection:{version:1,adminSocket:${JSON.stringify(join(dir, "admin.sock"))},snapshotterRoot:'/store',socketDirectory:${JSON.stringify(dir)},depth:${depth},buildServices:{registryAddress:${JSON.stringify(address)},buildkitSocket:'/s/buildkit.sock'}},sourcePath:${JSON.stringify(join(dir, "context"))},dockerfile:${JSON.stringify(join(dir, "context/Dockerfile"))},originalDockerfile:${JSON.stringify(join(dir, "context/Dockerfile"))},baseImage:'unpublished-base',tag:'fixture-result'};
       await Promise.all([publishSharedImage(options.connection,"unpublished-base"),publishSharedImage(options.connection,"unpublished-base")]);
       for(let i=0;i<2;i++) { if(i===1) await import("node:fs/promises").then(fs=>fs.unlink(options.originalDockerfile+".dockerignore")); console.log(await buildSharedWorkspaceImage(options)); }
+      // A deleted local image must be loaded again, even for the same digest.
+      await import("node:fs/promises").then(fs=>fs.unlink(${JSON.stringify(join(dir, "loaded"))}));
       console.log(await buildSharedWorkspaceImage({...options,kind:"default"}));
       console.log(await publishSharedImage(options.connection,"cached-result"));
     `);
@@ -84,6 +94,9 @@ for (const depth of [0, 1]) test(`build client at depth ${depth} publishes and r
       expect(JSON.parse(build).args).toContain(`type=image,name=${address}/atelier/workspaces,push=true,push-by-digest=true`);
     }
     expect(uploads).toBe(1);
-    expect(pulls).toBe(3);
+    expect(pulls).toBe(2);
+    const commands = (await readFile(join(dir, "docker.jsonl"), "utf8")).trim().split("\n").map(line => JSON.parse(line));
+    // Cache hits must still refresh the context alias from the solved digest.
+    expect(commands).toContainEqual(["tag", `atelier-workspace:${imageDigest.slice(7)}`, "fixture-result"]);
   } finally { await registry.stop(true); await rm(dir, { recursive: true }); }
 });

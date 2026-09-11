@@ -5,7 +5,7 @@ import { join } from "node:path";
 import { requireDocker } from "@atelier/core";
 import { Type } from "typebox";
 import { Value } from "typebox/value";
-import { dockerServerPlatform } from "./local-images.ts";
+import { dockerServerPlatform, nativeImageExists } from "./local-images.ts";
 import { workspaceImageKindLabel } from "./prune.ts";
 import { dockerRegistryAddress, type DockerRuntimeConnection } from "./runtime-connection.ts";
 
@@ -118,6 +118,12 @@ export async function buildSharedWorkspaceImage(options: SharedWorkspaceBuild): 
     const digest = result["containerimage.digest"];
     const local = `${creatorAddress}/atelier/workspaces@${digest}`;
     const immutable = `atelier-workspace:${digest.slice(7)}`;
+    // The solver must check current COPY inputs, but an unchanged digest is
+    // already loaded. Avoid another registry pull and image indexing round trip.
+    if (await nativeImageExists(immutable)) {
+      await requireDocker(["tag", immutable, options.tag]);
+      return immutable;
+    }
     await requireDocker(["pull", local]);
     const id = Value.Parse(digestSchema, (await requireDocker(["image", "inspect", "--format", "{{.Id}}", local])).stdout.trim());
     await rememberBuiltImage(creatorAddress, id, digest);
