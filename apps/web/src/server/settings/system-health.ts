@@ -1,11 +1,17 @@
+import { actionItemHtml } from "@atelier/design-system/action-item";
+import { Icons } from "@atelier/design-system/icons";
 import { actionLinkHtml } from "@atelier/design-system/action-link";
 import { escapeHtml, type SettingsContribution } from "@atelier/shared";
 import { readDockerRuntimeConnection, readSharedLayerStorage, readSharedContentStorage, type SharedContentStorage, readBuildCacheStorage, type BuildCacheStorage, type SharedLayerStorage, type DockerRuntimeConnection } from "@atelier/workspace-image";
-import { response } from "./http.ts";
+import { response, update } from "./http.ts";
 
 function timestamp(value: string): string {
-  const caption = new Date(value).toLocaleString("en-GB", { dateStyle: "medium", timeStyle: "medium", timeZone: "UTC" });
-  return `<time datetime="${escapeHtml(value)}">${escapeHtml(caption)} UTC</time>`;
+  const date = new Date(value);
+  const seconds = Math.max(0, Math.floor((Date.now() - date.getTime()) / 1000));
+  const units = [[31_536_000, "year"], [2_592_000, "month"], [86_400, "day"], [3600, "hour"], [60, "minute"]] as const;
+  const unit = units.find(([duration]) => seconds >= duration);
+  const caption = unit ? new Intl.RelativeTimeFormat("en", { numeric: "always" }).format(-Math.floor(seconds / unit[0]), unit[1]) : "just now";
+  return `<time datetime="${escapeHtml(value)}" title="${escapeHtml(date.toUTCString())}">${caption}</time>`;
 }
 
 function gb(bytes: number): string {
@@ -14,8 +20,7 @@ function gb(bytes: number): string {
 }
 
 function measurementFooter(stats: Pick<SharedLayerStorage, "measuredAt" | "gcFailure">): string {
-  return `<p class="settings-health-caption">Measured ${timestamp(stats.measuredAt)}</p>
-    ${stats.gcFailure ? `<div class="settings-error" role="alert"><strong>Last cleanup failed</strong><p>${escapeHtml(stats.gcFailure.message)}</p><p>${timestamp(stats.gcFailure.at)}</p></div>` : ""}`;
+  return `${stats.gcFailure ? `<div class="settings-error" role="alert"><strong>Last cleanup failed</strong><p>${escapeHtml(stats.gcFailure.message)}</p><p>${timestamp(stats.gcFailure.at)}</p></div>` : ""}`;
 }
 
 function storageResult(stats: SharedLayerStorage): string {
@@ -67,47 +72,73 @@ function buildCacheResult(stats: BuildCacheStorage): string {
     ${measurementFooter(stats)}`;
 }
 
+interface StorageMeasurement {
+  totalBytes: number;
+  targetBytes: number | null;
+  measuredAt: string;
+  content: string;
+}
+
+function usageSummary(stats: StorageMeasurement): string {
+  const total = gb(stats.totalBytes).replace(" GB", "");
+  return `<span title="Storage used / cleanup target">${stats.targetBytes === null ? `${total} GB · no target` : `${total} / ${gb(stats.targetBytes)}`}</span>`;
+}
+
 interface StorageSection {
   id: string;
   path: string;
   title: string;
   caption: string;
-  measure(connection: DockerRuntimeConnection): Promise<string>;
+  measure(connection: DockerRuntimeConnection): Promise<StorageMeasurement | null>;
 }
 
 const storageSections: StorageSection[] = [
   {
     id: "settings_shared_layer_storage", path: "/settings/system-health/storage",
-    title: "Shared unpacked image layers", caption: "Installation-wide shared image storage",
-    measure: async connection => storageResult(await readSharedLayerStorage(connection)),
+    title: "Unpacked docker image layers", caption: "Installation-wide shared image storage",
+    measure: async connection => {
+      const stats = await readSharedLayerStorage(connection);
+      return { ...stats, content: storageResult(stats) };
+    },
   },
   {
     id: "settings_shared_content_storage", path: "/settings/system-health/content",
-    title: "Shared compressed content", caption: "Installation-wide content store",
-    measure: async connection => contentStorageResult(await readSharedContentStorage(connection)),
+    title: "Compressed docker image layers", caption: "Installation-wide content store",
+    measure: async connection => {
+      const stats = await readSharedContentStorage(connection);
+      return { ...stats, content: contentStorageResult(stats) };
+    },
   },
   {
     id: "settings_build_cache_storage", path: "/settings/system-health/build-cache",
-    title: "Build cache", caption: "Installation-wide BuildKit cache",
-    measure: async connection => connection.buildServices
-      ? buildCacheResult(await readBuildCacheStorage(connection))
-      : `<p class="settings-health-caption" role="status">Shared BuildKit runtime not available.</p>`,
+    title: "BuildKit cache", caption: "Installation-wide BuildKit cache",
+    measure: async connection => {
+      if (!connection.buildServices) return null;
+      const stats = await readBuildCacheStorage(connection);
+      return { ...stats, content: buildCacheResult(stats) };
+    },
   },
 ];
 
 async function renderStorageFrame(section: StorageSection): Promise<string> {
   let content: string;
+  let summary = "Unavailable";
+  let measuredAt = "";
   try {
     const connection = await readDockerRuntimeConnection();
-    content = connection
-      ? await section.measure(connection)
-      : `<p class="settings-health-caption" role="status">Shared runtime not available.</p>`;
+    const measurement = connection ? await section.measure(connection) : null;
+    content = measurement ? measurement.content : `<p class="settings-health-caption" role="status">Shared runtime not available.</p>`;
+    if (measurement) {
+      summary = usageSummary(measurement);
+      measuredAt = `Measured ${timestamp(measurement.measuredAt)}`;
+    }
   } catch (error) {
+    summary = "Could not measure";
     console.error(`System Health measurement failed: ${section.title}`, error);
     content = `<p class="settings-error" role="alert">Could not measure ${escapeHtml(section.title.toLowerCase())}: ${escapeHtml(error instanceof Error ? error.message : String(error))}</p>`;
   }
   const refresh = actionLinkHtml({ href: section.path, variant: "secondary", content: { kind: "caption", caption: "Refresh" }, attributesHtml: `data-turbo-frame="${section.id}"` });
-  return `<turbo-frame id="${section.id}"><div class="settings-health-heading"><h3>${escapeHtml(section.title)}</h3>${refresh}</div><p class="settings-health-caption">${escapeHtml(section.caption)}</p><p class="settings-health-refreshing" role="status"><span class="status-dot running" aria-hidden="true"></span> Measuring storage…</p><div class="settings-health-result">${content}</div></turbo-frame>`;
+  return `<turbo-frame id="${section.id}"><p class="settings-health-refreshing" role="status"><span class="status-dot running" aria-hidden="true"></span> Measuring storage…</p><div class="settings-health-result">${content}</div><div class="settings-health-footer"><span class="settings-health-caption">${measuredAt}</span>${refresh}</div>${update(`${section.id}_summary`, summary)}</turbo-frame>`;
 }
 
 export const systemHealthSettings: SettingsContribution = {
@@ -115,8 +146,14 @@ export const systemHealthSettings: SettingsContribution = {
   label: "System health",
   order: 90,
   async render() {
-    const frames = storageSections.map(section => `<turbo-frame id="${section.id}" src="${section.path}"><p role="status"><span class="status-dot running" aria-hidden="true"></span> Measuring ${escapeHtml(section.title.toLowerCase())}…</p></turbo-frame>`).join("");
-    return `<section class="settings-sec settings-health" id="settings-sec-system-health"><h2>System health</h2>${frames}</section>`;
+    const sources = storageSections.map(section => `<details class="settings-health-source">
+      ${actionItemHtml({ kind: "single", element: { tag: "summary" }, label: { kind: "text", text: section.title }, leadingHtml: Icons.Disclosure, trailingHtml: `<span class="settings-health-summary" id="${section.id}_summary">Measuring…</span>` })}
+      <div class="settings-health-body"><p class="settings-health-caption">${escapeHtml(section.caption)}</p><turbo-frame id="${section.id}" src="${section.path}"><p role="status"><span class="status-dot running" aria-hidden="true"></span> Measuring ${escapeHtml(section.title.toLowerCase())}…</p></turbo-frame></div>
+    </details>`).join("");
+    return `<section class="settings-sec settings-health" id="settings-sec-system-health"><details>
+      ${actionItemHtml({ kind: "single", element: { tag: "summary" }, label: { kind: "text", text: "System health" }, leadingHtml: Icons.Disclosure })}
+      <div class="settings-health-sources">${sources}</div>
+    </details></section>`;
   },
   async handleAction({ request, url }) {
     const section = storageSections.find(section => section.path === url.pathname);
