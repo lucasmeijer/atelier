@@ -1,6 +1,6 @@
 import { dirname, isAbsolute, join, posix } from "node:path";
 import { mkdir, writeFile } from "node:fs/promises";
-import { tailscaleDnsAddress } from "../../workspace-image/src/runtime-connection.ts";
+import { registryAddress } from "@atelier/workspace-image";
 import type { WorkspaceDockerPlan } from "./types.ts";
 
 export const privateDockerRoot = "/var/lib/atelier-private-docker";
@@ -11,7 +11,7 @@ export interface SharedDockerRuntime {
   snapshotterRoot: string;
   bridgeCIDR: string;
   addressPool: string;
-  insecureRegistries?: string[];
+  registrySocket?: string;
 }
 
 export function sharedDockerConfiguration(runtime: SharedDockerRuntime) {
@@ -21,7 +21,6 @@ export function sharedDockerConfiguration(runtime: SharedDockerRuntime) {
   const socketDirectory = dirname(runtime.snapshotterSocket);
   return {
     socketDirectory,
-    sharedSocket: `${runtime.snapshotterSocket}\n`,
     containerd: `version = 3
 root = "${privateDockerRoot}/containerd"
 state = "/run/containerd"
@@ -41,8 +40,6 @@ disabled_plugins = ["io.containerd.cri.v1.images", "io.containerd.cri.v1.runtime
   address = "/run/containerd/atelier-snapshotter.sock"
 `,
     docker: JSON.stringify({
-      hosts: ["fd://"],
-      "live-restore": true,
       containerd: "/run/containerd/containerd.sock",
       "containerd-namespace": "moby",
       "containerd-plugins-namespace": "plugins.moby",
@@ -53,8 +50,7 @@ disabled_plugins = ["io.containerd.cri.v1.images", "io.containerd.cri.v1.runtime
       pidfile: "/run/docker.pid",
       bip: runtime.bridgeCIDR,
       "default-address-pools": [{ base: runtime.addressPool, size: 24 }],
-      dns: [tailscaleDnsAddress],
-      "insecure-registries": runtime.insecureRegistries ?? [],
+      "insecure-registries": runtime.registrySocket ? [registryAddress] : [],
     }, null, 2),
   };
 }
@@ -75,12 +71,11 @@ export async function prepareSharedDocker(plan: WorkspaceDockerPlan, directory: 
     }
   }
   await mkdir(directory, { recursive: true });
-  for (const [name, content] of [["containerd.toml", config.containerd], ["docker-daemon.json", config.docker], ["shared-snapshotter-socket", config.sharedSocket]] as const) {
+  for (const [name, content] of [["containerd.toml", config.containerd], ["docker-daemon.json", config.docker]] as const) {
     const source = join(directory, name);
     await writeFile(source, content);
     plan.containerFiles.push({ source, target: `/.atelier/${name}` });
   }
-  if (!plan.extraArgs.includes("--privileged")) plan.extraArgs.push("--privileged");
   // No source: the creator daemon allocates an anonymous volume, removed with
   // this workspace by docker rm --volumes. Stop/restart preserves it.
   plan.mounts.push({ type: "volume", target: privateDockerRoot });

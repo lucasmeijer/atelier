@@ -431,7 +431,7 @@ function hostUserEnv(): WorkspaceEnvironment {
 }
 
 function baseWorkspacePlan(labels: Record<string, string>): WorkspaceDockerPlan {
-  return { labels, env: { LANG: "C.UTF-8", LC_ALL: "C.UTF-8", ...hostUserEnv() }, mounts: [], publishes: [workspaceGatewayPort], extraArgs: ["--privileged"], initScripts: [workspaceGitCredentialInitScript()], containerFiles: [], cleanup: [] };
+  return { labels, env: { LANG: "C.UTF-8", LC_ALL: "C.UTF-8", ...hostUserEnv() }, mounts: [], publishes: [workspaceGatewayPort], extraArgs: [], initScripts: [workspaceGitCredentialInitScript()], containerFiles: [], cleanup: [] };
 }
 
 function alignWorkspaceUserScript(): string {

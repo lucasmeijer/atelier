@@ -7,7 +7,7 @@ import { Type } from "typebox";
 import { Value } from "typebox/value";
 import { dockerServerPlatform } from "./local-images.ts";
 import { workspaceImageKindLabel } from "./prune.ts";
-import { dockerRegistryAddress, loopbackRegistryAddress, type DockerRuntimeConnection } from "./runtime-connection.ts";
+import { dockerRegistryAddress, type DockerRuntimeConnection } from "./runtime-connection.ts";
 
 const digestSchema = Type.String({ pattern: "^sha256:[a-f0-9]{64}$" });
 const metadataSchema = Type.Object({ "containerimage.digest": digestSchema });
@@ -86,9 +86,9 @@ export type SharedWorkspaceBuild = SharedBuildOptions & ({ kind: "default" } | {
 export async function buildSharedWorkspaceImage(options: SharedWorkspaceBuild): Promise<string> {
   if (!options.connection.buildServices) throw new Error("shared build connection lacks registry transport");
   const services = options.connection.buildServices;
-  const builderAddress = loopbackRegistryAddress(services.registryAddress);
+  const address = services.registryAddress;
   const creatorAddress = dockerRegistryAddress(options.connection);
-  const base = options.kind === "repository" ? `${builderAddress}/${await publishSharedImage(options.connection, options.baseImage)}` : undefined;
+  const base = options.kind === "repository" ? `${address}/${await publishSharedImage(options.connection, options.baseImage)}` : undefined;
   const directory = await mkdtemp(join(tmpdir(), "atelier-shared-build-"));
   try {
     await writeFile(join(directory, "Dockerfile"), await readFile(options.dockerfile));
@@ -101,7 +101,7 @@ export async function buildSharedWorkspaceImage(options: SharedWorkspaceBuild): 
       ...(base ? ["--opt", "frontend.caps=moby.buildkit.frontend.contexts+forward", "--opt", `context:atelier-workspace=docker-image://${base}`] : []),
       "--opt", `platform=${await dockerServerPlatform()}`, "--opt", `label:${workspaceImageKindLabel}=${options.kind}`,
       ...(options.noCache ? ["--no-cache"] : []), "--progress", "plain", "--metadata-file", metadata,
-      "--output", `type=image,name=${builderAddress}/atelier/workspaces,push=true,push-by-digest=true`,
+      "--output", `type=image,name=${address}/atelier/workspaces,push=true,push-by-digest=true`,
     ], { stdout: "pipe", stderr: "pipe", stdin: "ignore" });
     let output = "";
     const publish = async (text: string) => { output = (output + text).slice(-64 * 1024); await options.onOutput?.(text); };

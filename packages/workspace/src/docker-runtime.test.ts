@@ -11,7 +11,7 @@ function plan(): WorkspaceDockerPlan {
 test("registration is recorded before dispatch, forwarded to nested workspaces and retired from disk", async () => {
   const dir = await mkdtemp(join(tmpdir(), "docker-runtime-"));
   const calls: Array<{ operation: string; client: string; parent: string | null }> = [];
-  const connection: DockerRuntimeConnection = { version: 1, adminSocket: join(dir, "admin.sock"), socketDirectory: dir, snapshotterRoot: join(dir, "store"), depth: 0, buildServices: { buildkitSocket: join(dir, "buildkit.sock"), registryAddress: "atelier.tailnet.ts.net:42000" } };
+  const connection: DockerRuntimeConnection = { version: 1, adminSocket: join(dir, "admin.sock"), socketDirectory: dir, snapshotterRoot: join(dir, "store"), depth: 0, buildServices: { buildkitSocket: join(dir, "buildkit.sock"), registryAddress: "atelier-registry.localhost:42000" } };
   const metadata = join(dir, "workspace");
   const server = Bun.serve({ unix: connection.adminSocket, async fetch(req) {
     const url = new URL(req.url);
@@ -25,12 +25,13 @@ test("registration is recorded before dispatch, forwarded to nested workspaces a
     p.env.NO_PROXY = "localhost,127.0.0.1";
     p.env.no_proxy = "localhost,127.0.0.1";
     await registerWorkspaceDocker(p, metadata, connection);
-    expect(p.extraArgs).toContain("--dns");
-    expect(p.extraArgs).toContain("100.100.100.100");
-    expect(p.env.NO_PROXY).toBe("localhost,127.0.0.1,atelier.tailnet.ts.net");
+    expect(p.extraArgs).not.toContain("--dns");
+    expect(p.extraArgs).toContain("--add-host");
+    expect(p.extraArgs).toContain("atelier-registry.localhost:127.0.0.1");
+    expect(p.env.NO_PROXY).toBe("localhost,127.0.0.1,atelier-registry.localhost");
     expect(p.env.no_proxy).toBe(p.env.NO_PROXY);
     expect(p.sharedDocker?.snapshotterSocket).toStartWith(dir + "/");
-    expect(p.sharedDocker?.insecureRegistries).toEqual(["atelier.tailnet.ts.net:42000"]);
+    expect(p.sharedDocker?.registrySocket).toBe(join(dir, "registry.sock"));
     expect(p.sharedDocker?.bridgeCIDR).toBe("10.231.0.1/24");
     expect(p.containerFiles[0]!.target).toBe(dockerRuntimeConnectionPath);
     const nested = await readDockerRuntimeConnection(p.containerFiles[0]!.source);
@@ -84,7 +85,7 @@ test("build services must travel through the inherited socket directory", async 
   const dir = await mkdtemp(join(tmpdir(), "docker-runtime-"));
   try {
     const path = join(dir, "connection.json");
-    await writeFile(path, JSON.stringify({ version: 1, adminSocket: join(dir, "admin.sock"), socketDirectory: dir, snapshotterRoot: join(dir, "store"), depth: 0, buildServices: { buildkitSocket: "/elsewhere/buildkit.sock", registryAddress: "atelier.tailnet.ts.net:42000" } }));
+    await writeFile(path, JSON.stringify({ version: 1, adminSocket: join(dir, "admin.sock"), socketDirectory: dir, snapshotterRoot: join(dir, "store"), depth: 0, buildServices: { buildkitSocket: "/elsewhere/buildkit.sock", registryAddress: "atelier-registry.localhost:42000" } }));
     await expect(readDockerRuntimeConnection(path)).rejects.toThrow("invalid shared Docker build service sockets");
   } finally { await rm(dir, { recursive: true }); }
 });

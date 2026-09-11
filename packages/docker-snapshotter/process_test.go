@@ -103,7 +103,7 @@ func TestDaemonReadinessAndRestoredClients(t *testing.T) {
 	}
 	stop(empty)
 
-	first := start("first", "--connection-file", filepath.Join(root, "connection.json"), "--registry-address", "atelier.tailnet.ts.net:42000")
+	first := start("first", "--connection-file", filepath.Join(root, "connection.json"), "--registry-address", "atelier-registry.localhost:42000")
 	ready("first")
 	descriptor, err := os.ReadFile(filepath.Join(root, "connection.json"))
 	if err != nil {
@@ -112,7 +112,7 @@ func TestDaemonReadinessAndRestoredClients(t *testing.T) {
 	if !strings.Contains(string(descriptor), `"depth":0`) {
 		t.Fatal("missing root connection", string(descriptor))
 	}
-	if !strings.Contains(string(descriptor), `"registryAddress":"atelier.tailnet.ts.net:42000"`) || !strings.Contains(string(descriptor), filepath.Join(socketDir, "buildkit.sock")) {
+	if !strings.Contains(string(descriptor), `"registryAddress":"atelier-registry.localhost:42000"`) || !strings.Contains(string(descriptor), filepath.Join(socketDir, "buildkit.sock")) {
 		t.Fatal("missing direct build service connection", string(descriptor))
 	}
 	for _, id := range []string{"a", "b", "b", "child&parent=a", "grandchild&parent=child", "child&parent=a"} {

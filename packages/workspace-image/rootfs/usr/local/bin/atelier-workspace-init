@@ -14,10 +14,13 @@ with open('/.atelier/environment', 'w', opener=lambda path, flags: os.open(path,
             escaped = value.replace('\\', '\\\\').replace('"', '\\"').replace('`', '\\`').replace('$', '\\$')
             file.write(f'{key}="{escaped}"\n')
 PY
-if [ -f /.atelier/shared-snapshotter-socket ]; then
+if [ -f /.atelier/containerd.toml ]; then
   mountpoint -q /var/lib/atelier-private-docker
   mount --make-rshared /
   mkdir -p /var/lib/atelier-private-docker/{snapshots,containerd,docker}
 fi
 systemctl enable docker.socket atelier-gateway.service
+if [ -f /etc/systemd/system/atelier-registry.socket ]; then
+  systemctl enable atelier-registry.socket
+fi
 exec /sbin/init

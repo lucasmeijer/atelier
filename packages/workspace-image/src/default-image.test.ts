@@ -28,7 +28,7 @@ for (const scenario of ["cached", "missing", "different-tag", "no-cache"] as con
         }}));
         mock.module(runtimePath, () => ({...runtime, readDockerRuntimeConnection: async () => {
           connections++;
-          return {version:1, depth:1, adminSocket:'/unused/admin.sock', socketDirectory:'/unused', snapshotterRoot:'/unused/store', buildServices:{buildkitSocket:'/unused/buildkit.sock',registryAddress:'atelier.tailnet.ts.net:42000'}};
+          return {version:1, depth:1, adminSocket:'/unused/admin.sock', socketDirectory:'/unused', snapshotterRoot:'/unused/store', buildServices:{buildkitSocket:'/unused/buildkit.sock',registryAddress:'atelier-registry.localhost:42000'}};
         }}));
         mock.module(sharedPath, () => ({...shared, buildSharedWorkspaceImage: async options => {
           builds.push({kind:options.kind, tag:options.tag, noCache:options.noCache});

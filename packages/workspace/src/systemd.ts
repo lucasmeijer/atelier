@@ -1,5 +1,7 @@
 import { mkdir, writeFile } from "node:fs/promises";
 import { join } from "node:path";
+import { registryLoopbackAddress } from "@atelier/workspace-image";
+import { privateDockerRoot, type SharedDockerRuntime } from "./shared-docker.ts";
 import type { WorkspaceDockerPlan } from "./types.ts";
 
 const restart = `Restart=on-failure
@@ -8,11 +10,27 @@ const limits = `StartLimitIntervalSec=60s
 StartLimitBurst=5`;
 const environment = "EnvironmentFile=/.atelier/environment";
 
-export function workspaceSystemdUnits(shared: boolean) {
-  const units = {
+const containerRuntime = `Delegate=yes
+KillMode=process
+TasksMax=infinity
+LimitNOFILE=infinity
+LimitNPROC=infinity
+LimitCORE=infinity`;
+
+function systemdArgument(value: string): string {
+  return `"${value.replaceAll("%", "%%").replaceAll("\\", "\\\\").replaceAll('"', '\\"')}"`;
+}
+
+interface WorkspaceSystemdUnits { [unitName: string]: string }
+
+export function workspaceSystemdUnits(runtime?: SharedDockerRuntime): WorkspaceSystemdUnits {
+  const registrySocket = runtime?.registrySocket;
+  const dependencies: string[] = [];
+  if (runtime) dependencies.push("atelier-containerd.service");
+  if (registrySocket) dependencies.push("atelier-registry.service");
+  const units: WorkspaceSystemdUnits = {
     "atelier-init.service": `[Unit]
 Description=Atelier workspace initialization
-Before=atelier-gateway.service
 
 [Service]
 Type=oneshot
@@ -55,38 +73,57 @@ WantedBy=sockets.target
 `,
     "docker.service": `[Unit]
 Description=Atelier workspace Docker daemon
-Requires=docker.socket
-After=docker.socket${shared ? " atelier-containerd.service" : ""}
-${shared ? "Wants=atelier-containerd.service\n" : ""}${limits}
+Requires=docker.socket${registrySocket ? " atelier-registry.socket" : ""}
+After=${["docker.socket", ...dependencies].join(" ")}
+Wants=${dependencies.join(" ")}
+${limits}
 
 [Service]
 Type=notify
 ${environment}
-ExecStart=/usr/bin/dockerd ${shared ? "--config-file=/.atelier/docker-daemon.json" : "-H fd:// --live-restore --tls=false --storage-driver=fuse-overlayfs --max-concurrent-uploads=1"}
+ExecStart=/usr/bin/dockerd -H fd:// --live-restore ${runtime ? "--config-file=/.atelier/docker-daemon.json" : "--tls=false --storage-driver=fuse-overlayfs --max-concurrent-uploads=1"}
 ${restart}
 TimeoutStartSec=90s
 TimeoutStopSec=120s
-Delegate=yes
-KillMode=process
-TasksMax=infinity
-LimitNOFILE=infinity
-LimitNPROC=infinity
-LimitCORE=infinity
+${containerRuntime}
 `,
   };
-  if (shared) return {
-    ...units,
-    "atelier-snapshotter.service": `[Unit]
+  if (registrySocket) {
+    units["atelier-registry.socket"] = `[Unit]
+Description=Atelier local registry socket
+
+[Socket]
+ListenStream=${registryLoopbackAddress}
+
+[Install]
+WantedBy=sockets.target
+`;
+    units["atelier-registry.service"] = `[Unit]
+Description=Atelier registry TCP to Unix relay
+Requires=atelier-registry.socket
+After=atelier-registry.socket
+${limits}
+
+[Service]
+Type=exec
+ExecStart=:/usr/lib/systemd/systemd-socket-proxyd ${systemdArgument(registrySocket)}
+${restart}
+`;
+  }
+
+  if (runtime) {
+    units["atelier-snapshotter.service"] = `[Unit]
 Description=Atelier local snapshotter adapter
 ${limits}
 
 [Service]
-ExecStart=/usr/local/bin/atelier-workspace-start-snapshotter
+ExecStartPre=/usr/bin/mkdir -p /run/containerd
+ExecStart=:/usr/local/bin/atelier-workspace-snapshotter --local-socket /run/containerd/atelier-snapshotter.sock --local-root ${privateDockerRoot}/snapshots --shared-socket ${systemdArgument(runtime.snapshotterSocket)}
 ${restart}
 Delegate=yes
 TasksMax=infinity
-`,
-    "atelier-containerd.service": `[Unit]
+`;
+    units["atelier-containerd.service"] = `[Unit]
 Description=Atelier private containerd
 Wants=atelier-snapshotter.service
 After=atelier-snapshotter.service
@@ -96,25 +133,20 @@ ${limits}
 Type=notify
 ExecStart=/usr/bin/containerd --config /.atelier/containerd.toml
 ${restart}
-Delegate=yes
-KillMode=process
-TasksMax=infinity
-LimitNOFILE=infinity
-LimitNPROC=infinity
-LimitCORE=infinity
-`,
-  };
+${containerRuntime}
+`;
+  }
   return units;
 }
 
 export async function prepareWorkspaceSystemd(plan: WorkspaceDockerPlan, directory: string, init: string): Promise<void> {
   await mkdir(directory, { recursive: true });
-  const files = { "init.sh": init, ...workspaceSystemdUnits(!!plan.sharedDocker) };
+  const files = { "init.sh": init, ...workspaceSystemdUnits(plan.sharedDocker) };
   for (const [name, content] of Object.entries(files)) {
     const source = join(directory, name);
     await writeFile(source, content);
     plan.containerFiles.push({ source, target: name === "init.sh" ? "/.atelier/init.sh" : `/etc/systemd/system/${name}` });
   }
   if (!plan.extraArgs.includes("--privileged")) plan.extraArgs.push("--privileged");
-  plan.extraArgs.push("--cgroupns=private", "--tmpfs", "/run", "--tmpfs", "/run/lock", "--stop-signal", "SIGRTMIN+3");
+  plan.extraArgs.push("--cgroupns=private", "--tmpfs", "/run", "--stop-signal", "SIGRTMIN+3");
 }

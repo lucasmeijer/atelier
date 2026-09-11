@@ -38,7 +38,6 @@ describe("workspace image content identity", () => {
     ["coordinator source", "packages/docker-snapshotter/internal/workspace/local.go", "snapshotter/internal/workspace/local.go", "//"],
     ["common protocol", "packages/docker-snapshotter/internal/protocol/warm.go", "snapshotter/internal/protocol/warm.go", "//"],
     ["systemd bootstrap script", "packages/workspace-image/rootfs/usr/local/bin/atelier-workspace-init", "files/base/rootfs/usr/local/bin/atelier-workspace-init", "#"],
-    ["snapshotter launcher", "packages/workspace-image/rootfs/usr/local/bin/atelier-workspace-start-snapshotter", "files/base/rootfs/usr/local/bin/atelier-workspace-start-snapshotter", "#"],
   ])("%s is packaged and changes the default image identity", async (_name, sourcePath, packagedPath, comment) => {
     const before = await generateInCheckout();
     const source = join(before.fixture, sourcePath);

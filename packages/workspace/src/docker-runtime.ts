@@ -2,10 +2,9 @@ import { readFile, writeFile, mkdir, rename } from "node:fs/promises";
 import { join } from "node:path";
 import { Type } from "typebox";
 import { Value } from "typebox/value";
-import { tailscaleDnsAddress } from "../../workspace-image/src/runtime-connection.ts";
 import type { WorkspaceDockerPlan } from "./types.ts";
 
-import { dockerRuntimeConnectionPath, dockerRuntimeConnectionSchema, type DockerRuntimeConnection } from "@atelier/workspace-image";
+import { dockerRuntimeConnectionPath, dockerRuntimeConnectionSchema, registryHostname, type DockerRuntimeConnection } from "@atelier/workspace-image";
 export { dockerRuntimeConnectionPath, readDockerRuntimeConnection, type DockerRuntimeConnection } from "@atelier/workspace-image";
 const registrationSchema = Type.Object({ clientId: Type.String({ pattern: "^[a-f0-9]{24}$" }), connection: dockerRuntimeConnectionSchema });
 
@@ -37,10 +36,9 @@ export async function registerWorkspaceDocker(plan: WorkspaceDockerPlan, directo
   if (connection.buildServices) {
     // Both the private daemon and nested Atelier must reach the registry directly,
     // not through the workspace's secret-injecting outbound HTTP proxy.
-    plan.extraArgs.push("--dns", tailscaleDnsAddress);
-    const registryHost = connection.buildServices.registryAddress.split(":")[0]!;
+    plan.extraArgs.push("--add-host", `${registryHostname}:127.0.0.1`);
     for (const key of ["NO_PROXY", "no_proxy"]) {
-      plan.env[key] = [...new Set([...(plan.env[key]?.split(",") ?? []), registryHost])].join(",");
+      plan.env[key] = [...new Set([...(plan.env[key]?.split(",") ?? []), registryHostname])].join(",");
     }
   }
   const nested = { ...connection, clientId, depth: connection.depth + 1 };
@@ -52,7 +50,7 @@ export async function registerWorkspaceDocker(plan: WorkspaceDockerPlan, directo
     snapshotterRoot: connection.snapshotterRoot,
     bridgeCIDR: `10.${231 + 2 * connection.depth}.0.1/24`,
     addressPool: `10.${232 + 2 * connection.depth}.0.0/16`,
-    insecureRegistries: connection.buildServices ? [connection.buildServices.registryAddress] : [],
+    registrySocket: connection.buildServices ? join(connection.socketDirectory, "registry.sock") : undefined,
   };
 }
 

@@ -12,7 +12,7 @@ test("shared builds require the declared registry transport", async () => {
   await expect(buildSharedWorkspaceImage({ kind: "repository", connection: { version: 1, adminSocket: "/s/admin.sock", socketDirectory: "/s", snapshotterRoot: "/store", depth: 1 }, sourcePath: "/context", dockerfile: "/Dockerfile", originalDockerfile: "/Dockerfile", baseImage: "base", tag: "result" })).rejects.toThrow("lacks registry transport");
 });
 
-for (const depth of [0, 1]) test(`build client at depth ${depth} uses owner-loopback for BuildKit and the correct creator endpoint`, async () => {
+for (const depth of [0, 1]) test(`build client at depth ${depth} publishes and reuses images through the registry`, async () => {
   const dir = await mkdtemp(join(tmpdir(), "shared-build-test-"));
   let published = false;
   let indexed = false;
@@ -35,9 +35,7 @@ for (const depth of [0, 1]) test(`build client at depth ${depth} uses owner-loop
     if (request.headers.has("x-fixture-docker")) pulls++;
     return new Response("fixture manifest", { headers: { "content-type": "application/vnd.oci.image.manifest.v1+json" } });
   } });
-  const address = `127.0.0.2:${registry.port}`;
-  const builderAddress = `127.0.0.1:${registry.port}`;
-  const creatorAddress = depth === 0 ? builderAddress : address;
+  const address = `127.0.0.1:${registry.port}`;
   try {
     await mkdir(join(dir, "context"));
     await writeFile(join(dir, "context/Dockerfile"), "FROM atelier-workspace\nCOPY value /value\n");
@@ -45,7 +43,7 @@ for (const depth of [0, 1]) test(`build client at depth ${depth} uses owner-loop
     await writeFile(join(dir, "context/Dockerfile.dockerignore"), "specific-ignore\n");
     await writeFile(join(dir, "docker"), `#!${process.execPath}
       const a = process.argv.slice(2);
-      if ((a[0] === "push" || a[0] === "pull") && !a[1].startsWith(${JSON.stringify(creatorAddress)} + "/")) throw Error("wrong creator registry endpoint");
+      if ((a[0] === "push" || a[0] === "pull") && !a[1].startsWith(${JSON.stringify(address)} + "/")) throw Error("wrong creator registry endpoint");
       if (a[0] === 'version') console.log('linux/amd64');
       if (a[0] === 'image' && a[1] === 'inspect') console.log(a.at(-1)==='unpublished-base'?${JSON.stringify(baseDigest)}:${JSON.stringify(builtId)});
       if (a[0] === 'push' || a[0] === 'pull') {
@@ -71,7 +69,7 @@ for (const depth of [0, 1]) test(`build client at depth ${depth} uses owner-loop
       console.log(await buildSharedWorkspaceImage({...options,kind:"default"}));
       console.log(await publishSharedImage(options.connection,"cached-result"));
     `);
-    const child = Bun.spawn([Bun.which("bun")!, join(dir, "client.ts")], { env: { ...Bun.env, NO_PROXY: "127.0.0.1,127.0.0.2", no_proxy: "127.0.0.1,127.0.0.2", PATH: `${dir}:${Bun.env.PATH}` }, stdout: "pipe", stderr: "pipe", timeout: 15_000 });
+    const child = Bun.spawn([Bun.which("bun")!, join(dir, "client.ts")], { env: { ...Bun.env, NO_PROXY: "127.0.0.1", no_proxy: "127.0.0.1", PATH: `${dir}:${Bun.env.PATH}` }, stdout: "pipe", stderr: "pipe", timeout: 15_000 });
     const [code, stdout, stderr] = await Promise.all([child.exited, new Response(child.stdout).text(), new Response(child.stderr).text()]);
     expect(stderr).toBe("");
     expect(code).toBe(0);
@@ -80,10 +78,10 @@ for (const depth of [0, 1]) test(`build client at depth ${depth} uses owner-loop
     expect(builds).toHaveLength(3);
     for (const [index, build] of builds.entries()) {
       expect(JSON.parse(build).ignore).toBe(index === 0 ? "specific-ignore\n" : "default-ignore\n");
-      const binding = `context:atelier-workspace=docker-image://${builderAddress}/atelier/bases/${baseDigest.slice(7)}@${baseDigest}`;
+      const binding = `context:atelier-workspace=docker-image://${address}/atelier/bases/${baseDigest.slice(7)}@${baseDigest}`;
       expect(JSON.parse(build).args.includes(binding)).toBe(index < 2);
       expect(JSON.parse(build).args).toContain(`label:com.atelier.workspace-image.kind=${index < 2 ? "repository" : "default"}`);
-      expect(JSON.parse(build).args).toContain(`type=image,name=${builderAddress}/atelier/workspaces,push=true,push-by-digest=true`);
+      expect(JSON.parse(build).args).toContain(`type=image,name=${address}/atelier/workspaces,push=true,push-by-digest=true`);
     }
     expect(uploads).toBe(1);
     expect(pulls).toBe(3);

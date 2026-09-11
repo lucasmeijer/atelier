@@ -84,6 +84,7 @@ RUN --mount=type=cache,target=/var/cache/apt,sharing=locked \
       libcap2-bin \
       openssh-client \
       sudo \
+      socat \
       util-linux \
       tmux
 

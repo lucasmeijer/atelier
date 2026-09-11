@@ -30,8 +30,8 @@ runtimes with that installation; existing workspace stores are not converted.
   using the matching installer rather than self-updating with their old startup
   command. Nested launches must explicitly select `--nested`. No host Docker
   configuration changes are required. Recreate older workspaces with the current
-  image to receive the MagicDNS connection, DNS settings and private Docker trust
-  configuration.
+  image to receive systemd supervision, the local registry relay, and private
+  Docker trust configuration.
 - Workspace creation records a fresh client identity before registering it. Nested
   descriptors also identify their creator; registration persists immutable parentage.
   The same request is idempotent; retirement cannot be undone by a late registration.
@@ -42,26 +42,24 @@ runtimes with that installation; existing workspace stores are not converted.
 - Unix administrative access is trusted within the mounts supplied to workspaces,
   including users with different host-aligned UIDs. It is not a hostile-tenant seam.
 - Builder cache and registry data persist in the installation runtime mount;
-  their storage directories are not mounted into workspaces. BuildKit retains its
-  inherited Unix socket. The registry listens only on `127.0.0.1`, on a port
-  allocated in 42000–42999 and persisted in `registry-port`.
-- The owner configures Tailscale Serve TCP forwarding on the same port. It uses
-  the existing LocalAPI/Serve configuration lock, preserves unrelated HTTPS
-  routes, rejects conflicting services and Funnel exposure, and removes only its
-  own forwarding rule during shutdown. Startup republishes the rule; Tailscale
-  retains its background configuration across tailscaled restarts.
-- Host Docker and the installation-owned BuildKit worker use loopback. Workspace
-  Docker and nested creators use the inherited MagicDNS hostname and port. No
-  Tailscale IP is persisted, so changing the node IP does not require changing
-  clients. Renaming the node's MagicDNS hostname still requires recreating
-  workspaces that reference the old name.
-- Workspace containers and their Docker daemons use Tailscale DNS
-  (`100.100.100.100`). Private daemons trust HTTP for the exact registry hostname
-  and port, and workspace proxy bypass entries include that hostname. Host
-  Docker needs no extra HTTP trust configuration, daemon reload or restart.
-- The entire machine and tailnet are trusted. Registry HTTP has no authentication;
-  Tailscale encrypts traffic crossing the tailnet. No custom registry relays,
-  certificates, new environment variables or manual firewall rules are required.
+  their storage directories are not mounted into workspaces. BuildKit and the
+  registry expose Unix sockets in the inherited socket directory.
+- The fixed registry reference is `atelier-registry.localhost:42000`. The owner
+  maps that hostname to loopback for BuildKit and runs a loopback TCP-to-Unix
+  relay. Host Docker uses `127.0.0.1:42000`, requiring no host DNS or daemon changes.
+- Each workspace maps the same hostname to its own loopback interface. Systemd
+  listens on port 42000 and socket-activates `systemd-socket-proxyd`, forwarding to
+  the installation's registry socket. Nested workspaces inherit the same socket,
+  but have separate network namespaces, so they reuse the port without conflicts.
+- Workspace initialization scripts run as a oneshot unit, followed by the gateway.
+  Docker is socket-activated independently, starting the registry relay and its
+  private containerd/snapshotter dependencies first. Daemon failures have bounded
+  automatic restarts; Docker live-restore avoids unnecessarily stopping containers.
+  Use `systemctl` and `journalctl` inside the workspace to inspect failures.
+- Registry traffic uses local TCP and Unix sockets, not Tailscale DNS or Serve.
+  Private daemons trust HTTP for the exact registry hostname and port; workspace
+  proxy bypass entries include that hostname. Registry access is trusted through
+  the inherited socket mount, just like snapshotter administration.
 - BuildKit has its own cache, separate from shared image-runtime layers. Direct builds
   can reuse that cache across clients and root-container restarts; changed COPY
   inputs invalidate their dependent build steps.
@@ -176,7 +174,7 @@ both a root creator and a workspace-local creator, verifying digest identity,
 COPY invalidation, ignored-input reuse and an unpublished local base. It did not
 run a full nested app.
 
-The Serve transport was checked on a real Linux ARM64 Tailscale host: host
+Historical validation of the superseded Serve transport used a Linux ARM64 Tailscale host: host
 loopback pushes/pulls without Docker configuration changes, MagicDNS access from
 nested Docker daemons, digest identity, a 140 MiB download with checksum validation,
 registry restart, and forwarding-rule recreation without changing existing HTTPS

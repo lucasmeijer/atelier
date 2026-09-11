@@ -28,7 +28,7 @@ console.log(JSON.stringify(args.includes('du') ? ${JSON.stringify(scenario.usage
 `, { mode: 0o755 });
       const script = `
 import { readBuildCacheStorage } from ${JSON.stringify(join(import.meta.dir, "build-cache.ts"))};
-console.log(JSON.stringify(await readBuildCacheStorage({version:1, depth:0, adminSocket:'/s/admin.sock', socketDirectory:'/s', snapshotterRoot:'/store', buildServices:{buildkitSocket:'/s/buildkit.sock',registryAddress:'atelier.tailnet.ts.net:42000'}})));
+console.log(JSON.stringify(await readBuildCacheStorage({version:1, depth:0, adminSocket:'/s/admin.sock', socketDirectory:'/s', snapshotterRoot:'/store', buildServices:{buildkitSocket:'/s/buildkit.sock',registryAddress:'atelier-registry.localhost:42000'}})));
 `;
       const proc = Bun.spawn([process.execPath, "-e", script], { env: { ...process.env, PATH: `${dir}:${process.env.PATH}` }, stdout: "pipe", stderr: "pipe" });
       const [code, stdout, stderr] = await Promise.all([proc.exited, new Response(proc.stdout).text(), new Response(proc.stderr).text()]);
