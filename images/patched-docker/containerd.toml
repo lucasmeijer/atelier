@@ -1,0 +1,17 @@
+version = 3
+root = "/var/lib/docker/containerd"
+state = "/run/containerd"
+disabled_plugins = ["io.containerd.cri.v1.images", "io.containerd.cri.v1.runtime"]
+
+[grpc]
+  address = "/run/containerd/containerd.sock"
+
+[plugins."io.containerd.transfer.v1.local"]
+  # More than one unpack is required to reuse all cached layers in this beta.
+  max_concurrent_unpacks = 4
+
+[plugins."io.containerd.snapshotter.v1.erofs"]
+  layer_content_caches = ["/erofs-cache"]
+
+[plugins."io.containerd.service.v1.diff-service"]
+  default = ["erofs", "walking"]

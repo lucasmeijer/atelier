@@ -1,0 +1,2 @@
+# Unified diffs intentionally prefix tab-indented context and blank lines with a space.
+patches/*.patch -whitespace

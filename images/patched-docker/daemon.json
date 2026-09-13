@@ -1,0 +1,9 @@
+{
+  "containerd": "/run/containerd/containerd.sock",
+  "containerd-namespace": "moby",
+  "containerd-plugins-namespace": "plugins.moby",
+  "features": { "containerd-snapshotter": true },
+  "storage-driver": "erofs",
+  "data-root": "/var/lib/docker/engine",
+  "hosts": ["unix:///var/run/docker.sock"]
+}

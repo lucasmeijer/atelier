@@ -1,0 +1,417 @@
+Atelier downstream patch against vendored BuildKit v0.31.0.
+Direction: https://github.com/containerd/containerd/issues/14015
+Resolve mount-manager instructions and fetch only layers that need applying.
+The opt-in image exporter flag is store-allow-incomplete=true.
+Original compressed blobs are still needed for save/push to an empty registry.
+This changes embedded BuildKit only, not docker-container builder images.
+
+diff --git a/vendor/github.com/moby/buildkit/snapshot/mountmanager.go b/vendor/github.com/moby/buildkit/snapshot/mountmanager.go
+new file mode 100644
+--- /dev/null
++++ b/vendor/github.com/moby/buildkit/snapshot/mountmanager.go
+@@ -0,0 +1,98 @@
++package snapshot
++
++import (
++	"context"
++	"errors"
++	"fmt"
++	"sync"
++	"time"
++
++	"github.com/containerd/containerd/v2/core/mount"
++	"github.com/containerd/containerd/v2/core/snapshots"
++	"github.com/containerd/containerd/v2/pkg/namespaces"
++	"github.com/containerd/errdefs"
++	"github.com/moby/buildkit/identity"
++	"github.com/moby/sys/user"
++)
++
++// WithMountManager resolves containerd mount instructions at the Mountable
++// boundary, so executors, local mounters, and exporters receive system mounts.
++func WithMountManager(s Snapshotter, manager mount.Manager, namespace string) Snapshotter {
++	return &managedSnapshotter{Snapshotter: s, manager: manager, namespace: namespace}
++}
++
++type managedSnapshotter struct {
++	Snapshotter
++	manager   mount.Manager
++	namespace string
++}
++
++func (s *managedSnapshotter) Mounts(ctx context.Context, key string) (Mountable, error) {
++	m, err := s.Snapshotter.Mounts(ctx, key)
++	if err != nil {
++		return nil, err
++	}
++	return s.wrap(ctx, key, m), nil
++}
++
++func (s *managedSnapshotter) View(ctx context.Context, key, parent string, opts ...snapshots.Opt) (Mountable, error) {
++	m, err := s.Snapshotter.View(ctx, key, parent, opts...)
++	if err != nil {
++		return nil, err
++	}
++	return s.wrap(ctx, key, m), nil
++}
++
++func (s *managedSnapshotter) wrap(ctx context.Context, key string, m Mountable) Mountable {
++	return &managedMountable{Mountable: m, ctx: namespaces.WithNamespace(context.WithoutCancel(ctx), s.namespace), manager: s.manager, snapshotter: s.Name(), key: key}
++}
++
++type managedMountable struct {
++	Mountable
++	ctx              context.Context
++	manager          mount.Manager
++	snapshotter, key string
++}
++
++func (m *managedMountable) IdentityMapping() *user.IdentityMapping {
++	return m.Mountable.IdentityMapping()
++}
++
++func (m *managedMountable) Mount() ([]mount.Mount, func() error, error) {
++	raw, release, err := m.Mountable.Mount()
++	if err != nil {
++		return nil, nil, err
++	}
++	name := "buildkit-" + identity.NewID()
++	ctx, cancel := context.WithTimeout(context.WithoutCancel(m.ctx), 10*time.Second)
++	defer cancel()
++	active, err := m.manager.Activate(ctx, name, raw, mount.WithLabels(map[string]string{
++		// If the client disappears before release, snapshot deletion permits GC
++		// to clean up the orphan activation and its EROFS mounts.
++		"containerd.io/gc.bref.snapshot." + m.snapshotter: m.key,
++	}))
++	if errdefs.IsNotImplemented(err) {
++		// The manager uses this response when every mount is already a system mount.
++		return raw, release, nil
++	}
++	if err != nil {
++		if release != nil {
++			err = errors.Join(err, release())
++		}
++		return nil, nil, fmt.Errorf("activate buildkit snapshot %s: %w", m.key, err)
++	}
++	var once sync.Once
++	var releaseErr error
++	return setRedirectDir(active.System, getRedirectDirOption()), func() error {
++		once.Do(func() {
++			// Build cancellation must not cancel mount cleanup.
++			ctx, cancel := context.WithTimeout(context.WithoutCancel(m.ctx), 10*time.Second)
++			defer cancel()
++			releaseErr = m.manager.Deactivate(ctx, name)
++			if release != nil {
++				releaseErr = errors.Join(releaseErr, release())
++			}
++		})
++		return releaseErr
++	}, nil
++}
+diff --git a/vendor/github.com/moby/buildkit/snapshot/mountmanager_test.go b/vendor/github.com/moby/buildkit/snapshot/mountmanager_test.go
+new file mode 100644
+--- /dev/null
++++ b/vendor/github.com/moby/buildkit/snapshot/mountmanager_test.go
+@@ -0,0 +1,144 @@
++package snapshot
++
++import (
++	"context"
++	"errors"
++	"testing"
++
++	"github.com/containerd/containerd/v2/core/mount"
++	"github.com/containerd/containerd/v2/pkg/namespaces"
++	"github.com/containerd/errdefs"
++	"github.com/moby/sys/user"
++)
++
++type testMountable struct{ releases int }
++
++func (m *testMountable) Mount() ([]mount.Mount, func() error, error) {
++	return []mount.Mount{{Type: "format/mkdir/overlay", Source: "overlay", Options: []string{"lowerdir={{ overlay 0 2 }}"}}}, func() error { m.releases++; return nil }, nil
++}
++func (*testMountable) IdentityMapping() *user.IdentityMapping { return nil }
++
++type testMountManager struct {
++	mount.Manager
++	t                      *testing.T
++	activates, deactivates int
++	fail                   error
++	keys                   map[string]bool
++}
++
++func (m *testMountManager) Activate(ctx context.Context, key string, raw []mount.Mount, opts ...mount.ActivateOpt) (mount.ActivationInfo, error) {
++	m.activates++
++	if ctx.Err() != nil {
++		m.t.Fatal("activation reused expired lookup context")
++	}
++	ns, _ := namespaces.Namespace(ctx)
++	if ns != "moby" {
++		m.t.Fatalf("namespace = %q", ns)
++	}
++	if raw[0].Type != "format/mkdir/overlay" {
++		m.t.Fatal("missing raw mount")
++	}
++	if m.keys[key] {
++		m.t.Fatal("activation names must be distinct")
++	}
++	m.keys[key] = true
++	var cfg mount.ActivateOptions
++	for _, opt := range opts {
++		opt(&cfg)
++	}
++	if cfg.Temporary {
++		m.t.Fatal("must not request temporary activation")
++	}
++	if cfg.Labels["containerd.io/gc.bref.snapshot.erofs"] != "snapshot-key" {
++		m.t.Fatal("missing GC back-reference")
++	}
++	return mount.ActivationInfo{System: []mount.Mount{{Type: "bind", Source: "/resolved", Options: []string{"rbind"}}}}, m.fail
++}
++func (m *testMountManager) Deactivate(ctx context.Context, key string) error {
++	m.deactivates++
++	if ctx.Err() != nil {
++		m.t.Fatal("cleanup context is canceled")
++	}
++	ns, _ := namespaces.Namespace(ctx)
++	if ns != "moby" {
++		m.t.Fatal("cleanup lost namespace")
++	}
++	if !m.keys[key] {
++		m.t.Fatal("wrong activation key")
++	}
++	return nil
++}
++func TestManagedMountLifetime(t *testing.T) {
++	ctx, cancel := context.WithCancel(namespaces.WithNamespace(context.Background(), "moby"))
++	mm := &testMountManager{t: t, keys: map[string]bool{}}
++	raw := &testMountable{}
++	m := &managedMountable{Mountable: raw, ctx: ctx, manager: mm, snapshotter: "erofs", key: "snapshot-key"}
++	mounts, release, err := m.Mount()
++	if err != nil {
++		t.Fatal(err)
++	}
++	if len(mounts) != 1 || mounts[0].Type != "bind" || mounts[0].Source != "/resolved" {
++		t.Fatal(mounts)
++	}
++	_, release2, err := m.Mount()
++	if err != nil {
++		t.Fatal(err)
++	}
++	cancel()
++	if err := release(); err != nil {
++		t.Fatal(err)
++	}
++	if err := release(); err != nil {
++		t.Fatal(err)
++	}
++	if err := release2(); err != nil {
++		t.Fatal(err)
++	}
++	if mm.activates != 2 || mm.deactivates != 2 || raw.releases != 2 {
++		t.Fatalf("lifetime counts %d %d %d", mm.activates, mm.deactivates, raw.releases)
++	}
++}
++func TestManagedMountActivationFailure(t *testing.T) {
++	fail := errors.New("activation failed")
++	mm := &testMountManager{t: t, fail: fail, keys: map[string]bool{}}
++	raw := &testMountable{}
++	m := &managedMountable{Mountable: raw, ctx: namespaces.WithNamespace(context.Background(), "moby"), manager: mm, snapshotter: "erofs", key: "snapshot-key"}
++	mounts, release, err := m.Mount()
++	if !errors.Is(err, fail) || mounts != nil || release != nil {
++		t.Fatalf("unexpected result: %v %v", mounts, err)
++	}
++	if raw.releases != 1 || mm.deactivates != 0 {
++		t.Fatal("incorrect failed activation cleanup")
++	}
++}
++
++func TestManagedMountSystemMounts(t *testing.T) {
++	mm := &testMountManager{t: t, fail: errdefs.ErrNotImplemented, keys: map[string]bool{}}
++	raw := &testMountable{}
++	m := &managedMountable{Mountable: raw, ctx: namespaces.WithNamespace(context.Background(), "moby"), manager: mm, snapshotter: "erofs", key: "snapshot-key"}
++	mounts, release, err := m.Mount()
++	if err != nil || len(mounts) != 1 {
++		t.Fatalf("%v %v", mounts, err)
++	}
++	if err := release(); err != nil {
++		t.Fatal(err)
++	}
++	if raw.releases != 1 || mm.deactivates != 0 {
++		t.Fatal("system mount cleanup")
++	}
++}
++
++func TestManagedMountAfterLookupCancellation(t *testing.T) {
++	ctx, cancel := context.WithCancel(namespaces.WithNamespace(context.Background(), "moby"))
++	cancel()
++	mm := &testMountManager{t: t, keys: map[string]bool{}}
++	raw := &testMountable{}
++	m := &managedMountable{Mountable: raw, ctx: ctx, manager: mm, snapshotter: "erofs", key: "snapshot-key"}
++	_, release, err := m.Mount()
++	if err != nil {
++		t.Fatal(err)
++	}
++	if err := release(); err != nil {
++		t.Fatal(err)
++	}
++}
+diff --git a/vendor/github.com/moby/buildkit/worker/containerd/containerd.go b/vendor/github.com/moby/buildkit/worker/containerd/containerd.go
+--- a/vendor/github.com/moby/buildkit/worker/containerd/containerd.go
++++ b/vendor/github.com/moby/buildkit/worker/containerd/containerd.go
+@@ -15,6 +15,7 @@
+ 	"github.com/moby/buildkit/cache/metadata"
+ 	"github.com/moby/buildkit/executor/containerdexecutor"
+ 	"github.com/moby/buildkit/executor/oci"
++	"github.com/moby/buildkit/snapshot"
+ 	containerdsnapshot "github.com/moby/buildkit/snapshot/containerd"
+ 	"github.com/moby/buildkit/solver/llbsolver/cdidevices"
+ 	"github.com/moby/buildkit/util/leaseutil"
+@@ -162,7 +163,7 @@
+ 		NetworkProviders: np,
+ 		ProxyProvider:    proxyProvider,
+ 		Executor:         containerdexecutor.New(executorOpts),
+-		Snapshotter:      containerdsnapshot.NewSnapshotter(workerOpts.SnapshotterName, client.SnapshotService(workerOpts.SnapshotterName), workerOpts.Namespace, nil),
++		Snapshotter:      snapshot.WithMountManager(containerdsnapshot.NewSnapshotter(workerOpts.SnapshotterName, client.SnapshotService(workerOpts.SnapshotterName), workerOpts.Namespace, nil), client.MountManager(), workerOpts.Namespace),
+ 		ContentStore:     cs,
+ 		Applier:          winlayers.NewFileSystemApplierWithWindows(cs, df),
+ 		Differ:           winlayers.NewWalkingDiffWithWindows(cs, df),
+diff --git a/vendor/github.com/moby/buildkit/exporter/containerimage/export.go b/vendor/github.com/moby/buildkit/exporter/containerimage/export.go
+--- a/vendor/github.com/moby/buildkit/exporter/containerimage/export.go
++++ b/vendor/github.com/moby/buildkit/exporter/containerimage/export.go
+@@ -140,7 +140,7 @@
+ 				return nil, errors.Wrapf(err, "non-bool value specified for %s", k)
+ 			}
+ 			i.store = b
+-		case keyUnsafeInternalStoreAllowIncomplete:
++		case "store-allow-incomplete", keyUnsafeInternalStoreAllowIncomplete:
+ 			if v == "" {
+ 				i.storeAllowIncomplete = true
+ 				continue
+@@ -490,12 +490,7 @@
+ 	}
+ 	remote := remotes[0]
+ 
+-	// ensure the content for each layer exists locally in case any are lazy
+-	if unlazier, ok := remote.Provider.(cache.Unlazier); ok {
+-		if err := unlazier.Unlazy(ctx); err != nil {
+-			return err
+-		}
+-	}
++	applier = fetchOnApply{Applier: applier, store: contentStore, provider: remote.Provider}
+ 
+ 	layers, err := getLayers(remote.Descriptors, manifest)
+ 	if err != nil {
+diff --git a/vendor/github.com/moby/buildkit/exporter/containerimage/lazyapply.go b/vendor/github.com/moby/buildkit/exporter/containerimage/lazyapply.go
+new file mode 100644
+--- /dev/null
++++ b/vendor/github.com/moby/buildkit/exporter/containerimage/lazyapply.go
+@@ -0,0 +1,33 @@
++package containerimage
++
++import (
++	"context"
++
++	"github.com/containerd/containerd/v2/core/content"
++	"github.com/containerd/containerd/v2/core/diff"
++	"github.com/containerd/containerd/v2/core/mount"
++	"github.com/containerd/errdefs"
++	"github.com/moby/buildkit/util/contentutil"
++	ocispec "github.com/opencontainers/image-spec/specs-go/v1"
++)
++
++// fetchOnApply materializes blobs only when ApplyLayers actually needs to
++// extract a missing snapshot. Cached parents must not trigger an Unlazy of
++// the entire image simply to register its newly built layers.
++type fetchOnApply struct {
++	diff.Applier
++	store    content.Store
++	provider content.Provider
++}
++
++func (a fetchOnApply) Apply(ctx context.Context, desc ocispec.Descriptor, mounts []mount.Mount, opts ...diff.ApplyOpt) (ocispec.Descriptor, error) {
++	if _, err := a.store.Info(ctx, desc.Digest); err != nil {
++		if !errdefs.IsNotFound(err) {
++			return ocispec.Descriptor{}, err
++		}
++		if err := contentutil.Copy(ctx, a.store, a.provider, desc, "export-unpack-"+desc.Digest.String(), nil); err != nil {
++			return ocispec.Descriptor{}, err
++		}
++	}
++	return a.Applier.Apply(ctx, desc, mounts, opts...)
++}
+diff --git a/vendor/github.com/moby/buildkit/exporter/containerimage/lazyapply_test.go b/vendor/github.com/moby/buildkit/exporter/containerimage/lazyapply_test.go
+new file mode 100644
+--- /dev/null
++++ b/vendor/github.com/moby/buildkit/exporter/containerimage/lazyapply_test.go
+@@ -0,0 +1,69 @@
++package containerimage
++
++import (
++	"bytes"
++	"context"
++	"testing"
++
++	"github.com/containerd/containerd/v2/core/content"
++	"github.com/containerd/containerd/v2/core/diff"
++	"github.com/containerd/containerd/v2/core/mount"
++	"github.com/containerd/containerd/v2/plugins/content/local"
++	digest "github.com/opencontainers/go-digest"
++	ocispec "github.com/opencontainers/image-spec/specs-go/v1"
++)
++
++type countingProvider struct {
++	content.Provider
++	reads int
++}
++
++func (p *countingProvider) ReaderAt(ctx context.Context, d ocispec.Descriptor) (content.ReaderAt, error) {
++	p.reads++
++	return p.Provider.ReaderAt(ctx, d)
++}
++
++type checkingApplier struct {
++	t     *testing.T
++	store content.Store
++	calls int
++}
++
++func (a *checkingApplier) Apply(ctx context.Context, d ocispec.Descriptor, _ []mount.Mount, _ ...diff.ApplyOpt) (ocispec.Descriptor, error) {
++	a.calls++
++	if _, err := a.store.Info(ctx, d.Digest); err != nil {
++		a.t.Fatal("Apply received unavailable blob", err)
++	}
++	return d, nil
++}
++func TestFetchOnlyAppliedMissingBlob(t *testing.T) {
++	ctx := context.Background()
++	src, err := local.NewStore(t.TempDir())
++	if err != nil {
++		t.Fatal(err)
++	}
++	dst, err := local.NewStore(t.TempDir())
++	if err != nil {
++		t.Fatal(err)
++	}
++	data := []byte("new layer bytes")
++	d := ocispec.Descriptor{Digest: digest.FromBytes(data), Size: int64(len(data)), MediaType: ocispec.MediaTypeImageLayer}
++	if err := content.WriteBlob(ctx, src, "source", bytes.NewReader(data), d); err != nil {
++		t.Fatal(err)
++	}
++	provider := &countingProvider{Provider: src}
++	applier := &checkingApplier{t: t, store: dst}
++	a := fetchOnApply{Applier: applier, store: dst, provider: provider}
++	if _, err := a.Apply(ctx, d, nil); err != nil {
++		t.Fatal(err)
++	}
++	if provider.reads != 1 || applier.calls != 1 {
++		t.Fatal("missing blob was not materialized exactly once")
++	}
++	if _, err := a.Apply(ctx, d, nil); err != nil {
++		t.Fatal(err)
++	}
++	if provider.reads != 1 || applier.calls != 2 {
++		t.Fatal("existing blob was fetched again")
++	}
++}

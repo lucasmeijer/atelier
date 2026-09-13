@@ -1,0 +1,8 @@
+*
+!Dockerfile
+!containerd.sha256
+!containerd.toml
+!daemon.json
+!entrypoint.sh
+!patches/
+!patches/*.patch
