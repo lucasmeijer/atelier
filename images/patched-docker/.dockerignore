@@ -6,3 +6,8 @@
 !entrypoint.sh
 !patches/
 !patches/*.patch
+
+!image-transfer/
+!image-transfer/*.go
+!image-transfer/go.mod
+!image-transfer/go.sum

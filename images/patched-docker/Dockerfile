@@ -38,6 +38,17 @@ RUN --mount=type=cache,id=patched-docker-go-${TARGETARCH},target=/root/.cache/go
       -o /out/dockerd ./cmd/dockerd \
     && /usr/local/go/bin/go version -m /out/dockerd > /out/build-info.txt
 
+# The transfer helper uses the same containerd release as the runtime below.
+FROM --platform=$BUILDPLATFORM golang:1.26.0@sha256:fb612b7831d53a89cbc0aaa7855b69ad7b0caf603715860cf538df854d047b84 AS image-transfer
+WORKDIR /src
+COPY image-transfer/go.mod image-transfer/go.sum ./
+RUN GOTOOLCHAIN=go1.26.8 go mod download
+COPY image-transfer/*.go ./
+ARG TARGETARCH
+RUN --mount=type=cache,id=atelier-image-transfer-go,target=/root/.cache/go-build \
+    GOTOOLCHAIN=go1.26.8 go test ./... \
+    && GOTOOLCHAIN=go1.26.8 CGO_ENABLED=0 GOOS=linux GOARCH="$TARGETARCH" go build -trimpath -o /out/atelier-image-transfer .
+
 FROM --platform=$BUILDPLATFORM ubuntu:26.04@sha256:513c074113a871b51a8d16ab445c88779d6452d937a164fb5cc479f32668a41d AS containerd
 RUN apt-get update && apt-get install -y --no-install-recommends ca-certificates curl \
     && rm -rf /var/lib/apt/lists/*
@@ -61,6 +72,7 @@ COPY --from=docker-tools /usr/local/bin/docker /usr/local/bin/docker-init /usr/l
 COPY --from=docker-tools /usr/local/libexec/docker/cli-plugins/ /usr/local/libexec/docker/cli-plugins/
 COPY --from=containerd /out/bin/ /usr/local/bin/
 COPY --from=build /out/dockerd /usr/local/bin/dockerd
+COPY --from=image-transfer /out/atelier-image-transfer /usr/local/bin/atelier-image-transfer
 COPY --from=build /src/LICENSE /src/NOTICE /usr/share/atelier-patched-docker/
 COPY --from=build /out/build-info.txt /usr/share/atelier-patched-docker/build-info.txt
 COPY patches/ /usr/share/atelier-patched-docker/patches/
