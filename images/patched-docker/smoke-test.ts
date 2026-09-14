@@ -100,6 +100,17 @@ exec /usr/bin/mkfs.erofs "$@"
   await exec(producer, "test", "-f", "/tmp/cache-gc-exercised");
   await exec(producer, "rm", "/usr/local/bin/mkfs.erofs");
   await start(consumer, true);
+  // BuildKit asks containerd for an empty diff while preparing a scratch base.
+  // The EROFS differ must decline that mount list without crashing the daemon.
+  await writeFile(join(context, "Dockerfile"), "FROM scratch\nCOPY dependency /dependency\n");
+  await writeFile(join(context, "dependency"), "scratch layer works\n");
+  await command(["docker", "cp", context, `${consumer}:/scratch`]);
+  await exec(consumer, "docker", "build", "--network=none", "--tag", "smoke:scratch", "/scratch");
+  await exec(consumer, "docker", "create", "--name", "scratch-check", "smoke:scratch", "/dependency");
+  await exec(consumer, "docker", "cp", "scratch-check:/dependency", "/tmp/scratch-dependency");
+  assert.equal(await exec(consumer, "cat", "/tmp/scratch-dependency"), "scratch layer works\n");
+  await exec(consumer, "docker", "rm", "scratch-check");
+  await exec(consumer, "ctr", "version");
   const hashes = await cacheHashes();
   const started = performance.now();
   await ctr(consumer, "images", "pull", "--platform", platform, "--snapshotter", "erofs", base);

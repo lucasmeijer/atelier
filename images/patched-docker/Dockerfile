@@ -49,20 +49,22 @@ RUN --mount=type=cache,id=atelier-image-transfer-go,target=/root/.cache/go-build
     GOTOOLCHAIN=go1.26.8 go test ./... \
     && GOTOOLCHAIN=go1.26.8 CGO_ENABLED=0 GOOS=linux GOARCH="$TARGETARCH" go build -trimpath -o /out/atelier-image-transfer .
 
-# Only ctr needs this patch: lease the temporary decompressed blobs while mkfs
-# reads them. Keep the daemon binaries from the matching upstream release.
-FROM --platform=$BUILDPLATFORM golang:1.26.0@sha256:fb612b7831d53a89cbc0aaa7855b69ad7b0caf603715860cf538df854d047b84 AS ctr
+# Patch ctr cache leases and the daemon's empty-mount EROFS differ dispatch.
+# Keep the shims from the matching upstream release.
+FROM --platform=$BUILDPLATFORM golang:1.26.0@sha256:fb612b7831d53a89cbc0aaa7855b69ad7b0caf603715860cf538df854d047b84 AS containerd-patched
 ADD --checksum=sha256:110aba8239bedd0efc7d359fa211b7ed1634713c3c05da3dd43a5b33d4a40194 \
     https://codeload.github.com/containerd/containerd/tar.gz/58e6cee9dee67ee87ee2f727d3570009050f9954 /tmp/containerd.tar.gz
 WORKDIR /src
 RUN tar xzf /tmp/containerd.tar.gz --strip-components=1 && rm /tmp/containerd.tar.gz
 COPY patches/0003-containerd-erofs-cache-lease.patch /tmp/lease.patch
-RUN git apply /tmp/lease.patch
+COPY patches/0004-containerd-erofs-empty-mounts.patch /tmp/empty-mounts.patch
+RUN git apply /tmp/lease.patch /tmp/empty-mounts.patch
 ARG TARGETARCH
 RUN --mount=type=cache,id=atelier-ctr-go,target=/root/.cache/go-build \
-    GOTOOLCHAIN=go1.26.8 CGO_ENABLED=0 GOOS=linux GOARCH="$TARGETARCH" go build -mod=vendor -trimpath \
-      -ldflags '-X github.com/containerd/containerd/v2/version.Version=v2.4.0-beta.0-atelier -X github.com/containerd/containerd/v2/version.Revision=58e6cee9dee67ee87ee2f727d3570009050f9954+cache-lease' \
-      -o /out/ctr ./cmd/ctr
+    GOTOOLCHAIN=go1.26.8 go test -mod=vendor ./internal/erofsutils \
+    && GOTOOLCHAIN=go1.26.8 CGO_ENABLED=0 GOOS=linux GOARCH="$TARGETARCH" go build -mod=vendor -trimpath \
+      -ldflags '-X github.com/containerd/containerd/v2/version.Version=v2.4.0-beta.0-atelier -X github.com/containerd/containerd/v2/version.Revision=58e6cee9dee67ee87ee2f727d3570009050f9954+cache-lease+mount-root' \
+      -o /out/ ./cmd/ctr ./cmd/containerd
 
 FROM --platform=$BUILDPLATFORM ubuntu:26.04@sha256:513c074113a871b51a8d16ab445c88779d6452d937a164fb5cc479f32668a41d AS containerd
 RUN apt-get update && apt-get install -y --no-install-recommends ca-certificates curl \
@@ -86,7 +88,7 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
 COPY --from=docker-tools /usr/local/bin/docker /usr/local/bin/docker-init /usr/local/bin/docker-proxy /usr/local/bin/
 COPY --from=docker-tools /usr/local/libexec/docker/cli-plugins/ /usr/local/libexec/docker/cli-plugins/
 COPY --from=containerd /out/bin/ /usr/local/bin/
-COPY --from=ctr /out/ctr /usr/local/bin/ctr
+COPY --from=containerd-patched /out/ /usr/local/bin/
 COPY --from=build /out/dockerd /usr/local/bin/dockerd
 COPY --from=image-transfer /out/atelier-image-transfer /usr/local/bin/atelier-image-transfer
 COPY --from=build /src/LICENSE /src/NOTICE /usr/share/atelier-patched-docker/
