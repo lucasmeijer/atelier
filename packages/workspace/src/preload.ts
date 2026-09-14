@@ -1,4 +1,4 @@
-import { mkdir, readFile, writeFile, rename } from "node:fs/promises";
+import { mkdir, readFile, writeFile, rename, stat } from "node:fs/promises";
 import { join } from "node:path";
 import { requireDocker, workloadCommand } from "@atelier/core";
 
@@ -23,7 +23,7 @@ export function normalizeImageReference(input: string): string {
 
 /** One app owns the shared directory. Image prep is deduplicated; mkfs commands
  * serialize so different manifests sharing a layer cannot replace each other's files. */
-export function createImagePreloader(run: Command = command, docker: typeof requireDocker = requireDocker) {
+export function createImagePreloader(run: Command = command, docker: typeof requireDocker = requireDocker, cacheDirectory = "/data/erofs-cache") {
   const resolving = new Map<string, Promise<string>>();
   const preparing = new Map<string, Promise<void>>();
   let cacheQueue = Promise.resolve();
@@ -52,7 +52,27 @@ export function createImagePreloader(run: Command = command, docker: typeof requ
   function prepare(reference: string): Promise<void> {
     let task = preparing.get(reference);
     if (!task) {
-      task = cacheQueue.then(async () => { await run(await workloadCommand(["ctr", "--namespace", "moby", "images", "build-erofs-cache", reference, "/data/erofs-cache"])); });
+      task = cacheQueue.then(async () => {
+        const image = await docker(["image", "inspect", reference, "--format", "{{json .RootFS.Layers}}"]);
+        const diffIDs: string[] = JSON.parse(image.stdout) ?? [];
+        // ctr atomically publishes final cache files but rebuilds them even when
+        // present. Readiness after an app restart must reuse a complete cache.
+        const present = await Promise.all(diffIDs.map(async (diffID) => {
+          const match = /^sha256:([a-f0-9]{64})$/.exec(diffID);
+          if (!match) throw new Error(`Unsupported image layer digest: ${diffID}`);
+          const hash = match[1]!;
+          try {
+            const file = await stat(join(cacheDirectory, "sha256", hash.slice(0, 2), `${hash}.erofs`));
+            if (!file.isFile() || file.size < 4096) throw new Error(`Invalid cached EROFS layer: ${diffID}`);
+            return true;
+          } catch (error) {
+            if (error instanceof Error && "code" in error && error.code === "ENOENT") return false;
+            throw error;
+          }
+        }));
+        if (present.every(Boolean)) return;
+        await run(await workloadCommand(["ctr", "--namespace", "moby", "images", "build-erofs-cache", reference, cacheDirectory]));
+      });
       cacheQueue = task.then(() => {}, () => {});
       preparing.set(reference, task);
       task.catch(() => preparing.delete(reference));

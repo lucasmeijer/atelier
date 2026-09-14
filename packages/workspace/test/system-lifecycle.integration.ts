@@ -20,7 +20,7 @@ let projectId: string | undefined;
 interface Workspace { id: string; phase: string; parked?: boolean; error?: string; issues?: unknown[]; }
 interface Container {
   Id: string; Name: string; Image: string; State: { Running: boolean };
-  HostConfig: { NetworkMode: string; PortBindings: Record<string, unknown> | null };
+  HostConfig: { NetworkMode: string; PortBindings: Record<string, { HostIp: string; HostPort: string }[]> | null };
   NetworkSettings: { Networks: Record<string, { NetworkID: string; IPAddress: string; Gateway: string }> };
   Mounts: { Type: string; Name?: string; Source: string; Destination: string; RW: boolean }[];
 }
@@ -33,11 +33,12 @@ async function run(args: string[], check = true) {
 }
 const docker = async (...args: string[]) => (await run(["docker", ...args])).stdout.trim();
 const exec = (container: string, ...args: string[]) => docker("exec", "--user", "root", container, ...args);
-async function api<T>(path: string, body?: unknown, base = appUrl): Promise<T> {
+type ApiValue = null | string | number | boolean | ApiValue[] | { [key: string]: ApiValue };
+async function api<T>(path: string, body?: { [key: string]: ApiValue }, base = appUrl): Promise<T> {
   const response = await fetch(new URL(path, base), { method: body === undefined ? "GET" : "POST", headers: { accept: "application/json", "content-type": "application/json" }, body: body === undefined ? undefined : JSON.stringify(body), signal: AbortSignal.timeout(30_000) });
   const text = await response.text();
   if (!response.ok) throw new Error(`${path}: ${response.status} ${text}`);
-  return JSON.parse(text) as T;
+  return JSON.parse(text);
 }
 async function waitFor(description: string, check: () => Promise<boolean>, timeout = 120_000) {
   const deadline = Date.now() + timeout;
@@ -77,15 +78,17 @@ function topology(container: Container): ResourceIdentity {
   return { containerId: container.Id, networkId: network.NetworkID, networkName, volumeName: volume.Name };
 }
 async function daemon(container: string, name: string) { return exec(container, "systemctl", "show", "--property=ActiveState", "--value", `${name}.service`); }
-async function publish(container: string) {
-  return JSON.parse(await exec(container, "curl", "--noproxy", "*", "--fail", "--silent", "--show-error", "--unix-socket", "/run/atelier-parent/ingress.sock", "-H", "Content-Type: application/json", "--data", '{"port":8080}', "http://localhost/origins")) as { origin: string };
+async function publish(container: string): Promise<{ origin: string }> {
+  return JSON.parse(await exec(container, "curl", "--noproxy", "*", "--fail", "--silent", "--show-error", "--unix-socket", "/run/atelier-parent/ingress.sock", "-H", "Content-Type: application/json", "--data", '{"port":8080}', "http://localhost/origins"));
 }
 async function startPreview(container: string) {
   await docker("exec", "--user", "root", "-d", container, "bun", "-e", `Bun.serve({hostname:'127.0.0.1',port:8080,fetch(r){return new Response(${JSON.stringify(marker)}+new URL(r.url).pathname+new URL(r.url).search)}})`);
   await waitFor("workspace dev server", async () => (await run(["docker", "exec", container, "curl", "--noproxy", "*", "--fail", "--silent", "http://127.0.0.1:8080/products"], false)).stdout === `${marker}/products`);
 }
 async function preview(origin: string) {
-  const text = (await run(["docker", "exec", "atelier", "curl", "--noproxy", "*", "--fail", "--silent", "--show-error", "--max-time", "15", `${origin}/products?sort=true`])).stdout;
+  const response = await fetch(`${origin}/products?sort=true`, { signal: AbortSignal.timeout(15_000) });
+  assert.equal(response.status, 200);
+  const text = await response.text();
   assert.equal(text, `${marker}/products?sort=true`, "published origin preserves path and query");
 }
 async function parkResume(id: string, identity: ResourceIdentity) {
@@ -105,7 +108,6 @@ async function removeWorkspace(id: string, identity: ResourceIdentity) {
   await absent("network", identity.networkId);
   await absent("volume", identity.volumeName);
   await assert.rejects(stat(`/data/app/workspace-sockets/${id}`), { code: "ENOENT" });
-  await assert.rejects(stat(`/data/app/workspaces/${id}`), { code: "ENOENT" });
   await assert.rejects(stat(`/data/app/workspaces/${id}`), { code: "ENOENT" });
   fixtures.splice(fixtures.indexOf(id), 1);
 }
@@ -139,11 +141,20 @@ async function terminalChecks(workspaceId: string, container: string) {
   assert.notEqual((await run(["docker", "exec", "--user", "atelier", container, "tmux", "has-session", "-t", title], false)).code, 0, "closing owned terminal kills its tmux session");
 }
 async function digest(path: string) { return createHash("sha256").update(await readFile(path)).digest("hex"); }
+async function replaceApp() {
+  const before: Container = JSON.parse(await docker("inspect", "atelier"))[0];
+  await api("/update", { image: before.Image }, supervisorUrl);
+  await waitFor("supervisor app replacement", async () => {
+    const status = await api<{ busy: boolean; healthy: boolean; failure?: string }>("/status", undefined, supervisorUrl);
+    if (status.failure) throw new Error(status.failure);
+    if (status.busy || !status.healthy) return false;
+    return JSON.parse(await docker("inspect", "atelier"))[0].Id !== before.Id;
+  }, 180_000);
+}
 
 try {
-  const contract = await api<{ paths: Record<string, unknown> }>("/openapi.json");
+  const contract = await api<{ paths: Record<string, { get?: { operationId?: string }; post?: { operationId?: string } }> }>("/openapi.json");
   for (const path of ["/workspaces", "/projects/{projectId}/preload-images", "/workspaces/{id}/park"]) assert(path in contract.paths, `API advertises ${path}`);
-  const appBefore: Container = JSON.parse(await docker("inspect", "atelier"))[0];
   console.log("Create projectless workspace; verify networking, mounts and lazy daemons");
   const emptyId = await create({ type: "empty" });
   const empty = await containerFor(emptyId);
@@ -165,14 +176,7 @@ try {
   await preview(origin);
 
   console.log("Replace only the app through supervisor; verify workspace and ingress recovery");
-  await api("/update", { image: appBefore.Image }, supervisorUrl);
-  await waitFor("supervisor app replacement", async () => {
-    const status = await api<{ busy: boolean; healthy: boolean; failure?: string }>("/status", undefined, supervisorUrl);
-    if (status.failure) throw new Error(status.failure);
-    if (status.busy || !status.healthy) return false;
-    const current: Container = JSON.parse(await docker("inspect", "atelier"))[0];
-    return current.Id !== appBefore.Id;
-  }, 180_000);
+  await replaceApp();
   await ready(emptyId);
   assert.deepEqual(topology(await containerFor(emptyId)), emptyIdentity);
   assert.equal((await publish(empty.Id)).origin, origin, "preview origin survives app replacement");
@@ -222,12 +226,26 @@ try {
   const afterBuild = (await content()).split("\n").filter(Boolean);
   for (const layer of manifest.layers) assert(!afterBuild.includes(layer.digest), "building with incomplete export adds no base-layer blobs");
   for (const [path, hash] of hashes) assert.equal(await digest(path), hash, "shared EROFS files remain unchanged");
-  const echoed = JSON.parse(await exec(loaded.Id, "sh", "-c", 'curl --fail --silent --show-error --max-time 30 -H "X-Atelier-Test: $LIFECYCLE_TEST_SECRET" https://httpbin.org/headers')) as { headers: Record<string, string> };
+  const echoed: { headers: Record<string, string> } = JSON.parse(await exec(loaded.Id, "sh", "-c", 'curl --fail --silent --show-error --max-time 30 -H "X-Atelier-Test: $LIFECYCLE_TEST_SECRET" https://httpbin.org/headers'));
   const injected = Object.entries(echoed.headers).find(([name]) => name.toLowerCase() === "x-atelier-test")?.[1];
   assert.equal(injected, secret, "egress socket injects the project secret");
   await api(`/projects/${projectId}/preload-images`, { preloadImages: [] });
   await parkResume(loadedId, loadedIdentity);
   assert.equal(await readFile(preloadPath, "utf8"), pinned, "settings changes do not change existing workspace pins");
+
+  console.log("Replace app with a preloaded workspace; reuse the existing cache files");
+  const cacheFiles = await Promise.all([...hashes.keys()].map(async (path) => {
+    const file = await stat(path);
+    return { path, ino: file.ino, mtimeMs: file.mtimeMs };
+  }));
+  await replaceApp();
+  await ready(loadedId);
+  assert.deepEqual(topology(await containerFor(loadedId)), loadedIdentity);
+  for (const file of cacheFiles) {
+    const current = await stat(file.path);
+    assert.equal(current.ino, file.ino, "app restart does not replace prepared EROFS files");
+    assert.equal(current.mtimeMs, file.mtimeMs, "app restart does not rewrite prepared EROFS files");
+  }
 
   console.log("Delete fixtures; check private resources are removed and shared cache retained");
   await removeWorkspace(loadedId, loadedIdentity);

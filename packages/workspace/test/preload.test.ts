@@ -1,5 +1,5 @@
 import { afterEach, expect, test } from "bun:test";
-import { mkdtemp, readFile, rm } from "node:fs/promises";
+import { mkdtemp, readFile, rm, mkdir, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { createImagePreloader, normalizeImageReference } from "../src/preload.ts";
@@ -20,7 +20,7 @@ function deferred() {
   const promise = new Promise<void>((done) => { resolve = done; });
   return { promise, resolve };
 }
-function fixture() {
+function fixture(cacheDirectory?: string) {
   const images = new Map<string, string>();
   const registry = new Map([[postgres, digestA], [redis, digestB]]);
   const calls: string[][] = [];
@@ -54,11 +54,12 @@ function fixture() {
   const docker = async (args: string[], options?: { stdin?: string | Uint8Array }) => {
     calls.push(["docker", ...args]);
     await dockerBefore?.(args);
+    if (args[0] === "image" && args[1] === "inspect") return { exitCode: 0, stdout: JSON.stringify([digestA]), stderr: "" };
     if (args.includes("import")) imports.push({ container: args[4]!, bytes: Buffer.from(options!.stdin!) });
     return { exitCode: 0, stdout: "", stderr: "" };
   };
   return {
-    preloader: createImagePreloader(run, docker), run, docker, calls, images, registry, imports,
+    preloader: createImagePreloader(run, docker, cacheDirectory), run, docker, calls, images, registry, imports,
     before(fn: (args: string[]) => Promise<void>) { before = fn; },
     dockerBefore(fn: (args: string[]) => Promise<void>) { dockerBefore = fn; },
     builds: () => calls.filter((args) => args.includes("build-erofs-cache")),
@@ -185,6 +186,28 @@ test("import failure propagates and retry reuses successful cache preparation", 
   await f.preloader.install(images, "one");
   expect(f.builds()).toHaveLength(1);
   expect(f.imports).toHaveLength(1);
+});
+
+test("complete cache files survive app restart without repeated conversion", async () => {
+  const cache = await directory();
+  await mkdir(join(cache, "sha256", "aa"), { recursive: true });
+  await writeFile(join(cache, "sha256", "aa", `${"a".repeat(64)}.erofs`), Buffer.alloc(4096));
+  const f = fixture(cache);
+  const images = [{ requested: postgres, reference: `${postgres}@${digestA}` }];
+  await f.preloader.install(images, "one");
+  await createImagePreloader(f.run, f.docker, cache).install(images, "two");
+  expect(f.builds()).toHaveLength(0);
+  expect(f.imports.map((entry) => entry.container)).toEqual(["one", "two"]);
+});
+
+test("invalid final cache files fail visibly instead of being treated as prepared", async () => {
+  const cache = await directory();
+  await mkdir(join(cache, "sha256", "aa"), { recursive: true });
+  await writeFile(join(cache, "sha256", "aa", `${"a".repeat(64)}.erofs`), "");
+  const f = fixture(cache);
+  await expect(f.preloader.install([{ requested: postgres, reference: `${postgres}@${digestA}` }], "one")).rejects.toThrow("Invalid cached EROFS layer");
+  expect(f.imports).toEqual([]);
+  expect(f.builds()).toHaveLength(0);
 });
 
 test("concurrent resolution of the same tag fetches once and persists the same digest in both workspaces", async () => {
