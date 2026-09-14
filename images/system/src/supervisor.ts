@@ -1,3 +1,4 @@
+import { installWorkspaceFirewall } from "./firewall.ts";
 import { initializeResources } from "./resources.ts";
 import { spawn, type ChildProcess } from "node:child_process";
 import { mkdir, readFile, rename, writeFile } from "node:fs/promises";
@@ -403,6 +404,7 @@ process.on("SIGINT", () => {
   void shutdown(0);
 });
 async function initialize() {
+  await installWorkspaceFirewall();
   daemon(["containerd", "--config", "/etc/containerd/config.toml"]);
   await waitFor(
     async () => {
