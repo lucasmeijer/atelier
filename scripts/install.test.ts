@@ -103,3 +103,18 @@ test("loads an available filesystem module before starting System", () => {
   expect(result.output).toContain("MODPROBE erofs");
   expect(result.output.indexOf("MODPROBE erofs")).toBeLessThan(result.output.indexOf("DOCKER pull"));
 });
+
+test("startup waits for Tailscale to leave Starting before offering login", () => {
+  const waitFunction = installer.slice(installer.indexOf("wait_for_tailscale() {"), installer.indexOf("\nshow_url() {"));
+  const result = Bun.spawnSync(["bash", "-c", `
+    tailscale_details() { if [ "$attempt" -eq 0 ]; then echo Starting; else echo Running; fi; }
+    docker() { echo true; }
+    sleep() { :; }
+    fail() { exit 1; }
+    ${waitFunction}
+    wait_for_tailscale
+    printf '%s' "$details"
+  `]);
+  expect(result.exitCode).toBe(0);
+  expect(result.stdout.toString()).toBe("Running");
+});

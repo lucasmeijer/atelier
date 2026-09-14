@@ -98,7 +98,11 @@ tailscale_details() {
 wait_for_tailscale() {
   local attempt
   for ((attempt=0; attempt<60; attempt++)); do
-    if details="$(tailscale_details 2>/dev/null)"; then return; fi
+    if details="$(tailscale_details 2>/dev/null)"; then
+      case "${details%%$'\n'*}" in
+        Running|NeedsLogin|NeedsMachineAuth|Stopped) return ;;
+      esac
+    fi
     if [ "$(docker inspect --format '{{.State.Running}}' "$system_name")" != true ]; then
       docker logs --tail 80 "$system_name" >&2
       fail "System stopped during startup"
