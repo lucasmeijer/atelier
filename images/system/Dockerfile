@@ -1,4 +1,3 @@
-# syntax=docker/dockerfile:1
 ARG RUNTIME_IMAGE=atelier-patched-docker:big-rewrite
 FROM oven/bun:1.3.14@sha256:e10577f0db68676a7024391c6e5cb4b879ebd17188ab750cf10024a6d700e5c4 AS bun
 FROM ghcr.io/tailscale/tailscale:v1.102.3@sha256:8c42c4574ab066384fcb72f69e086a2ff1dd3652eb6f56856cee34bcf0d2f680 AS tailscale

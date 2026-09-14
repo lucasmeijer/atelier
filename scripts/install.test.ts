@@ -36,7 +36,7 @@ test("fresh install launches privileged System with persistent named volume and 
   const result = run({}, ["--non-interactive", "--system-image", "test/system:v1", "--app-image", "test/app:v1"]);
   expect(result.status).toBe(0);
   expect(result.output).toContain("DOCKER pull test/system:v1");
-  expect(result.output).toContain("--name atelier-system --hostname atelier-system --privileged --restart unless-stopped --stop-timeout 120 --tmpfs /run --mount source=atelier-system,target=/data test/system:v1 --app-image test/app:v1");
+  expect(result.output).toContain("--name atelier-system --hostname atelier-system --privileged --cgroupns=host --restart unless-stopped --stop-timeout 120 --tmpfs /run --mount source=atelier-system,target=/data test/system:v1 --app-image test/app:v1");
   expect(result.output).not.toContain("DOCKER stop");
   expect(result.output).toContain("https://atelier.example.ts.net:8443");
 });

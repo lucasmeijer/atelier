@@ -2,7 +2,7 @@ import { createHash } from "node:crypto";
 import { mkdir, readFile, writeFile } from "node:fs/promises";
 import { dirname, join } from "node:path";
 import { fileURLToPath } from "node:url";
-import { requireDocker, runDocker, shellQuote, type AtelierEventBus } from "@atelier/core";
+import { requireDocker, runDocker, workloadBuildArgs, shellQuote, type AtelierEventBus } from "@atelier/core";
 import { runHostObservableCommand, tailTerminalText } from "@atelier/observable-terminal/server";
 import { type WorkspaceImageMetadata } from "./metadata.ts";
 import { ensureGeneratedDefaultWorkspaceImage, prepareDefaultWorkspaceImage } from "./default-image.ts";
@@ -82,9 +82,10 @@ async function emitImageStep(events: AtelierEventBus | undefined, workspaceId: s
   await events.emit("workspace_provision_step", event);
 }
 
-function dockerBuildArgs(tag: string, kind: WorkspaceImageKind, dockerfile: string, contextDir: string, options: ResolveWorkspaceImageOptions): string[] {
+async function dockerBuildArgs(tag: string, kind: WorkspaceImageKind, dockerfile: string, contextDir: string, options: ResolveWorkspaceImageOptions): Promise<string[]> {
   return [
     "build",
+    ...await workloadBuildArgs(),
     ...(options.buildOutput === "inherit" ? ["--progress=plain"] : []),
     ...(process.env.ATELIER_WORKSPACE_IMAGE_NO_CACHE === "1" ? ["--no-cache"] : []),
     "--label", `${workspaceImageKindLabel}=${kind}`,
@@ -104,7 +105,7 @@ function startBuildTask(tag: string, modules: string[], kind: WorkspaceImageKind
     onWait: workspaceImageStoreWaitReporter({ events: options.events, workspaceId: options.workspaceId, parentId: "workspace.image" }),
   }, async () => {
     const buildStartedAt = new Date();
-    const args = dockerBuildArgs(tag, kind, dockerfile, contextDir, options);
+    const args = await dockerBuildArgs(tag, kind, dockerfile, contextDir, options);
     if (options.buildOutput === "inherit") {
       const proc = Bun.spawn(["docker", ...args], { cwd: contextDir, env: { ...process.env, DOCKER_BUILDKIT: "1" }, stdout: "inherit", stderr: "inherit", stdin: "inherit" });
       const exitCode = await proc.exited;

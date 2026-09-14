@@ -162,7 +162,7 @@ case "$action" in
       docker stop --time 120 "$system_name"
       docker rm "$system_name"
     fi
-    docker run -d --name "$system_name" --hostname atelier-system --privileged --restart unless-stopped \
+    docker run -d --name "$system_name" --hostname atelier-system --privileged --cgroupns=host --restart unless-stopped \
       --stop-timeout 120 --tmpfs /run --mount source=atelier-system,target=/data \
       "$system_image" --app-image "$app_image"
     wait_for_tailscale

@@ -63,3 +63,4 @@ export {
 } from "./github-token.ts";
 
 export { createKeyedOperationQueue } from "./keyed-operation-queue.ts";
+export { workloadBuildArgs, workloadCommand } from "./workload-resources.ts";

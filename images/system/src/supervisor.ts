@@ -1,3 +1,4 @@
+import { initializeResources } from "./resources.ts";
 import { spawn, type ChildProcess } from "node:child_process";
 import { mkdir, readFile, rename, writeFile } from "node:fs/promises";
 import { parseArgs } from "node:util";
@@ -14,6 +15,7 @@ const { values } = parseArgs({
   },
   strict: true,
 });
+const resources = await initializeResources();
 const timeout = 120_000;
 const stateDir = "/data/supervisor";
 await Promise.all(
@@ -187,6 +189,14 @@ async function replace(reference: string, pull: boolean) {
       "atelier",
       "--network",
       "host",
+      "--cgroup-parent",
+      resources.managementCgroupParent,
+      "--cgroupns",
+      "host",
+      "--mount",
+      `type=bind,src=${resources.commandsCgroup},dst=/run/atelier-system/workload-processes`,
+      "--mount",
+      "type=bind,src=/run/atelier-system/resources.json,dst=/run/atelier-system/resources.json,readonly",
       "--label",
       "atelier.role=app",
       "--mount",
@@ -406,7 +416,7 @@ async function initialize() {
     30000,
     "containerd",
   );
-  daemon(["dockerd", "--config-file", "/etc/docker/daemon.json"]);
+  daemon(["dockerd", "--config-file", "/run/atelier-system/daemon.json"]);
   daemon([
     "tailscaled",
     "--state=/data/tailscale/tailscaled.state",

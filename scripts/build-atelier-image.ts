@@ -1,5 +1,6 @@
 #!/usr/bin/env bun
 
+import { workloadBuildArgs } from "@atelier/core";
 import { rmSync } from "node:fs";
 import { arch } from "node:os";
 import { imageHasPlatforms } from "../packages/workspace-image/src/local-images.ts";
@@ -212,6 +213,7 @@ function dockerBuildCommand(options: Options, args: string[]): string[] {
     : ["docker", "build"];
   return [
     ...command,
+    ...resourceBuildArgs,
     ...(options.builder ? ["--builder", options.builder] : []),
     ...(options.platform ? ["--platform", options.platform] : []),
     ...(options.noCache ? ["--no-cache"] : []),
@@ -221,6 +223,7 @@ function dockerBuildCommand(options: Options, args: string[]): string[] {
 }
 
 const options = parseArgs(process.argv.slice(2));
+const resourceBuildArgs = await workloadBuildArgs();
 authenticateGhcr(options);
 const workspaceContext = await prepareDefaultWorkspaceImage();
 const workspaceContextDir = workspaceContext.contextDir;

@@ -1,7 +1,7 @@
 import { mkdtemp, readFile, rm } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
-import { runDocker, type CommandResult } from "@atelier/core";
+import { runDocker, workloadBuildArgs, type CommandResult } from "@atelier/core";
 import { nativeImageExists } from "./local-images.ts";
 import { parseWorkspaceImageMetadata, type WorkspaceImageMetadata } from "./metadata.ts";
 
@@ -51,7 +51,7 @@ export async function ensureGeneratedDefaultWorkspaceImage(options: EnsureDefaul
     if (!options.force && await (options.exists ? options.exists(image) : nativeImageExists(image, docker))) return image;
     if (options.build) await options.build(context, image);
     else {
-      const result = await docker(["build", "--progress=plain", "--label", "com.atelier.workspace-image.kind=default", "-t", image, "-f", context.dockerfile, context.contextDir]);
+      const result = await docker(["build", ...await workloadBuildArgs(), "--progress=plain", "--label", "com.atelier.workspace-image.kind=default", "-t", image, "-f", context.dockerfile, context.contextDir]);
       if (result.exitCode !== 0) throw new Error(result.stderr || result.stdout || `Could not build ${image}`);
     }
     return image;
