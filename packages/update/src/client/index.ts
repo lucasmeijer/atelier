@@ -10,31 +10,29 @@ export const atelierClientModule: WorkspaceClientModule = {
   id: "atelier-update",
   install({ application, Controller }) {
     class UpdateRestartController extends Controller {
+      static targets = ["error"];
+      declare readonly errorTarget: HTMLElement;
       declare readonly element: HTMLFormElement;
       async submit(event: SubmitEvent): Promise<void> {
         event.preventDefault();
-        const theme = document.documentElement.dataset.theme ?? localStorage.getItem("atelier.theme") ?? "";
         const action = new URL(this.element.action, window.location.href);
-        if (theme) action.searchParams.set("theme", theme);
         const submit = this.element.querySelector<HTMLButtonElement>("[data-destructive-confirmation-action]")!;
         const cancel = this.element.querySelector<HTMLButtonElement>("[data-destructive-confirmation-cancel]")!;
-        const spinner = document.createElement("i");
-        spinner.className = "activity-spinner";
-        submit.prepend(spinner);
+        this.errorTarget.hidden = true;
         submit.setAttribute("aria-busy", "true");
         submit.disabled = true;
         cancel.disabled = true;
 
         try {
           const response = await fetch(action, { method: "POST", headers: { Accept: "text/vnd.turbo-stream.html" }, credentials: "same-origin" });
-          const location = response.headers.get("location");
-          if (location) {
-            window.location.href = new URL(location, window.location.href).toString();
+          if (response.headers.get("x-atelier-reload") === "true") {
+            window.location.reload();
             return;
           }
           window.Turbo!.renderStreamMessage(await response.text());
-        } catch {
-          spinner.remove();
+        } catch (error) {
+          this.errorTarget.textContent = `Could not request the update: ${error instanceof Error ? error.message : String(error)}`;
+          this.errorTarget.hidden = false;
           submit.removeAttribute("aria-busy");
           submit.disabled = false;
           cancel.disabled = false;

@@ -332,10 +332,26 @@ const server = Bun.serve({
           busy = false;
           return new Response(String(error), { status: 400 });
         }
-        busy = false;
-        if (stopping)
+        if (stopping) {
+          busy = false;
           return new Response("System is stopping", { status: 503 });
-        activeOperation = replace(exact, false);
+        }
+        const previouslyHealthy = healthy;
+        healthy = false;
+        try {
+          await configureRoutes(3001);
+        } catch (error) {
+          healthy = previouslyHealthy;
+          busy = false;
+          return new Response(String(error), { status: 502 });
+        }
+        // Route first, acknowledge, then give the app time to relay that acknowledgement.
+        // Replacement remains supervisor-owned if the requesting browser disconnects.
+        activeOperation = (async () => {
+          await Bun.sleep(1000);
+          busy = false;
+          if (!stopping) await replace(exact, false);
+        })();
         return Response.json({ accepted: true }, { status: 202 });
       }
     }

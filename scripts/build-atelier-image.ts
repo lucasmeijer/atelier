@@ -252,12 +252,7 @@ const defaultBuildArgs = [
   `ATELIER_COMMIT_ID=${gitCommitId()}`,
   `ATELIER_COMMIT_DESCRIPTION=${gitCommitDescription()}`,
   `ATELIER_DEFAULT_WORKSPACE_IMAGE=${defaultWorkspaceImageRef}`,
-  // Self-update compatibility is the installer/runtime contract required for
-  // Atelier's smooth in-app Docker replacement flow. Change this value when a
-  // release needs users to rerun the installer instead of applying the update
-  // from inside Atelier. Use a human-readable value and bump the suffix, e.g.
-  // "tailscale-serve-localhost-v3", when the contract changes again.
-  "ATELIER_SELF_UPDATE_COMPATIBILITY=owned-snapshotter-v2",
+  `ATELIER_EAGERLY_PRELOAD=${JSON.stringify([defaultWorkspaceImageRef])}`,
 ];
 const allBuildArgs = [...defaultBuildArgs, ...options.buildArgs];
 
