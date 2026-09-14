@@ -1,1 +1,1 @@
-export { atelierWorkspaceProxyPort, ensureAtelierWorkspaceProxy, registerWorkspaceProxyEvents } from "./egress-proxy.ts";
+export { ensureWorkspaceEgressProxy, registerWorkspaceProxyEvents } from "./egress-proxy.ts";

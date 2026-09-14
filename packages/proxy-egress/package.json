@@ -10,7 +10,6 @@
     "@atelier/core": "workspace:*",
     "@atelier/projects": "workspace:*",
     "@atelier/shared": "workspace:*",
-    "@atelier/workspace": "workspace:*",
-    "typebox": "^1.0.57"
+    "@atelier/workspace": "workspace:*"
   }
 }
