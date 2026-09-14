@@ -19,6 +19,7 @@ export interface WorkspaceProvisionStepEvent {
   terminal?: WorkspaceProvisionTerminal;
   error?: string;
   awaitingContinue?: boolean;
+  retryable?: boolean;
   continueLabel?: string;
 }
 
@@ -32,7 +33,7 @@ export interface RunWorkspaceProvisioningHooksOptions {
   workspaceId: string;
   creationContext?: WorkspaceCreationContext;
   events?: AtelierEventBus;
-  waitForContinue?(stepId: string): Promise<void>;
+  waitForContinue?(stepId: string): Promise<"retry" | void>;
 }
 
 export async function runWorkspaceProvisioningHooks(hooks: WorkspaceServerProvisioningHook[], options: RunWorkspaceProvisioningHooksOptions): Promise<void> {

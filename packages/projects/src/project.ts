@@ -90,6 +90,7 @@ const projectRecordSchema = Type.Object({
   sshKeys: Type.Optional(Type.Array(storedProjectSshKeySchema)),
   environment: Type.Optional(Type.Array(projectEnvironmentVariableSchema)),
   dockerfile: Type.Optional(Type.String()),
+  preloadImages: Type.Optional(Type.Array(Type.String())),
 });
 
 const projectStoreSchema = Type.Object({
@@ -183,6 +184,7 @@ function projectSummary(project: ProjectRecord): ProjectSummary {
     branch: project.branch,
     sessionShareKey: project.sessionShareKey,
     dockerfile: project.dockerfile,
+    preloadImages: [...(project.preloadImages ?? [])],
     configurationFingerprint: projectConfigurationFingerprint(project),
   };
 }
@@ -274,6 +276,21 @@ export async function setProjectDockerfile(id: string, dockerfile: string, file 
     const project = findProjectRecord(store, id);
     if (dockerfile.trim()) project.dockerfile = dockerfile;
     else delete project.dockerfile;
+    return { project: projectSummary(project) };
+  });
+}
+
+/** Changes the preload set for future workspaces; existing workspace configuration is unchanged. */
+export async function setProjectPreloadImages(id: string, images: string[], file = projectsFile()): Promise<UpdateProjectResult> {
+  const preloadImages = [...new Set(images.map((image) => image.trim()))];
+  for (const image of preloadImages) {
+    if (!/^[a-zA-Z0-9][a-zA-Z0-9._:/@+-]*$/.test(image) || image.includes("://")) {
+      throw new AtelierCoreError("invalid_arguments", `Invalid image reference: ${image || "(empty)"}`);
+    }
+  }
+  return await updateProjectStore(file, (store) => {
+    const project = findProjectRecord(store, id);
+    project.preloadImages = preloadImages;
     return { project: projectSummary(project) };
   });
 }

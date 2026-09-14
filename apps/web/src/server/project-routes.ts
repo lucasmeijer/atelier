@@ -14,7 +14,7 @@ import {
   deleteProject, deleteProjectEnvironmentVariable, deleteProjectSecret, deleteProjectSshKey,
   formatProjectSpec, getProjectConfiguration, listProjectEnvironmentVariables, listProjectSecrets, secretNeedsValue,
   listProjectSshKeys, listProjects, parseProjectSpec, updateProject,
-  updateProjectEnvironmentVariable, updateProjectSecret, setProjectDockerfile,
+  updateProjectEnvironmentVariable, updateProjectSecret, setProjectDockerfile, setProjectPreloadImages,
   type ProjectEnvironmentVariable, type ProjectSecretInput, type ProjectSecretSummary, type ProjectSshKeySummary, type ProjectSummary,
 } from "@atelier/projects";
 import { domId, escapeHtml, providerBrandColor, providerBrandIconHtml, turboStreamResponse } from "@atelier/shared";
@@ -117,6 +117,16 @@ export function createProjectRoutes(deps: {
     </section>`;
   }
 
+  function projectPreloadImagesEditor(project: ProjectSummary, section?: ProjectSettingsSection): string {
+    const fields = `<form method="post" action="/projects/${encodeURIComponent(project.id)}/preload-images" data-turbo="true" data-controller="settings-autosave" data-action="focusout->settings-autosave#saveWhenLeaving">
+      <label><span>Image references, one per line</span><textarea class="textarea" name="preloadImages" rows="4" spellcheck="false" autocomplete="off" placeholder="docker.io/library/postgres:17">${escapeHtml((project.preloadImages ?? []).join("\n"))}</textarea></label>
+    </form>`;
+    return `<section class="project-configuration-list" id="${domId("project_preload_images", project.id)}"${revealSection(section, "preload-images")}>
+      <div class="project-configuration-head"><h3>Preloaded Docker images</h3><p>Prepare these images before new workspaces become ready. Changes apply only to workspaces created afterwards.</p></div>
+      ${projectConfigurationDisclosure("Configure preloaded images", fields, section === "preload-images")}
+    </section>`;
+  }
+
   function secretRequirementToggle(optional: boolean): string {
     return `<div class="project-secret-requirement"><span>Requirement</span><input type="hidden" name="optional" value="${optional}">${toggleHtml({
       variant: "button",
@@ -211,12 +221,12 @@ export function createProjectRoutes(deps: {
     });
   }
 
-  type ProjectSettingsSection = "repository" | "secrets" | "ssh-keys" | "environment" | "dockerfile" | "danger";
+  type ProjectSettingsSection = "repository" | "secrets" | "ssh-keys" | "environment" | "dockerfile" | "preload-images" | "danger";
 
   function parseProjectSettingsSection(value: string | undefined): ProjectSettingsSection | undefined {
     if (value === undefined) return undefined;
-    if (value === "repository" || value === "secrets" || value === "ssh-keys" || value === "environment" || value === "dockerfile" || value === "danger") return value;
-    throw invalidArguments("section must be one of: repository, secrets, ssh-keys, environment, dockerfile, danger");
+    if (value === "repository" || value === "secrets" || value === "ssh-keys" || value === "environment" || value === "dockerfile" || value === "preload-images" || value === "danger") return value;
+    throw invalidArguments("section must be one of: repository, secrets, ssh-keys, environment, dockerfile, preload-images, danger");
   }
 
   async function projectEditorFrame(project: ProjectSummary, section?: ProjectSettingsSection): Promise<string> {
@@ -226,7 +236,7 @@ export function createProjectRoutes(deps: {
       <div class="project-editor-page project-editor-detail-page">
         <div class="project-editor-detail-body">
           <section class="project-edit-section"${revealSection(section, "repository")}><form class="project-edit-form" aria-label="Repository" method="post" action="/projects/${encodeURIComponent(project.id)}" data-controller="settings-autosave" data-action="change->settings-autosave#save"><label class="project-edit-field"><span>Display name</span><input class="text-field" name="name" value="${escapeHtml(project.name)}" required></label><label class="project-edit-field"><span>Repository</span><input class="text-field" name="gitUrl" value="${escapeHtml(formatProjectSpec(project))}" required></label></form></section>
-          <div class="project-edit-config">${projectSecretEditor(project, secrets, section)}${projectSshKeyEditor(project, sshKeys, section)}${projectEnvironmentEditor(project, environment, section)}${projectDockerfileEditor(project, section)}</div>
+          <div class="project-edit-config">${projectSecretEditor(project, secrets, section)}${projectSshKeyEditor(project, sshKeys, section)}${projectEnvironmentEditor(project, environment, section)}${projectDockerfileEditor(project, section)}${projectPreloadImagesEditor(project, section)}</div>
           <section class="project-edit-danger-zone"${revealSection(section, "danger")}>${projectConfigurationDisclosure("Danger zone", `<div class="project-edit-danger">${projectDeleteControl(project.id)}</div>`, section === "danger")}</section>
         </div>
       </div>
@@ -396,6 +406,20 @@ export function createProjectRoutes(deps: {
     return projectSettingsResponse(projectId, request, result);
   }
 
+  async function updateProjectPreloadImagesEndpoint(projectId: string, request: Request): Promise<Response> {
+    let images: string[];
+    if (requestAcceptsJson(request)) {
+      const body = await readJsonObject(request);
+      if (!Value.Check(Type.Array(Type.String()), body.preloadImages)) throw invalidArguments("preloadImages must be an array of image references");
+      images = body.preloadImages;
+    } else {
+      const form = await request.formData();
+      images = String(form.get("preloadImages") ?? "").split(/\r?\n/).map((line) => line.trim()).filter(Boolean);
+    }
+    const result = await setProjectPreloadImages(projectId, images);
+    return requestAcceptsJson(request) ? jsonResponse(result) : turboStreamResponse("");
+  }
+
   async function renderProjectEnvironmentStreams(projectId: string): Promise<string> {
     const project = await projectById(projectId);
     return turboReplaceStream(domId("project_environment_fields", projectId), projectEnvironmentFields(project, await listProjectEnvironmentVariables(projectId)));
@@ -550,6 +574,7 @@ export function createProjectRoutes(deps: {
     };
     let params: string[] | undefined;
     if ((params = match(/^\/projects\/([^/]+)\/dockerfile$/)) && request.method === "POST") return await updateProjectDockerfileEndpoint(params[0]!, request);
+    if ((params = match(/^\/projects\/([^/]+)\/preload-images$/)) && request.method === "POST") return await updateProjectPreloadImagesEndpoint(params[0]!, request);
     if ((params = match(/^\/projects\/([^/]+)\/editor$/)) && request.method === "GET") return response(await projectEditorFrame(await projectById(params[0]!)));
     if ((params = match(/^\/projects\/([^/]+)\/launch-composer$/)) && request.method === "GET") return response(await deps.renderLaunchComposer(await projectById(params[0]!)));
     if ((params = match(/^\/projects\/([^/]+)$/)) && request.method === "GET" && requestAcceptsJson(request)) return await projectDetailEndpoint(params[0]!);

@@ -1,5 +1,5 @@
 import { ensureDefaultWorkspaceImage } from "@atelier/workspace-image";
-import { recoverWorkspaces, startWorkspaceGateway } from "./workspace-recovery.ts";
+import { recoverWorkspaces, prepareWorkspaceForUse } from "./workspace-recovery.ts";
 import { designSystemCatalogueHtml } from "@atelier/design-system/catalogue";
 import { configureAgentDelegation } from "@atelier/agent/server";
 import { subagentsDelegation } from "@atelier/subagents/server";
@@ -11,7 +11,7 @@ import { Type } from "typebox";
 import { Value } from "typebox/value";
 import { createAtelierEventBus, getAtelierRuntimeContext } from "@atelier/core";
 import { attachHostObservableTerminal, observableTerminalCols, observableTerminalRows, type ObservableTerminalConnection } from "@atelier/observable-terminal/server";
-import { checkWorkspaceGateway, workspacePortBackend, workspaceImageOutdated, createWorkspace, deleteWorkspace, isWorkspaceRunning, listWorkspaces, resolveWorkspace, runWorkspaceProvisioningHooks, setWorkspaceParked, setWorkspaceContainerRunning, workspaceSetupProvisioningHook, type WorkspaceProvisionStepEvent } from "@atelier/workspace";
+import { checkWorkspaceReadiness, workspacePortBackend, workspaceImageOutdated, createWorkspace, deleteWorkspace, isWorkspaceRunning, listWorkspaces, resolveWorkspace, runWorkspaceProvisioningHooks, setWorkspaceParked, setWorkspaceContainerRunning, workspaceSetupProvisioningHook, type WorkspaceProvisionStepEvent } from "@atelier/workspace";
 import { atelierName, CableTopics, escapeHtml, type WorkspaceAppBackend, type WorkspaceAppRef, type WorkspaceServerAppResolver, type WorkspaceServerProvisioningHook, type WorkspaceServerSocketHandler, type WorkspaceServerSocketSession } from "@atelier/shared";
 import {
   createFileOriginIdentityStore,
@@ -216,7 +216,7 @@ const registry = createWorkspaceRegistry({
 let app: WebApp;
 const workspaceStartupOperations = {
   setRunning: setWorkspaceContainerRunning,
-  checkGateway: checkWorkspaceGateway,
+  checkReadiness: checkWorkspaceReadiness,
   imageOutdated: (id: string) => workspaceImageOutdated(id, undefined, atelierEvents),
   waitForContinue: (id: string, stepId: string) => app.waitForWorkspaceStartupContinue(id, stepId),
   step: (event: WorkspaceProvisionStepEvent) => atelierEvents.emit("workspace_provision_step", event),
@@ -231,12 +231,9 @@ app = createWebApp({
   provisioningHooks,
   workspaceRemovedHandlers,
   async provisionWorkspace(id, options) {
-    await ingressSockets.ensure(id);
     const created = await createWorkspace({ id, events: atelierEvents, init: options?.init, context: options?.context, waitForContinue: options?.waitForContinue });
     if (created.startupError) {
-      registry.setIssue(id, "gateway", `${created.startupError} Continued despite startup failure; gateway-dependent features may be unavailable.`);
-    } else {
-      await startWorkspaceGateway(id, registry, workspaceStartupOperations);
+      registry.setIssue(id, "readiness", `${created.startupError} Continued despite preparation failure; required images or gateways may be unavailable.`);
     }
     await runWorkspaceProvisioningHooks(provisioningHooks, { workspaceId: id, creationContext: options?.context, events: atelierEvents, waitForContinue: options?.waitForContinue });
     await atelierEvents.emit("workspace_provision_step", { workspaceId: id, id: "workspace.integrations", label: "Run workspace startup integrations", status: "running" });
@@ -251,7 +248,6 @@ app = createWebApp({
     }
   },
   destroyWorkspace: async (id) => {
-    await ingressSockets.remove(id);
     await deleteWorkspace(id, { force: true, events: atelierEvents });
   },
 });
@@ -380,6 +376,8 @@ const workspaceIngress = createWorkspaceIngress({
 });
 
 const ingressSockets = createWorkspaceIngressSockets(workspaceIngress, join(runtimeContext.atelierDataDir, "workspace-sockets"));
+atelierEvents.on("workspace_plan_prepare", ({ workspaceId }) => ingressSockets.ensure(workspaceId));
+atelierEvents.on("workspace_deleted", ({ workspaceId }) => ingressSockets.remove(workspaceId));
 
 async function handleCanonicalProxyRequest(url: URL): Promise<Response | undefined> {
   const appMatch = url.pathname.match(/^\/workspaces\/([^/]+)\/apps\/([^/]+)(\/.*)?$/);
@@ -532,7 +530,7 @@ void recoverWorkspaces(registry, workspaceStartupOperations).catch((error) => co
 function resumeWorkspace(id: string): void {
   const entry = registry.get(id);
   if (!entry) return;
-  void startWorkspaceGateway(id, registry, workspaceStartupOperations).then(() => {
+  void prepareWorkspaceForUse(id, registry, workspaceStartupOperations).then(() => {
     if (registry.get(id) === entry && !entry.deletion && !entry.parked) registry.setPhase(id, "ready");
   }).catch((error) => console.error(`Workspace startup failed for ${id}`, error));
 }

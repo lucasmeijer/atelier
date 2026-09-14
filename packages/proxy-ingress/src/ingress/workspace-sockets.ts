@@ -17,6 +17,7 @@ export function createWorkspaceIngressSockets(ingress: WorkspaceIngress, directo
         await mkdir(join(directory, workspaceId), { recursive: true });
         try { await unlink(path); } catch (error) { if ((error as NodeJS.ErrnoException).code !== "ENOENT") throw error; }
         const server = Bun.serve({ unix: path, maxRequestBodySize: 1024, async fetch(request) {
+          if (new URL(request.url).pathname === "/health" && request.method === "GET") return new Response("ok");
           if (new URL(request.url).pathname !== "/origins" || request.method !== "POST") return new Response("Not found", { status: 404 });
           let input: unknown;
           try { input = await request.json(); } catch { return new Response("Invalid JSON", { status: 400 }); }

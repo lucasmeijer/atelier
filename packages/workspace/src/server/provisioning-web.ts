@@ -17,6 +17,7 @@ export interface WorkspaceProvisionStep {
   terminal?: { kind: "host-tmux"; session: string };
   error?: string;
   awaitingContinue?: boolean;
+  retryable?: boolean;
   continueLabel?: string;
   order: number;
 }
@@ -45,8 +46,7 @@ const workspaceCreationSeedSteps: WorkspaceProvisionSeedStep[] = [
   { id: "workspace.plan", label: "Prepare workspace container plan" },
   { id: "workspace.image", label: "Resolve workspace image" },
   { id: "workspace.container", label: "Start workspace container" },
-  { id: "workspace.startup", label: "Wait for workspace startup" },
-  { id: "workspace.gateway", label: "Start workspace gateway" },
+  { id: "workspace.startup", label: "Prepare workspace" },
 ];
 
 const workspaceIntegrationSeedStep: WorkspaceProvisionSeedStep = { id: "workspace.integrations", label: "Run workspace startup integrations" };
@@ -58,7 +58,6 @@ const workspaceProvisionStepRanks = new Map([
   "workspace.image",
   "workspace.container",
   "workspace.startup",
-  "workspace.gateway",
   "workspace.setup",
   "workspace.agent",
   "workspace.integrations",
@@ -88,10 +87,13 @@ function renderProvisionStep(workspaceId: string, step: WorkspaceProvisionStep, 
   const output = step.output && step.status !== "running" ? `<details class="provision-output-disclosure"${step.status === "failed" ? " open" : ""}>${actionItemHtml({ kind: "single", element: { tag: "summary" }, leadingHtml: Icons.Disclosure, label: { kind: "text", text: "View output" } })}<pre class="provision-output-log provision-output" data-controller="auto-scroll">${escapeHtml(step.output)}</pre></details>` : "";
   const error = step.error ? `<div class="provision-error">${escapeHtml(step.error)}</div>` : "";
   const detail = step.detail ? `<span class="r-sub provision-step-detail">${escapeHtml(step.detail)}</span>` : "";
+  const retryAction = step.awaitingContinue && step.retryable
+    ? `<form method="post" action="/workspaces/${encodeURIComponent(workspaceId)}/provisioning/continue?action=retry">${buttonHtml({ type: "submit", variant: "primary", content: { kind: "caption", caption: "Retry" } })}</form>`
+    : "";
   const continueAction = step.awaitingContinue
     ? `<form class="provision-continue" method="post" action="/workspaces/${encodeURIComponent(workspaceId)}/provisioning/continue">${buttonHtml({ type: "submit", variant: "primary", content: { kind: "caption", caption: step.continueLabel ?? "Continue anyway" } })}</form>`
     : "";
-  return `<li class="status-list__item provision-step"${stepStatusAttributes(step.status)}>${renderStatusMarker(step.status)}<div class="provision-step-content"><span class="provision-step-label">${escapeHtml(step.label)}</span>${detail}${activity}${output}${error}${continueAction}${childHtml ? `<ol class="status-list provision-children">${childHtml}</ol>` : ""}</div></li>`;
+  return `<li class="status-list__item provision-step"${stepStatusAttributes(step.status)}>${renderStatusMarker(step.status)}<div class="provision-step-content"><span class="provision-step-label">${escapeHtml(step.label)}</span>${detail}${activity}${output}${error}${retryAction}${continueAction}${childHtml ? `<ol class="status-list provision-children">${childHtml}</ol>` : ""}</div></li>`;
 }
 
 export function createWorkspaceProvisioningStore(options: { onChange: (workspaceId: string) => void; seedSteps: WorkspaceProvisionSeedStep[] }): WorkspaceProvisioningStore {
@@ -124,8 +126,9 @@ export function createWorkspaceProvisioningStore(options: { onChange: (workspace
       detail: event.detail ?? existing?.detail,
       output: event.output ?? existing?.output ?? "",
       terminal: event.terminal ?? existing?.terminal,
-      error: event.error ?? existing?.error,
-      awaitingContinue: event.awaitingContinue ?? existing?.awaitingContinue,
+      error: event.error ?? (event.status === "running" || event.status === "done" ? undefined : existing?.error),
+      awaitingContinue: event.awaitingContinue ?? (event.status === "running" || event.status === "done" ? false : existing?.awaitingContinue),
+      retryable: event.retryable ?? existing?.retryable,
       continueLabel: event.continueLabel ?? existing?.continueLabel,
       order: existing?.order ?? ++order,
     });

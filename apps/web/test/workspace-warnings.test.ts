@@ -51,8 +51,8 @@ test("legacy snapshots do not invent configuration drift; gateway and image issu
   await createProjectEnvironmentVariable(project.id, { name: "REGION", value: "eu" });
   expect(await warningsFor(workspace)).toEqual([]);
   workspace.imageOutdated = true;
-  workspace.issues = [{ kind: "gateway", message: "Gateway unavailable" }, { kind: "image", message: "Image inspection failed" }];
-  expect((await warningsFor(workspace)).map((warning) => warning.kind)).toEqual(["gateway", "image"]);
+  workspace.issues = [{ kind: "readiness", message: "Gateway unavailable" }, { kind: "image", message: "Image inspection failed" }];
+  expect((await warningsFor(workspace)).map((warning) => warning.kind)).toEqual(["readiness", "image"]);
 });
 
 

@@ -2,7 +2,6 @@ import { watch } from "node:fs";
 import { rename, rm } from "node:fs/promises";
 import { join, relative, resolve, sep } from "node:path";
 
-import { isWorkspaceSnapshotterInput } from "../../../packages/workspace-image/scripts/snapshotter-inputs.ts";
 
 const cwd = resolve(new URL("..", import.meta.url).pathname);
 const repoRoot = resolve(cwd, "../..");
@@ -139,7 +138,6 @@ function isWorkspaceImageInputChange(path: string): boolean {
     || rel.startsWith(`workspace-image${sep}rootfs${sep}`)
     || rel === `workspace-image${sep}runtime-image`
     || rel === `workspace-image${sep}src${sep}runtime-units.ts`
-    || (rel.startsWith(`docker-snapshotter${sep}`) && isWorkspaceSnapshotterInput(rel.slice(`docker-snapshotter${sep}`.length)))
     || rel.includes(`${sep}workspace-image${sep}`);
 }
 

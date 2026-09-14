@@ -11,6 +11,7 @@ export {
   projectWorkspaceInit,
   updateProject,
   setProjectDockerfile,
+  setProjectPreloadImages,
   type AddProjectResult,
   type DeleteProjectResult,
   type GitProjectInitInstruction,

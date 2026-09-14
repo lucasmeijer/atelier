@@ -232,6 +232,7 @@ async function startMitmTargetServer(ca: MitmCa, hostname: string): Promise<Mitm
 }
 
 async function handleProxyHttp(context: ProxyContext, req: IncomingMessage, res: ServerResponse): Promise<void> {
+  if (req.url === "/health" && req.method === "GET") { res.end("ok"); return; }
   const targetUrl = requestTargetUrl(req);
   const parsed = new URL(targetUrl);
   const protocol = parsed.protocol === "https:" ? "https" : "http";

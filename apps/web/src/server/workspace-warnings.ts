@@ -26,7 +26,7 @@ export function workspaceWarnings(entry: WorkspaceEntry, project: ProjectConfigu
       add("project-settings-changed", "Project settings have changed", "Your project settings have changed since you created this workspace. They will only apply to new workspaces.", configuration.configurationFingerprint!, { href: `/projects/${encodeURIComponent(projectId)}/settings`, caption: "Project settings" });
     }
   }
-  for (const issue of entry.issues ?? []) add(issue.kind, issue.kind === "gateway" ? "Workspace gateway needs attention" : "Workspace image needs attention", issue.message, issue.message);
+  for (const issue of entry.issues ?? []) add(issue.kind, issue.kind === "readiness" ? "Workspace preparation needs attention" : "Workspace image needs attention", issue.message, issue.message);
   if (entry.imageOutdated && !warnings.some((warning) => warning.kind === "image")) add("image", "Workspace image is outdated", "This workspace was created with an older version of Atelier. Some newer features may require a new workspace.", "outdated");
   return warnings;
 }
