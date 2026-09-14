@@ -37,15 +37,31 @@ export function createParentAtelierPublisher(socketPath = parentIngressSocket): 
   } };
 }
 
+/** Resolve identity when publishing: first-install login can happen after app startup. */
+export function createTailscaleParentPublisher(socketPath = defaultTailscaleLocalApiSocketPath, portRange?: PortRange): ParentOriginPublisher {
+  async function connectedPublisher() {
+    const status = JSON.parse(await tailscaleLocalApiRequest(socketPath, "GET", "/localapi/v0/status"));
+    const host = typeof status.Self?.DNSName === "string" ? status.Self.DNSName.replace(/\.$/, "") : "";
+    if (!host) throw new Error("Tailscale has no DNS name; connect Tailscale before publishing a preview");
+    return { host, publisher: createTailscaleOriginPublisher({ host, socketPath, portRange }) };
+  }
+  return {
+    kind: "tailscale",
+    async publish(port) {
+      const { host, publisher } = await connectedPublisher();
+      await publisher.publish(port);
+      return `https://${host}:${port}`;
+    },
+    async unpublish(port) {
+      const { publisher } = await connectedPublisher();
+      await publisher.unpublish(port);
+    },
+  };
+}
+
 /** A mounted parent directory is configuration even while its server is down. */
 export async function detectParentOriginPublisher(portRange?: PortRange): Promise<ParentOriginPublisher> {
   if (existsSync("/run/atelier-parent")) return createParentAtelierPublisher();
-  if (existsSync(dirname(defaultTailscaleLocalApiSocketPath))) {
-    const status = JSON.parse(await tailscaleLocalApiRequest(defaultTailscaleLocalApiSocketPath, "GET", "/localapi/v0/status"));
-    const host = status.Self?.DNSName?.replace(/\.$/, "");
-    if (!host) throw new Error("Tailscale has no DNS name; connect Tailscale before starting ingress");
-    const publisher = createTailscaleOriginPublisher({ host, portRange });
-    return { kind: "tailscale", async publish(port) { await publisher.publish(port); return `https://${host}:${port}`; }, unpublish: (port) => publisher.unpublish(port) };
-  }
+  if (existsSync(dirname(defaultTailscaleLocalApiSocketPath))) return createTailscaleParentPublisher(defaultTailscaleLocalApiSocketPath, portRange);
   return createLocalOriginPublisher();
 }
