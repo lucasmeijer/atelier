@@ -72,7 +72,7 @@ async function exerciseIngress(gatewayUrl: string, token: string) {
   const request = (url: string, init: BunFetchRequestInit = {}) => fetch(url, { proxy: new URL(url).origin, signal: AbortSignal.timeout(5000), ...init });
   try {
     await ingress.initialize();
-    const opened = await ingress.openCanonical({ workspaceId: "integration", appKey: "web" }, "/", new Request("http://127.0.0.1:3000/"));
+    const opened = await ingress.openCanonical({ workspaceId: "integration", appKey: "web" }, "/");
     assert.equal(opened.status, 302);
     const origin = new URL(opened.headers.get("location")!).origin;
     assert.equal(await (await request(`${origin}/a%2Fb?x=%2F`)).text(), "/a%2Fb?x=%2F");

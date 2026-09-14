@@ -7,8 +7,8 @@ import {
   normalizeDecodedFetchResponse,
   publicOriginPortRangeFromEnv,
   StoppedWorkspaceError,
-  syncTailscaleServePortConfig,
-  type OriginPublisher,
+  pruneTailscaleServePortConfig,
+  type ParentOriginPublisher,
   type TailscaleServeConfig,
 } from "@atelier/proxy-ingress/server";
 import { closeWebSocket } from "../src/ingress/websocket.ts";
@@ -23,14 +23,11 @@ async function freePort(): Promise<number> {
 function recordingPublisher() {
   const active = new Set<number>();
   const calls: string[] = [];
-  const publisher: OriginPublisher = {
-    async publish(port) { active.add(port); calls.push(`publish:${port}`); },
+  const publisher: ParentOriginPublisher = {
+    kind: "localhost",
+    async publish(port) { active.add(port); calls.push(`publish:${port}`); return `http://localhost:${port}`; },
     async unpublish(port) { active.delete(port); calls.push(`unpublish:${port}`); },
-    async reset(ports) {
-      active.clear();
-      for (const port of ports) active.add(port);
-      calls.push(`reset:${[...ports].join(",")}`);
-    },
+
   };
   return { active, calls, publisher };
 }
@@ -46,26 +43,26 @@ describe("workspace ingress", () => {
     expect(calls).toEqual([[undefined, undefined], [4001, "upstream done"]]);
   });
 
-  test("keeps canonical identity stable while origin leases are ephemeral", async () => {
+  test("publishes one stable origin per app and removes publication on deletion", async () => {
     const port = await freePort();
     const published = recordingPublisher();
     const ingress = createWorkspaceIngress({
       hostname: "127.0.0.1",
       originPortRange: { start: port, end: port },
-      originPublisher: published.publisher,
+      parentOriginPublisher: published.publisher,
       resolveWorkspace: () => undefined,
       resolveApp: (_app, url) => ({ kind: "fetch", fetch: () => new Response(`served:${url.pathname}`) }),
     });
     await ingress.initialize();
 
     const canonical = new Request("http://127.0.0.1:3000/workspaces/ws/apps/demo/path?x=1");
-    const first = await ingress.openCanonical({ workspaceId: "ws", appKey: "demo" }, "/path?x=1", canonical);
-    const second = await ingress.openCanonical({ workspaceId: "ws", appKey: "demo" }, "/other", canonical);
+    const first = await ingress.openCanonical({ workspaceId: "ws", appKey: "demo" }, "/path?x=1");
+    const second = await ingress.openCanonical({ workspaceId: "ws", appKey: "demo" }, "/other");
 
     expect(first.status).toBe(302);
     expect(new URL(first.headers.get("location")!).port).toBe(String(port));
     expect(new URL(second.headers.get("location")!).port).toBe(String(port));
-    expect(published.calls).toEqual(["reset:", `publish:${port}`]);
+    expect(published.calls).toEqual([`publish:${port}`]);
     expect(await (await fetch(first.headers.get("location")!)).text()).toBe("served:/path");
     expect(ingress.inspect()).toEqual([expect.objectContaining({ workspaceId: "ws", appKey: "demo", port, scope: "public" })]);
 
@@ -85,15 +82,13 @@ describe("workspace ingress", () => {
     });
     await ingress.initialize();
     const request = new Request("http://127.0.0.1:3000/");
-    const first = await ingress.openCanonical({ workspaceId: "ws", appKey: "first" }, "/", request);
+    const first = await ingress.openCanonical({ workspaceId: "ws", appKey: "first" }, "/");
     const firstPort = Number(new URL(first.headers.get("location")!).port);
     await ingress.stopWorkspace("ws");
-    const second = await ingress.openCanonical({ workspaceId: "ws", appKey: "second" }, "/", request);
+    const second = await ingress.openCanonical({ workspaceId: "ws", appKey: "second" }, "/");
     const secondPort = Number(new URL(second.headers.get("location")!).port);
     expect(secondPort).not.toBe(firstPort);
     await ingress.stopWorkspace("ws");
-    const reopened = await ingress.openCanonical({ workspaceId: "ws", appKey: "first" }, "/", request);
-    expect(Number(new URL(reopened.headers.get("location")!).port)).toBe(firstPort);
     await ingress.stopAll();
   });
 
@@ -123,7 +118,6 @@ describe("workspace ingress", () => {
     const opened = await ingress.openCanonical(
       { workspaceId: "ws", appKey: "demo" },
       "/submit?x=1",
-      new Request("https://atelier.example/workspaces/ws/apps/demo/submit?x=1", { headers: { "x-forwarded-proto": "https", host: "atelier.example" } }),
     );
     const location = new URL(opened.headers.get("location")!);
     const response = await fetch(`http://127.0.0.1:${location.port}/submit?x=1`, { method: "POST", body: "payload", headers: { host: location.host } });
@@ -169,7 +163,7 @@ describe("workspace ingress", () => {
       resolveApp: (_app, url) => ({ kind: "http", target: new URL(`${url.pathname}${url.search}`, `http://127.0.0.1:${upstream.port}`) }),
     });
     await ingress.initialize();
-    const opened = await ingress.openCanonical({ workspaceId: "ws", appKey: "web" }, "/", new Request("http://127.0.0.1:3000/"));
+    const opened = await ingress.openCanonical({ workspaceId: "ws", appKey: "web" }, "/");
     const origin = new URL(opened.headers.get("location")!).origin;
     const form = new FormData();
     form.set("title", "demo");
@@ -215,66 +209,18 @@ describe("workspace ingress", () => {
       resolveApp: (_app, url) => ({ kind: "http", target: new URL(url.pathname, `http://127.0.0.1:${upstream.port}`) }),
     });
     await ingress.initialize();
-    const opened = await ingress.openCanonical({ workspaceId: "ws", appKey: "events" }, "/events", new Request("http://127.0.0.1:3000/"));
-    const response = await fetch(opened.headers.get("location")!);
+    const opened = await ingress.openCanonical({ workspaceId: "ws", appKey: "events" }, "/events");
+    const controller = new AbortController();
+    const response = await fetch(opened.headers.get("location")!, { signal: controller.signal });
     const reader = response.body!.getReader();
     const first = await reader.read();
     expect(new TextDecoder().decode(first.value)).toContain("event: ready");
+    controller.abort();
     await reader.cancel("done");
     await Bun.sleep(20);
     expect(cancelled).toBe(true);
     await ingress.stopAll();
     upstream.stop(true);
-  });
-
-  test("nested Atelier can lease more than ten app origins", async () => {
-    const ingress = createWorkspaceIngress({
-      hostname: "127.0.0.1",
-      resolveWorkspace: () => undefined,
-      resolveApp: () => ({ kind: "fetch", fetch: () => new Response("nested") }),
-    });
-    const request = new Request("http://127.0.0.1:3000/", {
-      headers: { "x-atelier-parent-origin": "https://outer.example", "x-atelier-parent-workspace": "outer" },
-    });
-    try {
-      for (let index = 0; index < 12; index += 1) {
-        const response = await ingress.openCanonical({ workspaceId: "inner", appKey: `app-${index}` }, "/", request);
-        expect(response.status).toBe(302);
-      }
-      const leases = ingress.inspect();
-      expect(leases).toHaveLength(12);
-      expect(leases.some((lease) => lease.port! > 3010)).toBe(true);
-    } finally {
-      await ingress.stopAll();
-    }
-  });
-
-  test("keeps direct and nested origin leases independent", async () => {
-    const port = await freePort();
-    const ingress = createWorkspaceIngress({
-      hostname: "127.0.0.1",
-      originPortRange: { start: port, end: port },
-      resolveWorkspace: () => undefined,
-      resolveApp: () => ({ kind: "fetch", fetch: () => new Response("nested") }),
-    });
-    await ingress.initialize();
-    const app = { workspaceId: "inner", appKey: "browser-1" };
-    const direct = await ingress.openCanonical(app, "/direct", new Request("http://127.0.0.1:3000/workspaces/inner/apps/browser-1/direct"));
-    const nested = await ingress.openCanonical(app, "/nested?x=1", new Request("http://127.0.0.1:3000/workspaces/inner/apps/browser-1/nested?x=1", {
-      headers: {
-        "x-atelier-parent-origin": "https://outer.example",
-        "x-atelier-parent-workspace": "outer",
-      },
-    }));
-
-    expect(new URL(direct.headers.get("location")!).port).toBe(String(port));
-    const nestedLocation = new URL(nested.headers.get("location")!);
-    expect(nestedLocation.origin).toBe("https://outer.example");
-    expect(nestedLocation.pathname).toMatch(/^\/workspaces\/outer\/ports\/30(?:0[1-9]|10)\/nested$/);
-    expect(nestedLocation.search).toBe("?x=1");
-    expect(nested.headers.get("x-atelier-nested-workspace-proxy-redirect")).toBe("1");
-    expect(ingress.inspect().map((lease) => lease.scope).sort()).toEqual(["nested", "public"]);
-    await ingress.stopAll();
   });
 
   test("bridges text and binary WebSockets with subprotocol and clean closure propagation", async () => {
@@ -305,7 +251,6 @@ describe("workspace ingress", () => {
     const opened = await ingress.openCanonical(
       { workspaceId: "ws", appKey: "socket" },
       "/echo",
-      new Request("http://127.0.0.1:3000/workspaces/ws/apps/socket/echo"),
     );
     const location = new URL(opened.headers.get("location")!);
     location.protocol = "ws:";
@@ -340,7 +285,7 @@ describe("workspace ingress", () => {
     const assigned = new Set<number>();
     for (let workspace = 0; workspace < 10; workspace += 1) {
       for (let app = 0; app < 10; app += 1) {
-        assigned.add((await identities.assignedPort({ workspaceId: `ws-${workspace}`, appKey: `app-${app}` }, "public", { start: 46000, end: 46099 })).port);
+        assigned.add((await identities.assignedPort({ workspaceId: `ws-${workspace}`, appKey: `app-${app}` }, { start: 46000, end: 46099 })).port);
       }
     }
     expect(assigned.size).toBe(100);
@@ -363,7 +308,7 @@ describe("workspace ingress", () => {
       }),
     });
     await ingress.initialize();
-    const opened = await ingress.openCanonical({ workspaceId: "ws", appKey: "app" }, "/", new Request("http://127.0.0.1:3000/"));
+    const opened = await ingress.openCanonical({ workspaceId: "ws", appKey: "app" }, "/");
     const location = opened.headers.get("location")!;
     const responsePromises = Array.from({ length: 100 }, () => fetch(location));
     for (let attempt = 0; arrived < 100 && attempt < 100; attempt += 1) await Bun.sleep(10);
@@ -385,7 +330,7 @@ describe("workspace ingress", () => {
       resolveApp: () => ({ kind: "fetch", fetch: () => new Response("ok") }),
     });
     await stopped.initialize();
-    const stoppedResponse = await stopped.openCanonical({ workspaceId: "parked", appKey: "demo" }, "/", new Request("http://127.0.0.1:3000/"));
+    const stoppedResponse = await stopped.openCanonical({ workspaceId: "parked", appKey: "demo" }, "/");
     expect(stoppedResponse.status).toBe(503);
     expect(await stoppedResponse.text()).toContain("Start the workspace");
     await stopped.stopAll();
@@ -398,33 +343,15 @@ describe("workspace ingress", () => {
       resolveApp: () => ({ kind: "fetch", fetch: () => new Response("ok") }),
     });
     await capacity.initialize();
-    await capacity.openCanonical({ workspaceId: "ws", appKey: "first" }, "/", new Request("http://127.0.0.1:3000/"));
+    await capacity.openCanonical({ workspaceId: "ws", appKey: "first" }, "/");
     await capacity.stopWorkspace("ws");
-    const exhausted = await capacity.openCanonical({ workspaceId: "ws", appKey: "second" }, "/", new Request("http://127.0.0.1:3000/"));
+    const exhausted = await capacity.openCanonical({ workspaceId: "ws", appKey: "second" }, "/");
     expect(exhausted.status).toBe(507);
     expect(await exhausted.text()).toContain("capacity exhausted");
     await capacity.stopAll();
   });
 
-  test("distinguishes missing apps without allocating an origin", async () => {
-    const port = await freePort();
-    const ingress = createWorkspaceIngress({
-      hostname: "127.0.0.1",
-      originPortRange: { start: port, end: port },
-      resolveWorkspace: () => undefined,
-      resolveApp: () => undefined,
-    });
-    await ingress.initialize();
-    const response = await ingress.openCanonical(
-      { workspaceId: "ws", appKey: "missing" },
-      "/",
-      new Request("http://127.0.0.1:3000/workspaces/ws/apps/missing/"),
-    );
-    expect(response.status).toBe(404);
-    expect(await response.text()).toContain("does not exist");
-    expect(ingress.inspect()).toEqual([expect.objectContaining({ appKey: "missing", failureCategory: "unknown_app", targetState: "failed" })]);
-    await ingress.stopAll();
-  });
+
 });
 
 describe("decoded upstream response normalization", () => {
@@ -456,11 +383,7 @@ describe("origin publication policy", () => {
       Web: { "atelier.tailnet.ts.net:443": { Handlers: { "/": { Proxy: "http://127.0.0.1:3000/" } } } },
     };
     expect(ensureTailscaleServePortConfig(config, { host: "atelier.tailnet.ts.net", port: 41000 })).toBe(true);
-    expect(syncTailscaleServePortConfig(config, {
-      host: "atelier.tailnet.ts.net",
-      activePorts: new Set<number>(),
-      portRange: { start: 41000, end: 41000 },
-    })).toBe(true);
+    expect(pruneTailscaleServePortConfig(config, { host: "atelier.tailnet.ts.net", port: 41000 })).toBe(true);
     expect(config).toEqual({
       TCP: { "443": { HTTPS: true } },
       Web: { "atelier.tailnet.ts.net:443": { Handlers: { "/": { Proxy: "http://127.0.0.1:3000/" } } } },

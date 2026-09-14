@@ -3,8 +3,8 @@ import { actionLinkHtml } from "@atelier/design-system/action-link";
 import { buttonHtml } from "@atelier/design-system/button";
 import { buttonGroupHtml } from "@atelier/design-system/button-group";
 import { escapeHtml, type WorkspaceWorkViewPresentation } from "@atelier/shared";
+import { isWorkspaceLoopbackHost } from "../shared.ts";
 import { browserFrameId, type WorkspaceBrowserView } from "./state.ts";
-import { browserProxyUrl, isWorkspaceLoopbackHost } from "../shared.ts";
 
 export function browserWorkViewPresentation(view: WorkspaceBrowserView): WorkspaceWorkViewPresentation {
   return {
@@ -16,14 +16,8 @@ export function browserWorkViewPresentation(view: WorkspaceBrowserView): Workspa
   };
 }
 
-export function renderBrowserWorkViewBody(workspaceId: string, view: WorkspaceBrowserView): string {
-  return `<section class="work-view-pane" data-work-view-source="${escapeHtml(view.key)}">${renderBrowserPane(workspaceId, view)}</section>`;
-}
-
-function renderBrowserPane(workspaceId: string, view: WorkspaceBrowserView): string {
-  return `<div class="browser-pane">
-    ${renderBrowserFrame(workspaceId, view)}
-  </div>`;
+export function renderBrowserWorkViewBody(workspaceId: string, view: WorkspaceBrowserView, previewUrl: string): string {
+  return `<section class="work-view-pane" data-work-view-source="${escapeHtml(view.key)}"><div class="browser-pane">${renderBrowserFrame(workspaceId, view, previewUrl)}</div></section>`;
 }
 
 const workspacePreviewPermissions = [
@@ -49,15 +43,12 @@ const workspacePreviewPermissions = [
   "xr-spatial-tracking",
 ].map((feature) => `${feature} *`).join("; ");
 
-export function renderBrowserFrame(workspaceId: string, view: WorkspaceBrowserView): string {
+export function renderBrowserFrame(workspaceId: string, view: WorkspaceBrowserView, previewUrl: string): string {
   const target = view.targetUrl ? new URL(view.targetUrl) : undefined;
-  const workspaceLocal = target ? isWorkspaceLoopbackHost(target.hostname) : false;
-  const proxy = target && workspaceLocal ? browserProxyUrl(view.key, target, "http://atelier.browser") : undefined;
-  const initialPath = proxy ? `${proxy.pathname}${proxy.search}${proxy.hash}` : "";
   const appKey = view.key;
-  const frameControllerAttributes = target && workspaceLocal
-    ? ` data-controller="workspace-app-frame" data-workspace-app-frame-workspace-id-value="${escapeHtml(workspaceId)}" data-workspace-app-frame-app-key-value="${escapeHtml(appKey)}" data-workspace-app-frame-initial-path-value="${escapeHtml(initialPath)}" allow="${workspacePreviewPermissions}" allowfullscreen`
-    : target ? ` src="${escapeHtml(target.toString())}"` : "";
+  const frameControllerAttributes = previewUrl
+    ? ` src="${escapeHtml(previewUrl)}"${target && isWorkspaceLoopbackHost(target.hostname) ? ` allow="${workspacePreviewPermissions}" allowfullscreen` : ""}`
+    : "";
   const externalLinkContent = {
     kind: "icon-only" as const,
     iconHtml: '<svg viewBox="0 0 24 24" aria-hidden="true"><path d="M14 5h5v5M19 5l-8 8M18 13v6H5V6h6"/></svg>',
@@ -65,7 +56,7 @@ export function renderBrowserFrame(workspaceId: string, view: WorkspaceBrowserVi
   };
   const externalLink = target
     ? actionLinkHtml({
-      href: target.toString(),
+      href: previewUrl,
       variant: "secondary",
       content: externalLinkContent,
       attributesHtml: 'data-browser-address-target="external" target="_blank" rel="noreferrer"',

@@ -97,6 +97,7 @@ function context() {
       broadcastWorkspace: () => {},
       deleteCurrentWorkspace: async () => ({ deleted: false, blocked: false }),
       registerSocketHandler: () => {},
+      publishWorkspacePort: async () => { throw new Error("not used"); },
       registerWorkspaceAppResolver: () => {},
       registerProvisioningHook: () => {},
       onWorkspaceRemoved: () => {},

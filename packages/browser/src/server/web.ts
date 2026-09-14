@@ -3,12 +3,22 @@ import { turboStream, type WorkspaceCommandContribution, type WorkspaceModule, t
 import { browserWorkViewPresentation, renderBrowserFrame, renderBrowserWorkViewBody } from "./render.ts";
 import { browserFrameId, createWorkspaceBrowserView, deleteWorkspaceBrowserState, deleteWorkspaceBrowserView, getWorkspaceBrowserView, listWorkspaceBrowserViews, setWorkspaceBrowserTarget } from "./state.ts";
 import { browserStaticFiles } from "./static.ts";
-import { isBrowserWorkspaceApp, patchBrowserWorkspaceAppResponse, resolveBrowserWorkspaceAppBackend } from "./proxy.ts";
+import { isWorkspaceLoopbackHost } from "../shared.ts";
+import type { WorkspaceBrowserView } from "./state.ts";
 import { invalidArguments, readJsonObject, requestAcceptsJson, type JsonObject, type JsonValue } from "@atelier/core";
 import { createBrowserPresenter } from "./agent-tool.ts";
 import { registerWorkspacePresenter } from "@atelier/agent/server";
 import { Type, type Static } from "typebox";
 import { Value } from "typebox/value";
+
+let publishWorkspacePort: (workspaceId: string, port: number, protocol?: "http" | "https") => Promise<string>;
+async function previewUrl(workspaceId: string, view: WorkspaceBrowserView): Promise<string> {
+  if (!view.targetUrl) return "";
+  const target = new URL(view.targetUrl);
+  if (!isWorkspaceLoopbackHost(target.hostname)) return target.toString();
+  const origin = await publishWorkspacePort(workspaceId, Number(target.port || (target.protocol === "https:" ? 443 : 80)), target.protocol === "https:" ? "https" : "http");
+  return `${origin}${target.pathname}${target.search}${target.hash}`;
+}
 
 const browserCreateCommandId = "browser.create";
 const browserOpenCommandId = "browser.open";
@@ -67,10 +77,10 @@ export const browserWorkspaceModule: WorkspaceModule = {
     type: "browser",
     parseReference: parseBrowserReference,
     identity: (reference: { type: "browser"; browserId: string }) => reference.browserId,
-    render: ({ workspaceId, reference }: { workspaceId: string; reference: BrowserWorkViewReference }) => {
+    render: async ({ workspaceId, reference }: { workspaceId: string; reference: BrowserWorkViewReference }) => {
       const view = getWorkspaceBrowserView(workspaceId, reference.browserId);
       if (!view) throw new Error(`Browser Work view not found: ${reference.browserId}`);
-      return renderBrowserWorkViewBody(workspaceId, view);
+      return renderBrowserWorkViewBody(workspaceId, view, await previewUrl(workspaceId, view));
     },
     close: ({ workspaceId, reference }: { workspaceId: string; reference: { type: "browser"; browserId: string } }) => deleteWorkspaceBrowserView(workspaceId, reference.browserId),
   }],
@@ -84,19 +94,12 @@ export const browserWorkspaceModule: WorkspaceModule = {
     },
   }],
   initialize(context) {
-    context.registerWorkspaceAppResolver(async (app, requestUrl) => {
-      if (!isBrowserWorkspaceApp(app.workspaceId, app.appKey)) return undefined;
-      const backend = await resolveBrowserWorkspaceAppBackend(app, requestUrl);
-      return {
-        ...backend,
-        adaptResponse: (response, request) => patchBrowserWorkspaceAppResponse(app, response, request),
-      };
-    });
+    publishWorkspacePort = context.publishWorkspacePort;
     context.onWorkspaceRemoved((workspaceId) => deleteWorkspaceBrowserState(workspaceId));
     registerWorkspacePresenter("browser", (workspaceId) => createBrowserPresenter(workspaceId, {
       async presentBrowser(view) {
         await context.presentWorkView(workspaceId, { type: "browser", browserId: view.key });
-        context.broadcastWorkspace(workspaceId, turboStream("replace", browserFrameId(workspaceId, view.key), renderBrowserFrame(workspaceId, view)));
+        context.broadcastWorkspace(workspaceId, turboStream("replace", browserFrameId(workspaceId, view.key), renderBrowserFrame(workspaceId, view, await previewUrl(workspaceId, view))));
       },
     }));
   },
@@ -120,7 +123,7 @@ async function browserNavigateEndpoint(workspaceId: string, appKey: string, requ
     : new Response("browser view not found", { status: 404, headers: { "content-type": "text/plain; charset=utf-8" } });
   return wantsJson
     ? Response.json({ view: { key: view.key, label: view.label, url: view.targetUrl } })
-    : new Response(renderBrowserFrame(workspaceId, view), { headers: { "content-type": "text/html; charset=utf-8" } });
+    : new Response(renderBrowserFrame(workspaceId, view, await previewUrl(workspaceId, view)), { headers: { "content-type": "text/html; charset=utf-8" } });
 }
 
 function browserNavigateJsonUrl(input: JsonObject): string {

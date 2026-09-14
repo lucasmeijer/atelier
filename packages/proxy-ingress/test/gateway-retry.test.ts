@@ -25,7 +25,7 @@ for (const method of ["GET", "HEAD", "POST"]) {
       resolveApp: () => ({ kind: "http", target: new URL("http://127.0.0.1:5173/"), gateway: { url: new URL(gateway.url), token: "test" } }),
     });
     try {
-      const opened = await ingress.openCanonical({ workspaceId: "retry", appKey: "app" }, "/", new Request("http://127.0.0.1:3000/"));
+      const opened = await ingress.openCanonical({ workspaceId: "retry", appKey: "app" }, "/");
       const origin = opened.headers.get("location")!;
       const response = await fetch(origin, { method, proxy: origin });
       expect(response.status).toBe(503);

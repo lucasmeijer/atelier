@@ -1,6 +1,6 @@
 import { spawn } from "node:child_process";
 import { request as httpRequest } from "node:http";
-import { atelierDataPath, createProcessFileLock, getAtelierRuntimeContext, isJsonObject, type JsonObject, type JsonValue } from "@atelier/core";
+import { isJsonObject, type JsonObject, type JsonValue } from "@atelier/core";
 
 export interface PortRange {
   start: number;
@@ -25,7 +25,6 @@ export const defaultTailscaleServeHelperPath = "/usr/local/bin/atelier-tailscale
 export interface OriginPublisher {
   publish(port: number): Promise<void>;
   unpublish(port: number): Promise<void>;
-  reset(ports: Iterable<number>): Promise<void>;
 }
 
 export interface TailscaleOriginPublisherOptions {
@@ -38,11 +37,6 @@ export interface TailscaleOriginPublisherOptions {
 export type TailscaleServeConfig = JsonObject;
 
 type ServeConfigMutator = (config: TailscaleServeConfig) => boolean | Promise<boolean>;
-
-const withTailscaleServeLock = createProcessFileLock({
-  label: "Tailscale Serve config",
-  lockDir: () => atelierDataPath(getAtelierRuntimeContext(), "proxy", "tailscale-serve.lock"),
-});
 
 export function createTailscaleOriginPublisher(options: TailscaleOriginPublisherOptions): OriginPublisher {
   const host = normalizeServeHost(options.host);
@@ -61,9 +55,7 @@ export function createTailscaleOriginPublisher(options: TailscaleOriginPublisher
       validateManagedPort(port, portRange);
       await mutateTailscaleServeConfig(socketPath, (config) => pruneTailscaleServePortConfig(config, { host, port, targetHost }));
     },
-    async reset(ports) {
-      await mutateTailscaleServeConfig(socketPath, (config) => syncTailscaleServePortConfig(config, { host, activePorts: managedPortSet(ports, portRange), portRange, targetHost }));
-    },
+
   };
 }
 
@@ -84,19 +76,8 @@ function createSudoTailscaleOriginPublisher(options: { host: string }): OriginPu
       validateManagedPort(port, defaultPublicOriginPortRange);
       await runSudoTailscaleServeHelper(["release", options.host, String(port)]);
     },
-    async reset(ports) {
-      await runSudoTailscaleServeHelper(["sync", options.host, ...[...managedPortSet(ports, defaultPublicOriginPortRange)].map((port) => String(port))]);
-    },
-  };
-}
 
-function managedPortSet(ports: Iterable<number>, range: PortRange): Set<number> {
-  const result = new Set<number>();
-  for (const port of ports) {
-    validateManagedPort(port, range);
-    result.add(port);
-  }
-  return result;
+  };
 }
 
 function samePortRange(a: PortRange, b: PortRange): boolean {
@@ -147,35 +128,35 @@ export function pruneTailscaleServePortConfig(config: TailscaleServeConfig, opti
   return pruneManagedPort(config, options.port, { desiredHost: host, active: false, targetHost });
 }
 
-export function syncTailscaleServePortConfig(config: TailscaleServeConfig, options: { host: string; activePorts: Set<number>; portRange?: PortRange; targetHost?: string }): boolean {
-  const host = normalizeServeHost(options.host);
-  const portRange = options.portRange ?? defaultPublicOriginPortRange;
-  const targetHost = options.targetHost ?? "127.0.0.1";
-  let changed = false;
-  for (let port = portRange.start; port <= portRange.end; port++) {
-    changed = pruneManagedPort(config, port, { desiredHost: host, active: options.activePorts.has(port), targetHost }) || changed;
-  }
-  for (const port of options.activePorts) changed = ensureTailscaleServePortConfig(config, { host, port, targetHost }) || changed;
-  return changed;
-}
-
 export async function mutateTailscaleServeConfig(socketPath: string, mutator: ServeConfigMutator): Promise<void> {
-  await withTailscaleServeLock(async () => {
-    const config = await readTailscaleServeConfig(socketPath);
+  // The supervisor also edits Serve. ETag CAS coordinates across containers and
+  // PID namespaces without sharing a lock directory.
+  for (let attempt = 0; attempt < 10; attempt++) {
+    const current = await localApiResponse(socketPath, "GET", "/localapi/v0/serve-config");
+    if (current.status !== 200) throw new Error(`Tailscale Serve read failed: ${current.status}`);
+    if (!current.etag) throw new Error("Tailscale Serve response has no ETag");
+    const config: unknown = JSON.parse(current.body || "{}");
+    if (!isJsonObject(config)) throw new Error("Tailscale Serve config response is not an object");
     if (!await mutator(config)) return;
-    await writeTailscaleServeConfig(socketPath, config);
+    const updated = await localApiResponse(socketPath, "POST", "/localapi/v0/serve-config", JSON.stringify(config), current.etag);
+    if (updated.status === 412) continue;
+    if (updated.status < 200 || updated.status >= 300) throw new Error(`Tailscale Serve write failed: ${updated.status}: ${updated.body}`);
+    return;
+  }
+  throw new Error("Tailscale Serve config kept changing during publication");
+}
+
+function localApiResponse(socketPath: string, method: string, path: string, body?: string, etag?: string): Promise<{ status: number; body: string; etag?: string }> {
+  return new Promise((resolve, reject) => {
+    const req = httpRequest({ socketPath, method, path, headers: { host: "local-tailscaled.sock", ...(body ? { "content-type": "application/json", "content-length": Buffer.byteLength(body) } : {}), ...(etag ? { "if-match": etag } : {}) } }, (res) => {
+      const chunks: Buffer[] = [];
+      res.on("data", (chunk) => chunks.push(Buffer.from(chunk)));
+      res.on("end", () => resolve({ status: res.statusCode ?? 0, body: Buffer.concat(chunks).toString(), etag: res.headers.etag }));
+    });
+    req.on("error", reject);
+    req.setTimeout(5000, () => req.destroy(new Error("Tailscale Serve request timed out")));
+    req.end(body);
   });
-}
-
-async function readTailscaleServeConfig(socketPath: string): Promise<TailscaleServeConfig> {
-  const body = await tailscaleLocalApiRequest(socketPath, "GET", "/localapi/v0/serve-config");
-  const parsed: unknown = JSON.parse(body || "{}");
-  if (!isJsonObject(parsed)) throw new Error("Tailscale Serve config response is not an object");
-  return parsed;
-}
-
-async function writeTailscaleServeConfig(socketPath: string, config: TailscaleServeConfig): Promise<void> {
-  await tailscaleLocalApiRequest(socketPath, "POST", "/localapi/v0/serve-config", `${JSON.stringify(config)}\n`);
 }
 
 export async function tailscaleLocalApiRequest(socketPath: string, method: "GET" | "POST", path: string, body?: string): Promise<string> {
