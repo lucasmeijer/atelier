@@ -1,0 +1,15 @@
+--- a/cmd/ctr/commands/images/build_erofs_cache.go
++++ b/cmd/ctr/commands/images/build_erofs_cache.go
+@@ -99,6 +99,12 @@
+ 		}
+ 		defer cancel()
+ 
++		ctx, done, err := client.WithLease(ctx)
++		if err != nil {
++			return err
++		}
++		defer done(ctx)
++
+ 		img, err := client.ImageService().Get(ctx, ref)
+ 		if err != nil {
+ 			return err

@@ -4,6 +4,6 @@
   "containerd-plugins-namespace": "plugins.moby",
   "features": { "containerd-snapshotter": true },
   "storage-driver": "erofs",
-  "data-root": "/var/lib/docker/engine",
+  "data-root": "/data/docker",
   "hosts": ["unix:///var/run/docker.sock"]
 }

@@ -1,5 +1,5 @@
 version = 3
-root = "/var/lib/docker/containerd"
+root = "/data/containerd"
 state = "/run/containerd"
 disabled_plugins = ["io.containerd.cri.v1.images", "io.containerd.cri.v1.runtime"]
 
@@ -11,7 +11,7 @@ disabled_plugins = ["io.containerd.cri.v1.images", "io.containerd.cri.v1.runtime
   max_concurrent_unpacks = 4
 
 [plugins."io.containerd.snapshotter.v1.erofs"]
-  layer_content_caches = ["/erofs-cache"]
+  layer_content_caches = ["/data/erofs-cache"]
 
 [plugins."io.containerd.service.v1.diff-service"]
   default = ["erofs", "walking"]
