@@ -30,7 +30,7 @@ test("shared Docker activates its dependencies without binding gateway lifetime 
   expect(units["atelier-containerd.service"]).toContain("Wants=atelier-snapshotter.service");
   expect(units["atelier-containerd.service"]).toContain("KillMode=process");
   expect(units["atelier-snapshotter.service"]).toContain("Restart=on-failure");
-  expect(workspaceSystemdUnits()["docker.service"]).toContain("-H fd:// --live-restore");
+  expect(workspaceSystemdUnits()["docker.service"]).toContain("dockerd --live-restore");
 });
 
 test("provisioning preserves initialization scripts and supplies PID 1 runtime requirements", async () => {
@@ -42,7 +42,7 @@ test("provisioning preserves initialization scripts and supplies PID 1 runtime r
     expect(plan.extraArgs).toEqual(["--privileged", "--cgroupns=private", "--tmpfs", "/run", "--stop-signal", "SIGRTMIN+3"]);
     expect(plan.containerFiles.map(file => file.target)).toContain("/.atelier/init.sh");
     expect(await readFile(join(directory, "init.sh"), "utf8")).toBe(init);
-    expect(plan.containerFiles).toHaveLength(5);
+    expect(plan.containerFiles).toHaveLength(6);
     expect(await readFile(join(directory, "docker.service"), "utf8")).toBe(workspaceSystemdUnits()["docker.service"]);
   } finally {
     await rm(directory, { recursive: true, force: true });

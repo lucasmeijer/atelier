@@ -1,3 +1,4 @@
+import { workspaceRuntimeUnits } from "../../workspace-image/src/runtime-units.ts";
 import { mkdir, writeFile } from "node:fs/promises";
 import { join } from "node:path";
 import { registryLoopbackAddress } from "@atelier/workspace-image";
@@ -24,9 +25,9 @@ function systemdArgument(value: string): string {
 interface WorkspaceSystemdUnits { [unitName: string]: string }
 
 export function workspaceSystemdUnits(runtime?: SharedDockerRuntime): WorkspaceSystemdUnits {
-  const registrySocket = runtime?.registrySocket;
-  const dependencies: string[] = [];
-  if (runtime) dependencies.push("atelier-containerd.service");
+  if (!runtime) return workspaceRuntimeUnits();
+  const registrySocket = runtime.registrySocket;
+  const dependencies = ["atelier-containerd.service"];
   if (registrySocket) dependencies.push("atelier-registry.service");
   const units: WorkspaceSystemdUnits = {
     "atelier-init.service": `[Unit]
@@ -81,7 +82,7 @@ ${limits}
 [Service]
 Type=notify
 ${environment}
-ExecStart=/usr/bin/dockerd -H fd:// --live-restore ${runtime ? "--config-file=/.atelier/docker-daemon.json" : "--tls=false --storage-driver=fuse-overlayfs --max-concurrent-uploads=1"}
+ExecStart=/usr/local/bin/dockerd -H fd:// --live-restore --config-file=/.atelier/docker-daemon.json
 ${restart}
 TimeoutStartSec=90s
 TimeoutStopSec=120s
@@ -111,8 +112,7 @@ ${restart}
 `;
   }
 
-  if (runtime) {
-    units["atelier-snapshotter.service"] = `[Unit]
+  units["atelier-snapshotter.service"] = `[Unit]
 Description=Atelier local snapshotter adapter
 ${limits}
 
@@ -123,7 +123,7 @@ ${restart}
 Delegate=yes
 TasksMax=infinity
 `;
-    units["atelier-containerd.service"] = `[Unit]
+  units["atelier-containerd.service"] = `[Unit]
 Description=Atelier private containerd
 Wants=atelier-snapshotter.service
 After=atelier-snapshotter.service
@@ -131,11 +131,10 @@ ${limits}
 
 [Service]
 Type=notify
-ExecStart=/usr/bin/containerd --config /.atelier/containerd.toml
+ExecStart=/usr/local/bin/containerd --config /.atelier/containerd.toml
 ${restart}
 ${containerRuntime}
 `;
-  }
   return units;
 }
 

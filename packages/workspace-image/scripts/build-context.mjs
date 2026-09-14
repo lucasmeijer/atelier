@@ -1,10 +1,11 @@
 #!/usr/bin/env bun
 import { createHash } from "node:crypto";
 import { existsSync } from "node:fs";
-import { cp, mkdir, readFile, readdir, rm, writeFile } from "node:fs/promises";
+import { cp, lstat, mkdir, readFile, readdir, readlink, rm, writeFile } from "node:fs/promises";
 import { basename, dirname, join, relative } from "node:path";
 import { fileURLToPath } from "node:url";
 
+import { workspaceRuntimeUnits } from "../src/runtime-units.ts";
 import { workspaceSnapshotterInputs } from "./snapshotter-inputs.ts";
 
 const outDir = process.argv[2];
@@ -41,6 +42,7 @@ async function packageManifests() {
 }
 
 const manifests = await packageManifests();
+const runtimeImage = (await readFile(join(packagesDir, "workspace-image/runtime-image"), "utf8")).trim();
 
 await rm(outDir, { recursive: true, force: true });
 await mkdir(join(outDir, "files"), { recursive: true });
@@ -76,10 +78,6 @@ for (const { path, dir, name, manifest, hashPath } of manifests) {
     const dest = join(outDir, "files", rel);
     await mkdir(dirname(dest), { recursive: true });
     await cp(from, dest, { recursive: true });
-    const hashFrom = relative(dir, from);
-    const proc = Bun.spawnSync(["sh", "-c", `find ${quote(hashFrom)} -type f -print0 | sort -z | xargs -0 sha256sum`], { cwd: dir });
-    if (proc.exitCode !== 0) throw new Error(`could not hash workspace image files from ${from}: ${proc.stderr.toString().trim()}`);
-    hash.update(proc.stdout);
     const copyInstruction = { rel: `files/${rel}`, to: file.to, mode: file.mode };
     (file.afterRun ? finalCopies : moduleCopyInstructions).push(copyInstruction);
   }
@@ -104,7 +102,7 @@ for (const name of await workspaceSnapshotterInputs(snapshotterSource)) {
 }
 
 const uniqueApt = [...new Set(apt)].sort();
-let dockerfile = `FROM --platform=$BUILDPLATFORM golang:1.25.1 AS snapshotter-build\nARG TARGETOS\nARG TARGETARCH\nWORKDIR /src\nCOPY snapshotter/go.mod snapshotter/go.sum ./\nRUN go mod download\nCOPY snapshotter/ ./\nRUN go test ./... && CGO_ENABLED=0 GOOS=$TARGETOS GOARCH=$TARGETARCH go build -trimpath -ldflags="-s -w" -o /atelier-workspace-snapshotter ./cmd/atelier-workspace-snapshotter\n\nFROM golang:1.26.0 AS gateway-build\nWORKDIR /src\nCOPY gateway/ ./\nRUN go test ./... && CGO_ENABLED=0 go build -trimpath -ldflags="-s -w" -o /atelier-workspace-gateway .\n\nFROM oven/bun:1.4.0 AS bun-dist\n\nFROM moby/buildkit:v0.32.2 AS buildkit-dist\n\nFROM ubuntu:26.04\n\nARG DEBIAN_FRONTEND=noninteractive\nLABEL com.atelier.workspace-image.modules=${quote(moduleNames.join(","))}\n\n`;
+let dockerfile = `FROM --platform=$BUILDPLATFORM golang:1.25.1 AS snapshotter-build\nARG TARGETOS\nARG TARGETARCH\nWORKDIR /src\nCOPY snapshotter/go.mod snapshotter/go.sum ./\nRUN go mod download\nCOPY snapshotter/ ./\nRUN go test ./... && CGO_ENABLED=0 GOOS=$TARGETOS GOARCH=$TARGETARCH go build -trimpath -ldflags="-s -w" -o /atelier-workspace-snapshotter ./cmd/atelier-workspace-snapshotter\n\nFROM golang:1.26.0 AS gateway-build\nWORKDIR /src\nCOPY gateway/ ./\nRUN go test ./... && CGO_ENABLED=0 go build -trimpath -ldflags="-s -w" -o /atelier-workspace-gateway .\n\nFROM oven/bun:1.4.0 AS bun-dist\n\nFROM moby/buildkit:v0.32.2 AS buildkit-dist\n\nFROM ${runtimeImage}\n\nARG DEBIAN_FRONTEND=noninteractive\nLABEL com.atelier.workspace-image.modules=${quote(moduleNames.join(","))}\n\n`;
 if (uniqueApt.length) {
   const aptPackages = dockerContinuationList(uniqueApt);
   dockerfile += `RUN --mount=type=cache,target=/var/cache/apt,sharing=locked \\\n    --mount=type=cache,target=/var/lib/apt/lists,sharing=locked \\\n    apt-get update \\\n && apt-get install -y --no-install-recommends \\\n${aptPackages}\n\n`;
@@ -129,6 +127,29 @@ if (Object.keys(env).length) dockerfile += `ENV ${Object.entries(env).map(([key,
 dockerfile += `COPY --from=snapshotter-build /atelier-workspace-snapshotter /usr/local/bin/atelier-workspace-snapshotter\n\n`;
 dockerfile += `COPY --from=gateway-build /atelier-workspace-gateway /usr/local/bin/atelier-workspace-gateway\n\n`;
 dockerfile += `COPY --from=buildkit-dist /usr/bin/buildctl /usr/local/bin/buildctl\n\n`;
-dockerfile += `WORKDIR /work\n`;
+await mkdir(join(outDir, "runtime-units"));
+for (const [name, content] of Object.entries(workspaceRuntimeUnits())) {
+  await writeFile(join(outDir, "runtime-units", name), content);
+}
+dockerfile += `COPY runtime-units/ /etc/systemd/system/\n`;
+dockerfile += `RUN python3 -c 'import json; p="/etc/docker/daemon.json"; c=json.load(open(p)); c["hosts"]=["fd://"]; json.dump(c,open(p,"w"))'\n`;
+dockerfile += `RUN mkdir -p /.atelier && printf "true\\n" > /.atelier/init.sh\n`;
+// binfmt registrations belong to the host kernel; workspace shutdown must not unregister them.
+dockerfile += `RUN systemctl mask systemd-binfmt.service\n`;
+dockerfile += `ENTRYPOINT ["/usr/local/bin/atelier-workspace-init"]\nCMD []\nWORKDIR /work\n`;
 await writeFile(join(outDir, "Dockerfile"), dockerfile);
+// Identity covers the exact Docker build context, including generated instructions,
+// file modes and symlinks. Timestamps and the checkout's absolute path do not count.
+async function hashContext(directory, prefix = "") {
+  for (const name of (await readdir(directory)).sort()) {
+    const path = join(directory, name);
+    const stat = await lstat(path);
+    hash.update(`${prefix}${name}\0${stat.mode & 0o7777}\0`);
+    if (stat.isSymbolicLink()) { hash.update("link\0"); hash.update(await readlink(path)); }
+    else if (stat.isDirectory()) { hash.update("dir\0"); await hashContext(path, `${prefix}${name}/`); }
+    else { hash.update("file\0"); hash.update(await readFile(path)); }
+    hash.update("\0");
+  }
+}
+await hashContext(outDir);
 await writeFile(join(outDir, "metadata.json"), `${JSON.stringify({ tag: `atelier-workspace:${hash.digest("hex").slice(0, 16)}`, modules: moduleNames }, null, 2)}\n`);

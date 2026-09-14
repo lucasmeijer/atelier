@@ -1,3 +1,4 @@
+import { ensureDefaultWorkspaceImage } from "@atelier/workspace-image";
 import { recoverWorkspaces, startWorkspaceGateway } from "./workspace-recovery.ts";
 import { designSystemCatalogueHtml } from "@atelier/design-system/catalogue";
 import { configureAgentDelegation } from "@atelier/agent/server";
@@ -449,6 +450,7 @@ function closeProvisionTermSocket(data: ProvisionTermSocketData): void {
   data.terminal?.close();
 }
 
+await ensureDefaultWorkspaceImage({ buildOutput: "inherit" });
 for (const workspace of persistedWorkspaces) await ingressSockets.ensure(workspace.id);
 await workspaceIngress.initialize();
 const maxPortAttempts = allowPortFallback ? 100 : 1;

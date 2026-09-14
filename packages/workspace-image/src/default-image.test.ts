@@ -52,9 +52,9 @@ for (const scenario of ["cached", "missing", "different-tag", "no-cache"] as con
         const result = JSON.parse(stdout);
         expect(result.first).toMatch(/^atelier-workspace:[a-f0-9]{16}$/);
         expect(result.second).toBe(result.first);
-        expect(result.checks).toEqual(scenario === "no-cache" ? [] : [result.first]);
-        expect(result.connections).toBe(scenario === "cached" ? 0 : 1);
-        expect(result.builds).toEqual(scenario === "cached" ? [] : [{ kind: "default", tag: result.first, noCache: scenario === "no-cache" }]);
+        expect(result.checks).toEqual(scenario === "no-cache" ? [] : [result.first, result.first]);
+        expect(result.connections).toBe(scenario === "cached" ? 0 : 2);
+        expect(result.builds).toEqual(scenario === "cached" ? [] : Array.from({length: 2}, () => ({ kind: "default", tag: result.first, noCache: scenario === "no-cache" })));
       }
     } finally {
       await rm(directory, { recursive: true });

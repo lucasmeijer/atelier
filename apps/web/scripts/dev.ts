@@ -1,9 +1,8 @@
-import { createHash } from "node:crypto";
 import { watch } from "node:fs";
-import { lstat, readdir, readFile, rename, rm } from "node:fs/promises";
+import { rename, rm } from "node:fs/promises";
 import { join, relative, resolve, sep } from "node:path";
 
-import { isWorkspaceSnapshotterInput, workspaceSnapshotterInputs } from "../../../packages/workspace-image/scripts/snapshotter-inputs.ts";
+import { isWorkspaceSnapshotterInput } from "../../../packages/workspace-image/scripts/snapshotter-inputs.ts";
 
 const cwd = resolve(new URL("..", import.meta.url).pathname);
 const repoRoot = resolve(cwd, "../..");
@@ -20,7 +19,6 @@ let browserReloadTimer: Timer | undefined;
 let browserReloadRevision = 0;
 let workspaceImageEnsuring = false;
 let workspaceImageDirty = false;
-let workspaceImageInputHash: string | undefined;
 let server: ReturnType<typeof Bun.spawn> | undefined;
 let stoppingServer = false;
 const pendingRestartReasons = new Set<string>();
@@ -139,46 +137,10 @@ function isWorkspaceImageInputChange(path: string): boolean {
   return rel.endsWith(`${sep}workspace-image.json`)
     || rel.startsWith(`workspace-image${sep}scripts${sep}`)
     || rel.startsWith(`workspace-image${sep}rootfs${sep}`)
+    || rel === `workspace-image${sep}runtime-image`
+    || rel === `workspace-image${sep}src${sep}runtime-units.ts`
     || (rel.startsWith(`docker-snapshotter${sep}`) && isWorkspaceSnapshotterInput(rel.slice(`docker-snapshotter${sep}`.length)))
     || rel.includes(`${sep}workspace-image${sep}`);
-}
-
-async function collectFiles(path: string, files: string[]): Promise<void> {
-  const info = await lstat(path);
-  if (info.isDirectory()) {
-    for (const entry of await readdir(path)) await collectFiles(join(path, entry), files);
-    return;
-  }
-  if (info.isFile()) files.push(path);
-}
-
-async function workspaceImageInputFiles(): Promise<string[]> {
-  const files: string[] = [];
-  for (const entry of await readdir(packagesDir, { withFileTypes: true })) {
-    if (!entry.isDirectory()) continue;
-    const dir = join(packagesDir, entry.name);
-    const manifest = join(dir, "workspace-image.json");
-    if (await Bun.file(manifest).exists()) files.push(manifest);
-    const imageFiles = join(dir, "workspace-image");
-    if (await Bun.file(imageFiles).exists()) await collectFiles(imageFiles, files);
-  }
-  const snapshotter = join(packagesDir, "docker-snapshotter");
-  for (const name of await workspaceSnapshotterInputs(snapshotter)) files.push(join(snapshotter, name));
-  await collectFiles(join(packagesDir, "workspace-image", "rootfs"), files);
-  const scripts = join(packagesDir, "workspace-image", "scripts");
-  if (await Bun.file(scripts).exists()) await collectFiles(scripts, files);
-  return files.sort();
-}
-
-async function workspaceImageInputSignature(): Promise<string> {
-  const hash = createHash("sha256");
-  for (const file of await workspaceImageInputFiles()) {
-    hash.update(relative(repoRoot, file));
-    hash.update("\0");
-    hash.update(await readFile(file));
-    hash.update("\0");
-  }
-  return hash.digest("hex");
 }
 
 async function ensureWorkspaceImage(): Promise<void> {
@@ -190,15 +152,10 @@ async function ensureWorkspaceImage(): Promise<void> {
   try {
     do {
       workspaceImageDirty = false;
-      const inputHash = await workspaceImageInputSignature();
-      if (workspaceImageInputHash === inputHash) continue;
       console.log("[workspace-image] ensuring default workspace image…");
-      // The resolver caches its generated descriptor and completed build in a
-      // process. A fresh invocation must see changed image inputs, not that cache.
-      const ensure = Bun.spawn(["bun", "-e", 'import { ensureDefaultWorkspaceImage } from "@atelier/workspace-image"; console.log("[workspace-image] ready: " + await ensureDefaultWorkspaceImage({ buildOutput: "inherit" }));'], { cwd, stdout: "inherit", stderr: "inherit" });
+      const ensure = Bun.spawn(["bun", join(repoRoot, "scripts/ensure-workspace-image.ts")], { cwd, stdout: "inherit", stderr: "inherit" });
       const code = await ensure.exited;
       if (code !== 0) throw new Error(`workspace image preparation failed (${code})`);
-      workspaceImageInputHash = inputHash;
     } while (workspaceImageDirty);
   } finally {
     workspaceImageEnsuring = false;

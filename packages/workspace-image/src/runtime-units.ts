@@ -1,0 +1,74 @@
+/** Installed in the workspace image; provisioning and standalone tests share these. */
+export function workspaceRuntimeUnits() {
+  return {
+    "atelier-init.service": `[Unit]
+Description=Atelier workspace initialization
+[Service]
+Type=oneshot
+EnvironmentFile=/.atelier/environment
+WorkingDirectory=/work
+ExecStart=/bin/sh /.atelier/init.sh
+RemainAfterExit=yes
+TimeoutStartSec=infinity
+`,
+    "atelier-gateway.service": `[Unit]
+Description=Atelier workspace gateway
+Requires=atelier-init.service
+After=atelier-init.service
+StartLimitIntervalSec=60s
+StartLimitBurst=5
+[Service]
+EnvironmentFile=/.atelier/environment
+WorkingDirectory=/work
+ExecStart=/usr/local/bin/atelier-workspace-gateway
+ExecStopPost=/usr/bin/rm -f /.atelier/ready
+Restart=on-failure
+RestartSec=2s
+KillMode=mixed
+TimeoutStopSec=30s
+[Install]
+WantedBy=multi-user.target
+`,
+    "docker.socket": `[Unit]
+Description=Atelier Docker API socket
+[Socket]
+ListenStream=/run/docker.sock
+SocketMode=0660
+SocketUser=root
+SocketGroup=docker
+RemoveOnStop=yes
+[Install]
+WantedBy=sockets.target
+`,
+    "docker.service": `[Unit]
+Description=Atelier workspace Docker daemon
+Requires=docker.socket containerd.service
+After=docker.socket containerd.service
+StartLimitIntervalSec=60s
+StartLimitBurst=5
+[Service]
+Type=notify
+ExecStart=/usr/local/bin/dockerd --live-restore
+Restart=on-failure
+RestartSec=2s
+TimeoutStartSec=90s
+TimeoutStopSec=120s
+Delegate=yes
+KillMode=process
+TasksMax=infinity
+LimitNOFILE=infinity
+`,
+    "containerd.service": `[Unit]
+Description=Atelier workspace containerd
+[Service]
+Type=notify
+ExecStart=/usr/local/bin/containerd --config /etc/containerd/config.toml
+Restart=on-failure
+RestartSec=2s
+Delegate=yes
+KillMode=process
+TasksMax=infinity
+LimitNOFILE=infinity
+`,
+  };
+}

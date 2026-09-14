@@ -1,5 +1,5 @@
 import { afterAll, describe, expect, test } from "bun:test";
-import { appendFile, cp, mkdtemp, rm } from "node:fs/promises";
+import { appendFile, chmod, cp, mkdtemp, readFile, rm, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { dirname, join } from "node:path";
 import { fileURLToPath } from "node:url";
@@ -45,6 +45,17 @@ describe("workspace image content identity", () => {
     const after = await generateContext(before.fixture);
     expect(await Bun.file(join(after.output, packagedPath)).text()).toBe(await Bun.file(source).text());
     expect(after.metadata).not.toBe(before.metadata);
+  });
+
+  test("generated Dockerfile and file permissions participate in identity", async () => {
+    const before = await generateInCheckout();
+    const generator = join(before.fixture, "packages/workspace-image/scripts/build-context.mjs");
+    await writeFile(generator, (await readFile(generator, "utf8")).replace("WORKDIR /work", "WORKDIR /changed-work"));
+    const instructionChange = await generateContext(before.fixture);
+    expect(instructionChange.metadata).not.toBe(before.metadata);
+    await chmod(join(before.fixture, "packages/workspace-image/rootfs/usr/local/bin/chromium"), 0o700);
+    const permissionChange = await generateContext(before.fixture);
+    expect(permissionChange.metadata).not.toBe(instructionChange.metadata);
   });
 
   test("shared implementation and integration test changes do not affect the workspace image", async () => {

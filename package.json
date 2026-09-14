@@ -16,6 +16,8 @@
   "scripts": {
     "generate:workspace-modules": "bun run --cwd apps/web scripts/generate-workspace-modules.ts",
     "release": "bun run scripts/release.ts",
+    "image:ensure-workspace": "bun scripts/ensure-workspace-image.ts",
+    "test:workspace": "bun packages/workspace-image/scripts/integration.ts",
     "image:build": "bun run scripts/build-atelier-image.ts",
     "image:publish": "bun run scripts/build-atelier-image.ts --push --platform linux/amd64,linux/arm64",
     "check": "bun run generate:workspace-modules && bun run lint && bunx tsc --noEmit -p tsconfig.json",
