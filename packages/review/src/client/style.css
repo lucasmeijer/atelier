@@ -50,7 +50,10 @@
 .review-file { min-width: 0; scroll-margin-top: 54px; }
 .review-file > summary { box-sizing: border-box; list-style: none; }
 .review-file[data-review-change="added"] > summary { background: var(--success-soft); }
-.review-file[data-review-change="removed"] > summary { background: var(--danger-soft); }
+.review-file[data-review-change="removed"] > summary {
+  --accent-soft: color-mix(in srgb, var(--danger) 28%, var(--panel));
+  background: var(--danger-soft);
+}
 .review-file > summary::-webkit-details-marker { display: none; }
 .review-file-location { min-width: 0; display: flex; overflow: hidden; color: var(--text-muted); font-weight: 400; white-space: nowrap; }
 .review-file-directory { min-width: 0; overflow: hidden; text-overflow: ellipsis; }
