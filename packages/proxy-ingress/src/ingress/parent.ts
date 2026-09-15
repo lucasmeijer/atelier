@@ -6,10 +6,11 @@ import { request } from "node:http";
 import { createTailscaleOriginPublisher, defaultTailscaleLocalApiSocketPath, tailscaleLocalApiRequest, type PortRange } from "./tailscale-serve.ts";
 
 const originSchema = Type.Object({ origin: Type.String() });
-const statusSchema = Type.Object({ Self: Type.Object({ DNSName: Type.String() }) });
+const statusSchema = Type.Object({ BackendState: Type.Literal("Running"), Self: Type.Object({ DNSName: Type.String() }) });
 
 export interface ParentOriginPublisher {
-  kind: "atelier" | "tailscale" | "localhost";
+  kind: "atelier" | "tailscale" | "localhost" | "system";
+  refresh?: boolean;
   publish(port: number): Promise<string>;
   unpublish?(port: number): Promise<void>;
 }
@@ -18,7 +19,7 @@ export function createLocalOriginPublisher(): ParentOriginPublisher {
   return { kind: "localhost", async publish(port) { return `http://localhost:${port}`; } };
 }
 export function createParentAtelierPublisher(socketPath = parentIngressSocket): ParentOriginPublisher {
-  return { kind: "atelier", async publish(port) {
+  return { kind: "atelier", refresh: true, async publish(port) {
     const body = JSON.stringify({ port, protocol: "http" });
     const result = await new Promise<string>((resolve, reject) => {
       const req = request({ socketPath, path: "/origins", method: "POST", headers: { "content-type": "application/json", "content-length": Buffer.byteLength(body) } }, (response) => {
@@ -65,9 +66,24 @@ export function createTailscaleParentPublisher(socketPath = defaultTailscaleLoca
   };
 }
 
+/** The selected mode is independent from a mounted Tailscale socket. */
+export function createSystemOriginPublisher(portRange?: PortRange, fetcher: (url: string) => Promise<Response> = fetch): ParentOriginPublisher {
+  const tailscale = createTailscaleParentPublisher(defaultTailscaleLocalApiSocketPath, portRange);
+  return { kind: "system", refresh: true, async publish(port) {
+    const response = await fetcher("http://127.0.0.1:3001/access");
+    if (!response.ok) throw new Error(`System access status failed: ${response.status}`);
+    const status: unknown = await response.json();
+    if (!Value.Check(Type.Object({ mode: Type.Union([Type.Literal("localhost"), Type.Literal("tailscale")]), localPort: Type.Optional(Type.Integer({ minimum: 1, maximum: 65535 })) }), status)) throw new Error("Invalid System access status");
+    if (status.mode === "tailscale") return tailscale.publish(port);
+    if (!status.localPort) throw new Error("System's local port has not been published yet");
+    return `http://p${port}.atelier.localhost:${status.localPort}`;
+  } };
+}
+
 /** A mounted parent directory is configuration even while its server is down. */
 export async function detectParentOriginPublisher(portRange?: PortRange): Promise<ParentOriginPublisher> {
   if (existsSync("/run/atelier-parent")) return createParentAtelierPublisher();
+  if (existsSync("/run/atelier-system/resources.json")) return createSystemOriginPublisher(portRange);
   if (existsSync(dirname(defaultTailscaleLocalApiSocketPath))) return createTailscaleParentPublisher(defaultTailscaleLocalApiSocketPath, portRange);
   return createLocalOriginPublisher();
 }

@@ -2,7 +2,7 @@ import { expect, test } from "bun:test";
 
 const installer = await Bun.file(new URL("./install.sh", import.meta.url)).text();
 
-function run(options: { mac?: boolean; vmKernelFails?: boolean; installed?: boolean; old?: boolean; pullFails?: boolean; running?: boolean; appFails?: boolean; pendingHealth?: boolean; missingFilesystem?: boolean; loadable?: boolean } = {}, args = ["--non-interactive"]) {
+function run(options: { mac?: boolean; wsl?: boolean; vmKernelFails?: boolean; installed?: boolean; old?: boolean; pullFails?: boolean; running?: boolean; appFails?: boolean; pendingHealth?: boolean; missingFilesystem?: boolean; loadable?: boolean } = {}, args = ["--non-interactive"]) {
   const logPath = `/tmp/atelier-install-test-${crypto.randomUUID()}.log`;
   const mock = `
 mktemp() { echo "${logPath}"; }
@@ -10,7 +10,7 @@ sleep() { command sleep 0.01; }
 uname() { echo ${options.mac ? "Darwin" : "Linux"}; }
 id() { echo ${options.mac ? 501 : 0}; }
 module_loaded=0
-grep() { [ "$module_loaded" -eq 1 ] || return ${options.missingFilesystem ? 1 : 0}; }
+grep() { if [[ "$*" == *microsoft* ]]; then return ${options.wsl ? 0 : 1}; fi; [ "$module_loaded" -eq 1 ] || return ${options.missingFilesystem ? 1 : 0}; }
 modprobe() {
   printf 'MODPROBE %s\\n' "$*" >&2
   module_loaded=1
@@ -37,7 +37,7 @@ docker() {
         printf '${options.appFails ? 'failed\\nApp health failed\\n\\n\\nhttps://diagnostics.example/system\\n\\n\\nSystem logs\\nApp exited' : options.running === false ? 'starting\\nWaiting for your connection\\n\\n\\n\\nSign in to continue\\nhttps://auth.example/sign-in\\n' : 'ready\\nAtelier is ready\\n\\nhttps://app.example/custom-path\\nhttps://diagnostics.example/system\\n\\n\\n'}\\n'
         return
       fi ;;
-    'inspect --format') echo true ;;
+    'inspect --format') if [[ "$*" == *3080/tcp* ]]; then echo 55123; else echo true; fi ;;
   esac
 }
 `;
@@ -51,7 +51,7 @@ test("fresh install launches privileged System with persistent named volume and 
   const result = run({}, ["--non-interactive", "--system-image", "test/system:v1", "--app-image", "test/app:v1"]);
   expect(result.status).toBe(0);
   expect(result.output).toContain("DOCKER pull test/system:v1");
-  expect(result.output).toContain("--name atelier-system --hostname atelier-system --privileged --cgroupns=host --restart unless-stopped --stop-timeout 120 --tmpfs /run --mount source=atelier-system,target=/data test/system:v1 --app-image test/app:v1");
+  expect(result.output).toContain("--name atelier-system --hostname atelier-system --privileged --cgroupns=host --restart unless-stopped --stop-timeout 120 --tmpfs /run --mount source=atelier-system,target=/data --publish 127.0.0.1::3080 test/system:v1 --app-image test/app:v1 --access-mode tailscale");
   expect(result.output).not.toContain("DOCKER stop");
   expect(result.output).toContain("DOCKER exec atelier-system bun -e");
 });
@@ -149,4 +149,16 @@ test("unsupported Desktop kernel leaves the existing System running", () => {
   expect(result.output).toContain("Checking Docker Desktop kernel failed");
   expect(result.output).not.toContain("DOCKER stop");
   expect(result.output).not.toContain("DOCKER rm");
+});
+
+ test("desktop defaults local while an explicit access choice overrides the OS", () => {
+  const mac = run({ mac: true });
+  expect(mac.status).toBe(0);
+  expect(mac.output).toContain("--access-mode localhost");
+  const wsl = run({ wsl: true });
+  expect(wsl.status).toBe(0);
+  expect(wsl.output).toContain("--access-mode localhost");
+  const remote = run({ mac: true }, ["--non-interactive", "--access-mode", "tailscale"]);
+  expect(remote.status).toBe(0);
+  expect(remote.output).toContain("--access-mode tailscale");
 });

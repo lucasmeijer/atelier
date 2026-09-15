@@ -4,6 +4,7 @@ set -Eeuo pipefail
 system_image=ghcr.io/lucasmeijer/atelier-system:latest
 app_image=ghcr.io/lucasmeijer/atelier:stable
 action=""
+access_mode=""
 non_interactive=0
 system_name=atelier-system
 
@@ -99,6 +100,7 @@ System replacements preserve the atelier-system volume and interrupt workspaces.
 
   --system-image REF   System image (default: ghcr.io/lucasmeijer/atelier-system:latest)
   --app-image REF      First-install app image (default: ghcr.io/lucasmeijer/atelier:stable)
+  --access-mode MODE  localhost or tailscale (default selected for this machine)
   --action ACTION     install, update, connect, or open
   --non-interactive   Install/update without prompts; print login instructions
   -h, --help          Show help
@@ -110,12 +112,13 @@ HELP
 
 while [ "$#" -gt 0 ]; do
   case "$1" in
-    --system-image|--app-image|--action)
+    --system-image|--app-image|--action|--access-mode)
       [ "$#" -ge 2 ] && [ -n "$2" ] || fail "$1 requires a value"
       case "$1" in
         --system-image) system_image="$2" ;;
         --app-image) app_image="$2" ;;
         --action) action="$2" ;;
+        --access-mode) access_mode="$2" ;;
       esac
       shift 2 ;;
     --non-interactive) non_interactive=1; shift ;;
@@ -124,7 +127,10 @@ while [ "$#" -gt 0 ]; do
   esac
 done
 case "$action" in ""|install|update|connect|open) ;; *) fail "unknown action: $action" ;; esac
+case "$access_mode" in ""|localhost|tailscale) ;; *) fail "unknown access mode: $access_mode" ;; esac
 host_os="$(uname -s)"
+desktop=0
+if [ "$host_os" = Darwin ] || { [ "$host_os" = Linux ] && grep -qi microsoft /proc/sys/kernel/osrelease; }; then desktop=1; fi
 case "$host_os" in
   Linux) [ "$(id -u)" -eq 0 ] || fail "run this installer as root" ;;
   Darwin)
@@ -156,7 +162,7 @@ run_quiet "Checking Docker" docker info
 
 # Nested daemons share the host kernel; privileged containers cannot supply
 # filesystem drivers missing from that kernel.
-if [ "$host_os" = Linux ]; then
+if [ "$host_os" = Linux ] && [ "$desktop" -eq 0 ]; then
   for filesystem in erofs overlay; do
     if ! grep -qw "$filesystem" /proc/filesystems; then
       if ! command -v modprobe >/dev/null || ! modprobe "$filesystem"; then
@@ -300,8 +306,20 @@ case "$action" in
         case "$answer" in y|Y|yes) ;; *) exit 0 ;; esac
       fi
     fi
+    if [ "$installed" -eq 0 ] && [ -z "$access_mode" ]; then
+      if [ "$desktop" -eq 1 ]; then access_mode=localhost; else access_mode=tailscale; fi
+      if [ "$non_interactive" -eq 0 ]; then
+        finish_line
+        printf "  1. I'm installing this on my dev machine, no need for remote access now\n"
+        printf "  2. I'm installing this on a server so I can control my agents from anywhere\n"
+        if [ "$access_mode" = localhost ]; then default_choice=1; else default_choice=2; fi
+        printf '  Choose [%s]: ' "$default_choice"
+        IFS= read -r answer </dev/tty || fail "no terminal; specify --non-interactive"
+        case "${answer:-$default_choice}" in 1) access_mode=localhost ;; 2) access_mode=tailscale ;; *) fail "choose 1 or 2" ;; esac
+      fi
+    fi
     run_quiet "Downloading Atelier services" docker pull "$system_image"
-    if [ "$host_os" = Darwin ]; then
+    if [ "$desktop" -eq 1 ]; then
       run_quiet "Checking Docker Desktop kernel" docker run --rm --entrypoint /bin/sh "$system_image" -ec '
         for filesystem in erofs overlay; do
           grep -qw "$filesystem" /proc/filesystems || {
@@ -316,8 +334,8 @@ case "$action" in
       run_quiet "Replacing Atelier services" docker rm "$system_name"
     fi
     run_quiet "Starting Atelier services" docker run -d --name "$system_name" --hostname atelier-system --privileged --cgroupns=host --restart unless-stopped \
-      --stop-timeout 120 --tmpfs /run --mount source=atelier-system,target=/data \
-      "$system_image" --app-image "$app_image"
+      --stop-timeout 120 --tmpfs /run --mount source=atelier-system,target=/data --publish 127.0.0.1::3080 \
+      "$system_image" --app-image "$app_image" --access-mode "${access_mode:-tailscale}"
     ;;
   connect)
     if [ "$(docker inspect --format '{{.State.Running}}' "$system_name")" != true ]; then
@@ -326,4 +344,18 @@ case "$action" in
     ;;
   open) ;;
 esac
+local_port="$(docker inspect --format '{{(index (index .NetworkSettings.Ports "3080/tcp") 0).HostPort}}' "$system_name")"
+for ((attempt=0; attempt<60; attempt++)); do
+  if docker exec "$system_name" bun -e '
+    const [localPort, mode] = process.argv.slice(1);
+    const response = await fetch("http://127.0.0.1:3001/access", {
+      method: "POST", headers: {"content-type":"application/json"},
+      body: JSON.stringify({localPort:Number(localPort), ...(mode ? {mode} : {})}),
+      signal: AbortSignal.timeout(3000),
+    });
+    if (!response.ok) throw new Error(`System access setup: ${response.status}`);
+  ' "$local_port" "$access_mode" >>"$log_file" 2>&1; then break; fi
+  sleep 1
+done
+[ "$attempt" -lt 60 ] || fail "Could not configure local access"
 wait_for_system

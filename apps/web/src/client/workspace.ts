@@ -12,6 +12,7 @@ import {
 } from "@atelier/shared";
 import { workspaceClientModules } from "./workspace-client-modules.generated.ts";
 import { registerDesignSystemControllers } from "@atelier/design-system/client";
+import { AccessSettingsController } from "./access-settings.ts";
 import { PwaReminderController } from "./pwa-reminder.ts";
 import { AtelierEasterEggController } from "./atelier-easter-egg.ts";
 import { clientHooks } from "./workspace-client-hooks.ts";
@@ -51,6 +52,7 @@ Turbo.StreamActions["select-workspace"] = function selectWorkspace(this: HTMLEle
 
 for (const module of workspaceClientModules) await module.install({ application, Controller, hooks: clientHooks });
 registerWorkspaceControllers({
+  "access-settings": AccessSettingsController,
   "pwa-reminder": PwaReminderController,
   "atelier-easter-egg": AtelierEasterEggController,
   "workspace-presentation": createWorkspacePresentationController(Controller, application, clientHooks),

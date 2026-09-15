@@ -1,3 +1,4 @@
+import { renderAccessSettings } from "./access.ts";
 import { actionLinkHtml } from "@atelier/design-system/action-link";
 import { dialogHtml } from "@atelier/design-system/dialog";
 import { destructiveConfirmationHtml } from "@atelier/design-system/destructive-confirmation";
@@ -82,6 +83,7 @@ async function renderDevelopmentSettings(): Promise<string> {
   return `${keypressProbeSettings}<section class="settings-sec settings-sec-development">${destructiveActions}</section>`;
 }
 
+registerSettingsContribution({ id: "access", label: "Access", order: 15, render: renderAccessSettings });
 registerSettingsContribution({ id: "theme", label: "Theme", order: 10, render: renderThemeSettings });
 registerSettingsContribution({ id: "git-identity", label: "Git identity", order: 20, render: renderGitIdentitySettings });
 for (const module of workspaceModules) {

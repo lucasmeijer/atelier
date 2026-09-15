@@ -12,6 +12,8 @@ export type InstallationStatus = {
 // Tailscale states, routes, startup phases, or where diagnostic output lives.
 export function installationStatus(input: {
   activity: Activity;
+  localMode?: boolean;
+  localOrigin?: string;
   failure?: string;
   stopping: boolean;
   busy: boolean;
@@ -23,18 +25,19 @@ export function installationStatus(input: {
   logs: string[];
 }): InstallationStatus {
   const { hostname, appliedRoute } = input;
-  const supervisorUrl = hostname && appliedRoute.startsWith(`${hostname}:`)
-    ? `https://${hostname}:8443` : undefined;
+  const localSupervisor = input.localOrigin?.replace("//atelier.", "//system.atelier.");
+  const supervisorUrl = !input.localMode && hostname && appliedRoute.startsWith(`${hostname}:`)
+    ? `https://${hostname}:8443` : localSupervisor;
   const ready = input.appResponding && !input.busy && !input.stopping && !input.failure &&
-    !!hostname && appliedRoute === `${hostname}:3000`;
+    (input.localMode ? !!input.localOrigin : !!hostname && appliedRoute === `${hostname}:3000`);
   const state = input.failure || input.stopping ? "failed" : ready ? "ready" : "starting";
   let action: InstallationStatus["action"];
-  if (input.connectionState === "NeedsMachineAuth") {
+  if (!input.localMode && input.connectionState === "NeedsMachineAuth") {
     action = {
       description: "Ask your Tailscale administrator to approve this server, then leave this installer running to continue.",
       url: "https://login.tailscale.com/admin/machines",
     };
-  } else if (input.authUrl && input.connectionState === "NeedsLogin") {
+  } else if (!input.localMode && input.authUrl && input.connectionState === "NeedsLogin") {
     action = {
       description: "Atelier uses Tailscale so only your devices can reach it. Sign in to connect securely.",
       url: input.authUrl,
@@ -47,7 +50,7 @@ export function installationStatus(input: {
       : action ? { description: "Waiting for your private connection" }
       : input.appResponding && !input.busy ? { description: "Connecting Atelier securely" }
       : input.activity,
-    appUrl: ready ? `https://${hostname}` : undefined,
+    appUrl: ready ? input.localMode ? input.localOrigin : `https://${hostname}` : undefined,
     supervisorUrl,
     action,
     diagnostics: state === "failed" ? {

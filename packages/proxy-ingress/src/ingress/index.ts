@@ -82,6 +82,7 @@ interface OriginLease {
   scope: "public" | "nested";
   server: ReturnType<typeof Bun.serve<AppSocketData>>;
   origin: string;
+  origins: Set<string>;
   protocol: "http" | "https";
   activeConnections: number;
   lastUsedAt: number;
@@ -133,6 +134,7 @@ export function createWorkspaceIngress(options: WorkspaceIngressOptions): Worksp
     const existing = pending ? await pending : leases.get(key);
     if (existing) {
       if (existing.protocol !== protocol) throw new Error("This workspace port is already published with a different protocol");
+      if (publisher.refresh) { existing.origin = await publisher.publish(existing.port); existing.origins.add(existing.origin); }
       return existing;
     }
     const created = startLease(key, app, protocol).finally(() => pendingLeases.delete(key));
@@ -194,12 +196,14 @@ export function createWorkspaceIngress(options: WorkspaceIngressOptions): Worksp
           scope,
           server,
           origin: "",
+          origins: new Set(),
           protocol,
           activeConnections: 0,
           lastUsedAt: Date.now(),
         };
       leases.set(key, lease);
       lease.origin = await publisher.publish(port);
+      lease.origins.add(lease.origin);
       logIngress("lease_started", app, { port, scope });
       return lease;
     } catch (thrown) {
@@ -368,11 +372,12 @@ function receivingAppOrigin(lease: OriginLease, request: Request): string | unde
     const context = request.headers.get(originContextHeader);
     if (context !== null) return context === "null" ? undefined : context;
   }
-  return lease.origin;
+  return appPublicOrigin(lease, request);
 }
 
-function appPublicOrigin(lease: OriginLease, _request: Request): string {
-  return lease.origin;
+function appPublicOrigin(lease: OriginLease, request: Request): string {
+  const host = request.headers.get("host");
+  return [...lease.origins].find(origin => new URL(origin).host === host) ?? lease.origin;
 }
 
 async function fetchWithStartupRetry(target: URL, init: RequestInit, workspacePort: number | undefined): Promise<Response> {

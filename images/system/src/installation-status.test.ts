@@ -51,3 +51,11 @@ test("stopping never advertises readiness and unknown-duration activity has no p
   const starting = installationStatus({ ...input, appResponding: false, activity: { description: "Starting Atelier" } });
   expect(starting.activity.percent).toBeUndefined();
 });
+
+test("local install becomes ready without Tailscale and keeps diagnostics reachable", () => {
+  const status = installationStatus({ activity: { description: "Starting" }, stopping: false, busy: false, appResponding: true, appliedRoute: "", connectionState: "NeedsLogin", authUrl: "https://login.tailscale.com/test", logs: [], localMode: true, localOrigin: "http://atelier.localhost:55001" });
+  expect(status.state).toBe("ready");
+  expect(status.appUrl).toBe("http://atelier.localhost:55001");
+  expect(status.supervisorUrl).toBe("http://system.atelier.localhost:55001");
+  expect(status.action).toBeUndefined();
+});

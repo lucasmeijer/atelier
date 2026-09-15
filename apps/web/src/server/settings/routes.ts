@@ -1,3 +1,4 @@
+import { handleAccessSettings } from "./access.ts";
 import { handleGitHubSettingsRequest } from "./github.ts";
 import { handleModelSettingsRequest } from "./models.ts";
 import { handleSettingsPageRequest, renderDevelopmentSettingsDialog, renderSettingsDialog, type WorkspaceCleanupResult } from "./page.ts";
@@ -10,7 +11,8 @@ export async function handleSettingsRequest(
   url: URL,
   options: { forceDeleteAllWorkspaces?: () => Promise<WorkspaceCleanupResult>; renderModelPickerUpdates: () => Promise<string> },
 ): Promise<Response | undefined> {
-  const response = await handleSettingsPageRequest(request, url, options)
+  const response = await handleAccessSettings(request, url)
+    ?? await handleSettingsPageRequest(request, url, options)
     ?? await handleGitHubSettingsRequest(request, url)
     ?? await handleModelSettingsRequest(request, url, options.renderModelPickerUpdates);
   if (response) return response;

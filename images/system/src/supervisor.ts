@@ -1,3 +1,4 @@
+import { startLocalIngress } from "./local-ingress.ts";
 import { installationStatus, type Activity } from "./installation-status.ts";
 import { PullProgress } from "./pull-progress.ts";
 import { Type } from "typebox";
@@ -13,6 +14,7 @@ import { button, escape, page } from "./ui.ts";
 
 const { values } = parseArgs({
   options: {
+    "access-mode": { type: "string", default: "tailscale" },
     "app-image": {
       type: "string",
       default: "ghcr.io/lucasmeijer/atelier:stable",
@@ -32,10 +34,12 @@ await Promise.all(
     "/run/tailscale",
   ].map((path) => mkdir(path, { recursive: true })),
 );
-type State = { currentImage?: string; runningContainers?: string[] };
+type State = { accessMode?: "localhost" | "tailscale"; localPort?: number; currentImage?: string; runningContainers?: string[] };
 const persisted: State = (await Bun.file(`${stateDir}/state.json`).exists())
   ? JSON.parse(await readFile(`${stateDir}/state.json`, "utf8"))
   : {};
+persisted.accessMode ??= Value.Parse(Type.Union([Type.Literal("localhost"), Type.Literal("tailscale")]), values["access-mode"]);
+let remoteRequested = persisted.accessMode === "tailscale";
 async function persist() {
   await writeFile(`${stateDir}/state.next`, JSON.stringify(persisted));
   await rename(`${stateDir}/state.next`, `${stateDir}/state.json`);
@@ -63,6 +67,7 @@ const logs: string[] = [];
 const subscribers = new Set<ReadableStreamDefaultController<Uint8Array>>();
 const encoder = new TextEncoder();
 function connectionProblem() {
+  if (persisted.accessMode === "localhost") return;
   if (connectionFailure) return connectionFailure;
   if (networkError && Date.now() - lastNetworkSuccess >= 60_000)
     return `Could not prepare the private connection: ${networkError}`;
@@ -72,7 +77,7 @@ function connectionProblem() {
     return "The private connection did not finish starting within 2 minutes.";
 }
 function fragment() {
-  return `<h1>Atelier System</h1><h2>${escape(activity.description)}</h2><p>${escape(candidate)}</p>${failure ? `<p role="alert">${escape(failure)}</p><form method="post" action="/retry">${button("Retry")}</form>` : ""}<pre>${escape(logs.join("\n"))}</pre>`;
+  return `<h1>Atelier System</h1><h2>${escape(activity.description)}</h2><p>${escape(candidate)}</p>${authUrl ? `<p><a href="${escape(authUrl)}">Sign in to Tailscale</a></p>` : ""}<p>Access: ${persisted.accessMode}. Tailscale: ${escape(connectionState)}</p><form method="post" action="/connect">${button("Enable remote access")}</form><form method="post" action="/local">${button("Use local access")}</form>${failure ? `<p role="alert">${escape(failure)}</p><form method="post" action="/retry">${button("Retry")}</form>` : ""}<pre>${escape(logs.join("\n"))}</pre>`;
 }
 function emit(event = "progress", data = fragment()) {
   for (const subscriber of subscribers)
@@ -270,18 +275,37 @@ function allowedOrigin(request: Request) {
   const origin = request.headers.get("origin");
   return (
     !origin ||
+    (persisted.localPort && origin === `http://atelier.localhost:${persisted.localPort}`) ||
     origin === new URL(request.url).origin ||
     (tailnetHost &&
       (origin === `https://${tailnetHost}` ||
         origin === `https://${tailnetHost}:8443`))
   );
 }
+const localIngress = startLocalIngress(() => routeTarget);
 const server = Bun.serve({
   hostname: "127.0.0.1",
   port: 3001,
   idleTimeout: 0,
   async fetch(request) {
     const url = new URL(request.url);
+    if (url.pathname === "/access") {
+      if (request.method === "POST") {
+        if (!allowedOrigin(request)) return new Response("Forbidden", { status: 403 });
+        const body: unknown = await request.json().catch(() => null);
+        if (!Value.Check(Type.Object({ mode: Type.Optional(Type.Union([Type.Literal("localhost"), Type.Literal("tailscale")])), localPort: Type.Optional(Type.Integer({ minimum: 1, maximum: 65535 })) }), body)) return new Response("Invalid access setting", { status: 400 });
+        if (body.localPort) persisted.localPort = body.localPort;
+        if (body.mode === "localhost") { persisted.accessMode = "localhost"; remoteRequested = false; }
+        if (body.mode === "tailscale") {
+          remoteRequested = true;
+          if (connectionState === "Running") persisted.accessMode = "tailscale";
+          else { connectionAttempt = "idle"; connectionFailure = undefined; connectionStateSince = Date.now(); }
+        }
+        await persist();
+        emit("access", "changed");
+      }
+      return Response.json({ mode: persisted.accessMode, localPort: persisted.localPort, connectionState, authUrl, error: connectionFailure ?? networkError });
+    }
     if (url.pathname === "/status") {
       // Check again at the handoff: startup health alone can become stale.
       const appResponding = await appIsHealthy() && healthy;
@@ -291,6 +315,8 @@ const server = Bun.serve({
           failure: failure ?? connectionProblem(),
           stopping, busy, appResponding, hostname: tailnetHost, appliedRoute,
           connectionState, authUrl, logs,
+          localOrigin: persisted.localPort ? `http://atelier.localhost:${persisted.localPort}` : undefined,
+          localMode: persisted.accessMode === "localhost" && !remoteRequested,
         }),
         failure,
         healthy,
@@ -335,7 +361,12 @@ const server = Bun.serve({
     if (request.method === "POST") {
       if (!allowedOrigin(request))
         return new Response("Forbidden", { status: 403 });
+      if (url.pathname === "/local") {
+        persisted.accessMode = "localhost"; remoteRequested = false; await persist(); emit("access", "changed");
+        return Response.redirect(url.origin, 303);
+      }
       if (url.pathname === "/connect") {
+        remoteRequested = true;
         if (stopping) return new Response("System is stopping", { status: 503 });
         if (connectionAttempt !== "running") {
           connectionAttempt = "idle";
@@ -343,7 +374,7 @@ const server = Bun.serve({
           networkError = undefined;
           connectionStateSince = lastNetworkSuccess = Date.now();
         }
-        return new Response(null, { status: 202 });
+        return request.headers.get("accept")?.includes("text/html") ? Response.redirect(url.origin, 303) : new Response(null, { status: 202 });
       }
       if (!initialized || stopping)
         return new Response("System is starting or stopping", { status: 503 });
@@ -411,15 +442,16 @@ const server = Bun.serve({
       return new Response("Not found", { status: 404 });
     if (url.pathname !== "/")
       return new Response(null, { status: 303, headers: { location: "/", "cache-control": "no-store" } });
-    const diagnostic = url.port === "8443";
-    const events = tailnetHost
+    const diagnostic = url.port === "8443" || url.hostname === "system.atelier.localhost";
+    const local = url.hostname.endsWith(".localhost");
+    const events = local ? `${url.protocol}//system.atelier.localhost:${url.port}/events` : tailnetHost
       ? `https://${tailnetHost}:8443/events`
       : "/events";
     return new Response(
       page(
         "Atelier System",
-        `<section data-controller="progress" data-progress-events-value="${escape(events)}" data-progress-return-value="${!diagnostic && !!tailnetHost}"><div data-progress-content>${fragment()}</div></section>`,
-        tailnetHost ? `https://${tailnetHost}:8443` : "",
+        `<section data-controller="progress" data-progress-events-value="${escape(events)}" data-progress-return-value="${!diagnostic && (local || !!tailnetHost)}"><div data-progress-content>${fragment()}</div></section>`,
+        local ? "" : tailnetHost ? `https://${tailnetHost}:8443` : "",
       ),
       { headers: { "content-type": "text/html" } },
     );
@@ -460,6 +492,7 @@ async function shutdown(code: number) {
       sleep(15000),
     ]);
   }
+  localIngress.stop(true);
   server.stop(true);
   process.exit(code);
 }
@@ -508,6 +541,7 @@ async function initialize() {
   // Tailscale login may happen after app boot. Its network state is independent.
   void (async () => {
     connectionStateSince = lastNetworkSuccess = Date.now();
+    let lastAccess = "";
     while (!stopping) {
       try {
         const status = JSON.parse(
@@ -516,7 +550,7 @@ async function initialize() {
         if (status.BackendState !== connectionState) connectionStateSince = Date.now();
         connectionState = status.BackendState;
         authUrl = status.AuthURL || undefined;
-        if (connectionAttempt === "idle" &&
+        if (remoteRequested && connectionAttempt === "idle" &&
             (connectionState === "NeedsLogin" || connectionState === "Stopped")) {
           connectionAttempt = "running";
           // The browser sign-in is the user's consent; generating its URL does
@@ -534,6 +568,7 @@ async function initialize() {
         if (host) {
           const changed = host !== tailnetHost;
           tailnetHost = host;
+          if (remoteRequested && persisted.accessMode !== "tailscale") { persisted.accessMode = "tailscale"; await persist(); emit(); }
           await configureRoutes(routeTarget);
           if (changed) log(`Tailscale ready: https://${host}`);
         } else {
@@ -547,10 +582,13 @@ async function initialize() {
         networkError = String(error);
         log(`Tailscale: ${networkError}`);
       }
+      const nextAccess = JSON.stringify([persisted.accessMode, connectionState, authUrl, connectionFailure, networkError]);
+      if (nextAccess !== lastAccess) { lastAccess = nextAccess; emit("access", "changed"); }
       await sleep(3000);
     }
   })();
   if (stopping) return;
+  if (persisted.accessMode === "localhost") await waitFor(async () => !!persisted.localPort, 60000, "installer to register the local port");
   initialized = true;
   activeOperation = replace(candidate, !persisted.currentImage);
   void (async () => {

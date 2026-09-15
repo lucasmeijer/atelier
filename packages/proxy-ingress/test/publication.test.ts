@@ -63,3 +63,25 @@ test("a publication arriving while the parent is still working waits for the fin
     expect(a).toBe(b); expect(a).toStartWith("https://atelier.example:"); expect(calls).toBe(1);
   } finally { await ingress.stopAll(); }
 });
+
+test("changing System mode republishes existing listener without closing old routes", async () => {
+  let mode = "local";
+  const backend = Bun.serve({ hostname: "127.0.0.1", port: 0, fetch(request) { return Response.json({ origin: request.headers.get("origin") }); } });
+  const ingress = createWorkspaceIngress({
+    hostname: "127.0.0.1", resolveWorkspace() {},
+    resolveApp() { return { kind: "http", target: new URL(`http://localhost:${backend.port}`) }; },
+    parentOriginPublisher: { kind: "system", refresh: true, async publish(port) { return mode === "local" ? `http://p${port}.atelier.localhost:55000` : `https://atelier.example:${port}`; } },
+  });
+  try {
+    const first = await ingress.publishPort("workspace", 8080);
+    mode = "remote";
+    const second = await ingress.publishPort("workspace", 8080);
+    expect(first).not.toBe(second);
+    expect(ingress.inspect()).toHaveLength(1);
+    const port = new URL(second).port;
+    for (const origin of [first, second]) {
+      const response = await fetch(`http://127.0.0.1:${port}`, { headers: { host: new URL(origin).host, origin } });
+      expect(await response.json()).toEqual({ origin: `http://localhost:${backend.port}` });
+    }
+  } finally { await ingress.stopAll(); backend.stop(true); }
+});
