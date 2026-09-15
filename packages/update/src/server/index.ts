@@ -195,8 +195,8 @@ function renderCheckForm(): string {
 
 function renderDownloadControl(snapshot: StateSnapshot): string {
   const content = {
-    initialContent: { kind: "text" as const, text: "Download Update" },
-    progressContent: { kind: "text" as const, text: snapshot.progressMessage ?? "Downloading…" },
+    initialContent: { kind: "text" as const, text: "Download Atelier" },
+    progressContent: { kind: "text" as const, text: "Download Atelier" },
     variant: "primary" as const,
     type: "submit" as const,
   };
@@ -213,8 +213,8 @@ function restartFeedbackId(surface: UpdateControlSurface): string {
 
 function restartFormHtml(surface: UpdateControlSurface): string {
   const confirmation = destructiveConfirmationHtml({
-    trigger: { type: "button", variant: "primary", content: { kind: "caption", caption: "Restart to update" } },
-    confirmCaption: "Restart to update",
+    trigger: { type: "button", variant: "primary", content: { kind: "caption", caption: "Restart" } },
+    confirmCaption: "Restart",
     cancelCaption: "Cancel",
   });
   return `<form method="post" action="/update/restart?surface=${surface}" data-turbo="false" data-controller="update-restart" data-action="submit->update-restart#submit">${confirmation}<p role="alert" data-update-restart-target="error" hidden></p></form>`;
@@ -245,7 +245,7 @@ function renderUpdateControl(snapshot: StateSnapshot, surface: UpdateControlSurf
   if (snapshot.state === "available" || snapshot.state === "failed" || snapshot.state === "pulling") return renderDownloadControl(snapshot);
   if (snapshot.state === "ready_to_restart") return renderRestartFeedback(surface);
   return progressButtonHtml({
-    initialContent: { kind: "text", text: "Restart to update" },
+    initialContent: { kind: "text", text: "Restart" },
     progressContent: { kind: "text", text: "Restarting…" },
     state: "in-progress",
     variant: "primary",
