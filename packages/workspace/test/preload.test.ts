@@ -25,6 +25,7 @@ function fixture(cacheDirectory?: string) {
   const registry = new Map([[postgres, digestA], [redis, digestB]]);
   const calls: string[][] = [];
   const imports: { container: string; bytes: Buffer }[] = [];
+  const installedReferences: string[] = [];
   let before: ((args: string[]) => Promise<void>) | undefined;
   let dockerBefore: ((args: string[]) => Promise<void>) | undefined;
   const run = async (args: string[]) => {
@@ -55,11 +56,15 @@ function fixture(cacheDirectory?: string) {
     calls.push(["docker", ...args]);
     await dockerBefore?.(args);
     if (args[0] === "image" && args[1] === "inspect") return { exitCode: 0, stdout: JSON.stringify([digestA]), stderr: "" };
-    if (args.includes("import")) imports.push({ container: args[4]!, bytes: Buffer.from(options!.stdin!) });
+    if (args.includes("import")) {
+      imports.push({ container: args[4]!, bytes: Buffer.from(options!.stdin!) });
+      return { exitCode: 0, stdout: `${postgres}@${digestB}\n`, stderr: "" };
+    }
+    if (args.includes("tee")) installedReferences.push(String(options!.stdin));
     return { exitCode: 0, stdout: "", stderr: "" };
   };
   return {
-    preloader: createImagePreloader(run, docker, cacheDirectory), run, docker, calls, images, registry, imports,
+    preloader: createImagePreloader(run, docker, cacheDirectory), run, docker, calls, images, registry, imports, installedReferences,
     before(fn: (args: string[]) => Promise<void>) { before = fn; },
     dockerBefore(fn: (args: string[]) => Promise<void>) { dockerBefore = fn; },
     builds: () => calls.filter((args) => args.includes("build-erofs-cache")),
@@ -246,6 +251,7 @@ test("default workspace alias is pinned at creation and survives a changed app d
   await preloader.install(images, "workspace");
   expect(f.builds()[0]).toContain(`${postgres}@${digestA}`);
   expect(f.imports).toHaveLength(1);
+  expect(f.installedReferences).toEqual([`${postgres}@${digestB}\n`]);
   expect(resolutions).toBe(1);
   expect(f.calls.some(args => args.includes("fetch"))).toBe(false);
   const restarted = createImagePreloader(f.run, f.docker);

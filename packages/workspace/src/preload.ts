@@ -116,7 +116,14 @@ export function createImagePreloader(run: Command = command, docker: typeof requ
         if (!image.reference) throw new Error(`Image has not been resolved: ${image.requested}`);
         await prepare(image.reference);
         const archive = await run(["atelier-image-transfer", "export", image.reference]);
-        await docker(["exec", "--user", "root", "-i", container, "atelier-image-transfer", "import"], { stdin: archive.stdout });
+        const imported = await docker(["exec", "--user", "root", "-i", container, "atelier-image-transfer", "import"], { stdin: archive.stdout });
+        if (image.requested === defaultWorkspacePreload) {
+          // Transfer selects the native manifest from a multi-platform index.
+          // FROM must name that installed manifest, not the source index digest.
+          const reference = imported.stdout.trim();
+          if (!/^[^\s]+@sha256:[a-f0-9]{64}$/.test(reference)) throw new Error("Image transfer did not return an installed image reference");
+          await docker(["exec", "--user", "root", "-i", container, "tee", "/etc/atelier/default-workspace-image"], { stdin: `${reference}\n` });
+        }
       }
     },
   };
