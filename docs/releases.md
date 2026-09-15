@@ -12,23 +12,33 @@ Actions or host Docker socket is needed.
 
 ## What runs
 
-The command fetches `origin/main` and records its exact SHA. It creates/reuses an
-explicitly selected, versioned BuildKit container containing `fuse-overlayfs`.
-The workspace Docker daemon already uses FUSE; the separate BuildKit daemon must
-have its own FUSE binary and snapshotter setting. The builder image definition is
-`scripts/release-builder/Dockerfile`. Changing it selects a new builder/cache;
-there is no automatic migration or silent native-snapshotter fallback.
+Set `ATELIER_RELEASE_HELPER=builder@hostname` (or an SSH config alias). The helper
+must allow noninteractive SSH with an already trusted host key, and its SSH user
+must have Docker access. It must run Linux on the opposite architecture from the
+local Docker daemon: arm64 for an amd64 workstation, or amd64 for an ARM laptop.
+Both daemons need registry access. Missing, unreachable, or wrong-architecture
+helpers fail before publishing; there is no emulation fallback.
 
-Every invocation bootstraps the builder, checks its snapshotter, and exercises
-COPY and RUN for amd64 and arm64, exporting a small local OCI archive. `--check`
-stops here: it fetches Git and may download/build the local builder and probe,
-but never logs into or writes to the registry. It does not prove write credentials
-or that a full application build succeeds.
+The command fetches `origin/main` and records its exact SHA. It uses the integrated
+Docker BuildKit builders (`docker` driver) for the current Docker context and a
+persistent SSH context derived from the helper destination. No separate BuildKit
+container is created. Inside Atelier this preserves the patched daemon's EROFS
+snapshotter and shared-cache configuration.
+
+Every invocation checks both daemon architectures and builder drivers, then exercises
+COPY, RUN (including `uname -m` verification), and local image export on each node.
+The probe image is `atelier-release-probe:check` on each daemon. `--check` stops
+here: it fetches Git and may pull the Ubuntu probe base, but never logs into or
+writes to the registry. It does not prove write credentials or that a full
+application build succeeds.
 
 A real release builds an isolated detached worktree of that SHA, not your working
 files, and removes the worktree afterward. Your branch and local edits are left
 alone. It uses the existing image-building script to reuse/build the deterministic
 workspace image and upload the app as `ghcr.io/lucasmeijer/atelier:sha-<full-sha>`.
+Each image is built and pushed in two native slices, with `-amd64` and `-arm64`
+staging tags, then combined by digest into a multi-platform manifest. The workspace
+manifest is assembled first so both app slices pin the same workspace digest.
 Channel tags are not passed to the build. An existing commit image is reused, not
 overwritten, and its two architectures and revision labels must pass verification.
 Rerunning after a completed upload therefore skips the application rebuild.
@@ -45,9 +55,9 @@ including linked worktrees. **It is not a distributed lock:** do not run release
 from two independent workspaces simultaneously. The main check reduces stale
 promotions but cannot eliminate a race with another workspace's publisher.
 
-ARM still uses emulation on an amd64 workspace. FUSE fixes layer-copy overhead,
-not emulation. Caches persist with this workspace's builder volume, not across
-fresh workspaces. Old builder volumes are not automatically deleted by this script.
+Build caches remain with each Docker daemon. SSH contexts and probe images are
+retained for reuse. The script does not provision Docker or modify the helper's
+storage configuration.
 
 ## Live progress for people and agents
 
@@ -73,7 +83,7 @@ under Git's common directory, `atelier-releases/<timestamp>-<pid>/`, containing:
 - `status.json`: atomically updated phase, elapsed seconds, commit, builder,
   requested channels, individual promotion outcomes, digest and error. A heartbeat
   updates it every five seconds while a command is busy.
-- `probe.oci.tar` and `probe/`: the non-publishing builder smoke check.
+- `probe/`: build context for the non-publishing builder smoke checks.
 
 Find the latest invocation without knowing its timestamp:
 

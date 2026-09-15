@@ -71,13 +71,16 @@ test("promotion fails if registry readback differs", async () => {
   expect(current.channels.latest).toBe("failed");
 });
 
-async function scenario(options: { check?: boolean; exists?: boolean; moved?: boolean; buildFailure?: boolean; native?: boolean }) {
+async function scenario(options: { check?: boolean; exists?: boolean; moved?: boolean; buildFailure?: boolean; sameArch?: boolean; localArm?: boolean; badDriver?: boolean; missingHelper?: boolean }) {
   const directory = mkdtempSync(join(tmpdir(), "atelier-release-test-"));
   const calls: { args: string[]; cwd?: string }[] = [];
   let uploaded = options.exists ?? false;
   const current = status();
   current.digest = undefined;
   current.check = options.check ?? false;
+  const oldHelper = process.env.ATELIER_RELEASE_HELPER;
+  if (options.missingHelper) delete process.env.ATELIER_RELEASE_HELPER;
+  else process.env.ATELIER_RELEASE_HELPER = "builder@helper";
   const oldToken = process.env.GH_PACKAGE_TOKEN;
   process.env.GH_PACKAGE_TOKEN = "test-not-a-real-credential";
   try {
@@ -85,7 +88,13 @@ async function scenario(options: { check?: boolean; exists?: boolean; moved?: bo
       calls.push({ args, cwd: command?.cwd });
       if (args[0] === "git" && args[1] === "rev-parse") return ok(commit);
       if (args[0] === "git" && args[1] === "ls-remote") return ok(`${options.moved ? "new-commit" : commit}\trefs/heads/main`);
-      if (args[0] === "docker" && args[2] === "inspect") return ok(`org.mobyproject.buildkit.worker.snapshotter: ${options.native ? "native" : "fuse-overlayfs"}`);
+      if (args.includes("context") && args.includes("show")) return ok("default");
+      if (args.includes("{{json .}}")) {
+        const local = args[args.indexOf("--context") + 1] === "default";
+        const arm = options.sameArch ? false : (options.localArm ? local : !local);
+        return ok(JSON.stringify({ OSType: "linux", Architecture: arm ? "aarch64" : "x86_64" }));
+      }
+      if (args[1] === "buildx" && args[2] === "inspect") return ok(`Driver: ${options.badDriver ? "docker-container" : "docker"}`);
       if (args.includes("imagetools") && args.includes("{{json .Manifest}}")) {
         if (!uploaded) return { code: 1, stdout: "", stderr: "ERROR: image: not found" };
         return ok(JSON.stringify(manifest));
@@ -105,6 +114,8 @@ async function scenario(options: { check?: boolean; exists?: boolean; moved?: bo
     catch (caught) { error = caught; }
     return { calls, current, error };
   } finally {
+    if (oldHelper === undefined) delete process.env.ATELIER_RELEASE_HELPER;
+    else process.env.ATELIER_RELEASE_HELPER = oldHelper;
     if (oldToken === undefined) delete process.env.GH_PACKAGE_TOKEN;
     else process.env.GH_PACKAGE_TOKEN = oldToken;
     rmSync(directory, { recursive: true, force: true });
@@ -115,13 +126,15 @@ test("check exercises both platforms without registry writes or worktree creatio
   const { calls, current, error } = await scenario({ check: true });
   expect(error).toBeUndefined();
   expect(current.state).toBe("checked");
-  expect(calls.some(({ args }) => args.includes("linux/amd64,linux/arm64"))).toBe(true);
+  const probes = calls.filter(({ args }) => args.includes("--load"));
+  expect(probes).toHaveLength(2);
+  expect(probes.map(({ args }) => args[args.indexOf("--platform") + 1])).toEqual(["linux/amd64", "linux/arm64"]);
   expect(calls.some(({ args }) => args.includes("login") || args.includes("--push") || args.includes("imagetools") || args.includes("worktree"))).toBe(false);
 });
 
-test("a native snapshotter stops the release before publishing", async () => {
-  const { calls, error } = await scenario({ native: true });
-  expect(String(error)).toContain("not using fuse-overlayfs");
+test("a same-architecture helper stops the release before publishing", async () => {
+  const { calls, error } = await scenario({ sameArch: true });
+  expect(String(error)).toContain("other architecture");
   expect(calls.some(({ args }) => args.includes("login"))).toBe(false);
 });
 
@@ -157,14 +170,15 @@ test("failed build removes checkout and does not promote", async () => {
   expect(calls.some(({ args }) => args.includes("imagetools") && args.includes("create"))).toBe(false);
 });
 
-test("image build CLI stages both images on the explicit builder without channel tags", async () => {
+for (const split of [false, true]) {
+test(`image build CLI stages images without channels (split=${split})`, async () => {
   const directory = mkdtempSync(join(tmpdir(), "atelier-release-cli-test-"));
   const log = join(directory, "docker.jsonl");
   const docker = join(directory, "docker");
   writeFileSync(docker, `#!/usr/bin/env bun\nimport { appendFileSync } from 'node:fs';\nconst args = process.argv.slice(2);\nappendFileSync(${JSON.stringify(log)}, JSON.stringify(args) + '\\n');\nif (args.includes('{{json .Manifest}}')) { console.log(JSON.stringify({digest: '${digest}'})); process.exit(0); }\nif (args.includes('inspect')) process.exit(1);\n`);
   chmodSync(docker, 0o755);
   try {
-    const process = Bun.spawn(["bun", join(import.meta.dir, "build-atelier-image.ts"), "--push", "--no-latest", "--tag", "sha-test", "--builder", "test-fuse", "--platform", "linux/amd64,linux/arm64"], {
+    const process = Bun.spawn(["bun", join(import.meta.dir, "build-atelier-image.ts"), "--push", "--no-latest", "--tag", "sha-test", "--builder", "test-builder", "--platform", "linux/amd64,linux/arm64", ...(split ? ["--helper-context", "test-helper", "--native-platform", "linux/amd64"] : [])], {
       cwd: join(import.meta.dir, ".."), stdin: "ignore", stdout: "pipe", stderr: "pipe",
       env: { ...Bun.env, PATH: `${directory}:${Bun.env.PATH}`, GH_PACKAGE_TOKEN: "test-not-a-real-credential" },
     });
@@ -173,25 +187,53 @@ test("image build CLI stages both images on the explicit builder without channel
     expect(code).toBe(0);
     const commands: string[][] = readFileSync(log, "utf8").trim().split("\n").map((line) => JSON.parse(line));
     const builds = commands.filter((args) => args[0] === "buildx" && args[1] === "build");
-    expect(builds).toHaveLength(2);
+    expect(builds).toHaveLength(split ? 4 : 2);
     for (const args of builds) {
-      expect(args[args.indexOf("--builder") + 1]).toBe("test-fuse");
+      expect(args[args.indexOf("--builder") + 1]).toBe(split && args.includes("linux/arm64") ? "test-helper" : "test-builder");
       expect(args).toContain("--push");
-      expect(args).toContain("linux/amd64,linux/arm64");
+      expect(args[args.indexOf("--platform") + 1]).toBe(split ? (builds.indexOf(args) % 2 === 0 ? "linux/amd64" : "linux/arm64") : "linux/amd64,linux/arm64");
       expect(args.some((arg) => arg.endsWith(":latest") || arg.endsWith(":stable"))).toBe(false);
     }
-    expect(builds[1]).toContain("ghcr.io/lucasmeijer/atelier:sha-test");
-    const workspaceArg = builds[1]!.find(arg => arg.startsWith("ATELIER_DEFAULT_WORKSPACE_IMAGE="))!;
+    const appBuild = builds[split ? 2 : 1]!;
+    expect(appBuild).toContain(`ghcr.io/lucasmeijer/atelier:sha-test${split ? "-amd64" : ""}`);
+    const workspaceArg = appBuild.find(arg => arg.startsWith("ATELIER_DEFAULT_WORKSPACE_IMAGE="))!;
     expect(workspaceArg).toEndWith(`@${digest}`);
-    expect(builds[1]).toContain(`ATELIER_EAGERLY_PRELOAD=${JSON.stringify([workspaceArg.split("=")[1]])}`);
+    expect(appBuild).toContain(`ATELIER_EAGERLY_PRELOAD=${JSON.stringify([workspaceArg.split("=")[1]])}`);
+    if (split) {
+      const merges = commands.filter(args => args.includes("imagetools") && args.includes("create"));
+      expect(merges).toHaveLength(2);
+      expect(merges[1]).toContain("ghcr.io/lucasmeijer/atelier:sha-test");
+      for (const merge of merges) {
+        expect(merge.slice(-2).every(ref => ref.endsWith(`@${digest}`))).toBe(true);
+      }
+      expect(commands.indexOf(merges[0]!)).toBeLessThan(commands.indexOf(appBuild));
+      expect(builds[3]).toContain(workspaceArg);
+    }
   } finally {
     rmSync(directory, { recursive: true, force: true });
   }
 });
+}
 
 for (const preload of [undefined, "[]", JSON.stringify(["workspace:tag"])]) {
   test(`release rejects missing or unpinned workspace: ${preload}`, async () => {
     const run: Run = async args => args.includes("{{json .Manifest}}") ? ok(JSON.stringify(manifest)) : ok(JSON.stringify({os:"linux", architecture:"amd64", config:{Labels:{"org.opencontainers.image.revision":commit, "eagerly-preload":preload}}}));
     await expect(verifyRevision(run, "ref", commit)).rejects.toThrow("digest-pinned workspace");
+  });
+}
+
+test("ARM local daemon uses an amd64 helper", async () => {
+  const { calls, error } = await scenario({ localArm: true });
+  expect(error).toBeUndefined();
+  const build = calls.find(({ args }) => args[0] === "bun")!;
+  expect(build.args[build.args.indexOf("--native-platform") + 1]).toBe("linux/arm64");
+  expect(build.args).toContain("--helper-context");
+});
+
+for (const options of [{ missingHelper: true }, { badDriver: true }]) {
+  test(`invalid builder setup fails before login: ${JSON.stringify(options)}`, async () => {
+    const { calls, error } = await scenario(options);
+    expect(error).toBeDefined();
+    expect(calls.some(({ args }) => args.includes("login") || args.includes("--push"))).toBe(false);
   });
 }

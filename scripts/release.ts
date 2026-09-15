@@ -12,9 +12,10 @@ export const usage = `Release Atelier from the current origin/main commit.
 
   bun run release             Publish latest
   bun run release --stable    Publish latest and stable
-  bun run release --check     Check Git, FUSE builder and both architectures; publish nothing
+  bun run release --check     Check Git, local/SSH Docker builders and both architectures; publish nothing
 
 --check may be combined with --stable. Working files are never released or reset.
+Requires ATELIER_RELEASE_HELPER=[user@]hostname with noninteractive SSH and Docker access.
 Uses the existing GH_PACKAGE_TOKEN for publishing. Logs/status live under Git's
 common directory in atelier-releases/<run-id>/. See docs/releases.md.
 `;
@@ -114,27 +115,39 @@ export async function promoteChannels(run: Run, status: ReleaseStatus, save: () 
   }
 }
 
-async function ensureBuilder(run: Run, directory: string): Promise<string> {
-  const dockerfile = await Bun.file(join(root, "scripts/release-builder/Dockerfile")).text();
-  const hash = createHash("sha256").update(dockerfile).digest("hex").slice(0, 12);
-  const builder = `atelier-release-fuse-${hash}`;
-  const builderImage = `atelier-buildkit-fuse:${hash}`;
-  const existing = await run(["docker", "buildx", "ls", "--format", "{{.Name}}"]);
-  if (!existing.stdout.split(/\s+/).includes(builder)) {
-    // Explicitly use workspace Docker's fast storage driver to build BuildKit itself.
-    await run(["docker", "buildx", "build", "--builder", "default", "--load", "--progress", "plain", "--tag", builderImage, join(root, "scripts/release-builder")], { stream: true });
-    await run(["docker", "buildx", "create", "--name", builder, "--driver", "docker-container", "--driver-opt", `image=${builderImage}`, "--buildkitd-flags", "--oci-worker-snapshotter=fuse-overlayfs"]);
+export async function ensureBuilders(run: Run, directory: string) {
+  const helper = process.env.ATELIER_RELEASE_HELPER?.trim();
+  if (!helper || !/^(?:[A-Za-z0-9_][A-Za-z0-9_.-]*@)?[A-Za-z0-9_][A-Za-z0-9_.-]*$/.test(helper)) {
+    throw new Error("ATELIER_RELEASE_HELPER must be an SSH destination: [user@]hostname (SSH aliases are supported)");
   }
-  const inspection = await run(["docker", "buildx", "inspect", builder, "--bootstrap"]);
-  if (!/worker\.snapshotter:\s+fuse-overlayfs\b/.test(inspection.stdout)) throw new Error(`${builder} is not using fuse-overlayfs`);
-
-  // Exercise RUN, COPY, and a locally exported manifest for both targets, not just advertised support.
+  await run(["ssh", "-o", "BatchMode=yes", "-o", "StrictHostKeyChecking=yes", "-o", "ConnectTimeout=10", helper, "docker info --format '{{.Architecture}}'"]);
+  const local = (await run(["docker", "context", "show"])).stdout.trim();
+  const remote = `atelier-release-${createHash("sha256").update(helper).digest("hex").slice(0, 12)}`;
+  const contexts = (await run(["docker", "context", "ls", "--format", "{{.Name}}"])).stdout.split(/\s+/);
+  if (!contexts.includes(remote)) await run(["docker", "context", "create", remote, "--docker", `host=ssh://${helper}`]);
+  const architecture = async (context: string) => {
+    const result = Value.Parse(Type.Object({ OSType: Type.String(), Architecture: Type.String() }), JSON.parse((await run(["docker", "--context", context, "info", "--format", "{{json .}}"])).stdout));
+    if (result.OSType !== "linux") throw new Error(`${context}: release requires a Linux Docker daemon`);
+    const arch = new Map([["x86_64", "amd64"], ["aarch64", "arm64"], ["amd64", "amd64"], ["arm64", "arm64"]]).get(result.Architecture);
+    if (!arch) throw new Error(`${context}: unsupported Docker architecture ${result.Architecture}`);
+    const inspection = (await run(["docker", "buildx", "inspect", context])).stdout;
+    const driver = /^Driver:\s+(\S+)/m.exec(inspection)?.[1];
+    if (driver !== "docker") throw new Error(`${context}: expected integrated docker builder, got ${driver}`);
+    return `linux/${arch}`;
+  };
+  const nativePlatform = await architecture(local);
+  const remotePlatform = await architecture(remote);
+  if (nativePlatform === remotePlatform) throw new Error(`Helper must have the other architecture; both daemons are ${nativePlatform}`);
   const probe = join(directory, "probe");
   mkdirSync(probe);
   writeFileSync(join(probe, "marker"), "Atelier release builder check\n");
-  writeFileSync(join(probe, "Dockerfile"), "FROM ubuntu:26.04\nCOPY marker /marker\nRUN cat /marker && test -x /bin/sh && uname -m\n");
-  await run(["docker", "buildx", "build", "--builder", builder, "--platform", platforms.join(","), "--provenance=false", "--progress", "plain", "--output", `type=oci,dest=${join(directory, "probe.oci.tar")}`, probe], { stream: true });
-  return builder;
+  // Exercise COPY, RUN and image export on each daemon, without emulation or registry writes.
+  for (const [builder, platform] of [[local, nativePlatform], [remote, remotePlatform]]) {
+    const machine = platform === "linux/amd64" ? "x86_64" : "aarch64";
+    writeFileSync(join(probe, "Dockerfile"), `FROM ubuntu:26.04\nCOPY marker /marker\nRUN cat /marker && test "$(uname -m)" = "${machine}"\n`);
+    await run(["docker", "buildx", "build", "--builder", builder!, "--platform", platform!, "--provenance=false", "--progress", "plain", "--no-cache", "--load", "--tag", "atelier-release-probe:check", probe], { stream: true });
+  }
+  return { local, remote, nativePlatform };
 }
 
 export async function release(options: ReturnType<typeof parseReleaseArgs>, run: Run, status: ReleaseStatus, save: () => void, directory: string): Promise<void> {
@@ -143,8 +156,9 @@ export async function release(options: ReturnType<typeof parseReleaseArgs>, run:
   await run(["git", "fetch", "origin", "refs/heads/main"]);
   status.commit = (await run(["git", "rev-parse", "FETCH_HEAD^{commit}"])).stdout.trim();
   save();
-  phase("Prepare and check FUSE builder");
-  status.builder = await ensureBuilder(run, directory);
+  phase("Check local and SSH native builders");
+  const builders = await ensureBuilders(run, directory);
+  status.builder = `${builders.local} + ${builders.remote}`;
   save();
   if (options.check) {
     status.state = "checked";
@@ -164,7 +178,7 @@ export async function release(options: ReturnType<typeof parseReleaseArgs>, run:
     await run(["git", "worktree", "add", "--detach", checkout, status.commit]);
     try {
       phase("Build and upload commit images (no channel updates)");
-      await run(["bun", join(root, "scripts/build-atelier-image.ts"), "--push", "--no-latest", "--tag", `sha-${status.commit}`, "--builder", status.builder, "--platform", platforms.join(","), "--progress", "plain"], { cwd: checkout, stream: true });
+      await run(["bun", join(root, "scripts/build-atelier-image.ts"), "--push", "--no-latest", "--tag", `sha-${status.commit}`, "--builder", builders.local, "--helper-context", builders.remote, "--native-platform", builders.nativePlatform, "--platform", platforms.join(","), "--progress", "plain"], { cwd: checkout, stream: true });
     } finally {
       await run(["git", "worktree", "remove", "--force", checkout]);
     }

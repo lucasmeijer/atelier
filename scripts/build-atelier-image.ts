@@ -18,6 +18,8 @@ Options:
   --latest             Tag the image as <image>:latest (default)
   --no-latest          Do not update latest (release staging)
   --builder <name>     Explicit Buildx builder for both images
+  --helper-context <name> SSH Docker context for the non-native slice (release orchestration)
+  --native-platform <value> Local daemon platform when using --helper-context
   --stable             Also tag the image as <image>:stable
   --push               Push the built images instead of only loading them locally. Uses GH_PACKAGE_TOKEN for ghcr.io.
   --platform <value>   Docker platform(s), e.g. linux/amd64 or linux/amd64,linux/arm64
@@ -41,6 +43,8 @@ interface Options {
   push: boolean;
   platform?: string;
   builder?: string;
+  helperContext?: string;
+  nativePlatform?: string;
   noCache: boolean;
   forceWorkspace: boolean;
   progress?: string;
@@ -89,6 +93,10 @@ function parseArgs(args: string[]): Options {
     } else if (arg === "--builder") {
       options.builder = takeValue(args, i, arg);
       i++;
+    } else if (arg === "--helper-context") {
+      options.helperContext = takeValue(args, i++, arg);
+    } else if (arg === "--native-platform") {
+      options.nativePlatform = takeValue(args, i++, arg);
     } else if (arg === "--stable") {
       options.stable = true;
     } else if (arg === "--push") {
@@ -217,7 +225,8 @@ function dockerBuildCommand(options: Options, args: string[]): string[] {
     : ["docker", "build"];
   return [
     ...command,
-    ...resourceBuildArgs,
+    // System cgroup paths belong to the local daemon, never the SSH helper.
+    ...(options.helperContext && options.builder === options.helperContext ? [] : resourceBuildArgs),
     ...(options.builder ? ["--builder", options.builder] : []),
     ...(options.platform ? ["--platform", options.platform] : []),
     ...(options.noCache ? ["--no-cache"] : []),
@@ -227,7 +236,27 @@ function dockerBuildCommand(options: Options, args: string[]): string[] {
 }
 
 const options = parseArgs(process.argv.slice(2));
+if (options.helperContext && (!options.push || !options.builder || !["linux/amd64", "linux/arm64"].includes(options.nativePlatform ?? "") || options.platform !== "linux/amd64,linux/arm64")) {
+  fail("--helper-context requires --push, --builder, --native-platform and --platform linux/amd64,linux/arm64");
+}
 const resourceBuildArgs = await workloadBuildArgs();
+
+async function buildImage(refs: string[], args: string[]): Promise<void> {
+  if (!options.helperContext) {
+    await runInherited(dockerBuildCommand(options, [...refs.flatMap(ref => ["--tag", ref]), ...args]));
+    return;
+  }
+  const slices: string[] = [];
+  for (const platform of requestedPlatforms(options)) {
+    const slice = `${refs[0]}-${platform.split("/")[1]}`;
+    const builder = platform === options.nativePlatform ? options.builder : options.helperContext;
+    await runInherited(dockerBuildCommand({ ...options, builder, platform }, ["--tag", slice, ...args]));
+    const descriptor = JSON.parse(run(["docker", "buildx", "imagetools", "inspect", slice, "--format", "{{json .Manifest}}"]));
+    if (!/^sha256:[a-f0-9]{64}$/.test(descriptor.digest)) throw new Error(`Registry returned no digest for ${slice}`);
+    slices.push(`${slice}@${descriptor.digest}`);
+  }
+  await runInherited(["docker", "buildx", "imagetools", "create", ...refs.flatMap(ref => ["--tag", ref]), ...slices]);
+}
 authenticateGhcr(options);
 const workspaceContext = await prepareDefaultWorkspaceImage();
 const workspaceContextDir = workspaceContext.contextDir;
@@ -244,12 +273,6 @@ const workspaceTag = workspaceHashTag(workspaceMetadata.tag);
 const workspaceRepo = workspaceImageRepository(options.image);
 const defaultWorkspaceImageRef = `${workspaceRepo}:${workspaceTag}`;
 
-const workspaceBuildCommand = dockerBuildCommand(options, [
-  "--tag", defaultWorkspaceImageRef,
-  "--file", `${workspaceContextDir}/Dockerfile`,
-  workspaceContextDir,
-]);
-
 let shouldBuildWorkspace = false;
 
 console.log();
@@ -262,7 +285,7 @@ await ensureGeneratedDefaultWorkspaceImage({
   force: options.forceWorkspace || options.noCache,
   imageName: () => defaultWorkspaceImageRef,
   exists: async ref => workspaceImageExists(ref, options),
-  build: async () => { shouldBuildWorkspace = true; await runInherited(workspaceBuildCommand); },
+  build: async () => { shouldBuildWorkspace = true; await buildImage([defaultWorkspaceImageRef], ["--file", `${workspaceContextDir}/Dockerfile`, workspaceContextDir]); },
 });
 // Bind the app to the exact multi-platform workspace manifest just published.
 let publishedWorkspaceRef = defaultWorkspaceImageRef;
@@ -280,13 +303,10 @@ const defaultBuildArgs = [
 ];
 const allBuildArgs = [...defaultBuildArgs, ...options.buildArgs];
 
-const appBuildCommand = dockerBuildCommand(options, [
-  ...imageRefs.flatMap((ref) => ["--tag", ref]),
+await buildImage(imageRefs, [
   ...allBuildArgs.flatMap((buildArg) => ["--build-arg", buildArg]),
   "--file", "apps/web/Dockerfile", ".",
 ]);
-
-await runInherited(appBuildCommand);
 
 console.log();
 console.log(options.push ? "Published:" : "Built:");

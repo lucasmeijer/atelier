@@ -40,9 +40,14 @@ bun run image:publish -- --tag docker-rewrite --tag "sha-$(git rev-parse HEAD)" 
 This builds/publishes **both complete images**, for amd64 and arm64, and bakes the
 matching content-addressed workspace tag into the app. No runtime-file overlays,
 source mounts, dev server or manually patched workspace are needed. In an Atelier
-workspace, run `bun run release --check` first to prepare/check the FUSE Buildx
-builder, then pass the printed builder name with `--builder <name>` to the image
-command. This check publishes nothing and does not change the current branch.
+workspace, set `ATELIER_RELEASE_HELPER=user@hostname` and run
+`bun run release --check` first to check the local and SSH helper Docker builders.
+For a native split build of this branch, add `--builder <local-context>`,
+`--helper-context <helper-context>`, and `--native-platform linux/amd64` (or
+`linux/arm64` on an ARM workstation) to the image command above. The check logs
+show the selected context names. Without those flags, the lower-level image
+command uses a single builder. The check publishes nothing and does not change
+the current branch.
 
 On the deployment host, pin both the installer and image to the same released
 commit. Do not use `https://lucasmeijer.com/get-atelier` for this branch test: that
