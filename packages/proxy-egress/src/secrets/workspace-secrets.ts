@@ -82,7 +82,7 @@ function secretPlaceholder(name: string): string {
 }
 
 function parseHostPatterns(hostPattern: string): string[] {
-  return hostPattern.split(",").map((part) => part.trim()).filter(Boolean);
+  return hostPattern.split(/[,;]/).map((part) => part.trim()).filter(Boolean);
 }
 
 function githubAllowedHosts(): string[] {

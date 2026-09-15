@@ -64,6 +64,19 @@ describe("workspace secrets", () => {
     expect(result.url).toBe("https://api.example.com/v1/strict-secret");
   });
 
+  test.each(["api.example.com; *.example.org", " ; api.example.com, ; *.example.org;; "])("accepts semicolon-separated secret hosts: %s", async (hostPattern) => {
+    const project = (await addProject("https://github.com/org/repo.git")).project;
+    await createProjectSecret(project.id, { envName: "API_TOKEN", hostPattern, secretValue: "real-secret" });
+    const context = await createWorkspaceSecretContext("test-workspace", projectInit(project.id));
+
+    expect(context.secrets).toContainEqual({ name: "API_TOKEN", placeholder: "ATELIER_PROXY_READY_API_TOKEN", hosts: ["api.example.com", "*.example.org"] });
+    for (const host of ["api.example.com", "service.example.org"]) {
+      const result = await context.hooks.onRequest(new Request(`https://${host}/`, { headers: { authorization: `Bearer ${context.env.API_TOKEN}` } }));
+      expect(result.headers.get("authorization")).toBe("Bearer real-secret");
+    }
+    expect(() => context.hooks.onRequest(new Request("https://other.example.net/", { headers: { authorization: `Bearer ${context.env.API_TOKEN}` } }))).toThrow("secret API_TOKEN not allowed for host: other.example.net");
+  });
+
   test("reloads persisted project secrets when rebuilding context after restart", async () => {
     const project = (await addProject("https://github.com/org/repo.git")).project;
     await createProjectSecret(project.id, { envName: "PACKAGE_TOKEN", hostPattern: "registry.example.com", placeholder: "PACKAGE_TOKEN", secretValue: "real-package-secret" });
