@@ -8,11 +8,19 @@ export function stopCommands() {
 export async function command(
   args: string[],
   log?: (line: string) => void,
+  onOutput?: (chunk: string) => void,
+  timeoutMs = 120_000,
 ): Promise<string> {
   return new Promise((resolve, reject) => {
     const child = spawn(args[0]!, args.slice(1), {
       stdio: ["ignore", "pipe", "pipe"],
     });
+    let timedOut = false;
+    const timer = setTimeout(() => {
+      timedOut = true;
+      child.kill("SIGKILL");
+    }, timeoutMs);
+    child.once("close", () => clearTimeout(timer));
     commands.add(child);
     child.once("exit", () => commands.delete(child));
     const output: string[] = [];
@@ -20,6 +28,7 @@ export async function command(
       stream.on("data", (data: Buffer) => {
         const text = data.toString();
         output.push(text);
+        onOutput?.(text);
         log?.(text.trimEnd());
       });
     child.on("error", reject);
@@ -27,7 +36,7 @@ export async function command(
       code === 0
         ? resolve(output.join("").trim())
         : reject(
-            new Error(`${args[0]} exited ${code}: ${output.join("").trim()}`),
+            new Error(timedOut ? `Timed out after ${timeoutMs / 1000}s: ${args.join(" ")}` : `${args[0]} exited ${code}: ${output.join("").trim()}`),
           ),
     );
   });

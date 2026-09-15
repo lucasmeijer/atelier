@@ -1,0 +1,19 @@
+// Docker's non-TTY pull output reports layer discovery and completion, not
+// byte totals. Progress measures completed layers among those discovered so far.
+// Until any layers are discovered, the activity has no measurable percentage.
+export class PullProgress {
+  private pending = "";
+  private layers = new Map<string, boolean>();
+
+  push(chunk: string) {
+    this.pending += chunk;
+    const lines = this.pending.split(/\r?\n/);
+    this.pending = lines.pop()!;
+    for (const line of lines) {
+      const match = /^([a-f0-9]+): (Pulling fs layer|Already exists|Pull complete)$/.exec(line.trim());
+      if (match) this.layers.set(match[1]!, match[2] !== "Pulling fs layer");
+    }
+    if (this.layers.size === 0) return undefined;
+    return Math.floor([...this.layers.values()].filter(Boolean).length / this.layers.size * 100);
+  }
+}

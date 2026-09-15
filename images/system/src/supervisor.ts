@@ -1,3 +1,5 @@
+import { installationStatus, type Activity } from "./installation-status.ts";
+import { PullProgress } from "./pull-progress.ts";
 import { Type } from "typebox";
 import { Value } from "typebox/value";
 import { installWorkspaceFirewall } from "./firewall.ts";
@@ -38,7 +40,7 @@ async function persist() {
   await writeFile(`${stateDir}/state.next`, JSON.stringify(persisted));
   await rename(`${stateDir}/state.next`, `${stateDir}/state.json`);
 }
-let phase = "Starting System";
+let activity: Activity = { description: "Starting Atelier services" };
 let failure: string | undefined;
 let candidate = persisted.currentImage ?? values["app-image"]!;
 let busy = false;
@@ -48,13 +50,21 @@ let initialized = false;
 let healthy = false;
 let stopping = false;
 let tailnetHost: string | undefined;
+let connectionState = "Starting";
+let authUrl: string | undefined;
+let connectionAttempted = false;
+let connecting = false;
+let connectionFailure: string | undefined;
+let networkFailure: string | undefined;
+let connectionStallFailure: string | undefined;
+let resetConnectionClock = false;
 let routeTarget = 3001;
 let logProcess: ChildProcess | undefined;
 const logs: string[] = [];
 const subscribers = new Set<ReadableStreamDefaultController<Uint8Array>>();
 const encoder = new TextEncoder();
 function fragment() {
-  return `<h1>Atelier System</h1><h2>${escape(phase)}</h2><p>${escape(candidate)}</p>${failure ? `<p role="alert">${escape(failure)}</p><form method="post" action="/retry">${button("Retry")}</form>` : ""}<pre>${escape(logs.join("\n"))}</pre>`;
+  return `<h1>Atelier System</h1><h2>${escape(activity.description)}</h2><p>${escape(candidate)}</p>${failure ? `<p role="alert">${escape(failure)}</p><form method="post" action="/retry">${button("Retry")}</form>` : ""}<pre>${escape(logs.join("\n"))}</pre>`;
 }
 function emit(event = "progress", data = fragment()) {
   for (const subscriber of subscribers)
@@ -72,7 +82,7 @@ function log(text: string) {
   emit();
 }
 function stage(text: string) {
-  phase = text;
+  activity = { description: text };
   log(text);
 }
 const children: ChildProcess[] = [];
@@ -117,10 +127,21 @@ async function appIsHealthy() {
 async function existsContainer() {
   return (await docker("ps", "-aq", "--filter", "name=^atelier$")).length > 0;
 }
+async function pullImage(reference: string, description: string) {
+  const progress = new PullProgress();
+  stage(description);
+  try {
+    await command(["docker", "pull", reference], log, (chunk) => {
+      activity = { description, percent: progress.push(chunk) };
+    }, 1_800_000);
+  } finally {
+    activity = { description };
+  }
+}
 async function prepareImage(reference: string, pull: boolean): Promise<string> {
   // Resolve the exact local image ID once. No subsequent tag lookup can change the update.
   if (pull && !(await docker("image", "ls", "-q", reference)))
-    await command(["docker", "pull", reference], log);
+    await pullImage(reference, "Downloading Atelier");
   const image = JSON.parse(await docker("image", "inspect", reference))[0];
   const preload: unknown = JSON.parse(
     image.Config.Labels?.["eagerly-preload"] ?? "[]",
@@ -130,7 +151,7 @@ async function prepareImage(reference: string, pull: boolean): Promise<string> {
   )
     throw new Error("eagerly-preload must be a JSON array of image references");
   for (const ref of preload) {
-    if (pull) await command(["docker", "pull", ref], log);
+    if (pull) await pullImage(ref, `Downloading workspace image ${ref}`);
     else await docker("image", "inspect", ref);
   }
   return image.Id;
@@ -168,7 +189,7 @@ async function replace(reference: string, pull: boolean) {
   candidate = reference;
   try {
     await configureRoutes(3001);
-    stage("Preparing Atelier image");
+    stage("Preparing Atelier");
     const exact = await prepareImage(reference, pull);
     candidate = exact;
     if (stopping) return;
@@ -218,7 +239,7 @@ async function replace(reference: string, pull: boolean) {
     );
     for (const output of [logProcess.stdout!, logProcess.stderr!])
       output.on("data", (data) => log(data.toString().trimEnd()));
-    stage("Waiting for Atelier health");
+    stage("Checking Atelier is healthy");
     await waitFor(appIsHealthy, timeout, "Atelier health");
     persisted.currentImage = exact;
     await persist();
@@ -251,9 +272,16 @@ const server = Bun.serve({
   idleTimeout: 0,
   async fetch(request) {
     const url = new URL(request.url);
-    if (url.pathname === "/status")
+    if (url.pathname === "/status") {
+      // Check again at the handoff: startup health alone can become stale.
+      const appResponding = healthy && await appIsHealthy() && healthy;
       return Response.json({
-        phase,
+        ...installationStatus({
+          activity: healthy && !appResponding ? { description: "Checking Atelier is healthy" } : activity,
+          failure: failure ?? connectionFailure ?? networkFailure ?? connectionStallFailure,
+          stopping, busy, appResponding, hostname: tailnetHost, appliedRoute,
+          connectionState, authUrl, logs,
+        }),
         failure,
         healthy,
         busy,
@@ -262,6 +290,7 @@ const server = Bun.serve({
         tailnetHost,
         logs,
       });
+    }
     if (url.pathname === "/events") {
       const origin = request.headers.get("origin");
       if (origin && !allowedOrigin(request))
@@ -296,6 +325,17 @@ const server = Bun.serve({
     if (request.method === "POST") {
       if (!allowedOrigin(request))
         return new Response("Forbidden", { status: 403 });
+      if (url.pathname === "/connect") {
+        if (stopping) return new Response("System is stopping", { status: 503 });
+        if (!connecting) {
+          connectionAttempted = false;
+          connectionFailure = undefined;
+          connectionStallFailure = undefined;
+          networkFailure = undefined;
+          resetConnectionClock = true;
+        }
+        return new Response(null, { status: 202 });
+      }
       if (!initialized || stopping)
         return new Response("System is starting or stopping", { status: 503 });
       if (busy)
@@ -380,7 +420,7 @@ async function shutdown(code: number) {
   if (stopping) return;
   stopping = true;
   healthy = false;
-  stage("Stopping System");
+  stage("Stopping Atelier services");
   stopCommands();
   await startup;
   await activeOperation;
@@ -458,11 +498,42 @@ async function initialize() {
   await persist();
   // Tailscale login may happen after app boot. Its network state is independent.
   void (async () => {
+    let lastNetworkSuccess = Date.now();
+    let previousConnectionState = "";
+    let connectionStateSince = Date.now();
     while (!stopping) {
+      if (resetConnectionClock) {
+        connectionStateSince = Date.now();
+        lastNetworkSuccess = Date.now();
+        resetConnectionClock = false;
+      }
       try {
         const status = JSON.parse(
-          await command(["tailscale", "status", "--json"]),
+          await command(["tailscale", "status", "--json"], undefined, undefined, 5000),
         );
+        connectionState = status.BackendState;
+        authUrl = status.AuthURL || undefined;
+        if (connectionState !== previousConnectionState) {
+          previousConnectionState = connectionState;
+          connectionStateSince = Date.now();
+        }
+        const awaitingUser = connectionState === "NeedsMachineAuth" ||
+          (connectionState === "NeedsLogin" && !!authUrl);
+        connectionStallFailure = connectionState !== "Running" && !awaitingUser &&
+          Date.now() - connectionStateSince >= 120_000
+          ? "The private connection did not finish starting within 2 minutes." : undefined;
+        if (!connectionAttempted && !connecting &&
+            (connectionState === "NeedsLogin" || connectionState === "Stopped")) {
+          connectionAttempted = true;
+          connecting = true;
+          // The browser sign-in is the user's consent; generating its URL does
+          // not connect an account. System owns this command and its deadline.
+          void command(["tailscale", "up", "--timeout=10m"], log, undefined, 610_000)
+            .catch((error) => {
+              connectionFailure = `Could not connect Atelier: ${String(error)}`;
+              log(connectionFailure);
+            }).finally(() => { connecting = false; });
+        }
         const host =
           status.BackendState === "Running"
             ? status.Self.DNSName.replace(/\.$/, "")
@@ -476,8 +547,13 @@ async function initialize() {
           tailnetHost = undefined;
           appliedRoute = "";
         }
+        lastNetworkSuccess = Date.now();
+        networkFailure = undefined;
+        if (host) connectionFailure = undefined;
       } catch (error) {
         log(`Tailscale: ${String(error)}`);
+        if (Date.now() - lastNetworkSuccess >= 60_000)
+          networkFailure = `Could not prepare the private connection: ${String(error)}`;
       }
       await sleep(3000);
     }
