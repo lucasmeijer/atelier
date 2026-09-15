@@ -48,6 +48,8 @@ StartLimitIntervalSec=60s
 StartLimitBurst=5
 [Service]
 Type=notify
+# System services do not inherit the workspace shell's proxy environment.
+EnvironmentFile=/.atelier/environment
 ExecStart=/usr/local/bin/dockerd --live-restore
 Restart=on-failure
 RestartSec=2s

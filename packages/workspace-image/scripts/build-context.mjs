@@ -5,7 +5,7 @@ import { cp, lstat, mkdir, readFile, readdir, readlink, rm, writeFile } from "no
 import { basename, dirname, join, relative } from "node:path";
 import { fileURLToPath } from "node:url";
 
-import { workspaceRuntimeUnits } from "../src/runtime-units.ts";
+import { workspaceRuntimeUnits } from "../src/workspace-systemd-units.ts";
 
 const outDir = process.argv[2];
 if (!outDir || process.argv.length > 3) throw new Error("usage: build-context.mjs <output-dir>");

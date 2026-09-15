@@ -137,7 +137,7 @@ function isWorkspaceImageInputChange(path: string): boolean {
     || rel.startsWith(`workspace-image${sep}scripts${sep}`)
     || rel.startsWith(`workspace-image${sep}rootfs${sep}`)
     || rel === `workspace-image${sep}runtime-image`
-    || rel === `workspace-image${sep}src${sep}runtime-units.ts`
+    || rel === `workspace-image${sep}src${sep}workspace-systemd-units.ts`
     || rel.includes(`${sep}workspace-image${sep}`);
 }
 
