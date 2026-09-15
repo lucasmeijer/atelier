@@ -268,17 +268,9 @@
 
 
 .agent-media-img, .agent-media-video, .agent-media-frame { border-color: var(--line); border-radius: var(--radius-surface); }
-.launch-composer-dialog { width: min(860px, calc(100vw - 40px)); margin: auto; position: fixed; inset: 0; background: var(--panel); border: 1.5px solid var(--line-strong); border-radius: var(--radius-overlay); box-shadow: var(--shadow); overflow: hidden; padding: 0; color: var(--text); font: var(--text-body)/var(--leading-standard) var(--font-sans); }
-.launch-composer-dialog::backdrop { background: rgba(0,0,0,.5); backdrop-filter: blur(4px); }
-.launch-composer-dialog:focus-within { border-color: var(--accent); }
-.launch-composer-dialog .launch-composer-header { display: flex; align-items: flex-start; gap: 8px; padding: 8px 8px 8px 16px; background: var(--panel); }
-.launch-composer-dialog .launch-composer-title { min-width: 0; flex: 1; margin: 0; padding: 4px 0; border: 0; border-radius: 0; color: var(--text); }
-.launch-composer-dialog .launch-composer-title b { color: var(--text-bright); font-weight: var(--weight-bold); }
-.launch-composer-dialog .composer { padding: 0; }
-.launch-composer-dialog .composer-surface { width: 100%; max-width: none; margin: 0; border: 0; border-top: 1px solid var(--line); border-radius: 0; box-shadow: none; }
-.launch-composer-dialog .composer-surface:focus-within { border-color: var(--line); }
-.launch-composer-dialog .composer-surface > form { min-height: 260px; }
-.launch-composer-dialog .composer-input { min-height: 260px; padding-top: 12px; overflow-y: auto; }
+.launch-composer { padding: 0; }
+.launch-composer .composer-surface { border: 0; border-radius: 0; box-shadow: none; }
+.launch-composer .composer-input { min-height: var(--composer-input-max-height); overflow-y: auto; }
 
 /* Transcript + tool-owned renderers */
 .agent-item { position: relative; width: 100%; }

@@ -1,18 +1,11 @@
 import { Controller } from "@hotwired/stimulus";
 import { createHtmlAutocompleteController, PromptHistoryNavigator } from "@atelier/agent/client";
 import { autocompleteHtml } from "@atelier/design-system/autocomplete";
-import { composerSubmitKey, focusLikelyOpensSoftwareKeyboard, isWorkspacePaneVisible, looksLikeProjectSpec, phoneLayoutMediaQuery } from "@atelier/shared";
+import { composerSubmitKey, focusLikelyOpensSoftwareKeyboard, isWorkspacePaneVisible, looksLikeProjectSpec } from "@atelier/shared";
 import { Type } from "typebox";
 import { Value } from "typebox/value";
 import { submitFormWithFirstButton } from "./form-submission.ts";
 import { registerWorkspaceControllers } from "./workspace-controller-registry.ts";
-
-function focusDialogPromptEnd(dialog: ParentNode): void {
-  const input = dialog.querySelector<HTMLTextAreaElement>("textarea");
-  if (!input) return;
-  input.focus();
-  input.setSelectionRange(input.value.length, input.value.length);
-}
 
 class SubmitShortcutController extends Controller {
   private submitting = false;
@@ -59,7 +52,6 @@ class LaunchComposerDialogController extends Controller<HTMLDialogElement> {
   private readonly promptHistoryNavigator = new PromptHistoryNavigator();
 
   connect(): void {
-    this.element.addEventListener("click", this.clicked);
     this.element.addEventListener("close", this.closed);
     this.input.addEventListener("keydown", this.inputKeydown);
     this.input.addEventListener("input", this.inputChanged);
@@ -67,12 +59,12 @@ class LaunchComposerDialogController extends Controller<HTMLDialogElement> {
     if (focusLikelyOpensSoftwareKeyboard()) {
       if (document.activeElement === this.input) this.input.blur();
     } else {
-      focusDialogPromptEnd(this.element);
+      this.input.focus();
+      this.input.setSelectionRange(this.input.value.length, this.input.value.length);
     }
   }
 
   disconnect(): void {
-    this.element.removeEventListener("click", this.clicked);
     this.element.removeEventListener("close", this.closed);
     this.input.removeEventListener("keydown", this.inputKeydown);
     this.input.removeEventListener("input", this.inputChanged);
@@ -93,13 +85,6 @@ class LaunchComposerDialogController extends Controller<HTMLDialogElement> {
 
   private readonly inputChanged = (): void => {
     this.promptHistoryNavigator.inputChanged();
-  };
-
-  private readonly clicked = (event: MouseEvent): void => {
-    if (!window.matchMedia(phoneLayoutMediaQuery).matches || event.target !== this.element) return;
-    const bounds = this.element.getBoundingClientRect();
-    const outside = event.clientX < bounds.left || event.clientX > bounds.right || event.clientY < bounds.top || event.clientY > bounds.bottom;
-    if (outside) this.element.close();
   };
 
   submit(): void {

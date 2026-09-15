@@ -16,6 +16,7 @@ import {
 } from "@atelier/core";
 import { actionLinkHtml } from "@atelier/design-system/action-link";
 import { buttonHtml } from "@atelier/design-system/button";
+import { dialogHtml } from "@atelier/design-system/dialog";
 import { Icons } from "@atelier/design-system/icons";
 import { warningBannerHtml } from "@atelier/design-system/warning-banner";
 import { workspaceWarnings, type WorkspaceWarning } from "./workspace-warnings.ts";
@@ -273,43 +274,39 @@ export function createWebApp(deps: WebAppDeps): WebApp {
     });
   }
 
-  async function renderLaunchComposerFrame(options: { titleHtml: string; action: string }): Promise<string> {
+  async function renderLaunchComposerFrame(options: { titleCaption: string; action: string }): Promise<string> {
     const draftId = crypto.randomUUID();
-    const closeButton = buttonHtml({
-      type: "submit",
-      variant: "secondary",
-      content: { kind: "icon-only", iconHtml: Icons.Close, label: "Close launch composer" },
-      attributesHtml: "data-popular-button",
-    });
-    return `<turbo-frame id="${launchComposerFrameId}"><dialog class="launch-composer-dialog" data-controller="launch-composer-dialog submit-shortcut" data-launch-composer-dialog-discard-url-value="/agent-attachment-drafts/${encodeURIComponent(draftId)}/discard">
-  <header class="launch-composer-header">
-    <div class="launch-composer-title">${options.titleHtml}</div>
-    <form method="dialog">${closeButton}</form>
-  </header>
-  ${await renderLaunchComposer({
-    action: options.action,
-    draftId,
-    formId: launchComposerFormId,
-    placeholder: "Describe what you want the agent to do… (optional)",
-    initialText: "",
-    rows: 8,
-    formActions: "keydown->submit-shortcut#keydown submit->submit-shortcut#submit submit->launch-composer-dialog#submit turbo:submit-end->submit-shortcut#submitted",
-    formTurbo: true,
-    launchComposerSettings: { frameId: launchComposerSettingsFrameId, url: "/launch-composer/settings" },
-  })}
-</dialog></turbo-frame>`;
+    return `<turbo-frame id="${launchComposerFrameId}">${dialogHtml({
+      element: {
+        attributesHtml: `data-controller="dialog launch-composer-dialog submit-shortcut" data-launch-composer-dialog-discard-url-value="/agent-attachment-drafts/${encodeURIComponent(draftId)}/discard"`,
+      },
+      iconHtml: Icons.Workspace,
+      titleCaption: options.titleCaption,
+      closeLabel: "Close launch composer",
+      bodyLayout: "full-bleed",
+      bodyHtml: await renderLaunchComposer({
+        action: options.action,
+        draftId,
+        formId: launchComposerFormId,
+        placeholder: "Describe what you want the agent to do… (optional)",
+        rows: 8,
+        formActions: "keydown->submit-shortcut#keydown submit->submit-shortcut#submit submit->launch-composer-dialog#submit turbo:submit-end->submit-shortcut#submitted",
+        formTurbo: true,
+        launchComposerSettings: { frameId: launchComposerSettingsFrameId, url: "/launch-composer/settings" },
+      }),
+    })}</turbo-frame>`;
   }
 
   async function renderProjectlessLaunchComposerFrame(): Promise<string> {
     return await renderLaunchComposerFrame({
-      titleHtml: "Create empty workspace, and then…",
+      titleCaption: "Create empty workspace, and then…",
       action: "/agent-workspaces",
     });
   }
 
   async function renderProjectLaunchComposerFrame(project: ProjectSummary): Promise<string> {
     return await renderLaunchComposerFrame({
-      titleHtml: `Create workspace from <b>${escapeHtml(project.name)}</b>, and then…`,
+      titleCaption: `Create workspace from ${project.name}, and then…`,
       action: `/project-agent-workspaces/${encodeURIComponent(project.id)}`,
     });
   }
