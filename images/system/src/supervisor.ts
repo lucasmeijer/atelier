@@ -1,3 +1,4 @@
+import { escapeHtml } from "../../../packages/shared/src/html.ts";
 import { startLocalIngress } from "./local-ingress.ts";
 import { installationStatus, type Activity } from "./installation-status.ts";
 import { PullProgress } from "./pull-progress.ts";
@@ -10,7 +11,7 @@ import { mkdir, readFile, rename, writeFile } from "node:fs/promises";
 import { parseArgs } from "node:util";
 import { command, docker, sleep, stopCommands } from "./process.ts";
 import { setSupervisorRoutes } from "./tailscale.ts";
-import { button, escape, page } from "./ui.ts";
+import { supervisorFragment, page } from "./ui.ts";
 
 const { values } = parseArgs({
   options: {
@@ -48,6 +49,8 @@ async function persist() {
 }
 let activity: Activity = { description: "Starting Atelier services" };
 let failure: string | undefined;
+let operation: "startup" | "update" = "startup";
+let phase = 0;
 let candidate = persisted.currentImage ?? values["app-image"]!;
 let busy = false;
 let activeOperation: Promise<void> = Promise.resolve();
@@ -79,7 +82,8 @@ function connectionProblem() {
     return "The private connection did not finish starting within 2 minutes.";
 }
 function fragment() {
-  return `<h1>Atelier System</h1><h2>${escape(activity.description)}</h2><p>${escape(candidate)}</p>${authUrl ? `<p><a href="${escape(authUrl)}">Sign in to Tailscale</a></p>` : ""}<p>Access: ${persisted.accessMode}. Tailscale: ${escape(connectionState)}</p><form method="post" action="/connect">${button("Enable remote access")}</form><form method="post" action="/local">${button("Use local access")}</form>${failure ? `<p role="alert">${escape(failure)}</p><form method="post" action="/retry">${button("Retry")}</form>` : ""}<pre>${escape(logs.join("\n"))}</pre>`;
+  return supervisorFragment({ operation, phase, healthy, stopping, failure, candidate,
+    accessMode: persisted.accessMode!, connectionState, connectionProblem: connectionProblem(), authUrl, logs });
 }
 function emit(event = "progress", data = fragment()) {
   for (const subscriber of subscribers)
@@ -89,6 +93,10 @@ function emit(event = "progress", data = fragment()) {
       ),
     );
 }
+function accessChanged() {
+  emit("access", "changed");
+  emit();
+}
 setInterval(() => emit("ping", ""), 15000);
 function log(text: string) {
   text = text.trimEnd();
@@ -97,7 +105,8 @@ function log(text: string) {
   if (logs.length > 1000) logs.splice(0, logs.length - 1000);
   emit();
 }
-function stage(text: string) {
+function stage(text: string, nextPhase = phase) {
+  phase = nextPhase;
   activity = { description: text };
   log(text);
 }
@@ -204,13 +213,14 @@ async function replace(reference: string, pull: boolean) {
   failure = undefined;
   healthy = false;
   candidate = reference;
+  phase = 0;
   try {
     await configureRoutes(3001);
     stage("Preparing Atelier");
     const exact = await prepareImage(reference, pull);
     candidate = exact;
     if (stopping) return;
-    stage("Stopping Atelier");
+    stage("Stopping Atelier", 1);
     logProcess?.kill();
     logProcess = undefined;
     if (await existsContainer()) {
@@ -218,7 +228,7 @@ async function replace(reference: string, pull: boolean) {
       await docker("rm", "atelier");
     }
     if (stopping) return;
-    stage("Starting Atelier");
+    stage("Starting Atelier", 2);
     await docker(
       "run",
       "-d",
@@ -258,10 +268,11 @@ async function replace(reference: string, pull: boolean) {
     );
     for (const output of [logProcess.stdout!, logProcess.stderr!])
       output.on("data", (data) => log(data.toString().trimEnd()));
-    stage("Checking Atelier is healthy");
+    stage("Checking Atelier is healthy", 3);
     await waitFor(appIsHealthy, timeout, "Atelier health");
     persisted.currentImage = exact;
     await persist();
+    stage("Opening Atelier", 4);
     await configureRoutes(3000);
     healthy = true;
     stage("Atelier is ready");
@@ -306,7 +317,7 @@ const server = Bun.serve({
           else { connectionAttempt = "idle"; connectionFailure = undefined; connectionStateSince = Date.now(); }
         }
         await persist();
-        emit("access", "changed");
+        accessChanged();
       }
       return Response.json({ mode: persisted.accessMode, localPort: persisted.localPort, connectionState, authUrl, error: connectionFailure ?? networkError });
     }
@@ -366,7 +377,7 @@ const server = Bun.serve({
       if (!allowedOrigin(request))
         return new Response("Forbidden", { status: 403 });
       if (url.pathname === "/local") {
-        persisted.accessMode = "localhost"; remoteRequested = false; await persist(); emit("access", "changed");
+        persisted.accessMode = "localhost"; remoteRequested = false; await persist(); accessChanged();
         return Response.redirect(url.origin, 303);
       }
       if (url.pathname === "/connect") {
@@ -425,6 +436,8 @@ const server = Bun.serve({
           busy = false;
           return new Response(String(error), { status: 502 });
         }
+        operation = "update";
+        stage("Preparing Atelier", 0);
         // Route first, acknowledge, then give the app time to relay that acknowledgement.
         // Replacement remains supervisor-owned if the requesting browser disconnects.
         activeOperation = (async () => {
@@ -454,7 +467,7 @@ const server = Bun.serve({
     return new Response(
       page(
         "Atelier System",
-        `<section data-controller="progress" data-progress-events-value="${escape(events)}" data-progress-return-value="${!diagnostic && (local || !!tailnetHost)}"><div data-progress-content>${fragment()}</div></section>`,
+        `<section data-controller="progress" data-progress-events-value="${escapeHtml(events)}" data-progress-return-value="${!diagnostic && (local || !!tailnetHost)}"><div data-progress-content>${fragment()}</div></section>`,
         local ? "" : tailnetHost ? `https://${tailnetHost}:8443` : "",
       ),
       { headers: { "content-type": "text/html" } },
@@ -587,7 +600,7 @@ async function initialize() {
         log(`Tailscale: ${networkError}`);
       }
       const nextAccess = JSON.stringify([persisted.accessMode, connectionState, authUrl, connectionFailure, networkError]);
-      if (nextAccess !== lastAccess) { lastAccess = nextAccess; emit("access", "changed"); }
+      if (nextAccess !== lastAccess) { lastAccess = nextAccess; accessChanged(); }
       await sleep(3000);
     }
   })();
@@ -603,7 +616,7 @@ async function initialize() {
       if (!ready && healthy && !busy && !stopping) {
         healthy = false;
         failure = "Atelier stopped responding to health checks";
-        stage("Atelier needs attention");
+        stage("Atelier needs attention", 3);
         try {
           await configureRoutes(3001);
         } catch (error) {

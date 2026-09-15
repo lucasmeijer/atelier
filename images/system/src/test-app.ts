@@ -1,7 +1,8 @@
+import { escapeHtml } from "../../../packages/shared/src/html.ts";
 import { Type } from "typebox";
 import { Value } from "typebox/value";
 import { mkdir, readFile, writeFile } from "node:fs/promises";
-import { button, escape, page } from "./ui.ts";
+import { button, page } from "./ui.ts";
 import { command } from "./process.ts";
 const version = (
   await readFile(new URL("./version", import.meta.url), "utf8")
@@ -69,7 +70,7 @@ Bun.serve({
     return new Response(
       page(
         `Atelier test app ${version}`,
-        `<h1>Atelier test app ${escape(version)}</h1><p>Persistent marker: ${escape(marker)}</p><form method="post" action="/update"><label>Prepared image <input class="text-field" name="image" required value="atelier-test:v2"></label>${button("Update")}</form>`,
+        `<h1>Atelier test app ${escapeHtml(version)}</h1><p>Persistent marker: ${escapeHtml(marker)}</p><form method="post" action="/update"><label>Prepared image <input class="text-field" name="image" required value="atelier-test:v2"></label>${button("Update")}</form>`,
       ),
       { headers: { "content-type": "text/html" } },
     );
