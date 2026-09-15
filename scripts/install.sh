@@ -17,7 +17,6 @@ if [ -t 1 ] && [ "${TERM:-dumb}" != dumb ]; then
   amber=$'\033[33m' dim=$'\033[2m' reset=$'\033[0m'
 fi
 last_status=""
-last_status_key=""
 supervisor_url=""
 active_pid=""
 
@@ -26,7 +25,7 @@ finish_line() {
   last_status=""
 }
 status() {
-  local text="$1" elapsed="${2:-}" percent="${3:-}" key="$1" bar="" i suffix
+  local text="$1" elapsed="${2:-}" percent="${3:-}" bar="" i suffix
   local rows columns available
   local frames="⠋⠙⠹⠸⠼⠴⠦⠧⠇⠏"
   local frame="${frames:SECONDS%10:1}"
@@ -44,11 +43,10 @@ status() {
     if [ "$available" -lt 10 ]; then available=10; fi
     if [ "${#text}" -gt "$available" ]; then text="${text:0:available-1}…"; fi
     printf '\r\033[2K  %s%s %s%s  %s%s%s' "$cyan" "$frame" "$text" "$reset" "$dim" "$suffix" "$reset"
-  elif [ "$key" != "$last_status_key" ]; then
+  elif [ "$1" != "$last_status" ]; then
     printf '  %s\n' "$text"
   fi
-  last_status="$text"
-  last_status_key="$key"
+  last_status="$1"
 }
 fail() {
   finish_line
@@ -79,7 +77,7 @@ run_quiet() {
   done
   active_pid=""
   wait "$pid" || code=$?
-  [ "$code" -eq 0 ] || fail "$label failed. See the installation log for details."
+  [ "$code" -eq 0 ] || fail "$label failed. See the bootstrap log for details."
 }
 cleanup() {
   finish_line
@@ -89,7 +87,7 @@ cleanup() {
   fi
 }
 trap cleanup EXIT
-trap 'fail "Installation could not continue. See the installation log for details."' ERR
+trap 'fail "Installation could not continue. See the bootstrap log for details."' ERR
 trap 'fail "Installation interrupted."' INT TERM
 
 usage() {
@@ -175,15 +173,6 @@ supervisor_status() {
   docker exec "$system_name" bun -e '
     const r = await fetch("http://127.0.0.1:3001/status", {signal: AbortSignal.timeout(3000)});
     if (!r.ok) throw new Error(`Supervisor status: ${r.status}`);
-    const s = await r.json();
-    const a = s.activity;
-    if (!["starting", "ready", "failed"].includes(s.state) ||
-        typeof a?.description !== "string" || !a.description.trim() ||
-        (a.percent !== undefined && (typeof a.percent !== "number" ||
-          !Number.isFinite(a.percent) || a.percent < 0 || a.percent > 100))) {
-      console.error("Invalid supervisor status contract");
-      process.exit(2);
-    }
     const clean = (text) => text.replace(/[\x00-\x1f\x7f-\x9f]/g, " ");
     const url = (value) => {
       if (value === undefined) return "";
@@ -192,6 +181,14 @@ supervisor_status() {
       return value;
     };
     try {
+      const s = await r.json();
+      const a = s.activity;
+      if (!["starting", "ready", "failed"].includes(s.state) ||
+          typeof a?.description !== "string" || !a.description.trim() ||
+          (a.percent !== undefined && (typeof a.percent !== "number" ||
+            !Number.isFinite(a.percent) || a.percent < 0 || a.percent > 100))) {
+        throw new Error("Invalid supervisor status contract");
+      }
       const appUrl = url(s.appUrl);
       if (s.state === "ready" && !appUrl) throw new Error("Ready without an app destination");
       console.log([
@@ -213,7 +210,7 @@ supervisor_connect() {
     if (!r.ok) throw new Error(`System connection request: ${r.status}`);
   '
 }
-show_url() {
+wait_for_system() {
   local reply previous="" activity_start=$SECONDS start=$SECONDS description percent code
   local request_connect=0 last_action="" current_action app_url
   local -a fields
@@ -229,8 +226,8 @@ show_url() {
       percent="${fields[2]:-}"
       app_url="${fields[3]:-}"
       supervisor_url="${fields[4]:-}"
-      current_action="${fields[5]:-}${fields[6]:-}"
-      if [ -n "$current_action" ] && [ "$current_action" != "$last_action" ]; then
+      current_action="${fields[5]:-}"$'\n'"${fields[6]:-}"
+      if [ -n "${fields[5]:-}" ] && [ "$current_action" != "$last_action" ]; then
         finish_line
         printf '\n  %s\n' "${fields[5]}"
         [ -z "${fields[6]:-}" ] || printf '\n  %s\n\n' "${fields[6]}"
@@ -246,7 +243,7 @@ show_url() {
           if [ "${#fields[@]}" -gt 8 ]; then printf '  %s\n' "${fields[@]:8}" >&2; fi
           exit 1 ;;
         starting)
-          if [ "$non_interactive" -eq 1 ] && [ -n "$current_action" ]; then
+          if [ "$non_interactive" -eq 1 ] && [ -n "${fields[5]:-}" ]; then
             printf '  Run the installer again after completing this action.\n'
             return
           fi ;;
@@ -263,11 +260,6 @@ show_url() {
   done
   finish_line
   printf '  %s✓ %s%s\n\n  Open %s\n\n' "$green" "$description" "$reset" "$app_url"
-}
-
-pull_system() {
-
-  run_quiet "Downloading Atelier services" docker pull "$system_image"
 }
 
 if [ -z "$action" ]; then
@@ -294,7 +286,7 @@ case "$action" in
         case "$answer" in y|Y|yes) ;; *) exit 0 ;; esac
       fi
     fi
-    pull_system
+    run_quiet "Downloading Atelier services" docker pull "$system_image"
     if [ "$installed" -eq 1 ]; then
       run_quiet "Stopping Atelier services" docker stop --time 120 "$system_name"
       run_quiet "Replacing Atelier services" docker rm "$system_name"
@@ -302,12 +294,12 @@ case "$action" in
     run_quiet "Starting Atelier services" docker run -d --name "$system_name" --hostname atelier-system --privileged --cgroupns=host --restart unless-stopped \
       --stop-timeout 120 --tmpfs /run --mount source=atelier-system,target=/data \
       "$system_image" --app-image "$app_image"
-
-    show_url ;;
+    ;;
   connect)
     if [ "$(docker inspect --format '{{.State.Running}}' "$system_name")" != true ]; then
-      docker start "$system_name" >/dev/null
+      run_quiet "Starting Atelier services" docker start "$system_name"
     fi
-    show_url ;;
-  open) show_url ;;
+    ;;
+  open) ;;
 esac
+wait_for_system

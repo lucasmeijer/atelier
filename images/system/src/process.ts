@@ -7,7 +7,6 @@ export function stopCommands() {
 
 export async function command(
   args: string[],
-  log?: (line: string) => void,
   onOutput?: (chunk: string) => void,
   timeoutMs = 120_000,
 ): Promise<string> {
@@ -20,16 +19,17 @@ export async function command(
       timedOut = true;
       child.kill("SIGKILL");
     }, timeoutMs);
-    child.once("close", () => clearTimeout(timer));
     commands.add(child);
-    child.once("exit", () => commands.delete(child));
+    child.once("close", () => {
+      clearTimeout(timer);
+      commands.delete(child);
+    });
     const output: string[] = [];
     for (const stream of [child.stdout, child.stderr])
       stream.on("data", (data: Buffer) => {
         const text = data.toString();
         output.push(text);
         onOutput?.(text);
-        log?.(text.trimEnd());
       });
     child.on("error", reject);
     child.on("close", (code) =>

@@ -1,8 +1,9 @@
+import { inspectImage, type Run } from "./release-support.ts";
 import { expect, test } from "bun:test";
 import { chmodSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
-import { inspectImage, parseReleaseArgs, promoteChannels, release, verifyRevision, type ReleaseStatus, type Run } from "./release.ts";
+import { parseReleaseArgs, promoteChannels, release, verifyRevision, type ReleaseStatus } from "./release.ts";
 
 const commit = "a".repeat(40);
 const digest = `sha256:${"b".repeat(64)}`;

@@ -1,13 +1,12 @@
 #!/usr/bin/env bun
 import { appendFileSync, mkdirSync, renameSync, writeFileSync } from "node:fs";
 import { join, resolve } from "node:path";
-import { createHash } from "node:crypto";
 import { Type } from "typebox";
 import { Value } from "typebox/value";
+import { authenticateRegistry, commandRunner, ensureBuilders, inspectImage, inspectPlatform, platforms, type Run } from "./release-support.ts";
 import { acquireReleaseLock } from "./release-lock.ts";
 
 const image = "ghcr.io/lucasmeijer/atelier";
-const platforms = ["linux/amd64", "linux/arm64"];
 const root = resolve(import.meta.dir, "..");
 export const usage = `Release Atelier from the current origin/main commit.
 
@@ -42,50 +41,14 @@ export interface ReleaseStatus {
   channels: Partial<Record<"latest" | "stable", ChannelState>>;
   error?: string;
 }
-interface Result { code: number; stdout: string; stderr: string }
-interface CommandOptions { cwd?: string; input?: string; allowFailure?: boolean; stream?: boolean }
-export type Run = (args: string[], options?: CommandOptions) => Promise<Result>;
-
-const digestSchema = Type.String({ pattern: "^sha256:[a-f0-9]{64}$" });
 const preloadSchema = Type.Array(Type.String({ pattern: "@sha256:[a-f0-9]{64}$" }), { minItems: 1 });
-const manifestSchema = Type.Object({
-  digest: digestSchema,
-  manifests: Type.Array(Type.Object({
-    digest: digestSchema,
-    platform: Type.Object({ os: Type.String(), architecture: Type.String() }),
-  })),
-});
-const configSchema = Type.Object({
-  os: Type.String(), architecture: Type.String(),
-  config: Type.Object({ Labels: Type.Record(Type.String(), Type.String()) }),
-});
-
-export async function inspectImage(run: Run, ref: string, optional = false) {
-  const result = await run(["docker", "buildx", "imagetools", "inspect", ref, "--format", "{{json .Manifest}}"], { allowFailure: optional });
-  if (result.code !== 0) {
-    // Only a registry's explicit absence is a cache miss, never authentication/network failures.
-    if (optional && /manifest unknown|: not found\b/i.test(result.stderr)) return undefined;
-    throw new Error(`Cannot inspect ${ref}: ${result.stderr}`);
-  }
-  const manifest = Value.Parse(manifestSchema, JSON.parse(result.stdout));
-  for (const platform of platforms) {
-    if (manifest.manifests.filter((entry) => `${entry.platform.os}/${entry.platform.architecture}` === platform).length !== 1) {
-      throw new Error(`${ref} must contain exactly one ${platform} image`);
-    }
-  }
-  return manifest;
-}
 
 export async function verifyRevision(run: Run, ref: string, commit: string): Promise<string> {
   const manifest = (await inspectImage(run, ref))!;
   const dependencies = new Set<string>();
   for (const platform of platforms) {
     const entry = manifest.manifests.find((entry) => `${entry.platform.os}/${entry.platform.architecture}` === platform)!;
-    const result = await run(["docker", "buildx", "imagetools", "inspect", `${image}@${entry.digest}`, "--format", "{{json .Image}}"]);
-    const config = Value.Parse(configSchema, JSON.parse(result.stdout));
-    if (`${config.os}/${config.architecture}` !== platform || config.config.Labels["org.opencontainers.image.revision"] !== commit) {
-      throw new Error(`${ref}: ${platform} does not match revision ${commit}`);
-    }
+    const config = await inspectPlatform(run, `${image}@${entry.digest}`, platform, commit);
     const preload: unknown = JSON.parse(config.config.Labels["eagerly-preload"] ?? "[]");
     if (!Value.Check(preloadSchema, preload)) {
       throw new Error(`${ref}: release requires digest-pinned workspace dependencies`);
@@ -117,41 +80,6 @@ export async function promoteChannels(run: Run, status: ReleaseStatus, save: () 
   }
 }
 
-export async function ensureBuilders(run: Run, directory: string) {
-  const helper = process.env.ATELIER_RELEASE_HELPER?.trim();
-  if (!helper || !/^(?:[A-Za-z0-9_][A-Za-z0-9_.-]*@)?[A-Za-z0-9_][A-Za-z0-9_.-]*$/.test(helper)) {
-    throw new Error("ATELIER_RELEASE_HELPER must be an SSH destination: [user@]hostname (SSH aliases are supported)");
-  }
-  await run(["ssh", "-o", "BatchMode=yes", "-o", "StrictHostKeyChecking=yes", "-o", "ConnectTimeout=10", helper, "docker info --format '{{.Architecture}}'"]);
-  const local = (await run(["docker", "context", "show"])).stdout.trim();
-  const remote = `atelier-release-${createHash("sha256").update(helper).digest("hex").slice(0, 12)}`;
-  const contexts = (await run(["docker", "context", "ls", "--format", "{{.Name}}"])).stdout.split(/\s+/);
-  if (!contexts.includes(remote)) await run(["docker", "context", "create", remote, "--docker", `host=ssh://${helper}`]);
-  const architecture = async (context: string) => {
-    const result = Value.Parse(Type.Object({ OSType: Type.String(), Architecture: Type.String() }), JSON.parse((await run(["docker", "--context", context, "info", "--format", "{{json .}}"])).stdout));
-    if (result.OSType !== "linux") throw new Error(`${context}: release requires a Linux Docker daemon`);
-    const arch = new Map([["x86_64", "amd64"], ["aarch64", "arm64"], ["amd64", "amd64"], ["arm64", "arm64"]]).get(result.Architecture);
-    if (!arch) throw new Error(`${context}: unsupported Docker architecture ${result.Architecture}`);
-    const inspection = (await run(["docker", "buildx", "inspect", context])).stdout;
-    const driver = /^Driver:\s+(\S+)/m.exec(inspection)?.[1];
-    if (driver !== "docker") throw new Error(`${context}: expected integrated docker builder, got ${driver}`);
-    return `linux/${arch}`;
-  };
-  const nativePlatform = await architecture(local);
-  const remotePlatform = await architecture(remote);
-  if (nativePlatform === remotePlatform) throw new Error(`Helper must have the other architecture; both daemons are ${nativePlatform}`);
-  const probe = join(directory, "probe");
-  mkdirSync(probe);
-  writeFileSync(join(probe, "marker"), "Atelier release builder check\n");
-  // Exercise COPY, RUN and image export on each daemon, without emulation or registry writes.
-  for (const [builder, platform] of [[local, nativePlatform], [remote, remotePlatform]]) {
-    const machine = platform === "linux/amd64" ? "x86_64" : "aarch64";
-    writeFileSync(join(probe, "Dockerfile"), `FROM ubuntu:26.04\nCOPY marker /marker\nRUN cat /marker && test "$(uname -m)" = "${machine}"\n`);
-    await run(["docker", "--context", builder!, "buildx", "build", "--platform", platform!, "--provenance=false", "--progress", "plain", "--no-cache", "--load", "--tag", "atelier-release-probe:check", probe], { stream: true });
-  }
-  return { local, remote, nativePlatform };
-}
-
 export async function release(options: ReturnType<typeof parseReleaseArgs>, run: Run, status: ReleaseStatus, save: () => void, directory: string): Promise<void> {
   const phase = (text: string) => { status.phase = text; save(); };
   phase("Resolve origin/main");
@@ -169,9 +97,7 @@ export async function release(options: ReturnType<typeof parseReleaseArgs>, run:
   }
 
   phase("Authenticate registry");
-  const token = process.env.GH_PACKAGE_TOKEN?.trim();
-  if (!token) throw new Error("GH_PACKAGE_TOKEN is required to publish a release");
-  await run(["docker", "login", "ghcr.io", "--username", "lucasmeijer", "--password-stdin"], { input: token });
+  await authenticateRegistry(run);
   const ref = `${image}:sha-${status.commit}`;
   phase("Look for an existing commit image");
   if (!await inspectImage(run, ref, true)) {
@@ -223,33 +149,15 @@ async function main(options: ReturnType<typeof parseReleaseArgs>, common: string
   writeFileSync(join(common, "atelier-releases", "last-run.txt"), `${directory}\n`);
   save();
   const heartbeat = setInterval(save, 5000);
-  let active: ReturnType<typeof Bun.spawn> | undefined;
+  const commands = commandRunner(root, output);
   let interrupted = false;
-  const interrupt = () => { interrupted = true; active?.kill("SIGTERM"); };
+  const interrupt = () => { interrupted = true; commands.stop(); };
   process.on("SIGTERM", interrupt);
   process.on("SIGINT", interrupt);
   const run: Run = async (args, command = {}) => {
     // Cleanup must still be able to remove a detached worktree after interruption.
     if (interrupted && !(args[0] === "git" && args[1] === "worktree" && args[2] === "remove")) throw new Error("Release interrupted");
-    output(`$ ${args.map((arg) => JSON.stringify(arg)).join(" ")}\n`);
-    const child = Bun.spawn(args, { cwd: command.cwd ?? root, stdin: command.input === undefined ? "ignore" : new TextEncoder().encode(command.input), stdout: "pipe", stderr: "pipe" });
-    active = child;
-    const consume = async (stream: ReadableStream<Uint8Array>): Promise<string> => {
-      let collected = "";
-      const decoder = new TextDecoder();
-      for await (const chunk of stream) {
-        const text = decoder.decode(chunk, { stream: true });
-        output(text);
-        if (!command.stream) collected += text;
-      }
-      const end = decoder.decode();
-      output(end);
-      return collected + end;
-    };
-    const [stdout, stderr, code] = await Promise.all([consume(child.stdout), consume(child.stderr), child.exited]);
-    active = undefined;
-    if (code !== 0 && !command.allowFailure) throw new Error(`${args.slice(0, 3).join(" ")} exited ${code}; see ${logPath}`);
-    return { stdout, stderr, code };
+    return commands.run(args, command);
   };
   try {
     await release(options, run, status, save, directory);

@@ -52,17 +52,25 @@ let stopping = false;
 let tailnetHost: string | undefined;
 let connectionState = "Starting";
 let authUrl: string | undefined;
-let connectionAttempted = false;
-let connecting = false;
+let connectionAttempt: "idle" | "running" | "finished" = "idle";
 let connectionFailure: string | undefined;
-let networkFailure: string | undefined;
-let connectionStallFailure: string | undefined;
-let resetConnectionClock = false;
+let networkError: string | undefined;
+let lastNetworkSuccess = Date.now();
+let connectionStateSince = Date.now();
 let routeTarget = 3001;
 let logProcess: ChildProcess | undefined;
 const logs: string[] = [];
 const subscribers = new Set<ReadableStreamDefaultController<Uint8Array>>();
 const encoder = new TextEncoder();
+function connectionProblem() {
+  if (connectionFailure) return connectionFailure;
+  if (networkError && Date.now() - lastNetworkSuccess >= 60_000)
+    return `Could not prepare the private connection: ${networkError}`;
+  const awaitingUser = connectionState === "NeedsMachineAuth" ||
+    (connectionState === "NeedsLogin" && !!authUrl);
+  if (connectionState !== "Running" && !awaitingUser && Date.now() - connectionStateSince >= 120_000)
+    return "The private connection did not finish starting within 2 minutes.";
+}
 function fragment() {
   return `<h1>Atelier System</h1><h2>${escape(activity.description)}</h2><p>${escape(candidate)}</p>${failure ? `<p role="alert">${escape(failure)}</p><form method="post" action="/retry">${button("Retry")}</form>` : ""}<pre>${escape(logs.join("\n"))}</pre>`;
 }
@@ -76,6 +84,7 @@ function emit(event = "progress", data = fragment()) {
 }
 setInterval(() => emit("ping", ""), 15000);
 function log(text: string) {
+  text = text.trimEnd();
   console.log(text);
   logs.push(...text.split("\n"));
   if (logs.length > 1000) logs.splice(0, logs.length - 1000);
@@ -131,8 +140,9 @@ async function pullImage(reference: string, description: string) {
   const progress = new PullProgress();
   stage(description);
   try {
-    await command(["docker", "pull", reference], log, (chunk) => {
+    await command(["docker", "pull", reference], (chunk) => {
       activity = { description, percent: progress.push(chunk) };
+      log(chunk);
     }, 1_800_000);
   } finally {
     activity = { description };
@@ -274,11 +284,11 @@ const server = Bun.serve({
     const url = new URL(request.url);
     if (url.pathname === "/status") {
       // Check again at the handoff: startup health alone can become stale.
-      const appResponding = healthy && await appIsHealthy() && healthy;
+      const appResponding = await appIsHealthy() && healthy;
       return Response.json({
         ...installationStatus({
           activity: healthy && !appResponding ? { description: "Checking Atelier is healthy" } : activity,
-          failure: failure ?? connectionFailure ?? networkFailure ?? connectionStallFailure,
+          failure: failure ?? connectionProblem(),
           stopping, busy, appResponding, hostname: tailnetHost, appliedRoute,
           connectionState, authUrl, logs,
         }),
@@ -327,12 +337,11 @@ const server = Bun.serve({
         return new Response("Forbidden", { status: 403 });
       if (url.pathname === "/connect") {
         if (stopping) return new Response("System is stopping", { status: 503 });
-        if (!connecting) {
-          connectionAttempted = false;
+        if (connectionAttempt !== "running") {
+          connectionAttempt = "idle";
           connectionFailure = undefined;
-          connectionStallFailure = undefined;
-          networkFailure = undefined;
-          resetConnectionClock = true;
+          networkError = undefined;
+          connectionStateSince = lastNetworkSuccess = Date.now();
         }
         return new Response(null, { status: 202 });
       }
@@ -498,41 +507,25 @@ async function initialize() {
   await persist();
   // Tailscale login may happen after app boot. Its network state is independent.
   void (async () => {
-    let lastNetworkSuccess = Date.now();
-    let previousConnectionState = "";
-    let connectionStateSince = Date.now();
+    connectionStateSince = lastNetworkSuccess = Date.now();
     while (!stopping) {
-      if (resetConnectionClock) {
-        connectionStateSince = Date.now();
-        lastNetworkSuccess = Date.now();
-        resetConnectionClock = false;
-      }
       try {
         const status = JSON.parse(
-          await command(["tailscale", "status", "--json"], undefined, undefined, 5000),
+          await command(["tailscale", "status", "--json"], undefined, 5000),
         );
+        if (status.BackendState !== connectionState) connectionStateSince = Date.now();
         connectionState = status.BackendState;
         authUrl = status.AuthURL || undefined;
-        if (connectionState !== previousConnectionState) {
-          previousConnectionState = connectionState;
-          connectionStateSince = Date.now();
-        }
-        const awaitingUser = connectionState === "NeedsMachineAuth" ||
-          (connectionState === "NeedsLogin" && !!authUrl);
-        connectionStallFailure = connectionState !== "Running" && !awaitingUser &&
-          Date.now() - connectionStateSince >= 120_000
-          ? "The private connection did not finish starting within 2 minutes." : undefined;
-        if (!connectionAttempted && !connecting &&
+        if (connectionAttempt === "idle" &&
             (connectionState === "NeedsLogin" || connectionState === "Stopped")) {
-          connectionAttempted = true;
-          connecting = true;
+          connectionAttempt = "running";
           // The browser sign-in is the user's consent; generating its URL does
           // not connect an account. System owns this command and its deadline.
-          void command(["tailscale", "up", "--timeout=10m"], log, undefined, 610_000)
+          void command(["tailscale", "up", "--timeout=10m"], log, 610_000)
             .catch((error) => {
               connectionFailure = `Could not connect Atelier: ${String(error)}`;
               log(connectionFailure);
-            }).finally(() => { connecting = false; });
+            }).finally(() => { connectionAttempt = "finished"; });
         }
         const host =
           status.BackendState === "Running"
@@ -548,12 +541,11 @@ async function initialize() {
           appliedRoute = "";
         }
         lastNetworkSuccess = Date.now();
-        networkFailure = undefined;
+        networkError = undefined;
         if (host) connectionFailure = undefined;
       } catch (error) {
-        log(`Tailscale: ${String(error)}`);
-        if (Date.now() - lastNetworkSuccess >= 60_000)
-          networkFailure = `Could not prepare the private connection: ${String(error)}`;
+        networkError = String(error);
+        log(`Tailscale: ${networkError}`);
       }
       await sleep(3000);
     }
