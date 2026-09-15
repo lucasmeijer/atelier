@@ -128,6 +128,10 @@ test("check exercises both platforms without registry writes or worktree creatio
   expect(current.state).toBe("checked");
   const probes = calls.filter(({ args }) => args.includes("--load"));
   expect(probes).toHaveLength(2);
+  expect(probes[0]!.args.slice(0, 5)).toEqual(["docker", "--context", "default", "buildx", "build"]);
+  expect(probes[1]!.args[1]).toBe("--context");
+  expect(probes[1]!.args[2]).toStartWith("atelier-release-");
+  for (const { args } of probes) expect(args).not.toContain("--builder");
   expect(probes.map(({ args }) => args[args.indexOf("--platform") + 1])).toEqual(["linux/amd64", "linux/arm64"]);
   expect(calls.some(({ args }) => args.includes("login") || args.includes("--push") || args.includes("imagetools") || args.includes("worktree"))).toBe(false);
 });
@@ -186,10 +190,16 @@ test(`image build CLI stages images without channels (split=${split})`, async ()
     expect(stderr).not.toContain("error:");
     expect(code).toBe(0);
     const commands: string[][] = readFileSync(log, "utf8").trim().split("\n").map((line) => JSON.parse(line));
-    const builds = commands.filter((args) => args[0] === "buildx" && args[1] === "build");
+    const builds = commands.filter((args) => args.includes("buildx") && args.includes("build"));
     expect(builds).toHaveLength(split ? 4 : 2);
     for (const args of builds) {
-      expect(args[args.indexOf("--builder") + 1]).toBe(split && args.includes("linux/arm64") ? "test-helper" : "test-builder");
+      if (split) {
+        expect(args.slice(0, 4)).toEqual(["--context", args.includes("linux/arm64") ? "test-helper" : "test-builder", "buildx", "build"]);
+        expect(args).not.toContain("--builder");
+      } else {
+        expect(args[args.indexOf("--builder") + 1]).toBe("test-builder");
+        expect(args).not.toContain("--context");
+      }
       expect(args).toContain("--push");
       expect(args[args.indexOf("--platform") + 1]).toBe(split ? (builds.indexOf(args) % 2 === 0 ? "linux/amd64" : "linux/arm64") : "linux/amd64,linux/arm64");
       expect(args.some((arg) => arg.endsWith(":latest") || arg.endsWith(":stable"))).toBe(false);
@@ -215,7 +225,7 @@ test(`image build CLI stages images without channels (split=${split})`, async ()
 });
 }
 
-for (const preload of [undefined, "[]", JSON.stringify(["workspace:tag"])]) {
+for (const preload of [undefined, "[]", "null", "{}", "[42]", JSON.stringify(["workspace:tag"])]) {
   test(`release rejects missing or unpinned workspace: ${preload}`, async () => {
     const run: Run = async args => args.includes("{{json .Manifest}}") ? ok(JSON.stringify(manifest)) : ok(JSON.stringify({os:"linux", architecture:"amd64", config:{Labels:{"org.opencontainers.image.revision":commit, "eagerly-preload":preload}}}));
     await expect(verifyRevision(run, "ref", commit)).rejects.toThrow("digest-pinned workspace");

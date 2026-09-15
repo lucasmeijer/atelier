@@ -17,7 +17,7 @@ Options:
   --tag <tag>           Tag to apply. May be passed more than once (default: git describe/short sha)
   --latest             Tag the image as <image>:latest (default)
   --no-latest          Do not update latest (release staging)
-  --builder <name>     Explicit Buildx builder for both images
+  --builder <name>     Buildx builder (local Docker context with --helper-context)
   --helper-context <name> SSH Docker context for the non-native slice (release orchestration)
   --native-platform <value> Local daemon platform when using --helper-context
   --stable             Also tag the image as <image>:stable
@@ -218,16 +218,16 @@ function workspaceHashTag(metadataTag: string): string {
   return metadataTag.slice(marker.length);
 }
 
-function dockerBuildCommand(options: Options, args: string[]): string[] {
+function dockerBuildCommand(options: Options, args: string[], context?: string): string[] {
   if (options.platform?.includes(",") && !options.push) fail("multi-platform builds require --push");
   const command = options.builder || options.platform || options.push
-    ? ["docker", "buildx", "build", ...(options.push ? ["--push", "--provenance=false"] : ["--load"])]
+    ? ["docker", ...(context ? ["--context", context] : []), "buildx", "build", ...(options.push ? ["--push", "--provenance=false"] : ["--load"])]
     : ["docker", "build"];
   return [
     ...command,
     // System cgroup paths belong to the local daemon, never the SSH helper.
-    ...(options.helperContext && options.builder === options.helperContext ? [] : resourceBuildArgs),
-    ...(options.builder ? ["--builder", options.builder] : []),
+    ...(context && context === options.helperContext ? [] : resourceBuildArgs),
+    ...(options.builder && !context ? ["--builder", options.builder] : []),
     ...(options.platform ? ["--platform", options.platform] : []),
     ...(options.noCache ? ["--no-cache"] : []),
     ...(options.progress ? ["--progress", options.progress] : []),
@@ -249,8 +249,9 @@ async function buildImage(refs: string[], args: string[]): Promise<void> {
   const slices: string[] = [];
   for (const platform of requestedPlatforms(options)) {
     const slice = `${refs[0]}-${platform.split("/")[1]}`;
-    const builder = platform === options.nativePlatform ? options.builder : options.helperContext;
-    await runInherited(dockerBuildCommand({ ...options, builder, platform }, ["--tag", slice, ...args]));
+    // Integrated docker builders must be selected via their Docker context.
+    const context = platform === options.nativePlatform ? options.builder : options.helperContext;
+    await runInherited(dockerBuildCommand({ ...options, platform }, ["--tag", slice, ...args], context));
     const descriptor = JSON.parse(run(["docker", "buildx", "imagetools", "inspect", slice, "--format", "{{json .Manifest}}"]));
     if (!/^sha256:[a-f0-9]{64}$/.test(descriptor.digest)) throw new Error(`Registry returned no digest for ${slice}`);
     slices.push(`${slice}@${descriptor.digest}`);

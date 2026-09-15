@@ -46,6 +46,7 @@ interface CommandOptions { cwd?: string; input?: string; allowFailure?: boolean;
 export type Run = (args: string[], options?: CommandOptions) => Promise<Result>;
 
 const digestSchema = Type.String({ pattern: "^sha256:[a-f0-9]{64}$" });
+const preloadSchema = Type.Array(Type.String({ pattern: "@sha256:[a-f0-9]{64}$" }), { minItems: 1 });
 const manifestSchema = Type.Object({
   digest: digestSchema,
   manifests: Type.Array(Type.Object({
@@ -85,7 +86,7 @@ export async function verifyRevision(run: Run, ref: string, commit: string): Pro
       throw new Error(`${ref}: ${platform} does not match revision ${commit}`);
     }
     const preload: unknown = JSON.parse(config.config.Labels["eagerly-preload"] ?? "[]");
-    if (!Array.isArray(preload) || preload.length === 0 || preload.some(ref => typeof ref !== "string" || !/@sha256:[a-f0-9]{64}$/.test(ref))) {
+    if (!Value.Check(preloadSchema, preload)) {
       throw new Error(`${ref}: release requires digest-pinned workspace dependencies`);
     }
     for (const dependency of preload) dependencies.add(dependency);
@@ -145,7 +146,7 @@ export async function ensureBuilders(run: Run, directory: string) {
   for (const [builder, platform] of [[local, nativePlatform], [remote, remotePlatform]]) {
     const machine = platform === "linux/amd64" ? "x86_64" : "aarch64";
     writeFileSync(join(probe, "Dockerfile"), `FROM ubuntu:26.04\nCOPY marker /marker\nRUN cat /marker && test "$(uname -m)" = "${machine}"\n`);
-    await run(["docker", "buildx", "build", "--builder", builder!, "--platform", platform!, "--provenance=false", "--progress", "plain", "--no-cache", "--load", "--tag", "atelier-release-probe:check", probe], { stream: true });
+    await run(["docker", "--context", builder!, "buildx", "build", "--platform", platform!, "--provenance=false", "--progress", "plain", "--no-cache", "--load", "--tag", "atelier-release-probe:check", probe], { stream: true });
   }
   return { local, remote, nativePlatform };
 }
