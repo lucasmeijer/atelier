@@ -47,7 +47,8 @@ await rm(outDir, { recursive: true, force: true });
 await mkdir(join(outDir, "files"), { recursive: true });
 
 const hash = createHash("sha256");
-hash.update("atelier-workspace-image-v13\n");
+// v14 embeds the resulting signature as an image label.
+hash.update("atelier-workspace-image-v14\n");
 const apt = [];
 const env = {};
 const moduleNames = [];
@@ -126,8 +127,9 @@ dockerfile += `RUN mkdir -p /.atelier && printf "true\\n" > /.atelier/init.sh\n`
 dockerfile += `RUN systemctl mask systemd-binfmt.service\n`;
 dockerfile += `ENTRYPOINT ["/usr/local/bin/atelier-workspace-init"]\nCMD []\nWORKDIR /work\n`;
 await writeFile(join(outDir, "Dockerfile"), dockerfile);
-// Identity covers the exact Docker build context, including generated instructions,
-// file modes and symlinks. Timestamps and the checkout's absolute path do not count.
+// Identity covers the Docker build context, including generated instructions,
+// file modes and symlinks, excluding the self-referential signature label added below.
+// Timestamps and the checkout's absolute path do not count.
 async function hashContext(directory, prefix = "") {
   for (const name of (await readdir(directory)).sort()) {
     const path = join(directory, name);
@@ -140,4 +142,7 @@ async function hashContext(directory, prefix = "") {
   }
 }
 await hashContext(outDir);
-await writeFile(join(outDir, "metadata.json"), `${JSON.stringify({ tag: `atelier-workspace:${hash.digest("hex").slice(0, 16)}`, modules: moduleNames }, null, 2)}\n`);
+const signature = hash.digest("hex").slice(0, 16);
+dockerfile += `LABEL com.atelier.workspace-image.signature=${quote(signature)}\n`;
+await writeFile(join(outDir, "Dockerfile"), dockerfile);
+await writeFile(join(outDir, "metadata.json"), `${JSON.stringify({ tag: `atelier-workspace:${signature}`, modules: moduleNames }, null, 2)}\n`);
