@@ -16,11 +16,20 @@ const githubDisconnectConfirmation = destructiveConfirmationHtml({
   cancelCaption: "Cancel",
 });
 
+export function renderGitHubConnectButton(surface: SettingsSurface): string {
+  return buttonHtml({
+    type: "submit",
+    variant: "primary",
+    content: { kind: "caption", caption: "Connect" },
+    attributesHtml: `form="${domId(surface, "github-connect-form")}"`,
+  });
+}
+
 function githubConnectionForm(surface: SettingsSurface, error: string): string {
   const action = surface === "onboarding" ? "/settings/github/connect?surface=onboarding" : "/settings/github/connect";
   const rowClass = surface === "settings" ? " github-connect-form--row" : "";
-  const connectButton = buttonHtml({ type: "submit", variant: "primary", content: { kind: "caption", caption: "Connect" } });
-  return `<form class="github-connect-form${rowClass} form-stack" method="post" action="${action}" data-turbo="true">
+  const connectButton = surface === "onboarding" ? "" : renderGitHubConnectButton(surface);
+  return `<form id="${domId(surface, "github-connect-form")}" class="github-connect-form${rowClass} form-stack" method="post" action="${action}" data-turbo="true">
     <p>On your machine, sign in with GitHub CLI if needed, then print your token:</p>
     <pre class="settings-command">gh auth login
 gh auth token</pre>

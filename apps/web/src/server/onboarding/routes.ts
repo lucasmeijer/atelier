@@ -5,13 +5,9 @@ import { Icons } from "@atelier/design-system/icons";
 import { escapeHtml, turboStreamResponse } from "@atelier/shared";
 import { hasWorkspaceGitHubToken } from "@atelier/proxy-egress";
 import { hasAvailableConfiguredAgentModel } from "@atelier/agent/server";
-import { renderGitHubSetup } from "../settings/github.ts";
+import { renderGitHubConnectButton, renderGitHubSetup } from "../settings/github.ts";
 import { renderModelSetup } from "../settings/models.ts";
 import { turboUpdateStream as update } from "../http-responses.ts";
-
-function stream(body: string): Response {
-  return turboStreamResponse(body);
-}
 
 async function renderGithubStep(): Promise<string> {
   return `<div class="onboarding-step form-stack"><h2 class="title">Connect GitHub</h2>${renderGitHubSetup("onboarding")}</div>`;
@@ -51,7 +47,7 @@ export async function renderOnboardingDialog(options: { includeCompleted?: boole
     type: "button",
     variant: "secondary",
     content: { kind: "caption", caption: "‹ Back" },
-    attributesHtml: 'data-onboarding-target="back" data-action="onboarding#prev"',
+    attributesHtml: 'data-action="onboarding#prev"',
   });
   const continueButton = buttonHtml({
     type: "button",
@@ -59,6 +55,7 @@ export async function renderOnboardingDialog(options: { includeCompleted?: boole
     content: { kind: "caption", caption: "Continue" },
     attributesHtml: 'data-onboarding-target="continue" data-action="onboarding#next"',
   });
+  const showConnect = contributions[initialIndex]?.id === "github" && !completionById.get("github");
   return dialogHtml({
     element: {
       id: "onboarding_dialog",
@@ -69,7 +66,7 @@ export async function renderOnboardingDialog(options: { includeCompleted?: boole
     titleCaption: "Set up Atelier",
     bodyHtml: `<div class="onboarding-progress" aria-label="Onboarding progress">${rendered.map((_, index) => `<span class="onboarding-progress-item" data-onboarding-target="dot"${index === initialIndex ? ' aria-current="step"' : ""}></span>`).join("")}</div><div class="onboarding-body">${steps.join("")}</div>`,
     bodyLayout: "full-bleed",
-    footerHtml: `${backButton}${continueButton}`,
+    footerHtml: `<span data-onboarding-target="back"${initialIndex === 0 ? " hidden" : ""}>${backButton}</span>${continueButton}<span data-onboarding-target="connect"${showConnect ? "" : " hidden"}>${renderGitHubConnectButton("onboarding")}</span>`,
     omitCancelButton: true,
   });
 }
@@ -78,7 +75,7 @@ export async function handleOnboardingRequest(request: Request, url: URL): Promi
   if (url.pathname === "/onboarding" && request.method === "GET") {
     const html = await renderOnboardingDialog({ includeCompleted: true });
     const acceptsStream = request.headers.get("accept")?.includes("text/vnd.turbo-stream.html") ?? false;
-    if (acceptsStream) return stream(update("onboarding_modal_host", html));
+    if (acceptsStream) return turboStreamResponse(update("onboarding_modal_host", html));
     // Onboarding is a modal flow, not a standalone page. If a browser lands here
     // directly (or Turbo treats a click as a navigation), go back to the app.
     return Response.redirect(new URL("/", url).toString(), 303);

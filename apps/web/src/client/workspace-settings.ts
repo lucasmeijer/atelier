@@ -326,13 +326,12 @@ function hasWorkingModelSetup(root: ParentNode | undefined): boolean {
 }
 
 class OnboardingController extends Controller {
-  static targets = ["pane", "dot", "continue", "back"];
+  static targets = ["pane", "dot", "continue", "back", "connect"];
   declare readonly paneTargets: HTMLElement[];
   declare readonly dotTargets: HTMLElement[];
   declare readonly continueTarget: HTMLButtonElement;
-  declare readonly hasContinueTarget: boolean;
-  declare readonly backTarget: HTMLButtonElement;
-  declare readonly hasBackTarget: boolean;
+  declare readonly backTarget: HTMLElement;
+  declare readonly connectTarget: HTMLElement;
   private index = 0;
   private observer?: MutationObserver;
 
@@ -372,15 +371,14 @@ class OnboardingController extends Controller {
     const complete = current?.dataset.onboardingComplete === "true" || (kind === "llm" && workingModel);
     if (kind === "done") this.refreshChecklist(current);
     const doneComplete = kind === "done" && current?.querySelector<HTMLElement>("[data-onboarding-done-complete]")?.dataset.onboardingDoneComplete === "true";
-    if (this.hasBackTarget) this.backTarget.hidden = this.index === 0;
-    if (this.hasContinueTarget) {
-      this.continueTarget.classList.toggle("primary", kind === "done" ? Boolean(doneComplete) : complete);
-      let label = "Continue";
-      if (kind === "done") label = doneComplete ? "Let’s start!" : "Start anyway";
-      else if (kind === "llm" && !workingModel) label = "Continue without models for now";
-      else if (kind === "github" && !complete) label = "Continue without setting up github";
-      if (this.continueTarget.textContent !== label) this.continueTarget.textContent = label;
-    }
+    this.backTarget.hidden = this.index === 0;
+    this.connectTarget.hidden = kind !== "github" || complete;
+    this.continueTarget.classList.toggle("primary", kind === "done" ? Boolean(doneComplete) : complete);
+    let label = "Continue";
+    if (kind === "done") label = doneComplete ? "Let’s start!" : "Start anyway";
+    else if (kind === "llm" && !workingModel) label = "Continue without models for now";
+    else if (kind === "github" && !complete) label = "Continue without GitHub";
+    if (this.continueTarget.textContent !== label) this.continueTarget.textContent = label;
   }
 
   private refreshChecklist(donePane?: HTMLElement): void {
