@@ -26,7 +26,7 @@ function githubConnectionForm(surface: SettingsSurface, error: string): string {
 gh auth token</pre>
     <p>Paste the token output below. Atelier stores and encrypts it outside of the agent sandbox so the agent never sees it, but can still read and write from your github repo’s.</p>
     ${error ? `<p class="settings-error">${escapeHtml(error)}</p>` : ""}
-    <div class="github-connect-controls"><input class="settings-input text-field" type="password" name="token" placeholder="Paste output from gh auth token" aria-label="GitHub token" autocomplete="off" required>${connectButton}</div>
+    <div class="github-connect-controls"><input class="settings-input text-field" type="password" data-1p-ignore name="token" placeholder="Paste output from gh auth token" aria-label="GitHub token" autocomplete="off" required>${connectButton}</div>
   </form>`;
 }
 

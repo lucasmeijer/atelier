@@ -244,7 +244,7 @@ function apiKeyModal(id: string, label: string, surface: SettingsSurface, error 
     bodyHtml: `<form id="${formId}" class="form-stack" method="post" action="${action}" data-turbo="true">
       ${error ? `<p class="settings-error">${escapeHtml(error)}</p>` : ""}
       <label for="${inputId}">API key</label>
-      <input id="${inputId}" class="settings-input text-field" type="password" name="secret" placeholder="${escapeHtml(getProviderApiKeyExample(id) ?? "API key")}" autocomplete="off" required autofocus>
+      <input id="${inputId}" class="settings-input text-field" type="password" data-1p-ignore name="secret" placeholder="${escapeHtml(getProviderApiKeyExample(id) ?? "API key")}" autocomplete="off" required autofocus>
     </form>`,
     footerHtml: `<form method="dialog">${cancelButton}</form>${connectButton}`,
   });
@@ -373,7 +373,7 @@ function oauthPromptForm(flow: PendingOAuthFlow): string {
   if (!flow.prompt) return "";
   const prompt = flow.prompt.input;
   const inputId = domId("oauth_prompt", flow.id);
-  return `<form id="${oauthRedirectFormId(flow)}" class="settings-oauth-card" method="post" action="/settings/providers/${encodeURIComponent(flow.provider)}/oauth/${encodeURIComponent(flow.id)}/prompt" data-turbo="true"><label for="${inputId}">${escapeHtml(prompt.message)}</label><input id="${inputId}" class="settings-input text-field" type="${prompt.type === "secret" ? "password" : "text"}" name="value" placeholder="${escapeHtml(prompt.placeholder ?? "")}"${prompt.type === "manual_code" || prompt.type === "secret" ? " required" : ""}></form>`;
+  return `<form id="${oauthRedirectFormId(flow)}" class="settings-oauth-card" method="post" action="/settings/providers/${encodeURIComponent(flow.provider)}/oauth/${encodeURIComponent(flow.id)}/prompt" data-turbo="true"><label for="${inputId}">${escapeHtml(prompt.message)}</label><input id="${inputId}" class="settings-input text-field" type="${prompt.type === "secret" ? "password" : "text"}" name="value" data-1p-ignore placeholder="${escapeHtml(prompt.placeholder ?? "")}"${prompt.type === "manual_code" || prompt.type === "secret" ? " required" : ""}></form>`;
 }
 
 function oauthBrowserRedirectBody(flow: PendingOAuthFlow): string {

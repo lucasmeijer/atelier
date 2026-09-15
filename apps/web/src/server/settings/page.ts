@@ -24,10 +24,10 @@ async function renderThemeSettings(): Promise<string> {
 
 async function renderGitIdentityForm(error = ""): Promise<string> {
   const identity = await getGitIdentity();
-  return `<form id="settings_git_identity" class="settings-git-identity" method="post" action="/settings/git-identity" data-controller="git-identity" data-action="input->git-identity#queue change->git-identity#save submit->git-identity#submit">
+  return `<form id="settings_git_identity" class="settings-git-identity" method="post" action="/settings/git-identity" autocomplete="off" data-controller="git-identity" data-action="input->git-identity#queue change->git-identity#save submit->git-identity#submit">
     ${error ? `<p class="settings-error">${escapeHtml(error)}</p>` : ""}
-    <label class="settings-field"><span class="settings-field-label">Git user name</span><input class="settings-input text-field" name="name" value="${escapeHtml(identity?.name ?? "")}" placeholder="Ada Lovelace" autocomplete="name" required></label>
-    <label class="settings-field"><span class="settings-field-label">Git email</span><input class="settings-input text-field" type="email" name="email" value="${escapeHtml(identity?.email ?? "")}" placeholder="ada@example.com" autocomplete="email" required></label>
+    <label class="settings-field"><span class="settings-field-label">Commit author name</span><input class="settings-input text-field" name="commitAuthorName" value="${escapeHtml(identity?.name ?? "")}" placeholder="Ada Lovelace" autocomplete="off" data-1p-ignore required></label>
+    <label class="settings-field"><span class="settings-field-label">Commit author email</span><input class="settings-input text-field" type="email" name="commitAuthorEmail" value="${escapeHtml(identity?.email ?? "")}" placeholder="ada@example.com" autocomplete="off" data-1p-ignore required></label>
   </form>`;
 }
 
@@ -159,7 +159,7 @@ export async function handleSettingsPageRequest(request: Request, url: URL, opti
   if (url.pathname === "/settings/git-identity" && request.method === "POST") {
     const form = await request.formData();
     try {
-      await setGitIdentity({ name: String(form.get("name") ?? ""), email: String(form.get("email") ?? "") });
+      await setGitIdentity({ name: String(form.get("commitAuthorName") ?? ""), email: String(form.get("commitAuthorEmail") ?? "") });
     } catch (error) {
       const message = error instanceof Error ? error.message : String(error);
       return stream(replace("settings_git_identity", await renderGitIdentityForm(message)));

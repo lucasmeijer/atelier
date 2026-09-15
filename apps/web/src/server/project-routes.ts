@@ -153,7 +153,7 @@ export function createProjectRoutes(deps: {
       ${status}
       <label><span>Environment variable</span><input class="text-field" name="envName" value="${escapeHtml(secret?.envName ?? "")}" placeholder="GOOGLE_MAPS_API_KEY" autocomplete="off"${secret ? "" : " required"}></label>
       <label><span>Host</span><input class="text-field" name="hostPattern" value="${escapeHtml(secret?.hostPattern ?? "")}" placeholder="maps.googleapis.com" autocomplete="off"${secret ? "" : " required"}></label>
-      <label><span>Secret</span><input class="text-field" name="secretValue" type="password" data-action="change->settings-autosave#save" placeholder="${secret?.configured ? "Secret stored — leave blank to keep it" : "No secret stored — enter a value"}" autocomplete="new-password"></label>
+      <label><span>Secret</span><input class="text-field" name="secretValue" type="password" data-1p-ignore data-action="change->settings-autosave#save" placeholder="${secret?.configured ? "Secret stored — leave blank to keep it" : "No secret stored — enter a value"}" autocomplete="new-password"></label>
       <label><span>Placeholder</span><input class="text-field" name="placeholder" value="${escapeHtml(secret?.placeholder ?? "")}" placeholder="You rarely need to fill this in" autocomplete="off"></label>
       <label><span>Needed for</span><textarea class="textarea" name="annotation" rows="2" placeholder="For example, running payment integration tests">${escapeHtml(secret?.annotation ?? "")}</textarea></label>
       ${secretRequirementToggle(secret?.optional ?? false)}
