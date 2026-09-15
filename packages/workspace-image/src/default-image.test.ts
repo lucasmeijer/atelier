@@ -3,7 +3,7 @@ import { mkdtemp, rm, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 
-for (const scenario of ["cached", "missing", "different-tag", "no-cache"] as const) {
+for (const scenario of ["cached", "missing", "different-signature", "no-cache"] as const) {
   test(`default image resolution: ${scenario}`, async () => {
     const directory = await mkdtemp(join(tmpdir(), "default-image-test-"));
     const namespace = directory.split("/").at(-1)!;
@@ -16,10 +16,10 @@ for (const scenario of ["cached", "missing", "different-tag", "no-cache"] as con
         const localPath = ${JSON.stringify(join(import.meta.dir, "local-images.ts"))};
         const local = await import(localPath);
         const checks = [], builds = [];
-        mock.module(localPath, () => ({...local, nativeImageExists: async tag => {
+        mock.module(localPath, () => ({...local, reuseDefaultWorkspaceImage: async tag => {
           checks.push(tag);
-          // A different deterministic tag must not count as the requested image.
-          return ${JSON.stringify(scenario)} === 'different-tag' ? tag === 'atelier-workspace:old-default' : ${scenario === "cached" || scenario === "no-cache"};
+          // A different signature must not count as the requested image.
+          return ${JSON.stringify(scenario)} === 'different-signature' ? tag === 'atelier-workspace:old-default' : ${scenario === "cached" || scenario === "no-cache"};
         }}));
         const observablePath = ${JSON.stringify(join(import.meta.dir, "../../observable-terminal/src/server/index.ts"))};
         const observable = await import(observablePath);

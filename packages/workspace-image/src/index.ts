@@ -9,7 +9,7 @@ import { ensureGeneratedDefaultWorkspaceImage, prepareDefaultWorkspaceImage } fr
 export { ensureGeneratedDefaultWorkspaceImage, prepareDefaultWorkspaceImage } from "./default-image.ts";
 import { pruneSupersededWorkspaceImages, workspaceImageKindLabel, type WorkspaceImageKind } from "./prune.ts";
 import { dockerImageStoreQueue, workspaceImageStoreWaitReporter } from "./image-store-queue.ts";
-import { dockerServerPlatform, nativeImageExists as imageExists } from "./local-images.ts";
+import { dockerServerPlatform, nativeImageExists as imageExists, reuseDefaultWorkspaceImage } from "./local-images.ts";
 
 interface WorkspaceImageBuildTask {
   tag: string;
@@ -150,7 +150,7 @@ async function inspectDefaultWorkspaceImage(): Promise<string | undefined> {
   const baked = await bakedDefaultWorkspaceImageRef();
   if (baked) return await imageExists(baked) ? baked : undefined;
   const context = await prepareDefaultWorkspaceImage();
-  try { return await imageExists(context.metadata.tag) ? context.metadata.tag : undefined; }
+  try { return await reuseDefaultWorkspaceImage(context.metadata.tag) ? context.metadata.tag : undefined; }
   finally { await context.dispose(); }
 }
 
@@ -169,7 +169,6 @@ export async function ensureDefaultWorkspaceImage(options: ResolveWorkspaceImage
   }
   return ensureGeneratedDefaultWorkspaceImage({
     force: process.env.ATELIER_WORKSPACE_IMAGE_NO_CACHE === "1",
-    exists: imageExists,
     build: async ({ contextDir, dockerfile, metadata }) => {
       await waitForBuildTask(startBuildTask(metadata.tag, metadata.modules, "default", dockerfile, contextDir, options), options);
     },

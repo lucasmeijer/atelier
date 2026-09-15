@@ -2,7 +2,7 @@ import { mkdtemp, readFile, rm } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { runDocker, workloadBuildArgs, type CommandResult } from "@atelier/core";
-import { nativeImageExists } from "./local-images.ts";
+import { reuseDefaultWorkspaceImage } from "./local-images.ts";
 import { parseWorkspaceImageMetadata, type WorkspaceImageMetadata } from "./metadata.ts";
 
 export interface DefaultWorkspaceImageContext {
@@ -42,13 +42,14 @@ export async function prepareDefaultWorkspaceImage(): Promise<DefaultWorkspaceIm
   }
 }
 
-/** Resolve the content tag in the selected image store, building only on a miss. */
+/** Resolve the signature in the selected image store, building only on a miss.
+ * Publishers supply their own registry-tag existence check. */
 export async function ensureGeneratedDefaultWorkspaceImage(options: EnsureDefaultImageOptions = {}): Promise<string> {
   const context = options.context ?? await prepareDefaultWorkspaceImage();
   const docker = options.docker ?? runDocker;
   const image = options.imageName?.(context.metadata.tag) ?? context.metadata.tag;
   try {
-    if (!options.force && await (options.exists ? options.exists(image) : nativeImageExists(image, docker))) return image;
+    if (!options.force && await (options.exists ? options.exists(image) : reuseDefaultWorkspaceImage(image, docker))) return image;
     if (options.build) await options.build(context, image);
     else {
       const result = await docker(["build", ...await workloadBuildArgs(), "--progress=plain", "--label", "com.atelier.workspace-image.kind=default", "-t", image, "-f", context.dockerfile, context.contextDir]);
