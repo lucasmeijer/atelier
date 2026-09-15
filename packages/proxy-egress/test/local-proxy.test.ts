@@ -1,5 +1,5 @@
 import { afterEach, expect, test } from "bun:test";
-import { createServer, type RequestListener } from "node:http";
+import { createServer, request, type RequestListener } from "node:http";
 import { createServer as createHttpsServer } from "node:https";
 import net from "node:net";
 import tls from "node:tls";
@@ -27,7 +27,7 @@ async function localRelay(socketPath: string): Promise<number> {
   const child = spawn("node", ["--input-type=module", "-e", `
     const { createLocalProxy } = await import(process.argv[2]);
     const { server } = createLocalProxy(process.argv[3]);
-    server.listen(0, "127.0.0.1", () => console.log(server.address().port));
+    server.listen(0, "127.0.0.1", () => process.stdout.write(String(server.address().port) + "\\n"));
   `, "test-relay", source, socketPath], { stdio: ["ignore", "pipe", "pipe"] });
   cleanup.push(async () => { child.kill(); await new Promise(resolve => child.once("close", resolve)); });
   return await new Promise<number>((resolve, reject) => {
@@ -35,6 +35,26 @@ async function localRelay(socketPath: string): Promise<number> {
     child.stderr.on("data", data => reject(new Error(data.toString())));
     child.stdout.once("data", data => resolve(Number(data.toString().trim())));
     child.once("exit", code => reject(new Error(`Local proxy exited ${code}`)));
+  });
+}
+
+// Send absolute-form HTTP directly to the fixture relay, independent of Bun's
+// inherited HTTP_PROXY/NO_PROXY settings.
+async function proxyRequest(port: number, target: string, { method = "GET", headers = {}, body = "" }: {
+  method?: string; headers?: Record<string, string>; body?: string;
+} = {}) {
+  return await new Promise<{ status: number; body: string }>((resolve, reject) => {
+    const req = request({ hostname: "127.0.0.1", port, path: target, method,
+      headers: { ...headers, host: new URL(target).host, "content-length": Buffer.byteLength(body) },
+    }, (response) => {
+      let body = "";
+      response.setEncoding("utf8");
+      response.on("data", (chunk) => body += chunk);
+      response.on("error", reject);
+      response.on("end", () => resolve({ status: response.statusCode!, body }));
+    });
+    req.on("error", reject);
+    req.end(body);
   });
 }
 
@@ -86,7 +106,7 @@ test("workspace socket controls HTTP and HTTPS identity, policy and reconnection
   const upstreamFetch = (url: string, init: RequestInit) => {
     const target = new URL(url);
     if (target.protocol === "https:" && !target.port) { target.hostname = "127.0.0.1"; target.port = String(httpsPort); }
-    return fetch(target, { ...init, tls: { ca: caPem } });
+    return fetch(target, { ...init, proxy: "", tls: { ca: caPem } });
   };
   const start = (id: string) => startWorkspaceEgressProxy({ socketPath: join(directory, id, "egress.sock"), ca, getContext: async () => contexts.get(id)!, upstreamFetch });
   let alpha = await start("alpha");
@@ -96,8 +116,8 @@ test("workspace socket controls HTTP and HTTPS identity, policy and reconnection
   const betaPort = await localRelay(join(directory, "beta", "egress.sock"));
   const headers = { "X-Api-Key": "ATELIER_TEST_PLACEHOLDER", Authorization: "Bearer destination-authorization", "Proxy-Authorization": `Basic ${Buffer.from("beta:forged-token").toString("base64")}`, "X-Workspace-Id": "beta" };
   for (const [id, port] of [["alpha", alphaPort], ["beta", betaPort]] as const) {
-    const response = await fetch(`http://127.0.0.1:${httpPort}/upload`, { proxy: `http://127.0.0.1:${port}`, method: "POST", headers, body: "streamed payload" });
-    expect(await response.text()).toBe("destination response");
+    const response = await proxyRequest(port, `http://127.0.0.1:${httpPort}/upload`, { method: "POST", headers, body: "streamed payload" });
+    expect(response.body).toBe("destination response");
     expect(received.at(-1)).toEqual({ key: `${id}-secret`, authorization: "Bearer destination-authorization", proxyAuthorization: undefined, body: "streamed payload" });
   }
   const connected = await tunnel(alphaPort, "localhost:443", `Proxy-Authorization: ${headers["Proxy-Authorization"]}\r\nX-Workspace-Id: beta\r\n`);
@@ -129,13 +149,13 @@ test("workspace socket controls HTTP and HTTPS identity, policy and reconnection
   expect(tunneled).toContain("destination response");
   expect(received.at(-1)?.authorization).toBe("Bearer destination-authorization");
   const beforeBlocked = received.length;
-  expect((await fetch("http://127.0.0.2/private", { proxy: `http://127.0.0.1:${alphaPort}` })).status).toBe(403);
+  expect((await proxyRequest(alphaPort, "http://127.0.0.2/private")).status).toBe(403);
   const blocked = await tunnel(alphaPort, "127.0.0.2:443");
   expect(blocked.response).toContain("403"); blocked.socket.destroy();
   expect(received.length).toBe(beforeBlocked);
   // Restart only the application-side listener. The workspace relay stays up.
   await alpha.close(); alpha = await start("alpha");
-  const reconnected = await fetch(`http://127.0.0.1:${httpPort}/after-restart`, { proxy: `http://127.0.0.1:${alphaPort}`, headers });
-  expect(await reconnected.text()).toBe("destination response");
+  const reconnected = await proxyRequest(alphaPort, `http://127.0.0.1:${httpPort}/after-restart`, { headers });
+  expect(reconnected.body).toBe("destination response");
   expect(received.at(-1)?.key).toBe("alpha-secret");
 }, 20000);

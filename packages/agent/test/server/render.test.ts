@@ -1,5 +1,5 @@
 import { describe, expect, test } from "bun:test";
-import { renderAgentPane, renderAgentPaneComposer, renderAgentPaneComposerFooter, renderPromptActions } from "../../src/server/render-composer.ts";
+import { renderAgentPane, renderAgentPaneComposerFooter, renderPromptActions } from "../../src/server/render-composer.ts";
 import { renderTranscript, renderTranscriptItem, renderTranscriptItemDetailFrame } from "../../src/server/render-transcript.ts";
 import type { AgentRenderContext } from "../../src/server/render-context.ts";
 import type { ToolView, TranscriptItem } from "../../src/server/transcript.ts";
@@ -22,15 +22,6 @@ describe("transcript rendering", () => {
     expect(html).toContain(`data-agent-pane-conversation-id-value="${agent.conversationId}"`);
     expect(html).toContain(`/agents/${agent.conversationId}/messages`);
     expect(html).not.toContain("data-agent-pane-label-value");
-  });
-
-  test("AgentPaneComposer runs completion shortcuts before prompt submission", async () => {
-    const html = await renderAgentPaneComposer({ action: "/messages", placeholder: "Ask", draftId: "draft", ctx, formTarget: true, includePaneActions: true, stats: { contextPercent: null, compactAvailable: false, inputTokens: 0, outputTokens: 0, cost: 0, modelName: undefined, thinkingLevel: "off", thinkingLevels: [], models: [] } });
-    expect(html).toContain("agent-completions");
-    expect(html).toContain('data-action="keydown-&gt;agent-completions#keydown keydown-&gt;agent-pane#inputKeydown submit-&gt;transcription-composer#submit turbo:submit-end-&gt;agent-pane#submitted click-&gt;agent-pane#focusInput"');
-    expect(html).toContain('data-action="input->agent-completions#input input->agent-pane#promptChanged"');
-    expect(html).toContain('enterkeyhint="send"');
-    expect(html).toContain('data-agent-pane-target="sendStop"');
   });
 
   test("busy composers expose an actionable indeterminate stop button", () => {

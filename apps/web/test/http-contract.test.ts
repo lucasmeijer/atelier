@@ -59,6 +59,7 @@ const projectDetailResponseSchema = Type.Object({
     branch: Type.Union([Type.String(), Type.Null()]),
     sessionShareKey: Type.String(),
     configurationFingerprint: Type.String(),
+    preloadImages: Type.Array(Type.String()),
     environment: Type.Array(environmentVariableSchema),
     secrets: Type.Array(projectSecretSummarySchema),
   }, { additionalProperties: false }),
@@ -193,6 +194,7 @@ describe("HTTP contracts", () => {
     const detailResponse = await app.fetch(new Request(`http://test.local/projects/${created.project.id}`, { headers: { accept: "application/json" } }));
     const detailText = await detailResponse.text();
     const detail = Value.Parse(projectDetailResponseSchema, JSON.parse(detailText));
+    expect(detail.project.preloadImages).toEqual([]);
     expect(detail.project.environment).toHaveLength(1);
     expect(detail.project.secrets).toHaveLength(1);
     expect(detailText).not.toContain(sensitive);

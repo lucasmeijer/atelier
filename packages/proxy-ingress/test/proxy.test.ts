@@ -216,7 +216,8 @@ describe("workspace ingress", () => {
     const first = await reader.read();
     expect(new TextDecoder().decode(first.value)).toContain("event: ready");
     controller.abort();
-    await reader.cancel("done");
+    // Aborting fetch errors its body stream; cancelling that reader rejects with the abort reason.
+    await expect(reader.cancel("done")).rejects.toBe(controller.signal.reason);
     await Bun.sleep(20);
     expect(cancelled).toBe(true);
     await ingress.stopAll();
