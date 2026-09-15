@@ -27,7 +27,7 @@ export interface ResolveWorkspaceImageOptions {
   buildOutput?: "inherit";
 }
 
-const maxBuildOutputBytes = 64 * 1024;
+const maxBuildOutputChars = 64 * 1024;
 const buildTasks = new Map<string, WorkspaceImageBuildTask>();
 const defaultImageRefFile = join(repoRoot(), ".atelier-default-workspace-image");
 
@@ -48,33 +48,19 @@ async function pullImage(tag: string, options: ResolveWorkspaceImageOptions): Pr
   const platform = await dockerServerPlatform();
   const result = await dockerImageStoreQueue.run({
     label: `Pulling workspace image ${tag}`,
-    onWait: workspaceImageStoreWaitReporter({ events: options.events, workspaceId: options.workspaceId, parentId: "workspace.image" }),
+    onWait: workspaceImageStoreWaitReporter({ events: options.events, workspaceId: options.workspaceId }),
   }, () => runDocker(["pull", "--platform", platform, tag]));
   if (result.exitCode !== 0) throw new Error(result.stderr.trim() || `docker pull ${tag} failed`);
 }
 
-function appendOutput(task: WorkspaceImageBuildTask, chunk: string): void {
-  task.output = `${task.output}${chunk}`;
-  if (task.output.length > maxBuildOutputBytes) task.output = task.output.slice(-maxBuildOutputBytes);
-}
-
-function imageDetail(task: Pick<WorkspaceImageBuildTask, "tag" | "modules">): string {
-  return `Image: ${task.tag}${task.modules.length ? ` · Modules: ${task.modules.join(", ")}` : ""}`;
-}
-
-async function emitImageStep(events: AtelierEventBus | undefined, workspaceId: string | undefined, task: WorkspaceImageBuildTask, status: "running" | "done" | "failed", error?: string): Promise<void> {
+async function reportImageProgress(events: AtelierEventBus | undefined, workspaceId: string | undefined, task: WorkspaceImageBuildTask): Promise<void> {
   if (!events || !workspaceId) return;
-  const event = {
+  await events.emit("workspace_provision_progress", {
     workspaceId,
-    id: "workspace.image",
-    label: "Resolve workspace image",
-    status,
-    detail: imageDetail(task),
-    output: tailTerminalText(task.output),
-    error,
-  };
-  if (task.session) Object.assign(event, { terminal: { kind: "host-tmux" as const, session: task.session } });
-  await events.emit("workspace_provision_step", event);
+    detail: `Image: ${task.tag}${task.modules.length ? ` · Modules: ${task.modules.join(", ")}` : ""}`,
+    output: task.output,
+    terminalSession: task.session,
+  });
 }
 
 async function dockerBuildArgs(tag: string, kind: WorkspaceImageKind, dockerfile: string, contextDir: string, options: ResolveWorkspaceImageOptions): Promise<string[]> {
@@ -97,7 +83,7 @@ function startBuildTask(tag: string, modules: string[], kind: WorkspaceImageKind
   const task: WorkspaceImageBuildTask = { tag, modules, output: "", promise: Promise.resolve() };
   task.promise = dockerImageStoreQueue.run({
     label: `Building workspace image ${tag}`,
-    onWait: workspaceImageStoreWaitReporter({ events: options.events, workspaceId: options.workspaceId, parentId: "workspace.image" }),
+    onWait: workspaceImageStoreWaitReporter({ events: options.events, workspaceId: options.workspaceId }),
   }, async () => {
     const buildStartedAt = new Date();
     const args = await dockerBuildArgs(tag, kind, dockerfile, contextDir, options);
@@ -112,10 +98,10 @@ function startBuildTask(tag: string, modules: string[], kind: WorkspaceImageKind
         command: `echo "Starting Docker image build..."\nDOCKER_BUILDKIT=1 docker ${args.map(shellQuote).join(" ")}`,
         onSessionStarted: async (session) => {
           task.session = session;
-          await emitImageStep(options.events, options.workspaceId, task, "running");
+          await reportImageProgress(options.events, options.workspaceId, task);
         },
       });
-      appendOutput(task, result.output);
+      task.output = tailTerminalText(result.output.slice(-maxBuildOutputChars));
       if (result.exitCode !== 0) throw new Error(`docker build failed with exit code ${result.exitCode}`);
     }
     pruneSupersededWorkspaceImages(kind, buildStartedAt);
@@ -128,14 +114,14 @@ function startBuildTask(tag: string, modules: string[], kind: WorkspaceImageKind
 }
 
 async function waitForBuildTask(task: WorkspaceImageBuildTask, options: ResolveWorkspaceImageOptions): Promise<void> {
-  await emitImageStep(options.events, options.workspaceId, task, "running");
+  await reportImageProgress(options.events, options.workspaceId, task);
   try {
     await task.promise;
-    await emitImageStep(options.events, options.workspaceId, task, "done");
   } catch (error) {
     const message = error instanceof Error ? error.message : String(error);
-    await emitImageStep(options.events, options.workspaceId, task, "failed", message);
-    throw new Error(`${message}\n\n${tailTerminalText(task.output)}`.trim());
+    throw new Error(`${message}\n\n${task.output}`.trim());
+  } finally {
+    await reportImageProgress(options.events, options.workspaceId, task);
   }
 }
 

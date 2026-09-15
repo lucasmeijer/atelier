@@ -20,8 +20,8 @@ import { Icons } from "@atelier/design-system/icons";
 import { warningBannerHtml } from "@atelier/design-system/warning-banner";
 import { workspaceWarnings, type WorkspaceWarning } from "./workspace-warnings.ts";
 import { getProjectConfiguration, type ProjectConfiguration, isGitProjectInit, listProjects, projectWorkspaceInit, type ProjectSummary } from "@atelier/projects";
-import { createWorkspacePresentationStore, generateWorkspaceId, listWorkspaces, setWorkspaceParked, setWorkspaceTitle, type WorkspaceCreationContext, type WorkspaceInitInstruction, type WorkspaceWorkViewReference, type WorkspaceWorkViewState } from "@atelier/workspace";
-import { createWorkspaceProvisioningStore } from "@atelier/workspace/server/provisioning";
+import { createWorkspaceProvisioning, type WorkspaceProvisioning, type WorkspaceProvisionRun, createWorkspacePresentationStore, generateWorkspaceId, listWorkspaces, setWorkspaceParked, setWorkspaceTitle, type WorkspaceCreationContext, type WorkspaceInitInstruction, type WorkspaceWorkViewReference, type WorkspaceWorkViewState } from "@atelier/workspace";
+import { renderWorkspaceProvisioning } from "@atelier/workspace/server/provisioning";
 import {
   workspaceModuleModalFrameId,
   parseWorkspaceFileTarget,
@@ -41,7 +41,6 @@ import {
   type WorkspaceModuleRouteHandler,
   type WorkspaceModuleWorkViewAdapter,
   type WorkspaceDeletionReview,
-  type WorkspaceServerProvisioningHook,
   type WorkspaceAgentTabProvider,
   type WorkspaceWorkViewPresentation,
 } from "@atelier/shared";
@@ -83,7 +82,7 @@ export interface WebAppDeps {
   events?: AtelierEventBus;
   devReload?: boolean;
   /** Create the container + default agent etc. for an already-registered workspace id. */
-  provisionWorkspace(id: string, options?: { init?: WorkspaceInitInstruction; context?: WorkspaceCreationContext; waitForContinue(stepId: string): Promise<"retry" | void> }): Promise<void>;
+  provisionWorkspace(id: string, options: { init?: WorkspaceInitInstruction; context?: WorkspaceCreationContext; run: WorkspaceProvisionRun }): Promise<void>;
   /** Test/embedding override. Production obtains this contribution from the Review module. */
   deletionReview?: WorkspaceDeletionReview;
   /** Force-remove the workspace container. */
@@ -92,7 +91,6 @@ export interface WebAppDeps {
   persistWorkspaceParked?(id: string, parked: boolean): Promise<void>;
   /** Receives background task failures. Defaults to console.error. */
   logError?(message: string): void;
-  provisioningHooks: WorkspaceServerProvisioningHook[];
   workspaceRemovedHandlers?: Array<(workspaceId: string) => void | Promise<void>>;
 }
 
@@ -101,7 +99,7 @@ export interface WebApp {
   shellSnapshot(): Promise<string>;
   deleteCurrentWorkspaceFromAgent(workspaceId: string, force: boolean): Promise<DeleteCurrentWorkspaceResult>;
   resumeWorkspaceDeletions(): void;
-  waitForWorkspaceStartupContinue(id: string, stepId: string): Promise<"retry" | void>;
+  provisioning: WorkspaceProvisioning;
   createWorkView(workspaceId: string, reference: WorkspaceWorkViewReference): Promise<void>;
   presentWorkViewFromAgent(workspaceId: string, reference: WorkspaceWorkViewReference): Promise<void>;
   globalSidebarContributions: GlobalSidebarContributionRegistry;
@@ -173,8 +171,10 @@ export function createWebApp(deps: WebAppDeps): WebApp {
     broadcastShell(agentTabsTurboStream(await fixedWorkspacePresentation(workspaceId)));
   });
 
-  const provisioning = createWorkspaceProvisioningStore({ onChange: (workspaceId) => broadcastWorkspaceBoot(workspaceId), seedSteps: deps.provisioningHooks });
-  const provisioningContinuations = new Map<string, { stepId: string; resolve(action?: "retry"): void }>();
+  const provisioning = createWorkspaceProvisioning({ events: deps.events, onChange: (workspaceId) => {
+    broadcastWorkspaceBoot(workspaceId);
+    broadcastWorkspacePaneCollections();
+  } });
   const workspaceCommandModalHostId = "workspace_command_modal_host";
   const launchComposerFrameId = "launch_composer";
   // Every server-rendered LaunchComposer has one attachment draft ID. Retried POSTs
@@ -365,7 +365,7 @@ export function createWebApp(deps: WebAppDeps): WebApp {
         title: workspaceTitle(entry),
         active: entry.id === activeWorkspaceId,
         state: entry.phase === "starting"
-          ? (provisioningContinuations.has(entry.id) ? "awaiting_continue" : "starting")
+          ? (provisioning.snapshot(entry.id)?.status === "waiting" ? "awaiting_continue" : "starting")
           : deletionStatus === "checking" || deletionStatus === "deleting"
             ? "deleting"
             : deletionStatus === "blocked"
@@ -514,7 +514,7 @@ export function createWebApp(deps: WebAppDeps): WebApp {
   function workspaceBootResidentHtml(entry: WorkspaceEntry, options: { visible?: boolean } = {}): string {
     const deleteButton = buttonHtml({ type: "submit", variant: "danger", content: { kind: "caption", caption: "Delete workspace" } });
     const deleteAction = entry.phase === "failed" ? `<form class="fixed-shell-delete-workspace" data-action="turbo:submit-start->workspace-navigation#workspaceDeletionStarted" method="post" action="/workspaces/${encodeURIComponent(entry.id)}/delete">${deleteButton}</form>` : "";
-    const inner = `${provisioning.render(entry.id, { failed: entry.phase === "failed", error: entry.error })}${deleteAction}`;
+    const inner = `${renderWorkspaceProvisioning(entry.id, provisioning.snapshot(entry.id), { failed: entry.phase === "failed", error: entry.error })}${deleteAction}`;
     const projectAttr = isGitProjectInit(entry.init) ? ` data-project-id="${escapeHtml(entry.init.projectId)}"` : "";
     return `<div class="workspace-detail-resident workspace-boot ${options.visible ? "visible" : ""}" id="${workspaceResidentId(entry.id)}" data-workspace-residency-target="resident" data-workspace-id="${escapeHtml(entry.id)}"${projectAttr}><div class="main"><div class="body"><div class="workspace-boot-content">${inner}</div></div></div>${renderMobileWorkspaceBar()}</div>`;
   }
@@ -524,8 +524,6 @@ export function createWebApp(deps: WebAppDeps): WebApp {
     if (!entry || (entry.phase !== "starting" && entry.phase !== "failed")) return;
     broadcastShell(turboReplaceStream(workspaceResidentId(id), workspaceBootResidentHtml(entry)));
   }
-
-  deps.events?.on("workspace_provision_step", (event) => provisioning.apply(event));
 
   async function workspaceResidentFor(entry: WorkspaceEntry, options: { visible?: boolean } = {}): Promise<string> {
     if (!entry.deletion && (entry.phase === "starting" || entry.phase === "failed")) return workspaceBootResidentHtml(entry, options);
@@ -670,29 +668,22 @@ export function createWebApp(deps: WebAppDeps): WebApp {
   // Create / delete
   // ---------------------------------------------------------------------------
 
-  function waitForProvisioningContinue(workspaceId: string, stepId: string): Promise<"retry" | void> {
-    if (provisioningContinuations.has(workspaceId)) throw new Error(`workspace ${workspaceId} is already waiting for provisioning confirmation`);
-    return new Promise((resolve) => {
-      provisioningContinuations.set(workspaceId, { stepId, resolve });
-      broadcastWorkspacePaneCollections();
-    });
-  }
-
   function startWorkspaceProvisioning(id: string, options: { init?: WorkspaceInitInstruction; context?: WorkspaceCreationContext; title?: string } = {}): void {
-    provisioning.seed(id);
     void (async () => {
       try {
-        await deps.provisionWorkspace(id, { init: options.init, context: options.context, waitForContinue: (stepId) => waitForProvisioningContinue(id, stepId) });
+        await provisioning.run(id, (run) => deps.provisionWorkspace(id, { init: options.init, context: options.context, run }));
+        if (!registry.get(id)) return;
+        const warnings = provisioning.snapshot(id)!.steps.filter((step) => step.status === "warning");
+        if (warnings.length) registry.setIssue(id, "readiness", warnings.map((step) => `${step.label}: ${step.error} Continued despite this failure.`).join("\n"));
         if (options.title) await setWorkspaceTitle(id, options.title);
         registry.setPhase(id, "ready");
         if (options.context?.agent && !options.context.agent.initialPrompt?.trim()) registry.markViewAttention(id, "workspace");
       } catch (error) {
-        provisioningContinuations.delete(id);
+        if (!registry.get(id)) return;
         const message = error instanceof Error ? error.message : String(error);
         logError(`could not provision workspace ${id}: ${message}`);
         registry.setPhase(id, "failed", message);
         registry.markViewAttention(id, "workspace");
-        provisioning.apply({ workspaceId: id, id: "workspace.failed", label: "Workspace creation failed", status: "failed", error: message });
       }
     })();
   }
@@ -873,15 +864,11 @@ export function createWebApp(deps: WebAppDeps): WebApp {
 
   function continueWorkspaceProvisioningEndpoint(id: string, request: Request): Response {
     const entry = requireWorkspace(id);
-    const pending = provisioningContinuations.get(id);
-    if (entry.phase !== "starting" || !pending) throw new AtelierCoreError("workspace_not_ready", `workspace ${id} is not waiting for provisioning confirmation`);
+    if (entry.phase !== "starting") throw new AtelierCoreError("workspace_not_ready", `workspace ${id} is not waiting for provisioning confirmation`);
     const action = new URL(request.url).searchParams.get("action");
     if (action !== null && action !== "retry") throw invalidArguments("Unknown provisioning action");
-    if (action === "retry" && pending.stepId !== "workspace.startup") throw invalidArguments("This step does not support retry");
-    provisioningContinuations.delete(id);
-    pending.resolve(action === "retry" ? "retry" : undefined);
-    broadcastWorkspacePaneCollections();
-    if (requestAcceptsJson(request)) return jsonResponse({ continued: true, stepId: pending.stepId });
+    const stepId = provisioning.resume(id, action === "retry" ? "retry" : "continue");
+    if (requestAcceptsJson(request)) return jsonResponse({ continued: true, stepId });
     return turboStreamResponse("");
   }
 
@@ -1336,7 +1323,7 @@ export function createWebApp(deps: WebAppDeps): WebApp {
     shellSnapshot: async () => workspacePaneCollectionsTurboStream(await workspacePaneCollections("")),
     deleteCurrentWorkspaceFromAgent,
     resumeWorkspaceDeletions: deletion.resume,
-    waitForWorkspaceStartupContinue: waitForProvisioningContinue,
+    provisioning,
     createWorkView,
     presentWorkViewFromAgent,
     globalSidebarContributions,

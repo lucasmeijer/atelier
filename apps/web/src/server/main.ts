@@ -11,7 +11,7 @@ import { Type } from "typebox";
 import { Value } from "typebox/value";
 import { createAtelierEventBus, getAtelierRuntimeContext } from "@atelier/core";
 import { attachHostObservableTerminal, observableTerminalCols, observableTerminalRows, type ObservableTerminalConnection } from "@atelier/observable-terminal/server";
-import { checkWorkspaceReadiness, workspacePortBackend, workspaceImageOutdated, createWorkspace, deleteWorkspace, isWorkspaceRunning, listWorkspaces, resolveWorkspace, runWorkspaceProvisioningHooks, setWorkspaceParked, setWorkspaceContainerRunning, workspaceSetupProvisioningHook, type WorkspaceProvisionStepEvent } from "@atelier/workspace";
+import { checkWorkspaceReadiness, workspacePortBackend, workspaceImageOutdated, createWorkspace, deleteWorkspace, isWorkspaceRunning, listWorkspaces, resolveWorkspace, setWorkspaceParked, setWorkspaceContainerRunning, workspaceSetupProvisioningHook } from "@atelier/workspace";
 import { atelierName, CableTopics, escapeHtml, type WorkspaceAppBackend, type WorkspaceAppRef, type WorkspaceServerAppResolver, type WorkspaceServerProvisioningHook, type WorkspaceServerSocketHandler, type WorkspaceServerSocketSession } from "@atelier/shared";
 import {
   createFileOriginIdentityStore,
@@ -218,8 +218,7 @@ const workspaceStartupOperations = {
   setRunning: setWorkspaceContainerRunning,
   checkReadiness: checkWorkspaceReadiness,
   imageOutdated: (id: string) => workspaceImageOutdated(id, undefined, atelierEvents),
-  waitForContinue: (id: string, stepId: string) => app.waitForWorkspaceStartupContinue(id, stepId),
-  step: (event: WorkspaceProvisionStepEvent) => atelierEvents.emit("workspace_provision_step", event),
+  get provisioning() { return app.provisioning; },
 };
 const cableServer = createCableServer({ registry, channels: workspaceModules.flatMap((module) => module.cableChannels ?? []), events: atelierEvents, shellSnapshot: () => app.shellSnapshot() });
 
@@ -228,17 +227,14 @@ app = createWebApp({
   cable: cableServer,
   events: atelierEvents,
   devReload: devReloadFile !== undefined,
-  provisioningHooks,
   workspaceRemovedHandlers,
   async provisionWorkspace(id, options) {
-    const created = await createWorkspace({ id, events: atelierEvents, init: options?.init, context: options?.context, waitForContinue: options?.waitForContinue });
-    if (created.startupError) {
-      registry.setIssue(id, "readiness", `${created.startupError} Continued despite preparation failure; required images or gateways may be unavailable.`);
+    await createWorkspace({ id, events: atelierEvents, init: options.init, context: options.context, run: options.run });
+    for (const hook of provisioningHooks) {
+      const work = () => hook.run({ workspaceId: id, creationContext: options.context, events: atelierEvents });
+      await options.run.step(hook.id, hook.label, work, hook.recovery);
     }
-    await runWorkspaceProvisioningHooks(provisioningHooks, { workspaceId: id, creationContext: options?.context, events: atelierEvents, waitForContinue: options?.waitForContinue });
-    await atelierEvents.emit("workspace_provision_step", { workspaceId: id, id: "workspace.integrations", label: "Run workspace startup integrations", status: "running" });
-    await atelierEvents.emit("workspace_created", { workspaceId: id, init: options?.init, context: options?.context });
-    await atelierEvents.emit("workspace_provision_step", { workspaceId: id, id: "workspace.integrations", label: "Run workspace startup integrations", status: "done" });
+    await options.run.step("workspace.integrations", "Run workspace startup integrations", () => atelierEvents.emit("workspace_created", { workspaceId: id, init: options.init, context: options.context }));
   },
   async persistWorkspaceParked(id, parked) {
     await setWorkspaceParked(id, parked);

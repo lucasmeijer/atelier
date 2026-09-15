@@ -38,9 +38,9 @@ describe("workspace lifecycle", () => {
     let finished = false;
     const { app, registry } = createTestApp({
       provision: async (_id, options) => {
-        const confirmation = options?.waitForContinue("workspace.setup");
+        const step = options.run.step("workspace.setup", "Run project setup", () => { throw new Error("setup failed"); }, "continue");
         waiting.resolve();
-        await confirmation;
+        await step;
         finished = true;
       },
     });
@@ -49,8 +49,15 @@ describe("workspace lifecycle", () => {
     const response = await app.fetch(post("/workspaces"));
     const id = (response.headers.get("location") ?? "").match(/\/workspaces\/([^/]+)$/)?.[1] ?? "";
     await waiting.promise;
+    await Bun.sleep(0);
 
     expect(registry.get(id)?.phase).toBe("starting");
+    expect(finished).toBe(false);
+
+    const retry = await app.fetch(new Request(`http://test.local/workspaces/${id}/provisioning/continue?action=retry`, {
+      method: "POST", headers: { accept: "application/json" },
+    }));
+    expect(retry.status).toBe(400);
     expect(finished).toBe(false);
 
     const continued = await app.fetch(new Request(`http://test.local/workspaces/${id}/provisioning/continue`, {
@@ -62,12 +69,37 @@ describe("workspace lifecycle", () => {
     while (registry.get(id)?.phase === "starting") await Bun.sleep(1);
     expect(finished).toBe(true);
     expect(registry.get(id)?.phase).toBe("ready");
+    expect(registry.get(id)?.issues).toEqual([{ kind: "readiness", message: "Run project setup: setup failed Continued despite this failure." }]);
 
     const repeated = await app.fetch(new Request(`http://test.local/workspaces/${id}/provisioning/continue`, {
       method: "POST",
       headers: { accept: "application/json" },
     }));
     expect(repeated.status).toBe(409);
+  });
+
+  test("the recovery endpoint uses the executing step's retry policy, not its ID", async () => {
+    let attempts = 0;
+    const { app, registry } = createTestApp({
+      provision: async (_id, { run }) => {
+        await run.step("custom.prepare", "Prepare custom runtime", () => {
+          if (++attempts === 1) throw new Error("not ready");
+        }, "retry-or-continue");
+      },
+    });
+    await registry.seed([]);
+    const response = await app.fetch(post("/workspaces"));
+    const id = (response.headers.get("location") ?? "").match(/\/workspaces\/([^/]+)$/)?.[1] ?? "";
+    await Bun.sleep(0);
+    const retry = await app.fetch(new Request(`http://test.local/workspaces/${id}/provisioning/continue?action=retry`, {
+      method: "POST", headers: { accept: "application/json" },
+    }));
+    expect(retry.status).toBe(200);
+    expect(await retry.json()).toEqual({ continued: true, stepId: "custom.prepare" });
+    while (registry.get(id)?.phase === "starting") await Bun.sleep(1);
+    expect(attempts).toBe(2);
+    expect(registry.get(id)).toMatchObject({ phase: "ready" });
+    expect(registry.get(id)?.issues).toBeUndefined();
   });
 
   test("failed provisioning marks the workspace failed and needing attention", async () => {

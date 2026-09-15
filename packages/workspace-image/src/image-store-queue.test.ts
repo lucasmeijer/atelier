@@ -1,6 +1,6 @@
 import { describe, expect, test } from "bun:test";
 import { createAtelierEventBus } from "@atelier/core";
-import type { WorkspaceProvisionStepEvent } from "../../workspace/src/server/provisioning-web.ts";
+import type { WorkspaceProvisionProgress } from "../../workspace/src/provisioning.ts";
 import { createDockerImageStoreQueue, workspaceImageStoreWaitReporter, type DockerImageStoreWaitState } from "./image-store-queue.ts";
 
 describe("Docker image store queue", () => {
@@ -80,11 +80,11 @@ describe("Docker image store queue", () => {
     expect(thirdStarted).toBe(true);
   });
 
-  test("reports waiting and continuation as workspace provisioning steps", async () => {
+  test("reports image maintenance as progress, not provisioning state", async () => {
     const events = createAtelierEventBus();
-    const steps: WorkspaceProvisionStepEvent[] = [];
-    events.on("workspace_provision_step", (event) => { steps.push(event); });
-    const report = workspaceImageStoreWaitReporter({ events, workspaceId: "workspace-1", parentId: "workspace.image" });
+    const steps: Array<WorkspaceProvisionProgress & { workspaceId: string }> = [];
+    events.on("workspace_provision_progress", (event) => { steps.push(event); });
+    const report = workspaceImageStoreWaitReporter({ events, workspaceId: "workspace-1" });
 
     await report?.({ status: "waiting", owner: "Pruning old repository workspace images", elapsedMs: 1_600 });
     await report?.({ status: "acquired", owner: "Building a repository image", elapsedMs: 2_400 });
@@ -92,18 +92,10 @@ describe("Docker image store queue", () => {
     expect(steps).toEqual([
       {
         workspaceId: "workspace-1",
-        id: "workspace.image-maintenance",
-        label: "Wait for workspace image maintenance",
-        parentId: "workspace.image",
-        status: "running",
-        detail: "Pruning old repository workspace images · 2s elapsed",
+        detail: "Waiting for Pruning old repository workspace images · 2s elapsed",
       },
       {
         workspaceId: "workspace-1",
-        id: "workspace.image-maintenance",
-        label: "Wait for workspace image maintenance",
-        parentId: "workspace.image",
-        status: "done",
         detail: "Continued after 2s",
       },
     ]);

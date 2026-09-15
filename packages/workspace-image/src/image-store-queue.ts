@@ -15,22 +15,14 @@ export interface DockerImageStoreQueue {
   run<T>(operation: DockerImageStoreOperation, work: () => Promise<T>): Promise<T>;
 }
 
-function elapsedDetail(label: string, elapsedMs: number): string {
-  const seconds = Math.max(0, Math.round(elapsedMs / 1000));
-  return `${label} · ${seconds}s elapsed`;
-}
-
-export function workspaceImageStoreWaitReporter(options: { events?: AtelierEventBus; workspaceId?: string; parentId: string }): DockerImageStoreOperation["onWait"] {
+export function workspaceImageStoreWaitReporter(options: { events?: AtelierEventBus; workspaceId?: string }): DockerImageStoreOperation["onWait"] {
   const { events, workspaceId } = options;
   if (!events || !workspaceId) return undefined;
   return async (state) => {
-    await events.emit("workspace_provision_step", {
+    const seconds = Math.max(0, Math.round(state.elapsedMs / 1000));
+    await events.emit("workspace_provision_progress", {
       workspaceId,
-      id: "workspace.image-maintenance",
-      label: "Wait for workspace image maintenance",
-      parentId: options.parentId,
-      status: state.status === "waiting" ? "running" : "done",
-      detail: state.status === "waiting" ? elapsedDetail(state.owner, state.elapsedMs) : `Continued after ${Math.max(0, Math.round(state.elapsedMs / 1000))}s`,
+      detail: state.status === "waiting" ? `Waiting for ${state.owner} · ${seconds}s elapsed` : `Continued after ${seconds}s`,
     });
   };
 }

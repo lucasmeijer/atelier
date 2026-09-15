@@ -53,7 +53,6 @@ export function createTestApp(options: TestAppOptions = {}) {
     cable: options.cable ?? { broadcast() {} },
     events: options.events,
     provisionWorkspace: options.provision ?? (async () => {}),
-    provisioningHooks: [],
     deletionReview: deletionReview(options.inspect ?? (async () => [])),
     destroyWorkspace: options.destroy ?? (async () => {}),
     persistWorkspaceParked: options.persistParked ?? (async () => {}),

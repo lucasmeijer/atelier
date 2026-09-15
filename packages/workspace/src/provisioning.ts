@@ -1,60 +1,153 @@
-import type { AtelierEventBus } from "@atelier/core";
-import type { WorkspaceCreationContext, WorkspaceServerProvisioningHook } from "@atelier/shared";
+import { AtelierCoreError, invalidArguments, type AtelierEventBus } from "@atelier/core";
+import type { WorkspaceProvisionRecovery } from "@atelier/shared";
 
-export type WorkspaceProvisionStepStatus = "pending" | "running" | "done" | "failed";
-
-export interface WorkspaceProvisionTerminal {
-  kind: "host-tmux";
-  session: string;
-}
-
-export interface WorkspaceProvisionStepEvent {
-  workspaceId: string;
-  id: string;
-  label?: string;
-  status?: WorkspaceProvisionStepStatus;
-  parentId?: string;
+export interface WorkspaceProvisionProgress {
   detail?: string;
   output?: string;
-  terminal?: WorkspaceProvisionTerminal;
+  terminalSession?: string;
+}
+export type WorkspaceProvisionStepStatus = "running" | "done" | "failed" | "warning";
+export interface WorkspaceProvisionStep extends WorkspaceProvisionProgress {
+  id: string;
+  label: string;
+  status: WorkspaceProvisionStepStatus;
   error?: string;
-  awaitingContinue?: boolean;
-  retryable?: boolean;
-  continueLabel?: string;
+}
+export interface WorkspaceProvisionSnapshot {
+  status: "running" | "waiting" | "done" | "failed" | "cancelled";
+  steps: WorkspaceProvisionStep[];
+  waiting?: { stepId: string; retryable: boolean };
+  error?: string;
 }
 
 declare module "@atelier/core" {
   interface AtelierEventMap {
-    workspace_provision_step: WorkspaceProvisionStepEvent;
+    /** Output from the operation executing in this workspace, never lifecycle state. */
+    workspace_provision_progress: WorkspaceProvisionProgress & { workspaceId: string };
   }
 }
 
-export interface RunWorkspaceProvisioningHooksOptions {
-  workspaceId: string;
-  creationContext?: WorkspaceCreationContext;
-  events?: AtelierEventBus;
-  waitForContinue?(stepId: string): Promise<"retry" | void>;
+export interface WorkspaceProvisionRun {
+  step<T>(id: string, label: string, work: () => Promise<T> | T): Promise<T>;
+  step(id: string, label: string, work: () => Promise<void> | void, recovery: WorkspaceProvisionRecovery | undefined): Promise<void>;
+  report(progress: WorkspaceProvisionProgress): void;
 }
 
-export async function runWorkspaceProvisioningHooks(hooks: WorkspaceServerProvisioningHook[], options: RunWorkspaceProvisioningHooksOptions): Promise<void> {
-  for (const hook of hooks) {
-    const event = { workspaceId: options.workspaceId, id: hook.id, label: hook.label, parentId: hook.parentId };
-    await options.events?.emit("workspace_provision_step", { ...event, status: "running" });
-    try {
-      await hook.run({ workspaceId: options.workspaceId, creationContext: options.creationContext, events: options.events });
-      await options.events?.emit("workspace_provision_step", { ...event, status: "done" });
-    } catch (error) {
-      const waitForContinue = hook.onFailure === "await-continue" ? options.waitForContinue : undefined;
-      const continuation = waitForContinue?.(hook.id);
-      await options.events?.emit("workspace_provision_step", {
-        ...event,
-        status: "failed",
-        error: error instanceof Error ? error.message : String(error),
-        awaitingContinue: continuation !== undefined,
+export interface WorkspaceProvisioning {
+  run<T>(workspaceId: string, work: (run: WorkspaceProvisionRun) => Promise<T>): Promise<T>;
+  snapshot(workspaceId: string): WorkspaceProvisionSnapshot | undefined;
+  resume(workspaceId: string, action: "retry" | "continue"): string;
+  delete(workspaceId: string): void;
+}
+
+interface ProvisioningState {
+  status: "running" | "done" | "failed" | "cancelled";
+  steps: WorkspaceProvisionStep[];
+  error?: string;
+  pending?: { stepId: string; retryable: boolean; resolve(action: "retry" | "continue"): void };
+}
+
+/** Owns execution order, progress, and recovery. Consumers render snapshots, not event patches. */
+export function createWorkspaceProvisioning(options: { events?: AtelierEventBus; onChange?: (workspaceId: string) => void } = {}): WorkspaceProvisioning {
+  const runs = new Map<string, ProvisioningState>();
+  return {
+    snapshot(id) {
+      const run = runs.get(id);
+      if (!run) return undefined;
+      const { pending, ...state } = run;
+      return structuredClone({ ...state, status: pending ? "waiting" : state.status, waiting: pending && { stepId: pending.stepId, retryable: pending.retryable } });
+    },
+    resume(id, action) {
+      const run = runs.get(id);
+      if (!run?.pending) throw new AtelierCoreError("workspace_not_ready", `workspace ${id} is not waiting for provisioning confirmation`);
+      const pending = run.pending;
+      if (action === "retry" && !pending.retryable) throw invalidArguments("This step does not support retry");
+      run.pending = undefined;
+      pending.resolve(action);
+      options.onChange?.(id);
+      return pending.stepId;
+    },
+    delete(id) {
+      const run = runs.get(id);
+      runs.delete(id);
+      if (run?.status === "running") {
+        run.status = "cancelled";
+        run.pending?.resolve("continue");
+        run.pending = undefined;
+      }
+    },
+    async run<T>(workspaceId: string, work: (run: WorkspaceProvisionRun) => Promise<T>): Promise<T> {
+      if (runs.get(workspaceId)?.status === "running") throw new Error(`workspace ${workspaceId} already has an active provisioning run`);
+      const state: ProvisioningState = { status: "running", steps: [] };
+      runs.set(workspaceId, state);
+      let active: WorkspaceProvisionStep | undefined;
+      const changed = () => options.onChange?.(workspaceId);
+      const checkCancelled = () => { if (state.status === "cancelled") throw new Error(`workspace ${workspaceId} provisioning cancelled`); };
+      const run: WorkspaceProvisionRun = {
+        report(progress) {
+          checkCancelled();
+          if (!active || active.status !== "running") throw new Error("Provisioning progress requires a running step");
+          Object.assign(active, progress);
+          changed();
+        },
+        async step<T>(id: string, label: string, operation: () => Promise<T> | T, recovery?: WorkspaceProvisionRecovery): Promise<T> {
+          checkCancelled();
+          if (active) throw new Error("Provisioning steps must execute sequentially");
+          if (state.steps.some((step) => step.id === id)) throw new Error(`Duplicate provisioning step: ${id}`);
+          const index = state.steps.length;
+          try {
+            while (true) {
+              checkCancelled();
+              const step: WorkspaceProvisionStep = { id, label, status: "running" };
+              state.steps[index] = active = step;
+              changed();
+              try {
+                const result = await operation();
+                checkCancelled();
+                step.status = "done";
+                changed();
+                return result;
+              } catch (error) {
+                checkCancelled();
+                step.status = "failed";
+                step.error = error instanceof Error ? error.message : String(error);
+                if (!recovery) {
+                  changed();
+                  throw error;
+                }
+                const pending = Promise.withResolvers<"retry" | "continue">();
+                state.pending = { stepId: id, retryable: recovery === "retry-or-continue", resolve: pending.resolve };
+                changed();
+                const action = await pending.promise;
+                checkCancelled();
+                if (action === "retry") continue;
+                step.status = "warning";
+                changed();
+                // SAFETY: The recovery overload returns void; only that overload can reach continuation.
+                return undefined as T;
+              }
+            }
+          } finally { active = undefined; }
+        },
+      };
+      const unsubscribe = options.events?.on("workspace_provision_progress", ({ workspaceId: id, ...progress }) => {
+        if (id === workspaceId) run.report(progress);
       });
-      if (!continuation) throw error;
-      await continuation;
-      await options.events?.emit("workspace_provision_step", { ...event, status: "failed", detail: "Continuing despite this failure", awaitingContinue: false });
-    }
-  }
+      changed();
+      try {
+        const result = await work(run);
+        checkCancelled();
+        state.status = "done";
+        changed();
+        return result;
+      } catch (error) {
+        if (state.status !== "cancelled") {
+          state.status = "failed";
+          state.error = error instanceof Error ? error.message : String(error);
+          changed();
+        }
+        throw error;
+      } finally { unsubscribe?.(); }
+    },
+  };
 }

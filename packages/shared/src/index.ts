@@ -251,11 +251,12 @@ export type WorkspaceServerAppResolver = (
   requestUrl: URL,
 ) => Promise<WorkspaceAppBackend | undefined> | WorkspaceAppBackend | undefined;
 
+export type WorkspaceProvisionRecovery = "continue" | "retry-or-continue";
+
 export interface WorkspaceServerProvisioningHook {
   id: string;
   label: string;
-  parentId?: string;
-  onFailure?: "abort" | "await-continue";
+  recovery?: WorkspaceProvisionRecovery;
   run(context: { workspaceId: string; creationContext?: WorkspaceCreationContext; events?: AtelierEventBus }): Promise<void> | void;
 }
 

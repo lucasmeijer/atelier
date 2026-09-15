@@ -1,37 +1,31 @@
-import type { WorkspaceProvisionStepEvent } from "@atelier/workspace";
+import type { WorkspaceProvisioning, WorkspaceProvisionRun } from "@atelier/workspace";
 import type { WorkspaceRegistry } from "./workspace-registry.ts";
 
 interface WorkspaceReadinessOperations {
   checkReadiness(id: string): Promise<void>;
-  waitForContinue(id: string, stepId: string): Promise<"retry" | void>;
-  step?(event: WorkspaceProvisionStepEvent): Promise<void> | void;
+  provisioning: WorkspaceProvisioning;
 }
 
-/** Readiness failures retain the container and pause until retry or explicit bypass. */
-export async function prepareWorkspaceForUse(id: string, registry: WorkspaceRegistry, operations: WorkspaceReadinessOperations): Promise<void> {
+async function prepare(id: string, registry: WorkspaceRegistry, operations: WorkspaceReadinessOperations, run: WorkspaceProvisionRun): Promise<void> {
   const entry = registry.get(id);
-  const step = { workspaceId: id, id: "workspace.startup", label: "Prepare workspace" };
-  while (registry.get(id) === entry) {
-    await operations.step?.({ ...step, status: "running" });
+  await run.step("workspace.startup", "Prepare workspace", async () => {
+    if (registry.get(id) !== entry) return;
     try {
       await operations.checkReadiness(id);
-      if (registry.get(id) !== entry) return;
-      registry.setIssue(id, "readiness");
-      await operations.step?.({ ...step, status: "done" });
-      return;
+      if (registry.get(id) === entry) registry.setIssue(id, "readiness");
     } catch (error) {
       if (registry.get(id) !== entry) return;
       const message = `${error instanceof Error ? error.message : String(error)} Required images or gateways may be unavailable.`;
       console.error(`workspace preparation failed ${id}`, error);
       registry.setIssue(id, "readiness", message);
-      const continuation = operations.waitForContinue(id, step.id);
-      await operations.step?.({ ...step, status: "failed", error: message, awaitingContinue: true, retryable: true });
-      if (await continuation === "retry") continue;
-      if (registry.get(id) !== entry) return;
-      await operations.step?.({ ...step, status: "failed", detail: "Continuing despite preparation failure", awaitingContinue: false });
-      return;
+      throw error;
     }
-  }
+  }, "retry-or-continue");
+}
+
+/** Readiness failures retain the container and pause until retry or explicit bypass. */
+export function prepareWorkspaceForUse(id: string, registry: WorkspaceRegistry, operations: WorkspaceReadinessOperations): Promise<void> {
+  return operations.provisioning.run(id, (run) => prepare(id, registry, operations, run));
 }
 
 interface RecoveryOperations extends WorkspaceReadinessOperations {
@@ -50,24 +44,17 @@ export async function recoverWorkspaces(
     const current = () => registry.get(id) === entry && !entry.deletion && entry.parked === parked;
     if (!parked) registry.setPhase(id, "starting");
     const restore = async () => {
-      const step = { workspaceId: id, id: "workspace.container", label: parked ? "Keep workspace parked" : "Start workspace container" };
-      await operations.step?.({ ...step, status: "running" });
       try {
-        await operations.setRunning(id, !parked);
+        await operations.provisioning.run(id, async (run) => {
+          await run.step("workspace.container", parked ? "Keep workspace parked" : "Start workspace container", () => operations.setRunning(id, !parked));
+          if (!current() || parked) return;
+          await prepare(id, registry, operations, run);
+        });
+        if (current() && !parked) registry.setPhase(id, "ready");
       } catch (error) {
         console.error(`could not restore workspace ${id}`, error);
-        if (current()) {
-          const message = error instanceof Error ? error.message : String(error);
-          await operations.step?.({ ...step, status: "failed", error: message });
-          registry.setPhase(id, "failed", message);
-        }
-        return;
+        if (current()) registry.setPhase(id, "failed", error instanceof Error ? error.message : String(error));
       }
-      if (!current()) return;
-      await operations.step?.({ ...step, status: "done" });
-      if (parked) return;
-      await prepareWorkspaceForUse(id, registry, operations);
-      if (current()) registry.setPhase(id, "ready");
     };
     const inspectImage = async () => {
       try {

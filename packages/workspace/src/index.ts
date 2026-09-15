@@ -29,7 +29,8 @@ export type {
 } from "./events.ts";
 
 export { createWorkspaceMetadataState, type WorkspaceMetadataState } from "./metadata-state.ts";
-export { runWorkspaceProvisioningHooks, type RunWorkspaceProvisioningHooksOptions, type WorkspaceProvisionStepEvent, type WorkspaceProvisionStepStatus, type WorkspaceProvisionTerminal } from "./provisioning.ts";
+export { createWorkspaceProvisioning, type WorkspaceProvisioning, type WorkspaceProvisionRun } from "./provisioning.ts";
+import type { WorkspaceProvisionRun } from "./provisioning.ts";
 
 export {
   createWorkspacePresentationStore,
@@ -59,13 +60,11 @@ const stringArraySchema = Type.Array(Type.String());
 export const workspaceRoot = "/work";
 export const workspaceVSCodePort = 8000;
 
-export interface WorkspaceNewResult { id: string; startupError?: string }
 export interface WorkspaceListResult { workspaces: Array<{ id: string; title: string | null; parked?: boolean; init?: WorkspaceInitInstruction; imageOutdated?: boolean }> }
 export interface WorkspaceExecResult { exitCode: number; stdout: string; stderr: string; durationMs: number }
 export type WorkspaceExecBufferResult = Omit<WorkspaceExecResult, "stdout"> & { stdout: Buffer }
 export interface WorkspaceCommandOptions { workdir?: string; user?: "atelier" | "root"; stdin?: CommandInput }
 export interface DeleteWorkspaceOptions { force?: boolean; events?: AtelierEventBus }
-export interface CreateWorkspaceOptions { id?: string; events?: AtelierEventBus; init?: WorkspaceInitInstruction; context?: WorkspaceCreationContext; waitForContinue?(stepId: string): Promise<"retry" | void> }
 
 function namespace(): string { return process.env.ATELIER_NAMESPACE || "host"; }
 export function generateWorkspaceId(): string { return crypto.randomUUID().replaceAll("-", "").slice(0, 8); }
@@ -74,19 +73,6 @@ export function workspaceContainerName(id: string): string { return `atelier-${i
 export function workspaceNetworkName(id: string): string { return `atelier-workspace-${id}`; }
 export function workspaceBridgeName(id: string): string { return `atw-${createHash("sha256").update(id).digest("hex").slice(0, 11)}`; }
 function formatDeleteBlockedMessage(id: string, issues: JsonObject[]): string { return `workspace ${id} has delete blockers:\n${issues.map((issue) => `- ${JSON.stringify(issue)}`).join("\n")}\nuse --force to delete anyway`; }
-async function provisionStep<T>(events: AtelierEventBus | undefined, workspaceId: string, id: string, label: string, fn: () => Promise<T>, options: { parentId?: string; output?: (result: T) => string | Promise<string> } = {}): Promise<T> {
-  await events?.emit("workspace_provision_step", { workspaceId, id, label, status: "running", parentId: options.parentId });
-  try {
-    const result = await fn();
-    const output = options.output ? await options.output(result) : undefined;
-    await events?.emit("workspace_provision_step", { workspaceId, id, label, status: "done", parentId: options.parentId, output });
-    return result;
-  } catch (error) {
-    const message = error instanceof Error ? error.message : String(error);
-    await events?.emit("workspace_provision_step", { workspaceId, id, label, status: "failed", parentId: options.parentId, error: message });
-    throw error;
-  }
-}
 
 async function createWorkspaceWorkDir(id: string): Promise<{ worktreePath: string; dockerHostWorktreePath: string }> {
   const runtime = getAtelierRuntimeContext();
@@ -347,36 +333,29 @@ export async function execWorkspaceCommandBuffer(id: string, command: string[], 
 export async function execWorkspaceShell(id: string, script: string, options: WorkspaceCommandOptions = {}): Promise<WorkspaceExecResult> { return await execWorkspaceCommand(id, ["sh", "-lc", script], options); }
 
 const workspaceSetupScript = ".atelier/setup.sh";
-const workspaceSetupStep = "workspace.setup";
-
-export async function runWorkspaceSetupScript(id: string, options: { events?: AtelierEventBus } = {}): Promise<boolean> {
-  if (!(await Bun.file(join(workspaceWorkHostPath(id), workspaceSetupScript)).exists())) {
-    await options.events?.emit("workspace_provision_step", { workspaceId: id, id: workspaceSetupStep, detail: `No ${workspaceSetupScript}` });
-    return false;
-  }
-
-  const session = `atelier-provision-setup-${crypto.randomUUID().slice(0, 8)}`;
-  const dockerCommand = ["docker", ...workspaceExecDockerArgs(id, ["sh", workspaceSetupScript], {}, true)].map(shellQuote).join(" ");
-  const result = await runHostObservableCommand({
-    session,
-    cwd: "/",
-    command: dockerCommand,
-    onSessionStarted: async () => {
-      await options.events?.emit("workspace_provision_step", { workspaceId: id, id: workspaceSetupStep, terminal: { kind: "host-tmux", session } });
-    },
-  });
-  const output = tailTerminalText(stripTerminalControls(result.output));
-  if (result.exitCode !== 0) throw new AtelierCoreError("workspace_setup_failed", output || `${workspaceSetupScript} failed with exit code ${result.exitCode}`);
-  await options.events?.emit("workspace_provision_step", { workspaceId: id, id: workspaceSetupStep, output });
-  return true;
-}
-
 export const workspaceSetupProvisioningHook: WorkspaceServerProvisioningHook = {
-  id: workspaceSetupStep,
+  id: "workspace.setup",
   label: "Run project setup",
-  onFailure: "await-continue",
-  async run({ workspaceId, events }) {
-    await runWorkspaceSetupScript(workspaceId, { events });
+  recovery: "continue",
+  async run({ workspaceId: id, events }) {
+    if (!(await Bun.file(join(workspaceWorkHostPath(id), workspaceSetupScript)).exists())) {
+      await events?.emit("workspace_provision_progress", { workspaceId: id, detail: `No ${workspaceSetupScript}` });
+      return;
+    }
+
+    const session = `atelier-provision-setup-${crypto.randomUUID().slice(0, 8)}`;
+    const dockerCommand = ["docker", ...workspaceExecDockerArgs(id, ["sh", workspaceSetupScript], {}, true)].map(shellQuote).join(" ");
+    const result = await runHostObservableCommand({
+      session,
+      cwd: "/",
+      command: dockerCommand,
+      onSessionStarted: async () => {
+        await events?.emit("workspace_provision_progress", { workspaceId: id, terminalSession: session });
+      },
+    });
+    const output = tailTerminalText(stripTerminalControls(result.output));
+    await events?.emit("workspace_provision_progress", { workspaceId: id, output });
+    if (result.exitCode !== 0) throw new AtelierCoreError("workspace_setup_failed", output || `${workspaceSetupScript} failed with exit code ${result.exitCode}`);
   },
 };
 
@@ -489,45 +468,47 @@ function workspaceInitScript(plan: WorkspaceDockerPlan): string {
   ].join("\n");
 }
 
-export async function createWorkspace(options: CreateWorkspaceOptions = {}): Promise<WorkspaceNewResult> {
-  const id = options.id ?? generateWorkspaceId();
+export async function createWorkspace(options: { id: string; events: AtelierEventBus; init?: WorkspaceInitInstruction; context?: WorkspaceCreationContext; run: WorkspaceProvisionRun }): Promise<void> {
+  const { id, events, run } = options;
   if (!/^[a-zA-Z0-9][a-zA-Z0-9_.-]*$/.test(id)) throw invalidArguments(`invalid workspace id: ${id}`);
   if (await isRetiredWorkspaceId(id)) throw invalidArguments(`workspace id has been permanently retired and cannot be reused: ${id}`);
   const context = options.context && Object.keys(options.context).length ? options.context : undefined;
   const init = options.init;
-  const source = await provisionStep(options.events, id, "workspace.workdir", "Create workspace directory", () => createWorkspaceWorkDir(id));
+  const source = await run.step("workspace.workdir", "Create workspace directory", () => createWorkspaceWorkDir(id));
   let plan: WorkspaceDockerPlan | undefined;
-  let startupError: string | undefined;
   try {
-    await writeWorkspaceInit(getAtelierRuntimeContext(), id, init);
-    await provisionStep(options.events, id, "workspace.source", "Prepare workspace source", async () => {
-      await options.events?.emit("workspace_source_prepare", { workspaceId: id, init, context, workHostPath: source.worktreePath, workContainerPath: workspaceRoot });
+    await run.step("workspace.source", "Prepare workspace source", async () => {
+      await writeWorkspaceInit(getAtelierRuntimeContext(), id, init);
+      await events.emit("workspace_source_prepare", { workspaceId: id, init, context, workHostPath: source.worktreePath, workContainerPath: workspaceRoot });
     });
-    const labels = { [workspaceTypeLabel]: "workspace", [namespaceLabel]: namespace(), [workspaceIdLabel]: id } satisfies Record<string, string>;
-    plan = baseWorkspacePlan(labels);
-    const gatewayTokenPath = atelierDataPath(getAtelierRuntimeContext(), "workspaces", id, "gateway-token");
-    await writeFile(gatewayTokenPath, crypto.randomUUID() + crypto.randomUUID(), { mode: 0o600 });
-    plan.containerFiles.push({ source: gatewayTokenPath, target: "/etc/atelier-workspace-gateway-token" });
-    plan.mounts.push({ type: "bind", source: source.dockerHostWorktreePath, target: workspaceRoot });
-    const sockets = atelierDataPath(getAtelierRuntimeContext(), "workspace-sockets", id);
-    await mkdir(sockets, { recursive: true });
-    plan.mounts.push({ type: "volume", target: "/data" });
-    plan.mounts.push({ type: "bind", source: "/data/erofs-cache", target: "/data/erofs-cache", readonly: true });
-    plan.mounts.push({ type: "bind", source: dockerHostAtelierDataPath(getAtelierRuntimeContext(), "workspace-sockets", id), target: "/run/atelier-parent", readonly: true });
-    const activePlan = plan;
-    await provisionStep(options.events, id, "workspace.plan", "Prepare workspace container plan", async () => {
+    const activePlan = await run.step("workspace.plan", "Prepare workspace container plan", async () => {
+      const labels = { [workspaceTypeLabel]: "workspace", [namespaceLabel]: namespace(), [workspaceIdLabel]: id } satisfies Record<string, string>;
+      const activePlan = baseWorkspacePlan(labels);
+      plan = activePlan;
+      const gatewayTokenPath = atelierDataPath(getAtelierRuntimeContext(), "workspaces", id, "gateway-token");
+      await writeFile(gatewayTokenPath, crypto.randomUUID() + crypto.randomUUID(), { mode: 0o600 });
+      activePlan.containerFiles.push({ source: gatewayTokenPath, target: "/etc/atelier-workspace-gateway-token" });
+      activePlan.mounts.push({ type: "bind", source: source.dockerHostWorktreePath, target: workspaceRoot });
+      const sockets = atelierDataPath(getAtelierRuntimeContext(), "workspace-sockets", id);
+      await mkdir(sockets, { recursive: true });
+      activePlan.mounts.push({ type: "volume", target: "/data" });
+      activePlan.mounts.push({ type: "bind", source: "/data/erofs-cache", target: "/data/erofs-cache", readonly: true });
+      activePlan.mounts.push({ type: "bind", source: dockerHostAtelierDataPath(getAtelierRuntimeContext(), "workspace-sockets", id), target: "/run/atelier-parent", readonly: true });
       await applyRepoWorkspaceManifest(source.worktreePath, activePlan);
-      await options.events?.emit("workspace_plan_prepare", { workspaceId: id, init, context, workHostPath: source.worktreePath, workContainerPath: workspaceRoot, plan: activePlan });
+      await events.emit("workspace_plan_prepare", { workspaceId: id, init, context, workHostPath: source.worktreePath, workContainerPath: workspaceRoot, plan: activePlan });
+      return activePlan;
     });
     if (!activePlan.image) {
-      const configuration: WorkspaceImageConfigureEvent = { init };
-      await options.events?.emit("workspace_image_configure", configuration);
-      activePlan.image = await provisionStep(options.events, id, "workspace.image", "Resolve workspace image", () => resolveWorkspaceImage({ workspaceId: id, events: options.events, sourcePath: source.worktreePath, dockerfile: configuration.dockerfile }));
+      activePlan.image = await run.step("workspace.image", "Resolve workspace image", async () => {
+        const configuration: WorkspaceImageConfigureEvent = { init };
+        await events.emit("workspace_image_configure", configuration);
+        return resolveWorkspaceImage({ workspaceId: id, events, sourcePath: source.worktreePath, dockerfile: configuration.dockerfile });
+      });
     }
-    const defaultWorkspaceFile = await provisionStep(options.events, id, "workspace.preload-resolve", "Save configured preload images", () => workspaceImagePreloader.snapshot(activePlan.preloadImages, atelierDataPath(getAtelierRuntimeContext(), "workspaces", id)));
+    const defaultWorkspaceFile = await run.step("workspace.preload-resolve", "Save configured preload images", () => workspaceImagePreloader.snapshot(activePlan.preloadImages, atelierDataPath(getAtelierRuntimeContext(), "workspaces", id)));
     if (defaultWorkspaceFile) activePlan.containerFiles.push({ source: dirname(defaultWorkspaceFile), target: "/etc" });
-    await prepareWorkspaceSystemd(activePlan, atelierDataPath(getAtelierRuntimeContext(), "workspaces", id, "systemd"), workspaceInitScript(activePlan));
-    await provisionStep(options.events, id, "workspace.container", "Start workspace container", async () => {
+    await run.step("workspace.container", "Start workspace container", async () => {
+      await prepareWorkspaceSystemd(activePlan, atelierDataPath(getAtelierRuntimeContext(), "workspaces", id, "systemd"), workspaceInitScript(activePlan));
       const image = activePlan.image;
       if (!image) throw new AtelierCoreError("workspace_image_missing", "workspace image was not resolved");
       const container = workspaceContainerName(id);
@@ -536,35 +517,18 @@ export async function createWorkspace(options: CreateWorkspaceOptions = {}): Pro
       for (const file of activePlan.containerFiles) await requireDocker(["cp", file.source, `${container}:${file.target}`]);
       await requireDocker(["start", container]);
     });
-    while (true) {
-      try {
-        await provisionStep(options.events, id, "workspace.startup", "Prepare workspace", async () => { const log = await waitForWorkspaceStartup(id); await checkWorkspaceReadiness(id); return log; }, { output: (log) => log });
-        break;
-      } catch (error) {
-        if (!options.waitForContinue) throw error;
-        const message = error instanceof Error ? error.message : String(error);
-        const continuation = options.waitForContinue("workspace.startup");
-        await options.events?.emit("workspace_provision_step", {
-          workspaceId: id, id: "workspace.startup", status: "failed", error: message,
-          detail: "The container is available for repair. Retry preparation, or continue with this failure visible.",
-          awaitingContinue: true, retryable: true,
-        });
-        if (await continuation === "retry") continue;
-        startupError = message;
-        await options.events?.emit("workspace_provision_step", {
-          workspaceId: id, id: "workspace.startup", status: "failed",
-          detail: "Continuing despite preparation failure", awaitingContinue: false,
-        });
-        break;
-      }
-    }
+    await run.step("workspace.startup", "Prepare workspace", async () => {
+      const log = await waitForWorkspaceStartup(id);
+      run.report({ output: log });
+      await checkWorkspaceReadiness(id);
+    }, "retry-or-continue");
   } catch (error) {
     try {
       const removed = await runDocker(["rm", "-f", "--volumes", workspaceContainerName(id)]);
       if (removed.exitCode !== 0 && !removed.stderr.includes("No such container")) throw new Error(removed.stderr.trim() || "could not remove failed workspace container");
       const networks = await requireDocker(["network", "ls", "--quiet", "--filter", `name=^${workspaceNetworkName(id).replaceAll(".", "\\.")}$`]);
       if (networks.stdout.trim()) await requireDocker(["network", "rm", workspaceNetworkName(id)]);
-      await options.events?.emit("workspace_deleted", { workspaceId: id });
+      await events.emit("workspace_deleted", { workspaceId: id });
       await rm(atelierDataPath(getAtelierRuntimeContext(), "workspace-sockets", id), { recursive: true, force: true });
       await Promise.all((plan?.cleanup ?? []).map((cleanup) => cleanup()));
       await deleteWorkspaceWorkDir(id);
@@ -573,7 +537,6 @@ export async function createWorkspace(options: CreateWorkspaceOptions = {}): Pro
     }
     throw error;
   }
-  return startupError === undefined ? { id } : { id, startupError };
 }
 
 const workspaceGatewayCache = new Map<string, Promise<WorkspaceGateway>>();

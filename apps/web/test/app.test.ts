@@ -149,7 +149,6 @@ async function withTestApp(
       events,
       cable: { broadcast: (identifier, html, options) => broadcasts.push({ identifier, html, options }) },
       provisionWorkspace: async () => {},
-      provisioningHooks: [],
       deletionReview: { inspect: async () => ({ status: "clear" }), renderEvidence: () => "" },
       destroyWorkspace: async () => {},
       persistWorkspaceParked: async () => {},

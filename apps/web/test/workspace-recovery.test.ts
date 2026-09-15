@@ -1,22 +1,20 @@
 import { expect, test, spyOn } from "bun:test";
+import { createWorkspaceProvisioning } from "@atelier/workspace";
 import { recoverWorkspaces } from "../src/server/workspace-recovery.ts";
 import { createWorkspaceRegistry } from "../src/server/workspace-registry.ts";
-import type { WorkspaceProvisionStepEvent } from "@atelier/workspace";
 
 const healthy = {
   async setRunning() {}, async checkReadiness() {}, async imageOutdated() { return false; },
-  async waitForContinue() { throw new Error("unexpected startup failure"); },
 };
-
 const tick = () => new Promise((resolve) => setTimeout(resolve, 0));
 
 test("each workspace remains starting until its own gateway is ready", async () => {
   const registry = createWorkspaceRegistry();
-  const workspaces = [{ id: "slow", title: "Slow" }, { id: "healthy", title: "Healthy" }, { id: "parked", title: null, parked: true }];
-  await registry.seed(workspaces);
+  const provisioning = createWorkspaceProvisioning();
+  await registry.seed([{ id: "slow", title: "Slow" }, { id: "healthy", title: "Healthy" }, { id: "parked", title: null, parked: true }]);
   const gateway = Promise.withResolvers<void>();
   const checked: string[] = [];
-  const recovery = recoverWorkspaces(registry, { ...healthy, async checkReadiness(id) {
+  const recovery = recoverWorkspaces(registry, { ...healthy, provisioning, async checkReadiness(id) {
     checked.push(id);
     if (id === "slow") await gateway.promise;
   } });
@@ -30,58 +28,49 @@ test("each workspace remains starting until its own gateway is ready", async () 
   expect(registry.get("slow")?.phase).toBe("ready");
 });
 
-test("gateway failure pauses the checklist until explicitly continued, retaining its warning", async () => {
+test("gateway failure waits for explicit continuation, retaining its warning until successful preparation", async () => {
   const registry = createWorkspaceRegistry();
-  const workspaces = [{ id: "slow", title: "Preserved work" }];
-  await registry.seed(workspaces);
-  const gateway = Promise.withResolvers<void>();
-  const continuation = Promise.withResolvers<void>();
-  const failure = Promise.withResolvers<void>();
-  const steps: WorkspaceProvisionStepEvent[] = [];
+  const provisioning = createWorkspaceProvisioning();
+  await registry.seed([{ id: "slow", title: "Preserved work" }]);
   const log = spyOn(console, "error").mockImplementation(() => {});
   try {
     const recovery = recoverWorkspaces(registry, {
-      ...healthy, checkReadiness: () => gateway.promise,
-      waitForContinue: (id, stepId) => {
-        expect([id, stepId]).toEqual(["slow", "workspace.startup"]);
-        return continuation.promise;
-      },
-      step(event) { steps.push(event); if (event.awaitingContinue) failure.resolve(); },
+      ...healthy, provisioning, async checkReadiness() { throw new Error("gateway unavailable"); },
     });
-    gateway.reject(new Error("Workspace gateway did not become ready within 15 seconds."));
-    await failure.promise;
+    await tick();
     expect(registry.get("slow")).toMatchObject({ phase: "starting", issues: [{ kind: "readiness" }] });
-    expect(steps.at(-1)).toMatchObject({ id: "workspace.startup", status: "failed", awaitingContinue: true, retryable: true });
-    continuation.resolve();
+    expect(provisioning.snapshot("slow")).toMatchObject({ status: "waiting", waiting: { stepId: "workspace.startup", retryable: true } });
+    provisioning.resume("slow", "continue");
     await recovery;
     expect(registry.get("slow")).toMatchObject({ phase: "ready", issues: [{ kind: "readiness" }] });
-    expect(steps.at(-1)).toMatchObject({ awaitingContinue: false });
-    await recoverWorkspaces(registry, healthy);
+    expect(provisioning.snapshot("slow")?.steps.at(-1)).toMatchObject({ status: "warning", error: "gateway unavailable" });
+    await recoverWorkspaces(registry, { ...healthy, provisioning });
     expect(registry.get("slow")?.issues).toBeUndefined();
-  } finally { gateway.resolve(); continuation.resolve(); log.mockRestore(); }
+  } finally { log.mockRestore(); }
 });
 
 test("container failure fails only that workspace; image failures remain independent issues", async () => {
   const registry = createWorkspaceRegistry();
-  const workspaces = [{ id: "broken", title: null }, { id: "healthy", title: null }];
-  await registry.seed(workspaces);
+  const provisioning = createWorkspaceProvisioning();
+  await registry.seed([{ id: "broken", title: null }, { id: "healthy", title: null }]);
   const log = spyOn(console, "error").mockImplementation(() => {});
   try {
-    await recoverWorkspaces(registry, { ...healthy,
+    await recoverWorkspaces(registry, { ...healthy, provisioning,
       async setRunning(id) { if (id === "broken") throw new Error("missing mount"); },
       async imageOutdated() { throw new Error("invalid image configuration"); },
     });
     expect(registry.get("broken")).toMatchObject({ phase: "failed", error: "missing mount" });
     expect(registry.get("healthy")).toMatchObject({ phase: "ready", issues: [{ kind: "image" }] });
+    expect(provisioning.snapshot("broken")?.steps).toHaveLength(1);
   } finally { log.mockRestore(); }
 });
 
 test("deleted workspaces are not revived by a late gateway result", async () => {
   const registry = createWorkspaceRegistry();
-  const workspaces = [{ id: "removed", title: null }];
-  await registry.seed(workspaces);
+  const provisioning = createWorkspaceProvisioning();
+  await registry.seed([{ id: "removed", title: null }]);
   const gateway = Promise.withResolvers<void>();
-  const recovery = recoverWorkspaces(registry, { ...healthy, checkReadiness: () => gateway.promise });
+  const recovery = recoverWorkspaces(registry, { ...healthy, provisioning, checkReadiness: () => gateway.promise });
   await tick();
   registry.remove("removed");
   gateway.resolve();
@@ -89,73 +78,53 @@ test("deleted workspaces are not revived by a late gateway result", async () => 
   expect(registry.get("removed")).toBeUndefined();
 });
 
-
-test("retry reruns preparation until it succeeds without restarting the container or retaining its failure", async () => {
+test("retry repeats only preparation and clears the warning on success", async () => {
   const registry = createWorkspaceRegistry();
+  const provisioning = createWorkspaceProvisioning();
   await registry.seed([{ id: "retry", title: "Needs preparation" }, { id: "other", title: "Other" }]);
-  const decisions = [Promise.withResolvers<"retry">(), Promise.withResolvers<"retry">()];
-  const failures = [Promise.withResolvers<void>(), Promise.withResolvers<void>()];
-  const steps: WorkspaceProvisionStepEvent[] = [];
   let checks = 0;
-  let waits = 0;
   let starts = 0;
   const log = spyOn(console, "error").mockImplementation(() => {});
   try {
     const recovery = recoverWorkspaces(registry, {
-      ...healthy,
+      ...healthy, provisioning,
       async setRunning(id) { if (id === "retry") starts++; },
-      async checkReadiness(id) {
-        if (id === "retry" && ++checks < 3) throw new Error("image cache not prepared yet");
-      },
-      waitForContinue(id, stepId) {
-        expect([id, stepId]).toEqual(["retry", "workspace.startup"]);
-        return decisions[waits++]!.promise;
-      },
-      step(event) {
-        if (event.workspaceId !== "retry") return;
-        steps.push(event);
-        if (event.awaitingContinue) failures[waits - 1]!.resolve();
-      },
+      async checkReadiness(id) { if (id === "retry" && ++checks < 3) throw new Error("image cache not prepared yet"); },
     });
-    await failures[0]!.promise;
-    expect(registry.get("retry")).toMatchObject({ phase: "starting", issues: [{ kind: "readiness" }] });
-    await tick();
-    expect(registry.get("other")?.phase).toBe("ready");
-    decisions[0]!.resolve("retry");
-    await failures[1]!.promise;
-    expect(registry.get("retry")?.phase).toBe("starting");
-    decisions[1]!.resolve("retry");
+    for (let attempt = 0; attempt < 2; attempt++) {
+      await tick();
+      expect(registry.get("retry")).toMatchObject({ phase: "starting", issues: [{ kind: "readiness" }] });
+      expect(registry.get("other")?.phase).toBe("ready");
+      provisioning.resume("retry", "retry");
+    }
     await recovery;
     expect(checks).toBe(3);
     expect(starts).toBe(1);
     expect(registry.get("retry")).toMatchObject({ phase: "ready" });
     expect(registry.get("retry")?.issues).toBeUndefined();
-    expect(steps.filter((step) => step.id === "workspace.startup").map((step) => step.status)).toEqual(["running", "failed", "running", "failed", "running", "done"]);
-  } finally {
-    decisions.forEach((decision) => decision.resolve("retry"));
-    log.mockRestore();
-  }
+    expect(provisioning.snapshot("retry")?.steps.map((step) => [step.id, step.status])).toEqual([
+      ["workspace.container", "done"], ["workspace.startup", "done"],
+    ]);
+  } finally { log.mockRestore(); }
 });
 
-test("deletion while waiting for a retry prevents another preparation attempt", async () => {
+test("deletion while waiting releases recovery without another preparation attempt", async () => {
   const registry = createWorkspaceRegistry();
+  const provisioning = createWorkspaceProvisioning();
   await registry.seed([{ id: "removed", title: null }]);
-  const decision = Promise.withResolvers<"retry">();
-  const failed = Promise.withResolvers<void>();
   let checks = 0;
   const log = spyOn(console, "error").mockImplementation(() => {});
   try {
     const recovery = recoverWorkspaces(registry, {
-      ...healthy,
+      ...healthy, provisioning,
       async checkReadiness() { checks++; throw new Error("preparation failed"); },
-      waitForContinue: () => decision.promise,
-      step(event) { if (event.awaitingContinue) failed.resolve(); },
     });
-    await failed.promise;
+    await tick();
     registry.remove("removed");
-    decision.resolve("retry");
+    provisioning.delete("removed");
     await recovery;
     expect(checks).toBe(1);
     expect(registry.get("removed")).toBeUndefined();
-  } finally { decision.resolve("retry"); log.mockRestore(); }
+    expect(provisioning.snapshot("removed")).toBeUndefined();
+  } finally { log.mockRestore(); }
 });
