@@ -34,7 +34,7 @@ test("verification requires both architectures and matching revision labels", as
   const run: Run = async (args) => {
     if (args.includes("{{json .Manifest}}")) return ok(JSON.stringify(manifest));
     const index = manifest.manifests.findIndex((entry) => args.some((arg) => arg.endsWith(entry.digest)));
-    return ok(JSON.stringify({ os: "linux", architecture: architectures[index], config: { Labels: { "org.opencontainers.image.revision": commit } } }));
+    return ok(JSON.stringify({ os: "linux", architecture: architectures[index], config: { Labels: { "org.opencontainers.image.revision": commit, "eagerly-preload": JSON.stringify([`ghcr.io/lucasmeijer/atelier-workspace:signature@${digest}`]) } } }));
   };
   expect(await verifyRevision(run, "ref", commit)).toBe(digest);
   await expect(verifyRevision(run, "ref", "wrong-sha")).rejects.toThrow("does not match revision");
@@ -92,7 +92,7 @@ async function scenario(options: { check?: boolean; exists?: boolean; moved?: bo
       }
       if (args.includes("{{json .Image}}")) {
         const index = manifest.manifests.findIndex((entry) => args.some((arg) => arg.endsWith(entry.digest)));
-        return ok(JSON.stringify({ os: "linux", architecture: architectures[index], config: { Labels: { "org.opencontainers.image.revision": commit } } }));
+        return ok(JSON.stringify({ os: "linux", architecture: architectures[index], config: { Labels: { "org.opencontainers.image.revision": commit, "eagerly-preload": JSON.stringify([`ghcr.io/lucasmeijer/atelier-workspace:signature@${digest}`]) } } }));
       }
       if (args[0] === "bun") {
         if (options.buildFailure) throw new Error("build failed");
@@ -161,7 +161,7 @@ test("image build CLI stages both images on the explicit builder without channel
   const directory = mkdtempSync(join(tmpdir(), "atelier-release-cli-test-"));
   const log = join(directory, "docker.jsonl");
   const docker = join(directory, "docker");
-  writeFileSync(docker, `#!/usr/bin/env bun\nimport { appendFileSync } from 'node:fs';\nconst args = process.argv.slice(2);\nappendFileSync(${JSON.stringify(log)}, JSON.stringify(args) + '\\n');\nif (args.includes('inspect')) process.exit(1);\n`);
+  writeFileSync(docker, `#!/usr/bin/env bun\nimport { appendFileSync } from 'node:fs';\nconst args = process.argv.slice(2);\nappendFileSync(${JSON.stringify(log)}, JSON.stringify(args) + '\\n');\nif (args.includes('{{json .Manifest}}')) { console.log(JSON.stringify({digest: '${digest}'})); process.exit(0); }\nif (args.includes('inspect')) process.exit(1);\n`);
   chmodSync(docker, 0o755);
   try {
     const process = Bun.spawn(["bun", join(import.meta.dir, "build-atelier-image.ts"), "--push", "--no-latest", "--tag", "sha-test", "--builder", "test-fuse", "--platform", "linux/amd64,linux/arm64"], {
@@ -181,7 +181,17 @@ test("image build CLI stages both images on the explicit builder without channel
       expect(args.some((arg) => arg.endsWith(":latest") || arg.endsWith(":stable"))).toBe(false);
     }
     expect(builds[1]).toContain("ghcr.io/lucasmeijer/atelier:sha-test");
+    const workspaceArg = builds[1]!.find(arg => arg.startsWith("ATELIER_DEFAULT_WORKSPACE_IMAGE="))!;
+    expect(workspaceArg).toEndWith(`@${digest}`);
+    expect(builds[1]).toContain(`ATELIER_EAGERLY_PRELOAD=${JSON.stringify([workspaceArg.split("=")[1]])}`);
   } finally {
     rmSync(directory, { recursive: true, force: true });
   }
 });
+
+for (const preload of [undefined, "[]", JSON.stringify(["workspace:tag"])]) {
+  test(`release rejects missing or unpinned workspace: ${preload}`, async () => {
+    const run: Run = async args => args.includes("{{json .Manifest}}") ? ok(JSON.stringify(manifest)) : ok(JSON.stringify({os:"linux", architecture:"amd64", config:{Labels:{"org.opencontainers.image.revision":commit, "eagerly-preload":preload}}}));
+    await expect(verifyRevision(run, "ref", commit)).rejects.toThrow("digest-pinned workspace");
+  });
+}

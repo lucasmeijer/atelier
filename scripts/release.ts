@@ -75,6 +75,7 @@ export async function inspectImage(run: Run, ref: string, optional = false) {
 
 export async function verifyRevision(run: Run, ref: string, commit: string): Promise<string> {
   const manifest = (await inspectImage(run, ref))!;
+  const dependencies = new Set<string>();
   for (const platform of platforms) {
     const entry = manifest.manifests.find((entry) => `${entry.platform.os}/${entry.platform.architecture}` === platform)!;
     const result = await run(["docker", "buildx", "imagetools", "inspect", `${image}@${entry.digest}`, "--format", "{{json .Image}}"]);
@@ -82,7 +83,13 @@ export async function verifyRevision(run: Run, ref: string, commit: string): Pro
     if (`${config.os}/${config.architecture}` !== platform || config.config.Labels["org.opencontainers.image.revision"] !== commit) {
       throw new Error(`${ref}: ${platform} does not match revision ${commit}`);
     }
+    const preload: unknown = JSON.parse(config.config.Labels["eagerly-preload"] ?? "[]");
+    if (!Array.isArray(preload) || preload.length === 0 || preload.some(ref => typeof ref !== "string" || !/@sha256:[a-f0-9]{64}$/.test(ref))) {
+      throw new Error(`${ref}: release requires digest-pinned workspace dependencies`);
+    }
+    for (const dependency of preload) dependencies.add(dependency);
   }
+  for (const dependency of dependencies) await inspectImage(run, dependency);
   return manifest.digest;
 }
 

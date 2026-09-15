@@ -104,7 +104,11 @@ function parseArgs(args: string[]): Options {
       options.progress = takeValue(args, i, arg);
       i++;
     } else if (arg === "--build-arg") {
-      options.buildArgs.push(takeValue(args, i, arg));
+      const value = takeValue(args, i, arg);
+      if (["ATELIER_DEFAULT_WORKSPACE_IMAGE", "ATELIER_EAGERLY_PRELOAD"].includes(value.split("=")[0]!)) {
+        fail("The release script owns the default workspace reference and preload label");
+      }
+      options.buildArgs.push(value);
       i++;
     } else {
       fail(`unknown option: ${arg}`);
