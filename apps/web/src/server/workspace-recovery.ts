@@ -1,37 +1,40 @@
 import type { WorkspaceProvisionStepEvent } from "@atelier/workspace";
 import type { WorkspaceRegistry } from "./workspace-registry.ts";
 
-interface GatewayStartupOperations {
-  checkGateway(id: string): Promise<void>;
-  waitForContinue(id: string, stepId: string): Promise<void>;
+interface WorkspaceReadinessOperations {
+  checkReadiness(id: string): Promise<void>;
+  waitForContinue(id: string, stepId: string): Promise<"retry" | void>;
   step?(event: WorkspaceProvisionStepEvent): Promise<void> | void;
 }
 
-/** Gateway failure pauses startup until the user explicitly chooses to continue. */
-export async function startWorkspaceGateway(id: string, registry: WorkspaceRegistry, operations: GatewayStartupOperations): Promise<void> {
+/** Readiness failures retain the container and pause until retry or explicit bypass. */
+export async function prepareWorkspaceForUse(id: string, registry: WorkspaceRegistry, operations: WorkspaceReadinessOperations): Promise<void> {
   const entry = registry.get(id);
-  const step = { workspaceId: id, id: "workspace.gateway", label: "Start workspace gateway" };
-  await operations.step?.({ ...step, status: "running" });
-  try {
-    await operations.checkGateway(id);
-  } catch (error) {
-    if (registry.get(id) !== entry) return;
-    const message = `${error instanceof Error ? error.message : String(error)} Workspace web apps may be unavailable without gateway support.`;
-    console.error(`workspace gateway unavailable ${id}`, error);
-    registry.setIssue(id, "gateway", message);
-    const continuation = operations.waitForContinue(id, step.id);
-    await operations.step?.({ ...step, status: "failed", error: message, awaitingContinue: true, continueLabel: "Continue without gateway support" });
-    await continuation;
-    if (registry.get(id) !== entry) return;
-    await operations.step?.({ ...step, status: "failed", detail: "Continuing without gateway support", awaitingContinue: false });
-    return;
+  const step = { workspaceId: id, id: "workspace.startup", label: "Prepare workspace" };
+  while (registry.get(id) === entry) {
+    await operations.step?.({ ...step, status: "running" });
+    try {
+      await operations.checkReadiness(id);
+      if (registry.get(id) !== entry) return;
+      registry.setIssue(id, "readiness");
+      await operations.step?.({ ...step, status: "done" });
+      return;
+    } catch (error) {
+      if (registry.get(id) !== entry) return;
+      const message = `${error instanceof Error ? error.message : String(error)} Required images or gateways may be unavailable.`;
+      console.error(`workspace preparation failed ${id}`, error);
+      registry.setIssue(id, "readiness", message);
+      const continuation = operations.waitForContinue(id, step.id);
+      await operations.step?.({ ...step, status: "failed", error: message, awaitingContinue: true, retryable: true });
+      if (await continuation === "retry") continue;
+      if (registry.get(id) !== entry) return;
+      await operations.step?.({ ...step, status: "failed", detail: "Continuing despite preparation failure", awaitingContinue: false });
+      return;
+    }
   }
-  if (registry.get(id) !== entry) return;
-  registry.setIssue(id, "gateway");
-  await operations.step?.({ ...step, status: "done" });
 }
 
-interface RecoveryOperations extends GatewayStartupOperations {
+interface RecoveryOperations extends WorkspaceReadinessOperations {
   setRunning(id: string, running: boolean): Promise<null | void>;
   imageOutdated(id: string): Promise<boolean>;
 }
@@ -63,7 +66,7 @@ export async function recoverWorkspaces(
       if (!current()) return;
       await operations.step?.({ ...step, status: "done" });
       if (parked) return;
-      await startWorkspaceGateway(id, registry, operations);
+      await prepareWorkspaceForUse(id, registry, operations);
       if (current()) registry.setPhase(id, "ready");
     };
     const inspectImage = async () => {

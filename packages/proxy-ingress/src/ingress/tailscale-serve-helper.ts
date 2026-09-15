@@ -7,7 +7,6 @@ import {
   mutateTailscaleServeConfig,
   normalizeServeHost,
   pruneTailscaleServePortConfig,
-  syncTailscaleServePortConfig,
   tailscaleLocalApiRequest,
   validateManagedPort,
 } from "./tailscale-serve.ts";
@@ -38,11 +37,6 @@ async function main(args: string[]): Promise<void> {
       await mutateTailscaleServeConfig(defaultTailscaleLocalApiSocketPath, (config) => pruneTailscaleServePortConfig(config, { host, port, targetHost }));
       return;
     }
-    case "sync": {
-      const activePorts = new Set(portArgs.map(parsePort));
-      await mutateTailscaleServeConfig(defaultTailscaleLocalApiSocketPath, (config) => syncTailscaleServePortConfig(config, { host, activePorts, targetHost }));
-      return;
-    }
     default:
       usage();
   }
@@ -71,7 +65,7 @@ async function requireLocalTailscaleHost(host: string): Promise<void> {
 }
 
 function usage(): never {
-  throw new Error("usage: atelier-tailscale-serve-helper ensure|release <host> <port> | sync <host> [port ...]");
+  throw new Error("usage: atelier-tailscale-serve-helper ensure|release <host> <port>");
 }
 
 main(process.argv.slice(2)).catch((error) => {

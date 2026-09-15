@@ -20,7 +20,7 @@ import { runHostObservableCommand, tailTerminalText } from "@atelier/observable-
 import { Type, type Static } from "typebox";
 import { Value } from "typebox/value";
 import { projectEnvironment } from "./environment.ts";
-import { listProjects, isGitProjectInit } from "./project.ts";
+import { getProjectConfiguration, listProjects, isGitProjectInit } from "./project.ts";
 
 export interface PreparedWorkspaceSource {
   workspaceId: string;
@@ -374,6 +374,7 @@ export function registerProjectWorkspaceInitEvents(events: AtelierEventBus): voi
 
   events.on("workspace_plan_prepare", async ({ workspaceId, init, plan }) => {
     if (isGitProjectInit(init)) {
+      plan.preloadImages = (await getProjectConfiguration(init.projectId)).preloadImages ?? [];
       plan.mounts.push({ type: "bind", ...(await projectPersistentMount(init.projectId)) });
       Object.assign(plan.env, await projectEnvironment(init.projectId));
     }

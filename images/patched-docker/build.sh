@@ -10,7 +10,15 @@ if [[ $# -gt 0 && "$1" != -* ]]; then
     build_image=$1
     shift
 fi
+# Buildx accumulates repeated --platform flags; omit our default when the caller
+# chooses one explicitly.
+default_platforms=true
+for argument in "$@"; do
+    case "$argument" in --platform|--platform=*) default_platforms=false ;; esac
+done
+if "$default_platforms"; then
+    set -- --platform linux/arm64,linux/amd64 "$@"
+fi
 exec docker buildx build \
-    --platform linux/arm64,linux/amd64 \
     --tag "$build_image" \
     "$@" "$(cd "$(dirname "$0")" && pwd)"

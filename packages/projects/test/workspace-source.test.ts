@@ -4,7 +4,7 @@ import { chmod, mkdir, mkdtemp, realpath, rm, stat, writeFile } from "node:fs/pr
 import { join } from "node:path";
 import { tmpdir } from "node:os";
 import { clearWorkspaceGitHubToken, createAtelierEventBus, setWorkspaceGitHubToken } from "@atelier/core";
-import { prepareWorkspaceSource, registerProjectWorkspaceInitEvents, type GitProjectInitInstruction } from "@atelier/projects";
+import { addProject, prepareWorkspaceSource, registerProjectWorkspaceInitEvents, type GitProjectInitInstruction } from "@atelier/projects";
 import type { WorkspaceDockerPlan } from "@atelier/workspace";
 
 async function run(command: string[], options: { cwd?: string } = {}): Promise<{ stdout: string; stderr: string; exitCode: number }> {
@@ -155,15 +155,17 @@ describe("workspace source preparation", () => {
     registerProjectWorkspaceInitEvents(events);
     const planFor = async (workspaceId: string, projectId: string): Promise<WorkspaceDockerPlan> => {
       const init: GitProjectInitInstruction = { type: "project.git", projectId, name: projectId, gitUrl: `https://example.test/${projectId}.git`, branch: null, sessionShareKey: projectId };
-      const plan: WorkspaceDockerPlan = { labels: {}, env: {}, mounts: [], publishes: [], extraArgs: [], initScripts: [], containerFiles: [], cleanup: [] };
+      const plan: WorkspaceDockerPlan = { labels: {}, env: {}, mounts: [], preloadImages: [], extraArgs: [], initScripts: [], containerFiles: [], cleanup: [] };
       await events.emit("workspace_plan_prepare", { workspaceId, init, workHostPath: join(dataDir, "workspaces", workspaceId, "work"), workContainerPath: "/work", plan });
       return plan;
     };
 
-    const first = await planFor("ws1", "project-a");
-    const second = await planFor("ws2", "project-a");
-    const other = await planFor("ws3", "project-b");
-    const projectAKey = createHash("sha256").update("project-a").digest("hex").slice(0, 16);
+    const projectA = (await addProject("https://example.test/project-a.git")).project;
+    const projectB = (await addProject("https://example.test/project-b.git")).project;
+    const first = await planFor("ws1", projectA.id);
+    const second = await planFor("ws2", projectA.id);
+    const other = await planFor("ws3", projectB.id);
+    const projectAKey = createHash("sha256").update(projectA.id).digest("hex").slice(0, 16);
     const projectAPath = join(dataDir, "projects", projectAKey, "persistent");
 
     expect(first.mounts).toEqual([{ type: "bind", source: projectAPath, target: "/persistent" }]);
@@ -190,7 +192,7 @@ describe("workspace source preparation", () => {
     const events = createAtelierEventBus();
     registerProjectWorkspaceInitEvents(events);
     const init: GitProjectInitInstruction = { type: "project.git", projectId: "project", name: "Project", gitUrl: "https://example.test/project.git", branch: null, sessionShareKey: "project" };
-    const plan: WorkspaceDockerPlan = { labels: {}, env: {}, mounts: [], publishes: [], extraArgs: [], initScripts: [], containerFiles: [], cleanup: [] };
+    const plan: WorkspaceDockerPlan = { labels: {}, env: {}, mounts: [], preloadImages: [], extraArgs: [], initScripts: [], containerFiles: [], cleanup: [] };
 
     await expect(events.emit("workspace_plan_prepare", { workspaceId, init, workHostPath: join(metadataDir, "work"), workContainerPath: "/work", plan })).rejects.toThrow();
   });

@@ -82,6 +82,14 @@ describe("workspace secrets", () => {
     expect(result.headers.get("authorization")).toBe("Bearer real-package-secret");
   });
 
+  test("egress cannot bypass workspace isolation to reach management, LAN or tailnet addresses", async () => {
+    const context = await createWorkspaceSecretContext("test-workspace");
+    for (const ip of ["127.0.0.1", "172.17.0.1", "192.168.1.1", "169.254.169.254", "100.64.0.1", "::1", "fd00::1"]) {
+      expect(await context.hooks.isIpAllowed!({ hostname: "destination.example", ip, family: ip.includes(":") ? 6 : 4, port: 443, protocol: "https" })).toBe(false);
+    }
+    expect(await context.hooks.isIpAllowed!({ hostname: "example.com", ip: "93.184.215.14", family: 4, port: 443, protocol: "https" })).toBe(true);
+  });
+
   test("passes an inherited placeholder onward for nested Atelier", async () => {
     process.env.GH_TOKEN = "ATELIER_PROXY_READY_GH_TOKEN";
 

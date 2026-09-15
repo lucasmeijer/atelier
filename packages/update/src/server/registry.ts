@@ -4,7 +4,7 @@ import type { HttpFetcher } from "./http.ts";
 import { Type, type Static } from "typebox";
 import { Value } from "typebox/value";
 
-export interface ImageMetadata { digest: string; revision?: string; platformDigest?: string; selfUpdateCompatibility?: string }
+export interface ImageMetadata { digest: string; revision?: string; platformDigest?: string }
 
 interface RegistryAuth { realm: string; service?: string; scope?: string }
 
@@ -111,6 +111,5 @@ export async function fetchChannelImageMetadata(channel: ReleaseChannel, fetcher
     digest: platformDigest ?? rootDigest,
     platformDigest,
     revision: labels["org.opencontainers.image.revision"],
-    selfUpdateCompatibility: labels["com.atelier.self-update-compatibility"],
   };
 }

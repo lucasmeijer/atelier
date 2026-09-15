@@ -1,11 +1,12 @@
+import { listWorkspaces } from "@atelier/workspace";
 import type { WorkspaceModule } from "@atelier/shared";
-import { ensureAtelierWorkspaceProxy, registerWorkspaceProxyEvents } from "../egress/index.ts";
+import { ensureWorkspaceEgressProxy, registerWorkspaceProxyEvents } from "../egress/index.ts";
 
 export const proxyEgressServerModule: WorkspaceModule = {
   id: "proxy-egress",
   async initialize(context) {
     registerWorkspaceProxyEvents(context.events);
-    await ensureAtelierWorkspaceProxy();
+    for (const workspace of (await listWorkspaces({ inspectImages: false })).workspaces) await ensureWorkspaceEgressProxy(workspace.id);
   },
 };
 

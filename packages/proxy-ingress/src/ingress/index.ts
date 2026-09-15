@@ -1,13 +1,12 @@
+import { createLocalOriginPublisher, type ParentOriginPublisher } from "./parent.ts";
 import { adaptLocalAppResponse, localAppHost, translateLocalAppOrigin } from "./local-app.ts";
 import { backendTransport } from "./backend-transport.ts";
 import type { ServerWebSocket } from "bun";
-import { workspaceGatewayErrorHeader, stripHopByHopHeaders, workspaceProxyUrl, type WorkspaceAppBackend, type WorkspaceAppRef, type WorkspaceHttpAppBackend } from "@atelier/shared";
+import { workspaceGatewayErrorHeader, isWorkspaceAppPort, stripHopByHopHeaders, type WorkspaceAppBackend, type WorkspaceAppRef, type WorkspaceHttpAppBackend } from "@atelier/shared";
 import { createMemoryOriginIdentityStore, type OriginIdentityStore } from "./origin-identity.ts";
 import { closeWebSocket, maxSocketBufferedBytes, forwardToUpstream } from "./websocket.ts";
 import {
-  defaultPublicOriginPortRange,
   publicOriginPortRangeFromEnv,
-  type OriginPublisher,
   type PortRange,
 } from "./tailscale-serve.ts";
 
@@ -33,9 +32,9 @@ export interface WorkspaceIngressOptions {
   resolveWorkspace(workspaceId: string): Promise<void> | void;
   resolveApp: WorkspaceAppResolver;
   originPortRange?: PortRange;
-  originPublisher?: OriginPublisher;
   originIdentityStore?: OriginIdentityStore;
-  leaseIdleMs?: number;
+  parentOriginPublisher?: ParentOriginPublisher;
+  resolvePort?(workspaceId: string, port: number, protocol: "http" | "https", requestUrl: URL): Promise<WorkspaceAppBackend> | WorkspaceAppBackend;
 }
 
 export interface IngressStatus {
@@ -53,7 +52,8 @@ export interface IngressStatus {
 
 export interface WorkspaceIngress {
   initialize(): Promise<void>;
-  openCanonical(app: WorkspaceAppRef, pathAndSearch: string, request: Request): Promise<Response>;
+  publishPort(workspaceId: string, port: number, protocol?: "http" | "https"): Promise<string>;
+  openCanonical(app: WorkspaceAppRef, pathAndSearch: string): Promise<Response>;
   stopWorkspace(workspaceId: string): Promise<void>;
   stopAll(): Promise<void>;
   inspect(app?: WorkspaceAppRef): IngressStatus[];
@@ -84,42 +84,33 @@ interface RecentFailure {
   at: number;
 }
 
-interface ParentAtelier {
-  origin: string;
-  workspaceId: string;
-}
-
 interface OriginLease {
   key: string;
   app: WorkspaceAppRef;
   port: number;
   scope: "public" | "nested";
   server: ReturnType<typeof Bun.serve<AppSocketData>>;
-  parentContext?: ParentAtelier;
+  origin: string;
+  protocol: "http" | "https";
   activeConnections: number;
   lastUsedAt: number;
   lastFailure?: string;
   target?: string;
 }
 
-// Nested listeners need no individually published Docker ports. Preserve old
-// assignments while allowing more than ten nested origins.
-const nestedOriginPortRange: PortRange = { start: 3001, end: 65535 };
-const parentOriginHeader = "x-atelier-parent-origin";
-const parentWorkspaceHeader = "x-atelier-parent-workspace";
-// Like parent routing context, this is supplied by ingress, never browser input.
 const originContextHeader = "x-atelier-origin-context";
 const publicOriginHeader = "x-atelier-public-origin";
-export const nestedWorkspaceProxyRedirectHeader = "x-atelier-nested-workspace-proxy-redirect";
-
+export * from "./parent.ts";
+export * from "./workspace-sockets.ts";
 export * from "./tailscale-serve.ts";
 export { isSameLocalApp } from "./local-app.ts";
 export { createFileOriginIdentityStore, createMemoryOriginIdentityStore, type OriginIdentityStore } from "./origin-identity.ts";
 
 export function createWorkspaceIngress(options: WorkspaceIngressOptions): WorkspaceIngress {
   const publicRange = options.originPortRange ?? publicOriginPortRangeFromEnv();
-  const leaseIdleMs = options.leaseIdleMs ?? 10 * 60_000;
+  const publisher = options.parentOriginPublisher ?? createLocalOriginPublisher();
   const identityStore = options.originIdentityStore ?? createMemoryOriginIdentityStore();
+  let stopping = false;
   const leases = new Map<string, OriginLease>();
   const pendingLeases = new Map<string, Promise<OriginLease>>();
   const recentFailures = new Map<string, RecentFailure>();
@@ -129,43 +120,35 @@ export function createWorkspaceIngress(options: WorkspaceIngressOptions): Worksp
     while (recentFailures.size > 200) recentFailures.delete(recentFailures.keys().next().value!);
   }
 
-  const sweepTimer = setInterval(() => {
-    const cutoff = Date.now() - leaseIdleMs;
-    for (const lease of leases.values()) {
-      if (lease.activeConnections === 0 && lease.lastUsedAt < cutoff) void releaseLease(lease);
-    }
-  }, Math.min(60_000, Math.max(100, Math.floor(leaseIdleMs / 2))));
-  sweepTimer.unref?.();
-
-  async function resolveBackend(app: WorkspaceAppRef, requestUrl: URL): Promise<WorkspaceAppBackend> {
-    const backend = await options.resolveApp(app, requestUrl);
+  async function resolveBackend(app: WorkspaceAppRef, requestUrl: URL, protocol: "http" | "https" = "http"): Promise<WorkspaceAppBackend> {
+    const port = app.appKey.match(/^port-(\d+)$/);
+    const backend = port && options.resolvePort
+      ? await options.resolvePort(app.workspaceId, Number(port[1]), protocol, requestUrl)
+      : await options.resolveApp(app, requestUrl);
     if (!backend) throw new UnknownWorkspaceAppError(app);
     return backend;
   }
 
-  async function ensureLease(app: WorkspaceAppRef, scope: "public" | "nested", parentContext?: ParentAtelier): Promise<OriginLease> {
-    const key = leaseKey(app, scope, parentContext);
-    const existing = leases.get(key);
+  async function ensureLease(app: WorkspaceAppRef, protocol: "http" | "https" = "http"): Promise<OriginLease> {
+    if (stopping) throw new Error("Workspace ingress is stopping");
+    const key = appIdentity(app);
+    // A listener exists before parent publication completes; callers must wait
+    // for that publication rather than observe its not-yet-assigned origin.
+    const pending = pendingLeases.get(key);
+    const existing = pending ? await pending : leases.get(key);
     if (existing) {
-      existing.lastUsedAt = Date.now();
-      if (parentContext) existing.parentContext = parentContext;
+      if (existing.protocol !== protocol) throw new Error("This workspace port is already published with a different protocol");
       return existing;
     }
-    const pending = pendingLeases.get(key);
-    if (pending) {
-      const lease = await pending;
-      if (parentContext) lease.parentContext = parentContext;
-      return lease;
-    }
-
-    const created = startLease(key, app, scope, parentContext).finally(() => pendingLeases.delete(key));
+    const created = startLease(key, app, protocol).finally(() => pendingLeases.delete(key));
     pendingLeases.set(key, created);
     return await created;
   }
 
-  async function startLease(key: string, app: WorkspaceAppRef, scope: "public" | "nested", parentContext?: ParentAtelier): Promise<OriginLease> {
-    const range = scope === "public" ? publicRange : nestedOriginPortRange;
-    const assignment = await identityStore.assignedPort(app, scope, range);
+  async function startLease(key: string, app: WorkspaceAppRef, protocol: "http" | "https"): Promise<OriginLease> {
+    const scope = publisher.kind === "atelier" ? "nested" : "public";
+    const range = publicRange;
+    const assignment = await identityStore.assignedPort(app, range, protocol);
     const port = assignment.port;
     let lease: OriginLease;
     try {
@@ -174,10 +157,11 @@ export function createWorkspaceIngress(options: WorkspaceIngressOptions): Worksp
           port,
           idleTimeout: 255,
           async fetch(request, server) {
+            if (!lease.origin) await pendingLeases.get(key);
             lease.lastUsedAt = Date.now();
             if (request.headers.get("upgrade")?.toLowerCase() === "websocket") {
               try {
-                const backend = await resolveBackend(lease.app, new URL(request.url));
+                const backend = await resolveBackend(lease.app, new URL(request.url), lease.protocol);
                 if (backend.kind !== "http") return textResponse("This workspace app does not support WebSockets", 400);
                 lease.target = backend.target.toString();
                 const { headers: upstreamHeaders } = await appRequestHeaders(lease, backend, request);
@@ -214,12 +198,13 @@ export function createWorkspaceIngress(options: WorkspaceIngressOptions): Worksp
           port,
           scope,
           server,
-          parentContext,
+          origin: "",
+          protocol,
           activeConnections: 0,
           lastUsedAt: Date.now(),
         };
       leases.set(key, lease);
-      if (scope === "public") await options.originPublisher?.publish(port);
+      lease.origin = await publisher.publish(port);
       logIngress("lease_started", app, { port, scope });
       return lease;
     } catch (thrown) {
@@ -230,8 +215,8 @@ export function createWorkspaceIngress(options: WorkspaceIngressOptions): Worksp
         started.server.stop(true);
       }
       if (isAddressInUse(error) && assignment.fresh) {
-        await identityStore.rejectFreshPort(app, scope, port);
-        return await startLease(key, app, scope, parentContext);
+        await identityStore.rejectFreshPort(app, port);
+        return await startLease(key, app, protocol);
       }
       if (isAddressInUse(error)) throw new Error(`Retained browser origin ${port} for ${app.appKey} is currently unavailable because another process is using it`);
       throw error;
@@ -241,7 +226,7 @@ export function createWorkspaceIngress(options: WorkspaceIngressOptions): Worksp
   async function dispatchRequest(lease: OriginLease, request: Request): Promise<Response> {
     lease.activeConnections += 1;
     try {
-      const backend = await resolveBackend(lease.app, new URL(request.url));
+      const backend = await resolveBackend(lease.app, new URL(request.url), lease.protocol);
       if (backend.kind === "fetch") {
         const response = adaptWorkspaceEmbedding(await backend.fetch(request));
         lease.lastFailure = undefined;
@@ -282,7 +267,6 @@ export function createWorkspaceIngress(options: WorkspaceIngressOptions): Worksp
       lease.lastFailure = error.message;
       recordFailure(lease.app, error);
       logIngress("request_failed", lease.app, { port: lease.port, error: lease.lastFailure, category: errorCategory(error) });
-      if (error instanceof UnknownWorkspaceAppError) void releaseLease(lease);
       return ingressError(error);
     }
   }
@@ -291,50 +275,47 @@ export function createWorkspaceIngress(options: WorkspaceIngressOptions): Worksp
     if (leases.get(lease.key) !== lease) return;
     leases.delete(lease.key);
     lease.server.stop(true);
-    if (lease.scope === "public") await options.originPublisher?.unpublish(lease.port);
+    await publisher.unpublish?.(lease.port);
     logIngress("lease_released", lease.app, { port: lease.port, scope: lease.scope });
   }
 
   return {
     async initialize() {
-      await options.originPublisher?.reset([]);
+      for (const assignment of await identityStore.list()) {
+        await ensureLease(assignment.app, assignment.protocol);
+      }
     },
 
-    async openCanonical(app, pathAndSearch, request) {
+    async publishPort(workspaceId, port, protocol = "http") {
+      if (!isWorkspaceAppPort(port)) throw new Error("port must be an integer from 1 to 65535, excluding the workspace gateway");
+      if (protocol !== "http" && protocol !== "https") throw new Error("protocol must be http or https");
+      await options.resolveWorkspace(workspaceId);
+      return (await ensureLease({ workspaceId, appKey: `port-${port}` }, protocol)).origin;
+    },
+
+    async openCanonical(app, pathAndSearch) {
       try {
         await options.resolveWorkspace(app.workspaceId);
         const normalizedPath = pathAndSearch.startsWith("/") ? pathAndSearch : `/${pathAndSearch}`;
-        const requestUrl = new URL(normalizedPath, request.url);
-        await resolveBackend(app, requestUrl);
-
-        const parent = parentAtelier(request);
-        if (parent) {
-          const lease = await ensureLease(app, "nested");
-          const location = `${parent.origin}${workspaceProxyUrl(parent.workspaceId, `port-${lease.port}`, normalizedPath)}`;
-          const response = Response.redirect(location, 302);
-          response.headers.set(nestedWorkspaceProxyRedirectHeader, "1");
-          return response;
-        }
-
-        const parentContext = { origin: publicAtelierOrigin(request), workspaceId: app.workspaceId };
-        const lease = await ensureLease(app, "public", parentContext);
-        return Response.redirect(`${publicLeaseOrigin(request, lease.port)}${normalizedPath}`, 302);
+        const lease = await ensureLease(app);
+        return Response.redirect(`${lease.origin}${normalizedPath}`, 302);
       } catch (thrown) {
         const error = thrown instanceof Error ? thrown : new Error(String(thrown));
         recordFailure(app, error);
-        logIngress("canonical_failed", app, { error: error.message, category: errorCategory(error) });
         return ingressError(error);
       }
     },
 
     async stopWorkspace(workspaceId) {
       await Promise.all([...leases.values()].filter((lease) => lease.app.workspaceId === workspaceId).map(releaseLease));
+      await identityStore.removeWorkspace(workspaceId);
     },
 
     async stopAll() {
-      clearInterval(sweepTimer);
-      await Promise.all([...leases.values()].map(releaseLease));
-      await options.originPublisher?.reset([]);
+      stopping = true;
+      await Promise.allSettled(pendingLeases.values());
+      for (const lease of leases.values()) lease.server.stop(true);
+      leases.clear();
     },
 
     inspect(app) {
@@ -372,12 +353,8 @@ async function appRequestHeaders(lease: OriginLease, backend: WorkspaceHttpAppBa
   headers.set("x-forwarded-port", backend.target.port || (backend.target.protocol === "https:" ? "443" : "80"));
   headers.delete("forwarded");
   headers.set(publicOriginHeader, appPublicOrigin(lease, request));
-  headers.delete(parentOriginHeader);
-  headers.delete(parentWorkspaceHeader);
-  if (lease.parentContext) {
-    headers.set(parentOriginHeader, lease.parentContext.origin);
-    headers.set(parentWorkspaceHeader, lease.parentContext.workspaceId);
-  }
+  headers.delete("x-atelier-parent-origin");
+  headers.delete("x-atelier-parent-workspace");
   const receivingOrigin = receivingAppOrigin(lease, request);
   const sameOrigin = receivingOrigin !== undefined && headers.get("origin") === receivingOrigin;
   const originTranslation = receivingOrigin === undefined ? undefined : translateLocalAppOrigin(backend, headers, receivingOrigin);
@@ -390,21 +367,17 @@ async function appRequestHeaders(lease: OriginLease, backend: WorkspaceHttpAppBa
 }
 
 function receivingAppOrigin(lease: OriginLease, request: Request): string | undefined {
-  // Public identity was established when opening the canonical route. Do not let
-  // request-supplied forwarding headers redefine which Origin counts as same-origin.
-  if (lease.scope === "public") return appPublicOrigin(lease, request);
-  // A translating parent attests this hop's origin (or "null" for a foreign one).
-  // Parents forwarding Origin unchanged need only the existing public context.
-  const context = request.headers.get(originContextHeader);
-  return context === "null" ? undefined : context ?? publicWorkspaceAppOrigin(request);
+  // The parent has already translated the browser Origin to this listener's local
+  // origin. Only a parent-connected instance consumes that attestation.
+  if (lease.scope === "nested") {
+    const context = request.headers.get(originContextHeader);
+    if (context !== null) return context === "null" ? undefined : context;
+  }
+  return lease.origin;
 }
 
-function appPublicOrigin(lease: OriginLease, request: Request): string {
-  if (lease.scope === "nested") return publicWorkspaceAppOrigin(request);
-  const origin = new URL(lease.parentContext!.origin);
-  origin.hostname = hostForOrigin(origin.hostname);
-  origin.port = String(lease.port);
-  return origin.origin;
+function appPublicOrigin(lease: OriginLease, _request: Request): string {
+  return lease.origin;
 }
 
 async function fetchWithStartupRetry(target: URL, init: RequestInit, throughGateway: boolean): Promise<Response> {
@@ -465,19 +438,6 @@ function finishRequest(lease: OriginLease): void {
   lease.lastUsedAt = Date.now();
 }
 
-function leaseKey(app: WorkspaceAppRef, scope: "public" | "nested", parent?: ParentAtelier): string {
-  return `${scope}\0${parent?.origin ?? ""}\0${parent?.workspaceId ?? ""}\0${app.workspaceId}\0${app.appKey}`;
-}
-
-function parentAtelier(request: Request): ParentAtelier | undefined {
-  const origin = request.headers.get(parentOriginHeader);
-  const workspaceId = request.headers.get(parentWorkspaceHeader);
-  if (!origin || !workspaceId) return undefined;
-  const parsed = new URL(origin);
-  if (parsed.origin !== origin || !/^[a-zA-Z0-9][a-zA-Z0-9_.-]*$/.test(workspaceId)) throw new Error("invalid parent Atelier routing context");
-  return { origin, workspaceId };
-}
-
 export function publicWorkspaceAppOrigin(request: Request): string {
   return publicAtelierOrigin(request);
 }
@@ -485,12 +445,6 @@ export function publicWorkspaceAppOrigin(request: Request): string {
 function publicAtelierOrigin(request: Request): string {
   const context = publicRequestContext(request);
   return `${context.protocol}://${context.host}`;
-}
-
-function publicLeaseOrigin(request: Request, port: number): string {
-  const context = publicRequestContext(request);
-  const hostname = hostnameWithoutPort(context.host);
-  return `${context.protocol}://${hostForOrigin(hostname)}:${port}`;
 }
 
 function publicRequestHost(request: Request): string {
@@ -508,21 +462,6 @@ function publicRequestContext(request: Request): PublicRequestContext {
   const host = publicRequestHost(request);
   const port = new URL(`${protocol}://${host}`).port || (protocol === "https" ? "443" : "80");
   return { protocol, host, port };
-}
-
-function hostnameWithoutPort(host: string): string {
-  try {
-    return new URL(`http://${host}`).hostname;
-  } catch {
-    if (host.startsWith("[") && host.includes("]")) return host.slice(1, host.indexOf("]"));
-    const parts = host.split(":");
-    return parts.length === 2 ? parts[0]! : host;
-  }
-}
-
-function hostForOrigin(host: string): string {
-  const normalized = host === "0.0.0.0" ? "127.0.0.1" : host;
-  return normalized.includes(":") && !normalized.startsWith("[") ? `[${normalized}]` : normalized;
 }
 
 function websocketTarget(target: URL): string {

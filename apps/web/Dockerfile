@@ -1,23 +1,5 @@
-FROM docker:29-cli AS docker-cli
+ARG ATELIER_RUNTIME_IMAGE=atelier-patched-docker:big-rewrite
 FROM oven/bun:1.4.0 AS bun-dist
-FROM moby/buildkit:v0.32.2 AS buildkit-dist
-FROM registry:2.8.3 AS registry-dist
-
-FROM --platform=$BUILDPLATFORM golang:1.25.1 AS snapshotter-build
-ARG TARGETOS
-ARG TARGETARCH
-WORKDIR /src
-COPY packages/docker-snapshotter/go.mod packages/docker-snapshotter/go.sum ./
-RUN go mod download
-COPY packages/docker-snapshotter/ ./
-RUN go test -count=1 ./... \
- && CGO_ENABLED=0 GOOS=$TARGETOS GOARCH=$TARGETARCH go build -trimpath -o /out/atelier-shared-snapshotter .
-
-FROM scratch AS docker-infrastructure
-COPY --from=snapshotter-build /out/atelier-shared-snapshotter /usr/local/bin/atelier-shared-snapshotter
-COPY --from=buildkit-dist /usr/bin/buildkitd /usr/bin/buildctl /usr/bin/buildkit-runc /usr/local/bin/
-COPY --from=registry-dist /bin/registry /usr/local/bin/atelier-registry
-COPY --chmod=755 packages/docker-snapshotter/atelier-owned-snapshotter /usr/local/bin/atelier-owned-snapshotter
 
 FROM ubuntu:26.04 AS transcription-runtime
 ARG TARGETARCH
@@ -38,7 +20,6 @@ WORKDIR /app
 COPY package.json bun.lock bunfig.toml tsconfig.json ./
 COPY apps/web/package.json apps/web/package.json
 COPY packages/core/package.json packages/core/package.json
-COPY packages/docker-snapshotter/package.json packages/docker-snapshotter/package.json
 COPY packages/agent/package.json packages/agent/package.json
 COPY packages/design-system/package.json packages/design-system/package.json
 COPY packages/files/package.json packages/files/package.json
@@ -68,7 +49,7 @@ FROM deps AS build
 COPY . .
 RUN bun run --cwd apps/web build:client
 
-FROM ubuntu:26.04 AS runtime
+FROM ${ATELIER_RUNTIME_IMAGE} AS runtime
 ARG DEBIAN_FRONTEND=noninteractive
 WORKDIR /app
 
@@ -91,9 +72,6 @@ RUN --mount=type=cache,target=/var/cache/apt,sharing=locked \
 COPY --from=bun-dist /usr/local/bin/bun /usr/local/bin/bun
 COPY --from=bun-dist /usr/local/bin/bunx /usr/local/bin/bunx
 RUN setcap cap_net_bind_service=+ep /usr/local/bin/bun
-COPY --from=docker-infrastructure /usr/local/bin/ /usr/local/bin/
-COPY --from=docker-cli /usr/local/bin/docker /usr/local/bin/docker
-COPY --from=docker-cli /usr/local/libexec/docker/cli-plugins /usr/local/libexec/docker/cli-plugins
 COPY --from=transcription-runtime /opt/nemo-speech /opt/nemo-speech
 RUN ln -s /opt/nemo-speech/bin/nemo-speech /usr/local/bin/nemo-speech
 
@@ -101,22 +79,22 @@ ENV NODE_ENV=production
 ENV HOST=0.0.0.0
 ENV PORT=3000
 ENV ATELIER_NAMESPACE=default
+ENV ATELIER_DATA_DIR=/data/app
 
 COPY --from=deps /app/node_modules /app/node_modules
 COPY --from=build --exclude=node_modules /app /app
-RUN printf '%s\n' '#!/usr/bin/env sh' 'exec bun /app/packages/update/src/server/update-helper.ts "$@"' > /usr/local/bin/atelier-update-helper \
- && printf '%s\n' '#!/usr/bin/env sh' 'exec /usr/local/bin/bun /app/packages/proxy-ingress/src/ingress/tailscale-serve-helper.ts "$@"' > /usr/local/bin/atelier-tailscale-serve-helper \
- && chmod 755 /usr/local/bin/atelier-update-helper /usr/local/bin/atelier-tailscale-serve-helper /app/apps/web/docker-entrypoint.sh
+RUN printf '%s\n' '#!/usr/bin/env sh' 'exec /usr/local/bin/bun /app/packages/proxy-ingress/src/ingress/tailscale-serve-helper.ts "$@"' > /usr/local/bin/atelier-tailscale-serve-helper \
+ && chmod 755 /usr/local/bin/atelier-tailscale-serve-helper /app/apps/web/docker-entrypoint.sh
 
 ARG ATELIER_COMMIT_ID
 ARG ATELIER_COMMIT_DESCRIPTION
 ARG ATELIER_DEFAULT_WORKSPACE_IMAGE
-ARG ATELIER_SELF_UPDATE_COMPATIBILITY
+ARG ATELIER_EAGERLY_PRELOAD="[]"
 ENV ATELIER_COMMIT_ID=${ATELIER_COMMIT_ID}
 ENV ATELIER_COMMIT_DESCRIPTION=${ATELIER_COMMIT_DESCRIPTION}
 LABEL org.opencontainers.image.source="https://github.com/lucasmeijer/atelier" \
       org.opencontainers.image.revision="${ATELIER_COMMIT_ID}" \
-      com.atelier.self-update-compatibility="${ATELIER_SELF_UPDATE_COMPATIBILITY}"
+      eagerly-preload="${ATELIER_EAGERLY_PRELOAD}"
 RUN printf '%s\n' "$ATELIER_DEFAULT_WORKSPACE_IMAGE" > /app/.atelier-default-workspace-image
 
 EXPOSE 3000

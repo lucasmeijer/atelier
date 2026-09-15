@@ -49,8 +49,8 @@ async function start(container: string, offline: boolean) {
   }
   await command(["docker", "run", "--detach", "--privileged", "--platform", platform,
     ...(offline ? ["--network", "none"] : []), "--name", container,
-    "--mount", `type=volume,src=${container}-data,dst=/var/lib/docker`,
-    "--mount", `type=volume,src=${cache},dst=/erofs-cache${offline ? ",readonly" : ""}`, image]);
+    "--mount", `type=volume,src=${container}-data,dst=/data`,
+    "--mount", `type=volume,src=${cache},dst=/data/erofs-cache${offline ? ",readonly" : ""}`, image]);
   containers.push(container);
   await ready(container);
 }
@@ -84,7 +84,7 @@ async function archiveContents(archive: Uint8Array) {
   return { descriptor, manifest };
 }
 async function cacheHashes() {
-  return exec(producer, "sh", "-c", "find /erofs-cache -name '*.erofs' -type f -exec sha256sum {} + | sort");
+  return exec(producer, "sh", "-c", "find /data/erofs-cache -name '*.erofs' -type f -exec sha256sum {} + | sort");
 }
 async function assertMissingBlobs(layers: { digest: string }[]) {
   const content = new Set((await ctr(consumer, "content", "list", "--quiet")).trim().split("\n"));
@@ -100,7 +100,7 @@ try {
   await writeFile(join(context, "Dockerfile"), `FROM ${registryPinned}\nRUN dd if=/dev/urandom of=/payload bs=1M count=32 && echo atelier-transfer-marker > /marker\nCMD ["cat", "/marker"]\n`);
   await command(["docker", "cp", context, `${producer}:/context`]);
   await exec(producer, "docker", "build", "--network=none", "--provenance=false", "-t", source, "/context");
-  await ctr(producer, "images", "build-erofs-cache", source, "/erofs-cache");
+  await ctr(producer, "images", "build-erofs-cache", source, "/data/erofs-cache");
   const archive = await exportArchive(source);
   const { descriptor, manifest } = await archiveContents(archive);
   assert.equal(descriptor.digest, (await ctr(producer, "images", "list")).split("\n").find((line) => line.startsWith(`${source} `))?.trim().split(/\s+/)[2]);
@@ -116,8 +116,8 @@ try {
   assert(!(await ctr(consumer, "images", "list", "--quiet")).includes(source));
 
   console.log(`${platform}: cache miss fails offline, restoring entry makes retry succeed`);
-  const cachedFile = (await exec(producer, "sh", "-c", "find /erofs-cache -name '*.erofs' -type f | sort | head -1")).trim();
-  assert(cachedFile.startsWith("/erofs-cache/"));
+  const cachedFile = (await exec(producer, "sh", "-c", "find /data/erofs-cache -name '*.erofs' -type f | sort | head -1")).trim();
+  assert(cachedFile.startsWith("/data/erofs-cache/"));
   await exec(producer, "mv", cachedFile, `${cachedFile}.hidden`);
   const missing = await importArchive(archive, false);
   assert.notEqual(missing.code, 0);
@@ -134,9 +134,9 @@ try {
   assert.equal((await importArchive(archive)).stdout.toString().trim(), ref);
   assert.equal(await snapshotCount(), count, "repeat import must not duplicate snapshots");
   await assertMissingBlobs(manifest.layers);
-  const links = (await exec(consumer, "sh", "-c", "find /var/lib/docker/containerd/io.containerd.snapshotter.v1.erofs/snapshots -name layer.erofs -type l -exec readlink {} +")).trim().split("\n");
+  const links = (await exec(consumer, "sh", "-c", "find /data/containerd/io.containerd.snapshotter.v1.erofs/snapshots -name layer.erofs -type l -exec readlink {} +")).trim().split("\n");
   assert.equal(links.length, manifest.layers.length);
-  assert(links.every((link) => link.startsWith("/erofs-cache/")));
+  assert(links.every((link) => link.startsWith("/data/erofs-cache/")));
   assert.match(await exec(consumer, "docker", "run", "--rm", "--network=none", ref), /atelier-transfer-marker/);
 
   await writeFile(join(context, "Dockerfile"), `FROM ${ref}\nRUN test "$(cat /marker)" = atelier-transfer-marker && test "$(wc -c < /payload)" = 33554432 && echo derived-ok > /derived\nCMD ["cat", "/derived"]\n`);

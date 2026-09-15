@@ -8,7 +8,7 @@ export type WorkspacePhase = "starting" | "ready" | "checking_delete" | "deletin
 
 export type WorkspaceDeletionState = Static<typeof workspaceDeletionStateSchema>;
 
-export type WorkspaceIssueKind = "gateway" | "image";
+export type WorkspaceIssueKind = "readiness" | "image";
 export interface WorkspaceIssue { kind: WorkspaceIssueKind; message: string }
 
 export interface WorkspaceEntry {

@@ -1,10 +1,11 @@
 #!/usr/bin/env bun
 
-import { mkdtempSync, rmSync } from "node:fs";
-import { arch, tmpdir } from "node:os";
-import { join } from "node:path";
+import { workloadBuildArgs } from "@atelier/core";
+import { rmSync } from "node:fs";
+import { arch } from "node:os";
+import { imageHasPlatforms } from "../packages/workspace-image/src/local-images.ts";
 import { registryImageHasPlatforms } from "./image-platforms.ts";
-import { parseWorkspaceImageMetadata } from "@atelier/workspace-image/metadata";
+import { prepareDefaultWorkspaceImage, ensureGeneratedDefaultWorkspaceImage } from "@atelier/workspace-image";
 
 const usage = `Build the Atelier Docker image.
 
@@ -166,16 +167,9 @@ function requestedPlatforms(options: Options): string[] {
   return options.platform?.split(",").map((platform) => platform.trim()).filter(Boolean) ?? [`linux/${dockerArchitecture()}`];
 }
 
-function localImageHasPlatforms(ref: string, platforms: string[]): boolean {
-  const output = maybeRun(["docker", "image", "inspect", "--format", "{{.Os}}/{{.Architecture}}", ref]);
-  if (!output) return false;
-  const localPlatform = output.split(/\s+/)[0];
-  return platforms.every((platform) => platform === localPlatform);
-}
-
-function workspaceImageExists(ref: string, options: Options): boolean {
+async function workspaceImageExists(ref: string, options: Options): Promise<boolean> {
   const platforms = requestedPlatforms(options);
-  return options.push ? registryImageHasPlatforms(ref, platforms, maybeRun) : localImageHasPlatforms(ref, platforms);
+  return options.push ? registryImageHasPlatforms(ref, platforms, maybeRun) : imageHasPlatforms(ref, platforms);
 }
 
 function sanitizeTag(tag: string): string {
@@ -219,6 +213,7 @@ function dockerBuildCommand(options: Options, args: string[]): string[] {
     : ["docker", "build"];
   return [
     ...command,
+    ...resourceBuildArgs,
     ...(options.builder ? ["--builder", options.builder] : []),
     ...(options.platform ? ["--platform", options.platform] : []),
     ...(options.noCache ? ["--no-cache"] : []),
@@ -228,10 +223,11 @@ function dockerBuildCommand(options: Options, args: string[]): string[] {
 }
 
 const options = parseArgs(process.argv.slice(2));
+const resourceBuildArgs = await workloadBuildArgs();
 authenticateGhcr(options);
-const workspaceTempDir = mkdtempSync(join(tmpdir(), "atelier-image-"));
-const workspaceContextDir = join(workspaceTempDir, "atelier-workspace");
-process.on("exit", () => rmSync(workspaceTempDir, { recursive: true, force: true }));
+const workspaceContext = await prepareDefaultWorkspaceImage();
+const workspaceContextDir = workspaceContext.contextDir;
+process.on("exit", () => rmSync(workspaceContextDir, { recursive: true, force: true }));
 
 const tags = options.tags.length > 0 ? options.tags.map(sanitizeTag) : [defaultTag()];
 if (options.latest) tags.push("latest");
@@ -239,8 +235,7 @@ if (options.stable) tags.push("stable");
 const uniqueTags = [...new Set(tags)];
 const imageRefs = uniqueTags.map((tag) => `${options.image}:${tag}`);
 
-run(["bun", "packages/workspace-image/scripts/build-context.mjs", workspaceContextDir]);
-const workspaceMetadata = parseWorkspaceImageMetadata(JSON.parse(await Bun.file(`${workspaceContextDir}/metadata.json`).text()));
+const workspaceMetadata = workspaceContext.metadata;
 const workspaceTag = workspaceHashTag(workspaceMetadata.tag);
 const workspaceRepo = workspaceImageRepository(options.image);
 const defaultWorkspaceImageRef = `${workspaceRepo}:${workspaceTag}`;
@@ -251,27 +246,33 @@ const workspaceBuildCommand = dockerBuildCommand(options, [
   workspaceContextDir,
 ]);
 
-const shouldBuildWorkspace = options.forceWorkspace || options.noCache || !workspaceImageExists(defaultWorkspaceImageRef, options);
-if (shouldBuildWorkspace) {
-  console.log(`${options.push ? "Publishing" : "Building"} default Atelier workspace image:`);
-  console.log(`  ${defaultWorkspaceImageRef}`);
-  console.log();
-} else {
-  console.log(`Reusing existing default Atelier workspace image:`);
-  console.log(`  ${defaultWorkspaceImageRef}`);
-  console.log(`  pass --workspace to rebuild it`);
+let shouldBuildWorkspace = false;
+
+console.log();
+console.log(`${options.push ? "Publishing" : "Building"} Atelier image:`);
+for (const ref of imageRefs) console.log(`  ${ref}`);
+console.log(`  default workspace image: ${defaultWorkspaceImageRef}`);
+console.log();
+await ensureGeneratedDefaultWorkspaceImage({
+  context: workspaceContext,
+  force: options.forceWorkspace || options.noCache,
+  imageName: () => defaultWorkspaceImageRef,
+  exists: async ref => workspaceImageExists(ref, options),
+  build: async () => { shouldBuildWorkspace = true; await runInherited(workspaceBuildCommand); },
+});
+// Bind the app to the exact multi-platform workspace manifest just published.
+let publishedWorkspaceRef = defaultWorkspaceImageRef;
+if (options.push) {
+  const descriptor = JSON.parse(run(["docker", "buildx", "imagetools", "inspect", defaultWorkspaceImageRef, "--format", "{{json .Manifest}}"]));
+  if (!/^sha256:[a-f0-9]{64}$/.test(descriptor.digest)) throw new Error("Registry returned no workspace manifest digest");
+  publishedWorkspaceRef = `${defaultWorkspaceImageRef}@${descriptor.digest}`;
 }
 
 const defaultBuildArgs = [
   `ATELIER_COMMIT_ID=${gitCommitId()}`,
   `ATELIER_COMMIT_DESCRIPTION=${gitCommitDescription()}`,
-  `ATELIER_DEFAULT_WORKSPACE_IMAGE=${defaultWorkspaceImageRef}`,
-  // Self-update compatibility is the installer/runtime contract required for
-  // Atelier's smooth in-app Docker replacement flow. Change this value when a
-  // release needs users to rerun the installer instead of applying the update
-  // from inside Atelier. Use a human-readable value and bump the suffix, e.g.
-  // "tailscale-serve-localhost-v3", when the contract changes again.
-  "ATELIER_SELF_UPDATE_COMPATIBILITY=owned-snapshotter-v2",
+  `ATELIER_DEFAULT_WORKSPACE_IMAGE=${publishedWorkspaceRef}`,
+  `ATELIER_EAGERLY_PRELOAD=${JSON.stringify([publishedWorkspaceRef])}`,
 ];
 const allBuildArgs = [...defaultBuildArgs, ...options.buildArgs];
 
@@ -281,13 +282,7 @@ const appBuildCommand = dockerBuildCommand(options, [
   "--file", "apps/web/Dockerfile", ".",
 ]);
 
-console.log();
-console.log(`${options.push ? "Publishing" : "Building"} Atelier image:`);
-for (const ref of imageRefs) console.log(`  ${ref}`);
-console.log(`  default workspace image: ${defaultWorkspaceImageRef}`);
-console.log();
-const buildCommands = shouldBuildWorkspace ? [workspaceBuildCommand, appBuildCommand] : [appBuildCommand];
-for (const command of buildCommands) await runInherited(command);
+await runInherited(appBuildCommand);
 
 console.log();
 console.log(options.push ? "Published:" : "Built:");

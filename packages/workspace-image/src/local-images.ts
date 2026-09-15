@@ -8,8 +8,11 @@ export async function dockerServerPlatform(docker: DockerCommand = runDocker): P
   return result.stdout.trim();
 }
 
-export async function nativeImageExists(ref: string, docker: DockerCommand = runDocker): Promise<boolean> {
-  const platform = await dockerServerPlatform(docker);
+export async function imageHasPlatforms(ref: string, platforms: string[], docker: DockerCommand = runDocker): Promise<boolean> {
   const result = await docker(["image", "inspect", "--format", "{{.Os}}/{{.Architecture}}", ref]);
-  return result.exitCode === 0 && result.stdout.trim() === platform;
+  return result.exitCode === 0 && platforms.every(platform => platform === result.stdout.trim());
+}
+
+export async function nativeImageExists(ref: string, docker: DockerCommand = runDocker): Promise<boolean> {
+  return imageHasPlatforms(ref, [await dockerServerPlatform(docker)], docker);
 }

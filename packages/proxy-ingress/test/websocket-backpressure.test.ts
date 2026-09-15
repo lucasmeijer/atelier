@@ -36,7 +36,7 @@ test("a stalled downstream closes the real ingress stream and releases its upstr
   const port = probe.port!;
   probe.stop(true);
   const ingress = createWorkspaceIngress({ hostname: "127.0.0.1", originPortRange: { start: port, end: port }, resolveWorkspace() {}, resolveApp: () => ({ kind: "http", target: new URL(app.url) }) });
-  const opened = await ingress.openCanonical({ workspaceId: "slow", appKey: "desktop" }, "/", new Request("http://localhost:3000/"));
+  const opened = await ingress.openCanonical({ workspaceId: "slow", appKey: "desktop" }, "/");
   const url = new URL(opened.headers.get("location")!);
   const socket = createConnection({ host: "127.0.0.1", port: Number(url.port) });
   try {

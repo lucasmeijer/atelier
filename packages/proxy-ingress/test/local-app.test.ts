@@ -108,7 +108,8 @@ describe("local app compatibility", () => {
   test.each(["same-origin", "https://attacker.example", "null", "missing"])("HTTP and WebSocket translate only same-origin requests (%s)", async (requestOrigin) => {
     const observed: Headers[] = [];
     const upstream = Bun.serve({
-      hostname: "127.0.0.1", port: 0,
+      hostname: "127.0.0.1",
+      port: 0,
       fetch(request, server) {
         observed.push(new Headers(request.headers));
         if (request.headers.get("upgrade") === "websocket") {
@@ -123,7 +124,8 @@ describe("local app compatibility", () => {
     const port = probe.port!;
     probe.stop(true);
     const ingress = createWorkspaceIngress({
-      hostname: "127.0.0.1", originPortRange: { start: port, end: port },
+      hostname: "127.0.0.1",
+      parentOriginPublisher: { kind: "tailscale", async publish(port) { return `https://preview.example:${port}`; } }, originPortRange: { start: port, end: port },
       resolveWorkspace: () => undefined,
       resolveApp: (_app, url) => ({ kind: "http", target: new URL(`http://127.0.0.1:${upstream.port}${url.pathname}${url.search}`) }),
     });
@@ -133,7 +135,7 @@ describe("local app compatibility", () => {
     if (originHeader !== null) headers.set("origin", originHeader);
     try {
       await ingress.initialize();
-      await ingress.openCanonical({ workspaceId: "test", appKey: "app" }, "/", new Request("https://preview.example:3000/"));
+      await ingress.openCanonical({ workspaceId: "test", appKey: "app" }, "/");
       const origin = `http://127.0.0.1:${port}`;
       expect(await (await fetch(origin, { method: "POST", body: "payload", headers })).text()).toBe("ok");
       // SAFETY: Bun exposes an options constructor absent from the DOM declaration.

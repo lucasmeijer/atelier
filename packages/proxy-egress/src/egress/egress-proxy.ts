@@ -1,29 +1,32 @@
 import dns from "node:dns/promises";
 import { readFileSync } from "node:fs";
+import { chmod, mkdir, unlink } from "node:fs/promises";
+import { dirname } from "node:path";
 import { createServer, type IncomingMessage, type ServerResponse } from "node:http";
 import { createServer as createHttpsServer } from "node:https";
 import net, { type AddressInfo } from "node:net";
 import { Readable, type Duplex } from "node:stream";
 import tls from "node:tls";
-import { dockerHostAtelierDataPath, getAtelierRuntimeContext, shellQuote } from "@atelier/core";
+import { atelierDataPath, dockerHostAtelierDataPath, getAtelierRuntimeContext, shellQuote } from "@atelier/core";
 import { HttpRequestBlockedError } from "../secrets/errors.ts";
 import { matchHostname } from "../secrets/patterns.ts";
-import { createWorkspaceSecretContext, forgetWorkspaceSecretContext, getWorkspaceSecretContext } from "../secrets/workspace-secrets.ts";
+import { createWorkspaceSecretContext, forgetWorkspaceSecretContext, getWorkspaceSecretContext, type WorkspaceSecretContext } from "../secrets/workspace-secrets.ts";
 import type { AtelierEventBus } from "@atelier/core";
 import { isHopByHopHeader, stripHopByHopHeaders } from "@atelier/shared";
-import { authenticateProxyRequest, ensureWorkspaceProxyAuthToken, forgetWorkspaceProxyAuthToken } from "./auth-store.ts";
 import { workspaceLocalProxyInitScript, workspaceLocalProxyUrl } from "./local-proxy.ts";
 import { defaultNoProxyEntries, uniqueNoProxyEntries } from "./no-proxy.ts";
 import { ensureLeafCertificate, ensureMitmCa, type MitmCa } from "./mitm-ca.ts";
 
-export const atelierWorkspaceProxyPort = 58123;
-
 const workspaceMitmCaPath = "/run/atelier-mitm-ca.crt";
 
-let sharedProxy: Promise<void> | undefined;
+const workspaceProxies = new Map<string, Promise<WorkspaceEgressProxy>>();
+type SecretContext = () => Promise<WorkspaceSecretContext>;
+type FetchUpstream = (url: string, init: RequestInit) => Promise<Response>;
+type ProxyContext = { secrets: SecretContext; fetch: FetchUpstream };
+export type WorkspaceEgressProxy = { close(): Promise<void> };
 const mitmTargetServers = new Map<string, Promise<MitmTargetServer>>();
 
-type MitmConnectionContext = { workspaceId: string; hostname: string };
+type MitmConnectionContext = { context: ProxyContext; hostname: string };
 type MitmTargetServer = { server: ReturnType<typeof createHttpsServer>; port: number; connections: Map<number, MitmConnectionContext>; renewAt: number };
 
 function workspaceProxyEnv() {
@@ -53,18 +56,13 @@ export function registerWorkspaceProxyEvents(events: AtelierEventBus): void {
     const secretContext = await createWorkspaceSecretContext(workspaceId, init);
     Object.assign(plan.env, secretContext.env);
 
-    const proxyAuthToken = await ensureWorkspaceProxyAuthToken(workspaceId);
-    await ensureAtelierWorkspaceProxy();
-    await ensureMitmCa(runtimeContext);
+    await ensureWorkspaceEgressProxy(workspaceId);
     Object.assign(plan.env, workspaceProxyEnv());
     // Repository init scripts can already use the proxy environment, so the
     // forwarder must start before any of them (and before nested dockerd).
     plan.mounts.push({ type: "bind", source: dockerHostAtelierDataPath(runtimeContext, "proxy-ca", "atelier-mitm-ca.pem"), target: workspaceMitmCaPath, readonly: true });
     plan.initScripts.unshift(
-      workspaceLocalProxyInitScript({
-        host: runtimeContext.dockerBridgeHost, port: atelierWorkspaceProxyPort,
-        username: workspaceId, password: proxyAuthToken,
-      }),
+      workspaceLocalProxyInitScript(),
       `cat ${workspaceMitmCaPath} >> /etc/ssl/certs/ca-certificates.crt`,
       `su atelier -c ${shellQuote('git config --global http.proxy "$HTTPS_PROXY"')}`,
     );
@@ -75,68 +73,84 @@ export function registerWorkspaceProxyEvents(events: AtelierEventBus): void {
 }
 
 async function cleanupWorkspaceProxy(workspaceId: string): Promise<void> {
-  await forgetWorkspaceProxyAuthToken(workspaceId).catch(() => undefined);
+  const existing = workspaceProxies.get(workspaceId);
+  if (existing) {
+    await (await existing).close();
+    workspaceProxies.delete(workspaceId);
+  }
   forgetWorkspaceSecretContext(workspaceId);
 }
 
-export async function ensureAtelierWorkspaceProxy(): Promise<void> {
-  if (sharedProxy) return sharedProxy;
-  sharedProxy = startAtelierWorkspaceProxy().catch((error) => {
-    sharedProxy = undefined;
-    throw error;
-  });
-  return sharedProxy;
+export async function ensureWorkspaceEgressProxy(workspaceId: string): Promise<void> {
+  if (!/^[a-zA-Z0-9][a-zA-Z0-9_.-]*$/.test(workspaceId)) throw new Error("Invalid workspace id");
+  let existing = workspaceProxies.get(workspaceId);
+  if (!existing) {
+    existing = (async () => startWorkspaceEgressProxy({
+      socketPath: atelierDataPath(getAtelierRuntimeContext(), "workspace-sockets", workspaceId, "egress.sock"),
+      ca: await ensureMitmCa(),
+      getContext: () => getWorkspaceSecretContext(workspaceId),
+    }))().catch(error => { workspaceProxies.delete(workspaceId); throw error; });
+    workspaceProxies.set(workspaceId, existing);
+  }
+  await existing;
 }
 
-async function startAtelierWorkspaceProxy(): Promise<void> {
-  const ca = await ensureMitmCa();
-  const server = createServer((req, res) => void handleProxyHttpRequest(req, res).catch((thrown) => {
+// The listener's closure supplies identity. Nothing in HTTP headers, CONNECT,
+// or the requested URL can select another workspace's secrets.
+export async function startWorkspaceEgressProxy({ socketPath, ca, getContext, upstreamFetch = fetch }: {
+  socketPath: string; ca: MitmCa; getContext: SecretContext; upstreamFetch?: FetchUpstream;
+}): Promise<WorkspaceEgressProxy> {
+  const context: ProxyContext = { secrets: getContext, fetch: upstreamFetch };
+  const connections = new Set<net.Socket>();
+  const server = createServer((req, res) => void handleProxyHttp(context, req, res).catch((thrown) => {
     const error = thrown instanceof Error ? thrown : new Error(String(thrown));
     writeError(res, proxyFailure(error));
   }));
-  server.on("connect", (req, socket, head) => void handleConnect(ca, req, socket, head).catch((thrown) => {
+  server.on("connection", socket => { connections.add(socket); socket.once("close", () => connections.delete(socket)); });
+  server.on("connect", (req, socket, head) => void handleConnect(ca, context, req, socket, head).catch((thrown) => {
     const error = thrown instanceof Error ? thrown : new Error(String(thrown));
-    socket.write(connectErrorResponse(proxyFailure(error)));
-    socket.destroy();
+    socket.end(connectErrorResponse(proxyFailure(error)));
   }));
+  await mkdir(dirname(socketPath), { recursive: true });
+  try { await unlink(socketPath); } catch (error) { if ((error as NodeJS.ErrnoException).code !== "ENOENT") throw error; }
   await new Promise<void>((resolve, reject) => {
     server.once("error", reject);
-    server.listen(atelierWorkspaceProxyPort, "0.0.0.0", () => { server.off("error", reject); resolve(); });
+    server.listen(socketPath, () => { server.off("error", reject); resolve(); });
   });
+  await chmod(socketPath, 0o666);
   server.unref();
+  return { async close() {
+    for (const socket of connections) socket.destroy();
+    await new Promise<void>((resolve, reject) => server.close(error => error ? reject(error) : resolve()));
+  } };
 }
 
-async function handleProxyHttpRequest(req: IncomingMessage, res: ServerResponse): Promise<void> {
-  const workspaceId = await authenticateProxyRequest(req);
-  await handleProxyHttp(workspaceId, req, res);
-}
-
-async function handleConnect(ca: MitmCa, req: IncomingMessage, socket: Duplex, head: Buffer): Promise<void> {
-  const workspaceId = await authenticateProxyRequest(req);
+async function handleConnect(ca: MitmCa, context: ProxyContext, req: IncomingMessage, socket: Duplex, head: Buffer): Promise<void> {
   const { hostname, port } = parseConnectTarget(req.url || "");
-  await assertDestinationAllowed(workspaceId, hostname, port, port === 443 ? "https" : "http");
-  if (!(await shouldMitmConnectTarget(workspaceId, hostname))) return tunnelConnect(hostname, port, socket, head);
+  await assertDestinationAllowed(context, hostname, port, port === 443 ? "https" : "http");
+  if (!(await shouldMitmConnectTarget(context, hostname))) return tunnelConnect(hostname, port, socket, head);
   if (port !== 443) throw new HttpRequestBlockedError("MITM CONNECT only allowed to port 443");
-  socket.write("HTTP/1.1 200 Connection Established\r\n\r\n");
-
   const targetServer = await ensureMitmTargetServer(ca, hostname);
+  socket.write("HTTP/1.1 200 Connection Established\r\n\r\n");
+  let connectionPort: number | undefined;
   const bridge = net.connect(targetServer.port, "127.0.0.1", () => {
-    const localPort = bridge.localPort;
-    if (localPort) targetServer.connections.set(localPort, { workspaceId, hostname });
+    connectionPort = bridge.localPort;
+    if (connectionPort) targetServer.connections.set(connectionPort, { context, hostname });
     if (head.length) bridge.write(head);
   });
   socket.pipe(bridge).pipe(socket);
   const cleanup = () => {
-    const localPort = bridge.localPort;
-    if (localPort) targetServer.connections.delete(localPort);
+    if (connectionPort) targetServer.connections.delete(connectionPort);
   };
-  socket.once("close", cleanup);
-  bridge.once("close", cleanup);
+  socket.on("error", () => bridge.destroy());
+  bridge.on("error", () => socket.destroy());
+  socket.once("close", () => { cleanup(); bridge.destroy(); });
+  bridge.once("close", () => { cleanup(); socket.destroy(); });
 }
 
-async function shouldMitmConnectTarget(workspaceId: string, hostname: string): Promise<boolean> {
-  const context = await getWorkspaceSecretContext(workspaceId);
-  return context.secrets.some((secret) => secret.hosts.some((host) => matchHostname(hostname, host)));
+async function shouldMitmConnectTarget(context: ProxyContext, hostname: string): Promise<boolean> {
+  const secrets = await context.secrets();
+  return secrets.secrets.some((secret) => secret.hosts.some((host) => matchHostname(hostname, host)));
 }
 
 async function tunnelConnect(hostname: string, port: number, socket: Duplex, head: Buffer): Promise<void> {
@@ -162,7 +176,7 @@ async function tunnelConnect(hostname: string, port: number, socket: Duplex, hea
 }
 
 async function ensureMitmTargetServer(ca: MitmCa, hostname: string): Promise<MitmTargetServer> {
-  const key = hostname.toLowerCase();
+  const key = `${ca.dir}:${hostname.toLowerCase()}`;
   const existing = mitmTargetServers.get(key);
   let expiring: MitmTargetServer | undefined;
   if (existing) {
@@ -201,7 +215,7 @@ async function startMitmTargetServer(ca: MitmCa, hostname: string): Promise<Mitm
     }
     const path = mitmReq.url || "/";
     mitmReq.url = `https://${context.hostname}${path.startsWith("/") ? path : `/${path}`}`;
-    void handleProxyHttp(context.workspaceId, mitmReq, mitmRes).catch((thrown) => {
+    void handleProxyHttp(context.context, mitmReq, mitmRes).catch((thrown) => {
       const error = thrown instanceof Error ? thrown : new Error(String(thrown));
       writeError(mitmRes, proxyFailure(error));
     });
@@ -217,12 +231,13 @@ async function startMitmTargetServer(ca: MitmCa, hostname: string): Promise<Mitm
   return { server, port: address.port, connections, renewAt: leaf.renewAt };
 }
 
-async function handleProxyHttp(workspaceId: string, req: IncomingMessage, res: ServerResponse): Promise<void> {
+async function handleProxyHttp(context: ProxyContext, req: IncomingMessage, res: ServerResponse): Promise<void> {
+  if (req.url === "/health" && req.method === "GET") { res.end("ok"); return; }
   const targetUrl = requestTargetUrl(req);
   const parsed = new URL(targetUrl);
   const protocol = parsed.protocol === "https:" ? "https" : "http";
   const port = parsed.port ? Number(parsed.port) : protocol === "https" ? 443 : 80;
-  await assertDestinationAllowed(workspaceId, parsed.hostname, port, protocol);
+  await assertDestinationAllowed(context, parsed.hostname, port, protocol);
 
   const method = (req.method || "GET").toUpperCase();
   const canHaveBody = !["GET", "HEAD"].includes(method);
@@ -237,8 +252,8 @@ async function handleProxyHttp(workspaceId: string, req: IncomingMessage, res: S
   if (canHaveBody) requestInit.duplex = "half";
   const request = new Request(parsed.toString(), requestInit);
 
-  const context = await getWorkspaceSecretContext(workspaceId);
-  const hooks = context.hooks;
+  const secrets = await context.secrets();
+  const hooks = secrets.hooks;
   let next: Request | Response = request;
   if (hooks?.onRequest) {
     const updated = await hooks.onRequest(request);
@@ -255,14 +270,14 @@ async function handleProxyHttp(workspaceId: string, req: IncomingMessage, res: S
     redirect: "manual",
   };
   if (!["GET", "HEAD"].includes(next.method.toUpperCase())) upstreamInit.duplex = "half";
-  const upstream = await fetch(next.url, upstreamInit);
+  const upstream = await context.fetch(next.url, upstreamInit);
   const finalResponse = hooks?.onResponse ? await hooks.onResponse(upstream, next) ?? upstream : upstream;
   await writeFetchResponse(res, finalResponse);
 }
 
-async function assertDestinationAllowed(workspaceId: string, hostname: string, port: number, protocol: "http" | "https"): Promise<void> {
-  const context = await getWorkspaceSecretContext(workspaceId);
-  const hooks = context.hooks;
+async function assertDestinationAllowed(context: ProxyContext, hostname: string, port: number, protocol: "http" | "https"): Promise<void> {
+  const secrets = await context.secrets();
+  const hooks = secrets.hooks;
   if (!hooks.isIpAllowed) return;
   const addresses = await dns.lookup(hostname, { all: true, verbatim: false });
   if (addresses.length === 0) throw new HttpRequestBlockedError(`could not resolve host: ${hostname}`);
@@ -337,12 +352,7 @@ function proxyFailure(error: Error): ProxyFailure {
 }
 
 function writeError(res: ServerResponse, failure: ProxyFailure): void {
-  interface ErrorResponseHeaders {
-    [name: string]: string;
-  }
-  const headers: ErrorResponseHeaders = { "content-type": "text/plain" };
-  if (failure.status === 407) headers["proxy-authenticate"] = "Basic realm=\"Atelier Workspace Proxy\"";
-  res.writeHead(failure.status, failure.statusText, headers);
+  res.writeHead(failure.status, failure.statusText, { "content-type": "text/plain" });
   res.end(`${failure.message}\n`);
 }
 
@@ -352,6 +362,5 @@ function connectErrorResponse(failure: ProxyFailure): string {
     "Connection: close",
     "Content-Type: text/plain",
   ];
-  if (failure.status === 407) headers.push("Proxy-Authenticate: Basic realm=\"Atelier Workspace Proxy\"");
   return `${headers.join("\r\n")}\r\n\r\n${failure.message}\n`;
 }

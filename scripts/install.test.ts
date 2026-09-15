@@ -1,94 +1,120 @@
 import { expect, test } from "bun:test";
-import { mkdtempSync, rmSync, writeFileSync } from "node:fs";
-import { tmpdir } from "node:os";
-import { join } from "node:path";
 
-const installer = (await Bun.file(new URL("./install.sh", import.meta.url)).text()).replace(/\nmain "\$@"\s*$/, "\n");
+const installer = await Bun.file(new URL("./install.sh", import.meta.url)).text();
 
-function run(body: string) {
-  const result = Bun.spawnSync(["bash", "-c", `${installer}\n${body}`], { stdin: "ignore" });
+function run(options: { installed?: boolean; old?: boolean; pullFails?: boolean; running?: boolean; missingFilesystem?: boolean; loadable?: boolean } = {}, args = ["--non-interactive"]) {
+  const mock = `
+uname() { echo Linux; }
+id() { echo 0; }
+module_loaded=0
+grep() { [ "$module_loaded" -eq 1 ] || return ${options.missingFilesystem ? 1 : 0}; }
+modprobe() {
+  printf 'MODPROBE %s\\n' "$*" >&2
+  module_loaded=1
+  return ${options.missingFilesystem && !options.loadable ? 1 : 0};
+}
+mkdir() { :; }
+docker() {
+  printf 'DOCKER %s\\n' "$*" >&2
+  case "$1 \${2:-}" in
+    'container inspect')
+      case "$3" in
+        atelier-system) return ${options.installed ? 0 : 1} ;;
+        atelier) return ${options.old ? 0 : 1} ;;
+      esac ;;
+    'pull '*) return ${options.pullFails ? 1 : 0} ;;
+    'exec atelier-system') printf '${options.running === false ? "NeedsLogin" : "Running"}\\natelier.example.ts.net\\n' ;;
+    'inspect --format') echo true ;;
+  esac
+}
+`;
+  const result = Bun.spawnSync(["bash", "-c", mock + installer.replace("> /etc/modules-load.d/atelier-system.conf", "> /dev/null"), "installer", ...args], { stdin: "ignore" });
   return { status: result.exitCode, output: result.stdout.toString() + result.stderr.toString() };
 }
 
-for (const [limit, swap, succeeds] of [
-  ["0", 1024, true],
-  ["max", 0, false],
-  [undefined, 0, true],
-  [undefined, 1024, false],
-  [undefined, "", false],
-] as const) {
-  test(`workspace swap: limit=${limit}, SwapTotal=${swap}`, () => {
-    const dir = mkdtempSync(join(tmpdir(), "atelier-swap-test-"));
-    try {
-      if (limit !== undefined) writeFileSync(join(dir, "memory.swap.max"), limit);
-      const result = run(`awk() { printf '%s\\n' '${swap}'; }
-verify_workspace_swap_limit '${dir}'`);
-      expect(result.status === 0).toBe(succeeds);
-      if (limit === undefined && succeeds) expect(result.output).toContain("Keep host swap disabled");
-    } finally {
-      rmSync(dir, { recursive: true });
-    }
-  });
-}
-
-test("pulls and reads both images for the Docker server architecture", () => {
-  const result = run(`
-atelier_image=example/atelier:stable
-docker() {
-  printf '%s\\n' "$*" >&2
-  case "$1" in
-    version) printf 'linux/arm64\\n' ;;
-    run) printf 'example/workspace:hash\\n' ;;
-  esac
-}
-pull_atelier_images`);
+test("fresh install launches privileged System with persistent named volume and bootstrap app", () => {
+  const result = run({}, ["--non-interactive", "--system-image", "test/system:v1", "--app-image", "test/app:v1"]);
   expect(result.status).toBe(0);
-  expect(result.output).toContain("pull --platform linux/arm64 example/atelier:stable");
-  expect(result.output).toContain("run --rm --platform linux/arm64 --entrypoint cat example/atelier:stable");
-  expect(result.output).toContain("pull --platform linux/arm64 example/workspace:hash");
+  expect(result.output).toContain("DOCKER pull test/system:v1");
+  expect(result.output).toContain("--name atelier-system --hostname atelier-system --privileged --cgroupns=host --restart unless-stopped --stop-timeout 120 --tmpfs /run --mount source=atelier-system,target=/data test/system:v1 --app-image test/app:v1");
+  expect(result.output).not.toContain("DOCKER stop");
+  expect(result.output).toContain("https://atelier.example.ts.net:8443");
 });
 
-test("a missing host image fails before executing the image, including in a waited background job", () => {
-  const result = run(`
-atelier_image=example/atelier:stable
-docker() {
-  case "$1" in
-    version) printf 'linux/arm64\\n' ;;
-    pull) return 1 ;;
-    run) printf 'UNEXPECTED EXECUTION\\n' >&2 ;;
-  esac
-}
-pull_atelier_images &
-wait "$!" || exit "$?"`);
+test("replacement downloads before stopping and retains volume", () => {
+  const result = run({ installed: true });
+  expect(result.status).toBe(0);
+  const commands = result.output;
+  expect(commands.indexOf("DOCKER pull")).toBeLessThan(commands.indexOf("DOCKER stop --time 120 atelier-system"));
+  expect(commands.indexOf("DOCKER stop")).toBeLessThan(commands.indexOf("DOCKER rm atelier-system"));
+  expect(commands).toContain("--mount source=atelier-system,target=/data");
+  expect(commands).not.toContain("volume rm");
+});
+
+test("failed pull leaves existing System untouched", () => {
+  const result = run({ installed: true, pullFails: true });
   expect(result.status).not.toBe(0);
-  expect(result.output).toContain("could not pull Atelier image example/atelier:stable for linux/arm64");
-  expect(result.output).not.toContain("UNEXPECTED EXECUTION");
+  expect(result.output).not.toContain("DOCKER stop");
+  expect(result.output).not.toContain("DOCKER rm");
+  expect(result.output).not.toContain("DOCKER run");
 });
 
-test("installation uses default standalone startup with persistent backing and stops the previous owner", () => {
-  const dir = mkdtempSync(join(tmpdir(), "atelier-install-runtime-"));
-  try {
-    const result = run(`
-atelier_data_dir='${dir}'
-atelier_image=example/atelier:stable
-atelier_public_host=atelier.example
-chown() { :; }
-docker() {
-  printf 'DOCKER %s\\n' "$*" >&2
-  if [ "$1" = ps ]; then
-    case "$*" in *atelier-updater*) ;; *) echo existing ;; esac
-  fi
-}
-install_atelier`);
-    expect(result.status).toBe(0);
-    expect(result.output).toContain("stop --time 30 atelier");
-    expect(result.output).toContain("--privileged");
-    expect(result.output).toContain(`type=bind,src=${dir}/docker-runtime,dst=${dir}/docker-runtime`);
-    const launch = result.output.split("\n").find((line) => line.startsWith("DOCKER run -d "))!;
-    expect(launch.endsWith(" example/atelier:stable")).toBe(true);
-    expect(launch).not.toContain("--nested");
-    expect(launch).not.toContain("--own-snapshotter");
-  } finally {
-    rmSync(dir, { recursive: true, force: true });
-  }
+test("noninteractive installation prints login command instead of waiting for login", () => {
+  const result = run({ running: false });
+  expect(result.status).toBe(0);
+  expect(result.output).toContain("docker exec -it atelier-system tailscale up");
+  expect(result.output).not.toContain("DOCKER exec atelier-system tailscale up");
+});
+
+test("connect operates Tailscale in System without downloading or replacing images", () => {
+  const result = run({ installed: true }, ["--action", "connect"]);
+  expect(result.status).toBe(0);
+  expect(result.output).toContain("DOCKER exec atelier-system tailscale up");
+  expect(result.output).not.toContain("DOCKER pull");
+  expect(result.output).not.toContain("DOCKER stop");
+});
+
+test("old installation is rejected without migration", () => {
+  const result = run({ old: true });
+  expect(result.status).not.toBe(0);
+  expect(result.output).toContain("does not migrate");
+  expect(result.output).not.toContain("DOCKER pull");
+});
+
+test("invalid action is rejected before Docker changes", () => {
+  const result = run({}, ["--action", "destroy"]);
+  expect(result.status).not.toBe(0);
+  expect(result.output).not.toContain("DOCKER");
+});
+
+
+test("missing filesystem driver fails before image pull or System replacement", () => {
+  const result = run({ installed: true, missingFilesystem: true });
+  expect(result.status).not.toBe(0);
+  expect(result.output).toContain("erofs is unavailable");
+  expect(result.output).not.toContain("DOCKER pull");
+  expect(result.output).not.toContain("DOCKER stop");
+});
+
+
+test("loads an available filesystem module before starting System", () => {
+  const result = run({ missingFilesystem: true, loadable: true });
+  expect(result.status).toBe(0);
+  expect(result.output).toContain("MODPROBE erofs");
+  expect(result.output.indexOf("MODPROBE erofs")).toBeLessThan(result.output.indexOf("DOCKER pull"));
+});
+
+test("startup waits for Tailscale to leave Starting before offering login", () => {
+  const waitFunction = installer.slice(installer.indexOf("wait_for_tailscale() {"), installer.indexOf("\nshow_url() {"));
+  const result = Bun.spawnSync(["bash", "-c", `
+    tailscale_details() { if [ "$attempt" -eq 0 ]; then echo Starting; else echo Running; fi; }
+    docker() { echo true; }
+    sleep() { :; }
+    fail() { exit 1; }
+    ${waitFunction}
+    wait_for_tailscale
+    printf '%s' "$details"
+  `]);
+  expect(result.exitCode).toBe(0);
+  expect(result.stdout.toString()).toBe("Running");
 });

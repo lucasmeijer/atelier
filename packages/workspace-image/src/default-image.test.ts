@@ -14,33 +14,26 @@ for (const scenario of ["cached", "missing", "different-tag", "no-cache"] as con
       await writeFile(client, `
         import {mock} from 'bun:test';
         const localPath = ${JSON.stringify(join(import.meta.dir, "local-images.ts"))};
-        const runtimePath = ${JSON.stringify(join(import.meta.dir, "runtime-connection.ts"))};
-        const sharedPath = ${JSON.stringify(join(import.meta.dir, "shared-build.ts"))};
         const local = await import(localPath);
-        const runtime = await import(runtimePath);
-        const shared = await import(sharedPath);
         const checks = [], builds = [];
-        let connections = 0;
         mock.module(localPath, () => ({...local, nativeImageExists: async tag => {
           checks.push(tag);
           // A different deterministic tag must not count as the requested image.
           return ${JSON.stringify(scenario)} === 'different-tag' ? tag === 'atelier-workspace:old-default' : ${scenario === "cached" || scenario === "no-cache"};
         }}));
-        mock.module(runtimePath, () => ({...runtime, readDockerRuntimeConnection: async () => {
-          connections++;
-          return {version:1, depth:1, adminSocket:'/unused/admin.sock', socketDirectory:'/unused', snapshotterRoot:'/unused/store', buildServices:{buildkitSocket:'/unused/buildkit.sock',registryAddress:'atelier-registry.localhost:42000'}};
-        }}));
-        mock.module(sharedPath, () => ({...shared, buildSharedWorkspaceImage: async options => {
-          builds.push({kind:options.kind, tag:options.tag, noCache:options.noCache});
-          return options.tag;
+        const observablePath = ${JSON.stringify(join(import.meta.dir, "../../observable-terminal/src/server/index.ts"))};
+        const observable = await import(observablePath);
+        mock.module(observablePath, () => ({...observable, runHostObservableCommand: async options => {
+          builds.push(options.command);
+          return {exitCode:0,output:''};
         }}));
         const {ensureDefaultWorkspaceImage} = await import(${JSON.stringify(join(import.meta.dir, "index.ts"))});
         const first = await ensureDefaultWorkspaceImage();
         const second = await ensureDefaultWorkspaceImage();
-        console.log(JSON.stringify({first,second,checks,connections,builds}));
+        console.log(JSON.stringify({first,second,checks,builds}));
       `);
       // Separate processes model the dev launcher and the server. A cache hit
-      // must succeed in both, without contacting shared infrastructure.
+      // must succeed in both, without starting an image build.
       for (let attempt = 0; attempt < (scenario === "cached" ? 2 : 1); attempt++) {
         const child = Bun.spawn([process.execPath, client], {
           env: { ...process.env, ATELIER_NAMESPACE: namespace, ATELIER_WORKSPACE_IMAGE_NO_CACHE: scenario === "no-cache" ? "1" : "0" },
@@ -52,9 +45,13 @@ for (const scenario of ["cached", "missing", "different-tag", "no-cache"] as con
         const result = JSON.parse(stdout);
         expect(result.first).toMatch(/^atelier-workspace:[a-f0-9]{16}$/);
         expect(result.second).toBe(result.first);
-        expect(result.checks).toEqual(scenario === "no-cache" ? [] : [result.first]);
-        expect(result.connections).toBe(scenario === "cached" ? 0 : 1);
-        expect(result.builds).toEqual(scenario === "cached" ? [] : [{ kind: "default", tag: result.first, noCache: scenario === "no-cache" }]);
+        expect(result.checks).toEqual(scenario === "no-cache" ? [] : [result.first, result.first]);
+        expect(result.builds).toHaveLength(scenario === "cached" ? 0 : 2);
+        for (const command of result.builds) {
+          expect(command).toContain("docker");
+          expect(command).toContain(result.first);
+          expect(command.includes("--no-cache")).toBe(scenario === "no-cache");
+        }
       }
     } finally {
       await rm(directory, { recursive: true });

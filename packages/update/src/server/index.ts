@@ -1,18 +1,18 @@
 import { toggleHtml } from "@atelier/design-system/toggle";
-import { dialogHtml } from "@atelier/design-system/dialog";
 import { Icons } from "@atelier/design-system/icons";
 import { buttonHtml } from "@atelier/design-system/button";
 import { destructiveConfirmationHtml } from "@atelier/design-system/destructive-confirmation";
 import { progressButtonHtml } from "@atelier/design-system/progress-button";
 import { transientFeedbackHtml } from "@atelier/design-system/transient-feedback";
 import { escapeHtml, turboStream, turboStreamResponse, type SettingsContribution, type WorkspaceModule, type WorkspaceServerModuleContext } from "@atelier/shared";
-import { pollIntervalMs, updaterPort, updateSidebarContributionId } from "./constants.ts";
-import { isReleaseChannel, targetImageForChannel, type ReleaseChannel } from "./channels.ts";
-import { detectSelfUpdateRuntime, dockerExec, pullChannelImage, type DockerExec, type PullProgress, type SelfUpdateRuntime } from "./docker.ts";
+import { pollIntervalMs, repository, updateSidebarContributionId } from "./constants.ts";
+import { isReleaseChannel, type ReleaseChannel } from "./channels.ts";
+import { detectSelfUpdateRuntime, prepareUpdate, type PreparedUpdate, type PullProgress, type SelfUpdateRuntime } from "./docker.ts";
+import { requestSupervisorUpdate } from "./supervisor.ts";
 import { fetchChannelImageMetadata, type ImageMetadata } from "./registry.ts";
 import { readStoredReleaseChannel, writeStoredReleaseChannel } from "./settings-store.ts";
 
-export type UpdateState = "idle" | "checking" | "available" | "incompatible" | "pulling" | "ready_to_restart" | "failed" | "restarting";
+export type UpdateState = "idle" | "checking" | "available" | "pulling" | "ready_to_restart" | "failed" | "restarting";
 
 export interface StateSnapshot {
   state: UpdateState;
@@ -21,7 +21,7 @@ export interface StateSnapshot {
   selfUpdatable: boolean;
   target?: ImageMetadata;
   releaseChannel: ReleaseChannel;
-  compatibilityMismatch: boolean;
+  progressMessage?: string;
 }
 
 export interface UpdateManagerDeps {
@@ -29,10 +29,8 @@ export interface UpdateManagerDeps {
   writeChannel?: (channel: ReleaseChannel) => Promise<void>;
   detectRuntime?: () => Promise<SelfUpdateRuntime | undefined>;
   fetchMetadata?: (channel: ReleaseChannel) => Promise<ImageMetadata>;
-  pullImage?: (channel: ReleaseChannel, onProgress: (progress: PullProgress) => void) => Promise<void>;
-  docker?: DockerExec;
-  checkUpdaterPortAvailable?: () => Promise<void>;
-  waitForUpdater?: (url: string) => Promise<void>;
+  prepareUpdate?: (reference: string, onProgress: (progress: PullProgress) => void) => Promise<PreparedUpdate>;
+  requestUpdate?: (imageId: string) => Promise<void>;
   setInterval?: (handler: () => void, interval: number) => void;
 }
 
@@ -47,7 +45,8 @@ export class UpdateManager {
   private target: ImageMetadata | undefined;
   private releaseChannel: ReleaseChannel = "stable";
   private pullPromise: Promise<void> | undefined;
-  private pulledDigest: string | undefined;
+  private prepared: PreparedUpdate | undefined;
+  private progressMessage: string | undefined;
   private restarting = false;
   private switchingChannel = false;
   private channelGeneration = 0;
@@ -57,10 +56,10 @@ export class UpdateManager {
   async initialize(context: WorkspaceServerModuleContext): Promise<void> {
     this.context = context;
     this.runtime = await (this.deps.detectRuntime ?? detectSelfUpdateRuntime)();
-    this.releaseChannel = await this.deps.readChannel?.() ?? this.runtime?.releaseChannel ?? "stable";
+    this.releaseChannel = await this.deps.readChannel?.() ?? "stable";
     this.updateSidebar();
     if (!this.runtime) return;
-    await this.checkNow();
+    await this.checkNow().catch((error) => console.error("Update check failed", error));
     const checkForUpdate = () => void this.checkNow().catch((error) => console.error("Update check failed", error));
     if (this.deps.setInterval) {
       this.deps.setInterval(checkForUpdate, pollIntervalMs);
@@ -71,7 +70,7 @@ export class UpdateManager {
   }
 
   snapshot(): StateSnapshot {
-    return { state: this.state, percent: this.percent, error: this.error, selfUpdatable: Boolean(this.runtime), target: this.target, releaseChannel: this.releaseChannel, compatibilityMismatch: this.hasCompatibilityMismatch() };
+    return { state: this.state, percent: this.percent, error: this.error, selfUpdatable: Boolean(this.runtime), target: this.target, releaseChannel: this.releaseChannel, progressMessage: this.progressMessage };
   }
 
   private updateSidebar(checked = false): void {
@@ -88,12 +87,8 @@ export class UpdateManager {
     this.updateSidebar(checked);
   }
 
-  private hasCompatibilityMismatch(): boolean {
-    return Boolean(this.runtime?.selfUpdateCompatibility && this.target?.selfUpdateCompatibility && this.runtime.selfUpdateCompatibility !== this.target.selfUpdateCompatibility);
-  }
-
   async checkNow(options: { announceCurrent?: boolean } = {}): Promise<void> {
-    if (!this.runtime || this.switchingChannel) return;
+    if (!this.runtime || this.switchingChannel || this.pullPromise || this.prepared || this.restarting) return;
     const generation = this.channelGeneration;
     const channel = this.releaseChannel;
     if (this.state === "idle" || this.state === "failed") this.setState("checking");
@@ -102,24 +97,21 @@ export class UpdateManager {
       target = await (this.deps.fetchMetadata ?? fetchChannelImageMetadata)(channel);
     } catch (error) {
       // A superseded channel's failures are as stale as its successful responses.
-      if (generation !== this.channelGeneration) return;
+      if (generation !== this.channelGeneration || this.pullPromise || this.prepared || this.restarting) return;
       this.setState("failed", { error: error instanceof Error ? error.message : String(error) });
       throw error;
     }
-    if (generation !== this.channelGeneration) return;
+    if (generation !== this.channelGeneration || this.pullPromise || this.prepared || this.restarting) return;
     this.target = target;
     const current = this.runtime.currentRevision ?? this.runtime.currentDigest;
     const remote = target.revision ?? target.digest;
     const available = Boolean(remote && current && remote !== current);
-    const incompatible = this.hasCompatibilityMismatch();
     if (!available) this.setState("idle", {}, options.announceCurrent ?? false);
-    else if (incompatible) this.setState("incompatible");
-    else if (this.state === "pulling" || this.state === "restarting" || (this.state === "ready_to_restart" && this.pulledDigest === target.digest)) this.updateSidebar();
     else this.setState("available");
   }
 
   async setReleaseChannel(channel: ReleaseChannel): Promise<void> {
-    if (!this.runtime) throw new Error("Atelier is not running in a self-updatable Docker container");
+    if (!this.runtime) throw new Error("Atelier is not running in a System-managed installation");
     if (this.switchingChannel || this.pullPromise || this.restarting) throw new Error("Cannot switch release channels while an update is in progress");
     if (channel === this.releaseChannel) return await this.checkNow();
     this.switchingChannel = true;
@@ -128,7 +120,7 @@ export class UpdateManager {
       this.channelGeneration += 1;
       this.releaseChannel = channel;
       this.target = undefined;
-      this.pulledDigest = undefined;
+      this.prepared = undefined;
       this.setState("idle");
     } finally {
       this.switchingChannel = false;
@@ -137,9 +129,8 @@ export class UpdateManager {
   }
 
   startPull(): Promise<void> {
-    if (!this.runtime) throw new UpdateConflictError("Atelier is not running in a self-updatable Docker container");
+    if (!this.runtime) throw new UpdateConflictError("Atelier is not running in a System-managed installation");
     if (this.switchingChannel) throw new UpdateConflictError("Release channel change is in progress");
-    if (this.hasCompatibilityMismatch()) throw new UpdateConflictError("This update requires rerunning the Atelier installer");
     if (this.pullPromise) return this.pullPromise;
     if (!this.target || (this.state !== "available" && this.state !== "failed")) {
       throw new UpdateConflictError("No update is available to download. Check the selected channel first.");
@@ -153,60 +144,26 @@ export class UpdateManager {
   }
 
   private async pullNewestTarget(): Promise<void> {
-    const pullImage = this.deps.pullImage ?? pullChannelImage;
-    const reportProgress = (progress: PullProgress) => {
+    const reference = `ghcr.io/${repository}@${this.target!.digest}`;
+    this.prepared = undefined;
+    this.setState("pulling");
+    this.prepared = await (this.deps.prepareUpdate ?? prepareUpdate)(reference, (progress) => {
       this.percent = progress.percent;
+      this.progressMessage = progress.message;
       this.updateSidebar();
-    };
-    while (true) {
-      const digest = this.target!.digest;
-      this.setState("pulling", { percent: undefined });
-      await pullImage(this.releaseChannel, reportProgress);
-      this.pulledDigest = digest;
-      if (this.target!.digest === digest) {
-        this.setState("ready_to_restart", { percent: 100 });
-        return;
-      }
-      if (this.hasCompatibilityMismatch()) {
-        this.setState("incompatible");
-        return;
-      }
-    }
+    });
+    this.progressMessage = undefined;
+    this.setState("ready_to_restart", { percent: 100 });
   }
 
-  async launchUpdater(url: URL): Promise<Response> {
-    if (!this.runtime) throw new Error("Atelier is not running in a self-updatable Docker container");
-    if (this.switchingChannel) throw new Error("Release channel change is in progress");
-    if (this.restarting) throw new Error("Restart is already in progress");
-    if (this.state !== "ready_to_restart") throw new Error("No pulled update is ready to restart");
+  async restart(): Promise<void> {
+    if (!this.runtime) throw new UpdateConflictError("Atelier is not running in a System-managed installation");
+    if (this.switchingChannel || this.restarting) throw new UpdateConflictError("An update is already in progress");
+    if (this.state !== "ready_to_restart" || !this.prepared) throw new UpdateConflictError("No prepared update is ready to restart");
     this.restarting = true;
     this.setState("restarting");
-    const name = `atelier-updater-${crypto.randomUUID().slice(0, 8)}`;
-    const returnUrl = new URL("/", url);
-    const updaterUrl = new URL(returnUrl);
-    updaterUrl.protocol = "https:";
-    updaterUrl.port = String(updaterPort);
-    const docker = this.deps.docker ?? dockerExec;
     try {
-      await removeStaleUpdateHelpers(docker);
-      await (this.deps.checkUpdaterPortAvailable ?? checkUpdaterPortAvailable)();
-      const result = await docker([
-        "run", "-d", "--rm", "--name", name, "--network", "host",
-        "-v", "/var/run/docker.sock:/var/run/docker.sock",
-        // The helper needs Docker access, not another installation-owned runtime.
-        // Bypass the server entrypoint and its socket-group/user setup explicitly.
-        "--user", "0:0", "--entrypoint", "/usr/local/bin/atelier-update-helper",
-        this.runtime.imageId,
-        "--server-container", this.runtime.containerId, "--target-image", targetImageForChannel(this.releaseChannel), "--release-channel", this.releaseChannel, "--return-url", returnUrl.toString(),
-      ]);
-      if (result.code !== 0) throw new Error(result.stderr.trim() || "could not start update helper");
-      const theme = url.searchParams.get("theme") ?? "";
-      updaterUrl.pathname = "/up";
-      updaterUrl.search = "";
-      await (this.deps.waitForUpdater ?? waitForUpdater)(updaterUrl.toString());
-      updaterUrl.pathname = "/";
-      updaterUrl.searchParams.set("theme", theme);
-      return Response.redirect(updaterUrl.toString(), 303);
+      await (this.deps.requestUpdate ?? requestSupervisorUpdate)(this.prepared.imageId);
     } catch (error) {
       this.restarting = false;
       this.setState("ready_to_restart", { error: error instanceof Error ? error.message : String(error) });
@@ -214,36 +171,10 @@ export class UpdateManager {
     }
   }
 
-}
-
-async function removeStaleUpdateHelpers(docker: DockerExec): Promise<void> {
-  const listed = await docker(["ps", "-aq", "--filter", "name=^/atelier-updater-"]);
-  if (listed.code !== 0) throw new Error(listed.stderr.trim() || "could not list update helpers");
-  const ids = listed.stdout.trim().split(/\s+/).filter(Boolean);
-  if (ids.length === 0) return;
-  const removed = await docker(["rm", "-f", ...ids]);
-  if (removed.code !== 0) throw new Error(removed.stderr.trim() || "could not remove stale update helpers");
-}
-
-async function checkUpdaterPortAvailable(): Promise<void> {
-  try {
-    const server = Bun.serve({ hostname: "127.0.0.1", port: updaterPort, fetch: () => new Response("ok") });
-    server.stop(true);
-  } catch (error) {
-    const code = error instanceof Error && "code" in error ? error.code : undefined;
-    if (code === "EADDRINUSE") throw new Error(`Update helper port ${updaterPort} is already in use on 127.0.0.1. Stop the process using 127.0.0.1:${updaterPort} and retry the update.`);
-    throw error;
+  clearError(): void {
+    this.error = undefined;
+    this.updateSidebar();
   }
-}
-
-async function waitForUpdater(url: string): Promise<void> {
-  const deadline = Date.now() + 30_000;
-  while (Date.now() < deadline) {
-    const response = await fetch(url).catch(() => undefined);
-    if (response?.ok) return;
-    await Bun.sleep(250);
-  }
-  throw new Error("Update helper did not become ready within 30 seconds");
 }
 
 const manager = new UpdateManager({ readChannel: readStoredReleaseChannel, writeChannel: writeStoredReleaseChannel });
@@ -265,7 +196,7 @@ function renderCheckForm(): string {
 function renderDownloadControl(snapshot: StateSnapshot): string {
   const content = {
     initialContent: { kind: "text" as const, text: "Download Update" },
-    progressContent: { kind: "text" as const, text: "Downloading…" },
+    progressContent: { kind: "text" as const, text: snapshot.progressMessage ?? "Downloading…" },
     variant: "primary" as const,
     type: "submit" as const,
   };
@@ -286,7 +217,7 @@ function restartFormHtml(surface: UpdateControlSurface): string {
     confirmCaption: "Restart to update",
     cancelCaption: "Cancel",
   });
-  return `<form method="post" action="/update/restart?surface=${surface}" data-turbo="false" data-controller="update-restart" data-action="submit->update-restart#submit">${confirmation}</form>`;
+  return `<form method="post" action="/update/restart?surface=${surface}" data-turbo="false" data-controller="update-restart" data-action="submit->update-restart#submit">${confirmation}<p role="alert" data-update-restart-target="error" hidden></p></form>`;
 }
 
 function renderRestartFeedback(surface: UpdateControlSurface, message?: string): string {
@@ -309,8 +240,9 @@ function renderCheckFeedback(state: "initial" | "in-progress", feedback = false)
 
 function renderUpdateControl(snapshot: StateSnapshot, surface: UpdateControlSurface): string {
   if (snapshot.state === "checking") return renderCheckFeedback("in-progress");
-  if (!snapshot.selfUpdatable || (snapshot.state === "failed" && !snapshot.target) || snapshot.state === "idle") return renderCheckFeedback("initial");
-  if (snapshot.state === "available" || snapshot.state === "failed" || snapshot.state === "incompatible" || snapshot.state === "pulling") return renderDownloadControl(snapshot);
+  if (!snapshot.selfUpdatable) return "";
+  if ((snapshot.state === "failed" && !snapshot.target) || snapshot.state === "idle") return renderCheckFeedback("initial");
+  if (snapshot.state === "available" || snapshot.state === "failed" || snapshot.state === "pulling") return renderDownloadControl(snapshot);
   if (snapshot.state === "ready_to_restart") return renderRestartFeedback(surface);
   return progressButtonHtml({
     initialContent: { kind: "text", text: "Restart to update" },
@@ -337,8 +269,8 @@ function renderUpdateSettings(updateManager: UpdateManager, checked = false): st
   });
   const description = snapshot.selfUpdatable
     ? "Stable is the default; Latest follows the newest builds."
-    : "Channel switching is available in managed Docker installations.";
-  return `<section class="settings-sec update-settings-control" id="settings-sec-update"><div><h2>Updates</h2><p class="settings-sub">${description}</p></div><div class="update-settings-actions">${control}${channel}</div></section>`;
+    : "Updates are available when Atelier runs inside Atelier System.";
+  return `<section class="settings-sec update-settings-control" id="settings-sec-update"><div><h2>Updates</h2><p class="settings-sub">${description}</p></div><div class="update-settings-actions">${control}${channel}</div>${renderError(snapshot)}</section>`;
 }
 
 function updateSettingsStream(updateManager: UpdateManager, checked = false): string {
@@ -354,41 +286,22 @@ const updateSettingsContribution: SettingsContribution = {
 
 function renderSidebarRow(snapshot: StateSnapshot): string {
   if (!snapshot.selfUpdatable || snapshot.state === "idle" || snapshot.state === "checking") return "";
-  return `<section class="update-sidebar-section"><div id="update_sidebar_row" class="update-sidebar-row"><p>There's a new version of Atelier!</p>${renderUpdateControl(snapshot, "sidebar")}</div></section>`;
+  return `<section class="update-sidebar-section"><div id="update_sidebar_row" class="update-sidebar-row"><p>${snapshot.state === "failed" ? "Atelier update needs attention." : "There's a new version of Atelier!"}</p>${renderUpdateControl(snapshot, "sidebar")}${renderError(snapshot)}</div></section>`;
 }
 
-function installerCommand(channel: ReleaseChannel): string {
-  return `curl -fsSL https://lucasmeijer.com/get-atelier | sudo bash${channel === "latest" ? " -s -- --channel latest" : ""}`;
-}
-
-function renderInstallerRequiredModal(updateManager: UpdateManager): string {
-  const snapshot = updateManager.snapshot();
-  const command = installerCommand(snapshot.releaseChannel);
-  const closeButton = buttonHtml({
-    type: "button",
-    variant: "primary",
-    content: { kind: "caption", caption: "Got it" },
-    attributesHtml: 'data-action="dialog#close"',
-  });
-  return dialogHtml({
-    element: { id: "installer-required-modal", attributesHtml: "data-dialog-auto-show" },
-    iconHtml: Icons.Settings,
-    titleCaption: "Run the installer to update Atelier",
-    bodyHtml: `<p>This release changes how Atelier is hosted, so the smooth in-app restart cannot safely apply it.</p><p>SSH into the Atelier host and run:</p><pre><code>${escapeHtml(command)}</code></pre><p>Your projects, workspaces, and containers will remain in place.</p>`,
-    footerHtml: closeButton,
-  });
-}
-
-function modalStream(html: string): Response {
-  return turboStreamResponse(turboStream("update", "update_modal_host", html));
-}
-
-function wantsTurboStream(request: Request): boolean {
-  return request.headers.get("accept")?.includes("text/vnd.turbo-stream.html") ?? false;
+function renderError(snapshot: StateSnapshot): string {
+  if (!snapshot.error) return "";
+  const dismiss = buttonHtml({ type: "submit", variant: "secondary", content: { kind: "icon-only", iconHtml: Icons.Close, label: "Dismiss update error" } });
+  return `<div role="alert"><p>${escapeHtml(snapshot.error)}</p><form method="post" action="/update/dismiss-error" data-turbo="true">${dismiss}</form></div>`;
 }
 
 export function createUpdateRouteHandler(updateManager: UpdateManager): (request: Request, url: URL) => Promise<Response | undefined> {
   return async (request, url) => {
+    if (request.method === "POST" && (url.pathname.startsWith("/update/") || url.pathname === "/settings/update-channel") && !updateManager.snapshot().selfUpdatable) return new Response("Updates require Atelier System", { status: 409 });
+    if (url.pathname === "/update/dismiss-error" && request.method === "POST") {
+      updateManager.clearError();
+      return turboStreamResponse(updateSettingsStream(updateManager));
+    }
     if (url.pathname === "/settings/update-channel" && request.method === "POST") {
       const form = await request.formData();
       const channel = form.get("channel");
@@ -396,9 +309,7 @@ export function createUpdateRouteHandler(updateManager: UpdateManager): (request
       await updateManager.setReleaseChannel(channel);
       return turboStreamResponse(updateSettingsStream(updateManager));
     }
-    if (url.pathname === "/update" && request.method === "GET") return Response.redirect(new URL("/", url).toString(), 303);
     if (url.pathname === "/update/start" && request.method === "POST") {
-      if (updateManager.snapshot().compatibilityMismatch) return modalStream(renderInstallerRequiredModal(updateManager));
       try {
         void updateManager.startPull();
       } catch (error) {
@@ -412,11 +323,9 @@ export function createUpdateRouteHandler(updateManager: UpdateManager): (request
       return turboStreamResponse(updateSettingsStream(updateManager, true));
     }
     if (url.pathname === "/update/restart" && request.method === "POST") {
-      if (!wantsTurboStream(request)) return await updateManager.launchUpdater(url);
       try {
-        const response = await updateManager.launchUpdater(url);
-        const location = response.headers.get("location");
-        return location ? turboStreamResponse("", { headers: { location } }) : turboStreamResponse("");
+        await updateManager.restart();
+        return new Response(null, { status: 204, headers: { "x-atelier-reload": "true" } });
       } catch (error) {
         const surface = url.searchParams.get("surface");
         if (surface !== "settings" && surface !== "sidebar") return new Response("Missing update control surface", { status: 400 });

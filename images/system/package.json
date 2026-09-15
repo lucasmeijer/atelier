@@ -1,0 +1,8 @@
+{
+  "name": "atelier-system",
+  "private": true,
+  "type": "module",
+  "dependencies": {
+    "@hotwired/stimulus": "3.2.2"
+  }
+}

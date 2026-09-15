@@ -47,7 +47,7 @@ Project settings has a browser-navigable surface that agents can pass directly t
 /projects/:projectId/settings?section=environment
 ```
 
-Supported sections are `repository`, `secrets`, `ssh-keys`, `environment`, `dockerfile`, and `danger`. Direct navigation renders the complete Atelier shell, opens Project settings, expands configurable sections when selected, and scrolls the selected section into view.
+Supported sections are `repository`, `secrets`, `ssh-keys`, `environment`, `dockerfile`, `preload-images`, and `danger`. Direct navigation renders the complete Atelier shell, opens Project settings, expands configurable sections when selected, and scrolls the selected section into view.
 
 Use `GET /projects` with `Accept: application/json` to discover the project ID before constructing the presentation URL.
 
@@ -96,16 +96,20 @@ done
 
 Existing workspaces are discovered before the server starts listening. Each active
 workspace then runs its startup checklist in the background with phase `starting`.
-Gateway readiness is a checklist step with a 15-second timeout. Failure pauses that
-workspace's startup and presents **Continue without gateway support**. The existing
-`POST /workspaces/:id/provisioning/continue` operation acknowledges this failure.
-Only then does the workspace become `ready`, retaining its gateway warning. Until
-startup completes, the workspace shows its checklist instead of its Agents or Work
-views. Atelier and other workspaces remain available throughout.
+Readiness checks the ingress and egress gateways, parent sockets, and the workspace's
+saved image preload list. Failure retains the container for repair and presents
+**Retry** and **Continue anyway**. Use
+`POST /workspaces/:id/provisioning/continue?action=retry` to retry runtime preparation,
+or omit the query parameter to explicitly bypass the failure. Bypassing makes the
+workspace `ready` while retaining its preparation warning. Until startup completes,
+the workspace shows its checklist instead of its Agents or Work views. Atelier and
+other workspaces remain available throughout.
 
 The list and detail responses include optional `issues` entries with `kind` and
-`message`. Image inspection runs independently at Atelier startup. Gateway checks
-run again when a workspace is unparked or Atelier restarts; continuing does not permanently disable checks.
+`message`. Image inspection runs independently at Atelier startup. Readiness checks
+run again when a workspace resumes or Atelier restarts; bypassing a failure does not
+permanently disable checks. Existing workspaces keep their saved preload references
+when project settings change.
 
 A ready response advertises its `agentConversations`, typed `workViews`, and available `commands` with their `inputSchema`.
 

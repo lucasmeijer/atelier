@@ -312,6 +312,7 @@ export interface WorkspaceServerModuleContext {
   broadcastWorkspace(workspaceId: string, html: string): void;
   deleteCurrentWorkspace(workspaceId: string, force: boolean): Promise<DeleteCurrentWorkspaceResult>;
   registerSocketHandler(handler: WorkspaceServerSocketHandler): void;
+  publishWorkspacePort(workspaceId: string, port: number, protocol?: "http" | "https"): Promise<string>;
   registerWorkspaceAppResolver(resolver: WorkspaceServerAppResolver): void;
   registerProvisioningHook(hook: WorkspaceServerProvisioningHook): void;
   onWorkspaceRemoved(handler: (workspaceId: string) => void | Promise<void>): void;

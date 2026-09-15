@@ -83,7 +83,7 @@ export interface WebAppDeps {
   events?: AtelierEventBus;
   devReload?: boolean;
   /** Create the container + default agent etc. for an already-registered workspace id. */
-  provisionWorkspace(id: string, options?: { init?: WorkspaceInitInstruction; context?: WorkspaceCreationContext; waitForContinue(stepId: string): Promise<void> }): Promise<void>;
+  provisionWorkspace(id: string, options?: { init?: WorkspaceInitInstruction; context?: WorkspaceCreationContext; waitForContinue(stepId: string): Promise<"retry" | void> }): Promise<void>;
   /** Test/embedding override. Production obtains this contribution from the Review module. */
   deletionReview?: WorkspaceDeletionReview;
   /** Force-remove the workspace container. */
@@ -101,7 +101,7 @@ export interface WebApp {
   shellSnapshot(): Promise<string>;
   deleteCurrentWorkspaceFromAgent(workspaceId: string, force: boolean): Promise<DeleteCurrentWorkspaceResult>;
   resumeWorkspaceDeletions(): void;
-  waitForWorkspaceStartupContinue(id: string, stepId: string): Promise<void>;
+  waitForWorkspaceStartupContinue(id: string, stepId: string): Promise<"retry" | void>;
   createWorkView(workspaceId: string, reference: WorkspaceWorkViewReference): Promise<void>;
   presentWorkViewFromAgent(workspaceId: string, reference: WorkspaceWorkViewReference): Promise<void>;
   globalSidebarContributions: GlobalSidebarContributionRegistry;
@@ -174,7 +174,7 @@ export function createWebApp(deps: WebAppDeps): WebApp {
   });
 
   const provisioning = createWorkspaceProvisioningStore({ onChange: (workspaceId) => broadcastWorkspaceBoot(workspaceId), seedSteps: deps.provisioningHooks });
-  const provisioningContinuations = new Map<string, { stepId: string; resolve(): void }>();
+  const provisioningContinuations = new Map<string, { stepId: string; resolve(action?: "retry"): void }>();
   const workspaceCommandModalHostId = "workspace_command_modal_host";
   const launchComposerFrameId = "launch_composer";
   // Every server-rendered LaunchComposer has one attachment draft ID. Retried POSTs
@@ -668,7 +668,7 @@ export function createWebApp(deps: WebAppDeps): WebApp {
   // Create / delete
   // ---------------------------------------------------------------------------
 
-  function waitForProvisioningContinue(workspaceId: string, stepId: string): Promise<void> {
+  function waitForProvisioningContinue(workspaceId: string, stepId: string): Promise<"retry" | void> {
     if (provisioningContinuations.has(workspaceId)) throw new Error(`workspace ${workspaceId} is already waiting for provisioning confirmation`);
     return new Promise((resolve) => {
       provisioningContinuations.set(workspaceId, { stepId, resolve });
@@ -873,8 +873,11 @@ export function createWebApp(deps: WebAppDeps): WebApp {
     const entry = requireWorkspace(id);
     const pending = provisioningContinuations.get(id);
     if (entry.phase !== "starting" || !pending) throw new AtelierCoreError("workspace_not_ready", `workspace ${id} is not waiting for provisioning confirmation`);
+    const action = new URL(request.url).searchParams.get("action");
+    if (action !== null && action !== "retry") throw invalidArguments("Unknown provisioning action");
+    if (action === "retry" && pending.stepId !== "workspace.startup") throw invalidArguments("This step does not support retry");
     provisioningContinuations.delete(id);
-    pending.resolve();
+    pending.resolve(action === "retry" ? "retry" : undefined);
     broadcastWorkspacePaneCollections();
     if (requestAcceptsJson(request)) return jsonResponse({ continued: true, stepId: pending.stepId });
     return turboStreamResponse("");

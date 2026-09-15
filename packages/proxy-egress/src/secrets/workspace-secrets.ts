@@ -64,7 +64,7 @@ export function forgetWorkspaceSecretContext(workspaceId: string): void {
 function buildContext(workspaceId: string, secrets: Record<string, SecretDefinition>): WorkspaceSecretContext {
   const hooks = createHttpHooks({
     allowedHosts: ["*"],
-    blockInternalRanges: false,
+    blockInternalRanges: true,
     replaceSecretsInPath: true,
     replaceSecretsInQuery: false,
     secrets,

@@ -1,4 +1,5 @@
-import { recoverWorkspaces, startWorkspaceGateway } from "./workspace-recovery.ts";
+import { ensureDefaultWorkspaceImage } from "@atelier/workspace-image";
+import { recoverWorkspaces, prepareWorkspaceForUse } from "./workspace-recovery.ts";
 import { designSystemCatalogueHtml } from "@atelier/design-system/catalogue";
 import { configureAgentDelegation } from "@atelier/agent/server";
 import { subagentsDelegation } from "@atelier/subagents/server";
@@ -10,16 +11,16 @@ import { Type } from "typebox";
 import { Value } from "typebox/value";
 import { createAtelierEventBus, getAtelierRuntimeContext } from "@atelier/core";
 import { attachHostObservableTerminal, observableTerminalCols, observableTerminalRows, type ObservableTerminalConnection } from "@atelier/observable-terminal/server";
-import { checkWorkspaceGateway, workspaceImageOutdated, createWorkspace, deleteWorkspace, isWorkspaceRunning, listWorkspaces, resolveWorkspace, runWorkspaceProvisioningHooks, setWorkspaceParked, setWorkspaceContainerRunning, workspaceSetupProvisioningHook, type WorkspaceProvisionStepEvent } from "@atelier/workspace";
+import { checkWorkspaceReadiness, workspacePortBackend, workspaceImageOutdated, createWorkspace, deleteWorkspace, isWorkspaceRunning, listWorkspaces, resolveWorkspace, runWorkspaceProvisioningHooks, setWorkspaceParked, setWorkspaceContainerRunning, workspaceSetupProvisioningHook, type WorkspaceProvisionStepEvent } from "@atelier/workspace";
 import { atelierName, CableTopics, escapeHtml, type WorkspaceAppBackend, type WorkspaceAppRef, type WorkspaceServerAppResolver, type WorkspaceServerProvisioningHook, type WorkspaceServerSocketHandler, type WorkspaceServerSocketSession } from "@atelier/shared";
 import {
   createFileOriginIdentityStore,
-  createTailscaleOriginPublisher,
+  detectParentOriginPublisher,
+  createWorkspaceIngressSockets,
   createWorkspaceIngress,
   publicOriginPortRangeFromEnv,
   publicWorkspaceAppOrigin,
   StoppedWorkspaceError,
-  type OriginPublisher,
 } from "@atelier/proxy-ingress/server";
 import { createWebApp, type WebApp } from "./app.ts";
 import { parseAssetManifest } from "./asset-manifest.ts";
@@ -205,16 +206,7 @@ const runtimeContext = getAtelierRuntimeContext();
 
 const publicOriginPortRange = publicOriginPortRangeFromEnv();
 
-function createOriginPublisher(): OriginPublisher | undefined {
-  if (process.env.ATELIER_TAILSCALE_SERVE !== "1") return undefined;
-  const publicUrl = process.env.ATELIER_PUBLIC_URL;
-  if (!publicUrl) throw new Error("ATELIER_TAILSCALE_SERVE=1 requires ATELIER_PUBLIC_URL");
-  const url = new URL(publicUrl);
-  if (url.protocol !== "https:") throw new Error("ATELIER_TAILSCALE_SERVE=1 requires an https ATELIER_PUBLIC_URL");
-  return createTailscaleOriginPublisher({ host: url.hostname, portRange: publicOriginPortRange });
-}
-
-const originPublisher = createOriginPublisher();
+const parentOriginPublisher = await detectParentOriginPublisher(publicOriginPortRange);
 
 const registry = createWorkspaceRegistry({
   activityStore: createFileWorkspaceActivityStore(join(runtimeContext.atelierDataDir, "view-state", "workspace-activity.json")),
@@ -224,7 +216,7 @@ const registry = createWorkspaceRegistry({
 let app: WebApp;
 const workspaceStartupOperations = {
   setRunning: setWorkspaceContainerRunning,
-  checkGateway: checkWorkspaceGateway,
+  checkReadiness: checkWorkspaceReadiness,
   imageOutdated: (id: string) => workspaceImageOutdated(id, undefined, atelierEvents),
   waitForContinue: (id: string, stepId: string) => app.waitForWorkspaceStartupContinue(id, stepId),
   step: (event: WorkspaceProvisionStepEvent) => atelierEvents.emit("workspace_provision_step", event),
@@ -241,9 +233,7 @@ app = createWebApp({
   async provisionWorkspace(id, options) {
     const created = await createWorkspace({ id, events: atelierEvents, init: options?.init, context: options?.context, waitForContinue: options?.waitForContinue });
     if (created.startupError) {
-      registry.setIssue(id, "gateway", `${created.startupError} Continued despite startup failure; gateway-dependent features may be unavailable.`);
-    } else {
-      await startWorkspaceGateway(id, registry, workspaceStartupOperations);
+      registry.setIssue(id, "readiness", `${created.startupError} Continued despite preparation failure; required images or gateways may be unavailable.`);
     }
     await runWorkspaceProvisioningHooks(provisioningHooks, { workspaceId: id, creationContext: options?.context, events: atelierEvents, waitForContinue: options?.waitForContinue });
     await atelierEvents.emit("workspace_provision_step", { workspaceId: id, id: "workspace.integrations", label: "Run workspace startup integrations", status: "running" });
@@ -258,7 +248,6 @@ app = createWebApp({
     }
   },
   destroyWorkspace: async (id) => {
-    await workspaceIngress.stopWorkspace(id);
     await deleteWorkspace(id, { force: true, events: atelierEvents });
   },
 });
@@ -279,6 +268,7 @@ for (const module of workspaceModules) {
     broadcastWorkspace: (workspaceId, html) => cableServer.broadcast(CableTopics.workspace(workspaceId), html),
     deleteCurrentWorkspace: (workspaceId, force) => app.deleteCurrentWorkspaceFromAgent(workspaceId, force),
     registerSocketHandler: (handler) => socketHandlers.push(handler),
+    publishWorkspacePort: (workspaceId, port, protocol) => workspaceIngress.publishPort(workspaceId, port, protocol),
     registerWorkspaceAppResolver: (resolver) => workspaceAppResolvers.push(resolver),
     registerProvisioningHook: (hook) => provisioningHooks.push(hook),
     onWorkspaceRemoved: (handler) => workspaceRemovedHandlers.push(handler),
@@ -373,24 +363,29 @@ async function resolveWorkspaceApp(app: WorkspaceAppRef, requestUrl: URL): Promi
 }
 
 const workspaceIngress = createWorkspaceIngress({
-  hostname,
+  hostname: "127.0.0.1",
   resolveWorkspace: async (workspaceId) => {
     await resolveWorkspace(workspaceId);
     if (!await isWorkspaceRunning(workspaceId)) throw new StoppedWorkspaceError(workspaceId);
   },
   resolveApp: resolveWorkspaceApp,
   originPortRange: publicOriginPortRange,
-  originPublisher,
+  parentOriginPublisher,
+  resolvePort: (id, port, protocol, url) => workspacePortBackend(id, port, url.pathname + url.search, `${protocol}:`),
   originIdentityStore: createFileOriginIdentityStore(),
 });
 
-async function handleCanonicalProxyRequest(url: URL, request: Request): Promise<Response | undefined> {
+const ingressSockets = createWorkspaceIngressSockets(workspaceIngress, join(runtimeContext.atelierDataDir, "workspace-sockets"));
+atelierEvents.on("workspace_plan_prepare", ({ workspaceId }) => ingressSockets.ensure(workspaceId));
+atelierEvents.on("workspace_deleted", ({ workspaceId }) => ingressSockets.remove(workspaceId));
+
+async function handleCanonicalProxyRequest(url: URL): Promise<Response | undefined> {
   const appMatch = url.pathname.match(/^\/workspaces\/([^/]+)\/apps\/([^/]+)(\/.*)?$/);
   if (appMatch) {
     const workspaceId = decodeURIComponent(appMatch[1] ?? "");
     const appKey = decodeURIComponent(appMatch[2] ?? "");
     const path = `${appMatch[3] || "/"}${url.search}`;
-    return await workspaceIngress.openCanonical({ workspaceId, appKey }, path, request);
+    return await workspaceIngress.openCanonical({ workspaceId, appKey }, path);
   }
 
   const portMatch = url.pathname.match(/^\/workspaces\/([^/]+)\/ports\/(\d+)(\/.*)?$/);
@@ -398,14 +393,14 @@ async function handleCanonicalProxyRequest(url: URL, request: Request): Promise<
     const workspaceId = decodeURIComponent(portMatch[1] ?? "");
     const port = Number(portMatch[2]);
     const path = `${portMatch[3] || "/"}${url.search}`;
-    return await workspaceIngress.openCanonical({ workspaceId, appKey: `port-${port}` }, path, request);
+    return await workspaceIngress.openCanonical({ workspaceId, appKey: `port-${port}` }, path);
   }
 
   const fileMatch = url.pathname.match(/^\/workspaces\/([^/]+)\/files(\/.*)$/);
   if (fileMatch) {
     const workspaceId = decodeURIComponent(fileMatch[1] ?? "");
     const path = `${decodeURIComponent(fileMatch[2] ?? "/")}${url.search}`;
-    return await workspaceIngress.openCanonical({ workspaceId, appKey: "file" }, path, request);
+    return await workspaceIngress.openCanonical({ workspaceId, appKey: "file" }, path);
   }
 
   return undefined;
@@ -453,6 +448,8 @@ function closeProvisionTermSocket(data: ProvisionTermSocketData): void {
   data.terminal?.close();
 }
 
+await ensureDefaultWorkspaceImage({ buildOutput: "inherit" });
+for (const workspace of persistedWorkspaces) await ingressSockets.ensure(workspace.id);
 await workspaceIngress.initialize();
 const maxPortAttempts = allowPortFallback ? 100 : 1;
 let serverPort = 0;
@@ -469,7 +466,7 @@ for (let attempt = 0; attempt < maxPortAttempts; attempt++) {
       idleTimeout: 255,
       async fetch(request, server) {
         const url = new URL(request.url);
-        const canonical = await handleCanonicalProxyRequest(url, request);
+        const canonical = await handleCanonicalProxyRequest(url);
         if (canonical) return canonical;
 
         const auth = await authResponse(request);
@@ -533,7 +530,7 @@ void recoverWorkspaces(registry, workspaceStartupOperations).catch((error) => co
 function resumeWorkspace(id: string): void {
   const entry = registry.get(id);
   if (!entry) return;
-  void startWorkspaceGateway(id, registry, workspaceStartupOperations).then(() => {
+  void prepareWorkspaceForUse(id, registry, workspaceStartupOperations).then(() => {
     if (registry.get(id) === entry && !entry.deletion && !entry.parked) registry.setPhase(id, "ready");
   }).catch((error) => console.error(`Workspace startup failed for ${id}`, error));
 }

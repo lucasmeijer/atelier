@@ -1,123 +1,88 @@
 import { mkdir, readFile, rename, writeFile } from "node:fs/promises";
 import { dirname } from "node:path";
-import { atelierDataPath, createProcessFileLock, getAtelierRuntimeContext, isJsonObject } from "@atelier/core";
+import { atelierDataPath, getAtelierRuntimeContext } from "@atelier/core";
 import type { WorkspaceAppRef } from "@atelier/shared";
 import type { PortRange } from "./tailscale-serve.ts";
 
-export interface OriginAssignment {
-  port: number;
-  fresh: boolean;
-}
-
+export interface OriginAssignment { port: number; fresh: boolean }
+export interface RetainedOrigin { app: WorkspaceAppRef; port: number; protocol: "http" | "https" }
 export interface OriginIdentityStore {
-  assignedPort(app: WorkspaceAppRef, scope: "public" | "nested", range: PortRange): Promise<OriginAssignment>;
-  rejectFreshPort(app: WorkspaceAppRef, scope: "public" | "nested", port: number): Promise<void>;
+  assignedPort(app: WorkspaceAppRef, range: PortRange, protocol?: "http" | "https"): Promise<OriginAssignment>;
+  rejectFreshPort(app: WorkspaceAppRef, port: number): Promise<void>;
+  list(): Promise<RetainedOrigin[]>;
+  removeWorkspace(workspaceId: string): Promise<void>;
 }
+interface State { version: 2; assignments: RetainedOrigin[]; retiredPorts: number[] }
+const empty = (): State => ({ version: 2, assignments: [], retiredPorts: [] });
+const same = (a: WorkspaceAppRef, b: WorkspaceAppRef) => a.workspaceId === b.workspaceId && a.appKey === b.appKey;
 
-interface OriginIdentityState {
-  version: 1;
-  assignments: Record<string, number>;
-  retiredPorts: number[];
-}
-
-const withOriginIdentityLock = createProcessFileLock({
-  label: "workspace ingress origin identity",
-  lockDir: () => atelierDataPath(getAtelierRuntimeContext(), "proxy", "origin-identities.lock"),
-});
-
-function statePath(): string {
-  return atelierDataPath(getAtelierRuntimeContext(), "proxy", "origin-identities.json");
-}
-
-function emptyState(): OriginIdentityState {
-  return { version: 1, assignments: {}, retiredPorts: [] };
-}
-
-async function readState(): Promise<OriginIdentityState> {
-  try {
-    const parsed: unknown = JSON.parse(await readFile(statePath(), "utf8"));
-    if (!isJsonObject(parsed) || parsed.version !== 1 || !isJsonObject(parsed.assignments) || !Array.isArray(parsed.retiredPorts)) throw new Error("invalid workspace ingress origin identity state");
-    const assignments: Record<string, number> = {};
-    for (const [key, value] of Object.entries(parsed.assignments)) {
-      if (!Number.isInteger(value)) throw new Error(`invalid workspace ingress origin assignment: ${key}`);
-      // SAFETY: Number.isInteger establishes the persisted assignment's numeric domain shape.
-      assignments[key] = value as number;
-    }
-    const retiredPorts = parsed.retiredPorts.map(Number);
-    if (!retiredPorts.every(Number.isInteger)) throw new Error("invalid retired workspace ingress origin port");
-    return { version: 1, assignments, retiredPorts };
-  } catch (error) {
-    if (error instanceof Error && "code" in error && error.code === "ENOENT") return emptyState();
-    throw error;
-  }
-}
-
-async function writeState(state: OriginIdentityState): Promise<void> {
-  const path = statePath();
-  await mkdir(dirname(path), { recursive: true });
-  const temporary = `${path}.${process.pid}.${crypto.randomUUID()}.tmp`;
-  await writeFile(temporary, `${JSON.stringify(state, null, 2)}\n`);
-  await rename(temporary, path);
-}
-
-function assignmentKey(app: WorkspaceAppRef, scope: "public" | "nested"): string {
-  return `${scope}\0${app.workspaceId}\0${app.appKey}`;
-}
-
-export function createFileOriginIdentityStore(): OriginIdentityStore {
+function store(read: () => Promise<State>, write: (state: State) => Promise<void>, lock: <T>(fn: () => Promise<T>) => Promise<T>): OriginIdentityStore {
   return {
-    async assignedPort(app, scope, range) {
-      return await withOriginIdentityLock(async () => {
-        const state = await readState();
-        const key = assignmentKey(app, scope);
-        const existing = state.assignments[key];
-        if (existing !== undefined) {
-          if (existing < range.start || existing > range.end) throw new Error(`Retained browser origin ${existing} for ${app.appKey} is outside the configured range ${range.start}-${range.end}`);
-          return { port: existing, fresh: false };
-        }
-
-        const unavailable = new Set([...Object.values(state.assignments), ...state.retiredPorts]);
-        for (let port = range.start; port <= range.end; port += 1) {
-          if (unavailable.has(port)) continue;
-          state.assignments[key] = port;
-          await writeState(state);
-          return { port, fresh: true };
-        }
-        throw new Error(`Workspace ingress origin capacity exhausted in range ${range.start}-${range.end}; enlarge the managed origin range`);
-      });
-    },
-    async rejectFreshPort(app, scope, port) {
-      await withOriginIdentityLock(async () => {
-        const state = await readState();
-        const key = assignmentKey(app, scope);
-        if (state.assignments[key] !== port) return;
-        delete state.assignments[key];
-        if (!state.retiredPorts.includes(port)) state.retiredPorts.push(port);
-        await writeState(state);
-      });
-    },
+    assignedPort(app, range, protocol = "http") { return lock(async () => {
+      const state = await read();
+      const existing = state.assignments.find((entry) => same(entry.app, app));
+      if (existing) {
+        if (existing.protocol !== protocol) throw new Error("This workspace port is already published with a different protocol");
+        if (existing.port < range.start || existing.port > range.end) throw new Error(`Retained browser origin ${existing.port} is outside the configured range`);
+        return { port: existing.port, fresh: false };
+      }
+      const used = new Set([...state.assignments.map((entry) => entry.port), ...state.retiredPorts]);
+      for (let port = range.start; port <= range.end; port++) {
+        if (used.has(port)) continue;
+        state.assignments.push({ app, port, protocol });
+        await write(state);
+        return { port, fresh: true };
+      }
+      throw new Error(`Workspace ingress origin capacity exhausted in range ${range.start}-${range.end}`);
+    }); },
+    rejectFreshPort(app, port) { return lock(async () => {
+      const state = await read();
+      state.assignments = state.assignments.filter((entry) => !(same(entry.app, app) && entry.port === port));
+      if (!state.retiredPorts.includes(port)) state.retiredPorts.push(port);
+      await write(state);
+    }); },
+    list() { return lock(async () => (await read()).assignments); },
+    removeWorkspace(workspaceId) { return lock(async () => {
+      const state = await read();
+      for (const entry of state.assignments.filter((entry) => entry.app.workspaceId === workspaceId)) state.retiredPorts.push(entry.port);
+      state.assignments = state.assignments.filter((entry) => entry.app.workspaceId !== workspaceId);
+      await write(state);
+    }); },
   };
 }
 
+export function createFileOriginIdentityStore(path = atelierDataPath(getAtelierRuntimeContext(), "proxy", "origin-identities.json")): OriginIdentityStore {
+  const lock = serialize();
+  return store(async () => {
+    let text: string;
+    try { text = await readFile(path, "utf8"); }
+    catch (error) { if ((error as NodeJS.ErrnoException).code === "ENOENT") return empty(); throw error; }
+    const state = JSON.parse(text) as State;
+    if (state.version !== 2 || !Array.isArray(state.assignments) || !Array.isArray(state.retiredPorts)) throw new Error("Invalid ingress origin state");
+    for (const entry of state.assignments) {
+      if (!entry.app || typeof entry.app.workspaceId !== "string" || typeof entry.app.appKey !== "string" || !Number.isInteger(entry.port) || entry.port < 1 || entry.port > 65535 || !["http", "https"].includes(entry.protocol)) throw new Error("Invalid ingress origin assignment");
+    }
+    return state;
+  }, async (state) => {
+    await mkdir(dirname(path), { recursive: true });
+    const temporary = `${path}.${crypto.randomUUID()}.tmp`;
+    await writeFile(temporary, JSON.stringify(state));
+    await rename(temporary, path);
+  }, lock);
+}
+
 export function createMemoryOriginIdentityStore(): OriginIdentityStore {
-  const assignments = new Map<string, number>();
-  const used = new Set<number>();
-  return {
-    async assignedPort(app, scope, range) {
-      const key = assignmentKey(app, scope);
-      const existing = assignments.get(key);
-      if (existing !== undefined) return { port: existing, fresh: false };
-      for (let port = range.start; port <= range.end; port += 1) {
-        if (used.has(port)) continue;
-        assignments.set(key, port);
-        used.add(port);
-        return { port, fresh: true };
-      }
-      throw new Error(`Workspace ingress origin capacity exhausted in range ${range.start}-${range.end}; enlarge the managed origin range`);
-    },
-    async rejectFreshPort(app, scope, port) {
-      const key = assignmentKey(app, scope);
-      if (assignments.get(key) === port) assignments.delete(key);
-    },
+  let state = empty();
+  return store(async () => state, async (next) => { state = next; }, serialize());
+}
+
+// The app process owns this file. Atomic rename protects restarts; an on-disk
+// lock would outlive a killed app and prevent its replacement from restoring.
+function serialize() {
+  let pending = Promise.resolve();
+  return <T>(fn: () => Promise<T>): Promise<T> => {
+    const next = pending.then(fn);
+    pending = next.then(() => {}, () => {});
+    return next;
   };
 }
