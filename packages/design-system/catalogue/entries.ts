@@ -442,13 +442,14 @@ export const entries: CatalogueEntry[] = [
     id: "destructive-confirmation",
     compareButtonSizes: true,
     title: "Destructive confirmation",
-    when: "An inline two-step destructive form action. Use Dialog for explanations or additional input.",
+    when: "A two-step destructive form action with an in-place opt-out and an adjacent confirmation button. Use Dialog for explanations or additional input.",
     contract:
-      "Place inside a form. Initial button arms; confirm submits (optionally overriding the action); cancel disarms. This demo intercepts submission and announces the result.",
+      "Place inside a form. The trigger becomes Cancel, keeping its original size as a minimum and growing for a longer caption. This growth may nudge neighbors; use short cancel captions. Only the confirm button stays out of layout. The bare confirm button prefers the nearest container that fits both controls, then the viewport. It follows scrolling/resizing and dismisses when the trigger leaves view. Its 220ms entrance is inert and respects reduced motion. Focus stays on Cancel. Escape, outside click, or Cancel dismisses; confirm submits natively, with an optional action override. Demos intercept submission.",
     imports: { "destructive-confirmation": "destructiveConfirmationHtml" },
+    sources: ["destructive-confirmation/destructive-confirmation-controller.ts", "popup/popup-position.ts"],
     examples: [
       {
-        title: "Arm · cancel · confirm (safe demo)",
+        title: "In-place opt-out · adjacent confirm (safe demo)",
         render: () =>
           '<form data-action="submit->catalogue#submit">' +
           destructiveConfirmationHtml({
@@ -461,6 +462,24 @@ export const entries: CatalogueEntry[] = [
             cancelCaption: "Keep record",
           }) +
           '<output aria-live="polite"></output></form>',
+      },
+      {
+        title: "Clipped toolbar · icon opt-out stays compact",
+        render: () => '<form data-action="submit->catalogue#submit"><div style="display:flex; align-items:center; gap:8px; overflow:hidden; height:64px; border:1px solid var(--line)"><span>Workspace</span>' +
+          destructiveConfirmationHtml({
+            trigger: { type: "button", variant: "danger", content: { kind: "icon-only", iconHtml: Icons.Close, label: "Delete workspace" } },
+            confirmCaption: "Delete workspace permanently",
+            cancelCaption: "Keep workspace",
+          }) + '<span>Neighbor stays here</span></div><output aria-live="polite"></output></form>',
+      },
+      {
+        title: "A longer opt-out can grow",
+        render: () => '<form data-action="submit->catalogue#submit"><div style="display:flex; align-items:center; gap:8px">' +
+          destructiveConfirmationHtml({
+            trigger: { type: "button", variant: "danger", content: { kind: "caption", caption: "Delete" } },
+            confirmCaption: "Confirm deletion",
+            cancelCaption: "Keep record",
+          }) + '<span>Neighbor may move slightly</span></div><output aria-live="polite"></output></form>',
       },
     ],
   },

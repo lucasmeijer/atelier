@@ -1,9 +1,14 @@
-/* Confirmation is an inline form composition, never a caller-sized overlay. */
+/* The original content is a sizing floor; a longer opt-out can grow the button. */
 .destructive-confirmation { display: inline-flex; min-width: 0; max-width: 100%; align-items: center; }
-.destructive-confirmation__decision { display: flex; flex-wrap: wrap; align-items: center; gap: 8px; }
-.destructive-confirmation__trigger[inert],
-.destructive-confirmation__decision[inert] { display: none; }
-.action-item__actions--engaged:has(.destructive-confirmation[data-destructive-confirmation-state="confirming"]) {
+.destructive-confirmation__trigger { display: inline-grid; }
+.destructive-confirmation__trigger > * { grid-area: 1 / 1; }
+.destructive-confirmation__cancel { display: none; align-items: center; justify-content: center; }
+.destructive-confirmation__trigger[aria-expanded="true"] > :first-child { visibility: hidden; }
+.destructive-confirmation__trigger[aria-expanded="true"] .destructive-confirmation__cancel { display: flex; }
+/* Reset the native popover's panel paint; PopupPosition owns its viewport bounds. */
+.destructive-confirmation__confirm { position: fixed; inset: auto; width: max-content; height: auto; box-sizing: border-box; margin: 0; padding: 0; border: 0; background: transparent; overflow: auto; }
+.destructive-confirmation__confirm .button { min-width: 0; max-width: 100%; height: auto; white-space: normal; overflow-wrap: anywhere; }
+.action-item__actions--engaged:has(.destructive-confirmation > :popover-open) {
   opacity: 1;
   pointer-events: auto;
 }

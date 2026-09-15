@@ -16,12 +16,12 @@ export const atelierClientModule: WorkspaceClientModule = {
       async submit(event: SubmitEvent): Promise<void> {
         event.preventDefault();
         const action = new URL(this.element.action, window.location.href);
-        const submit = this.element.querySelector<HTMLButtonElement>("[data-destructive-confirmation-action]")!;
-        const cancel = this.element.querySelector<HTMLButtonElement>("[data-destructive-confirmation-cancel]")!;
+        // SAFETY: This form is submitted by its native confirmation button.
+        const submit = event.submitter as HTMLButtonElement;
+        const buttons = this.element.querySelectorAll<HTMLButtonElement>("button");
         this.errorTarget.hidden = true;
         submit.setAttribute("aria-busy", "true");
-        submit.disabled = true;
-        cancel.disabled = true;
+        for (const button of buttons) button.disabled = true;
 
         try {
           const response = await fetch(action, { method: "POST", headers: { Accept: "text/vnd.turbo-stream.html" }, credentials: "same-origin" });
@@ -35,8 +35,7 @@ export const atelierClientModule: WorkspaceClientModule = {
           this.errorTarget.textContent = `Could not request the update: ${error instanceof Error ? error.message : String(error)}`;
           this.errorTarget.hidden = false;
           submit.removeAttribute("aria-busy");
-          submit.disabled = false;
-          cancel.disabled = false;
+          for (const button of buttons) button.disabled = false;
         }
       }
     }
