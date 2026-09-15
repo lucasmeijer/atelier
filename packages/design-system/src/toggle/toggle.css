@@ -110,6 +110,13 @@
 }
 .button-toggle:not([data-toggle-ready])::before { content: none; }
 .button-toggle[data-toggle-ready] .button-toggle__option[aria-pressed="true"] { background: transparent; border-color: transparent; box-shadow: none; }
+/* Keep engagement independent of selection so clicking does not erase the hover
+   surface while the active pill is still arriving. */
+.button-toggle[data-toggle-ready] .button-toggle__option:not(:disabled):hover,
+.button-toggle[data-toggle-ready] .button-toggle__option:not(:disabled):focus-visible {
+  border-color: color-mix(in srgb, var(--accent) 48%, var(--line));
+  background: color-mix(in srgb, var(--accent) 7%, transparent);
+}
 @media (prefers-reduced-motion: no-preference) {
   .button-toggle[data-toggle-ready]::before,
   .text-toggle[data-toggle-ready]::after { transition: inset-inline-start var(--motion-enter) var(--motion-ease-out), width var(--motion-enter) var(--motion-ease-out); }

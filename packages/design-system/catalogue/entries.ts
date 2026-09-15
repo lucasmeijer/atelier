@@ -728,7 +728,7 @@ export const entries: CatalogueEntry[] = [
     sources: ["toggle/toggle-controller.ts"],
     examples: [
       {
-        title: "Button · disabled option",
+        title: "Button · persistent hover · disabled option",
         render: () =>
           toggleHtml({
             variant: "button",
