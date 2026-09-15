@@ -835,7 +835,7 @@ export abstract class BaseAgentRuntime implements WorkspaceAgentRuntime {
 
   async detailHtml(key: string, count = 100): Promise<string> {
     this.assertActive();
-    if (key === "model-context") return renderModelContextDetailFrame(this.ctx, this.modelContext());
+    if (key === "system-prompt" || key === "tool-definitions") return renderModelContextDetailFrame(this.ctx, this.modelContext(), key);
     const item = findTranscriptItem(this.itemsForDisplay(), key);
     return item ? renderTranscriptItemDetailFrame(this.ctx, item, { count }) : "";
   }

@@ -4,7 +4,7 @@ import { thinkingBlockRendererFor } from "./thinking-block-renderers.ts";
 import { formatDuration, formatTokens, type TranscriptItem, type WorkingTranscriptItem } from "./transcript.ts";
 import { ids, sessionImageUrl, transcriptItemPath, type AgentRenderContext } from "./render-context.ts";
 import { codeBlockHtml, detailFullscreen, fullscreenAttributes, markdown, renderMarkdownRow, transcriptActionItemHtml, transcriptRow } from "./render-markup.ts";
-import { renderToolCard, renderToolDetail, statusHtml, tailFrameAttributes } from "./render-tool.ts";
+import { renderToolCard, renderToolDetail } from "./render-tool.ts";
 
 export interface AgentToolDefinitionView {
   name: string;
@@ -18,28 +18,28 @@ export interface AgentModelContextView {
   tools: AgentToolDefinitionView[];
 }
 
-function lazyTranscriptItemFrame(ctx: AgentRenderContext, key: string, tail = false): string {
-  const attributes = tail ? tailFrameAttributes(ctx, key) : `id="${ids.detailFrame(ctx, key)}"`;
-  return `<turbo-frame ${attributes} data-agent-lazy-detail-target="frame" data-src="${escapeHtml(transcriptItemPath(ctx, key))}"></turbo-frame>`;
-}
-
 export function renderTranscript(ctx: AgentRenderContext, items: TranscriptItem[], modelContext: AgentModelContextView): string {
-  return `${renderModelContextCard(ctx, modelContext)}${items.map((item) => renderTranscriptItem(ctx, item)).join("")}<div class="agent-notices" id="${ids.notices(ctx)}"></div>`;
+  return `${renderModelContextEntries(ctx, modelContext)}${items.map((item) => renderTranscriptItem(ctx, item)).join("")}<div class="agent-notices" id="${ids.notices(ctx)}"></div>`;
 }
 
-function renderModelContextCard(ctx: AgentRenderContext, modelContext: AgentModelContextView): string {
-  const prompt = modelContext.systemPrompt.trim();
-  const tools = modelContext.tools;
-  if (!prompt && tools.length === 0) return "";
-  const meta = [prompt ? "system-prompt.md" : undefined, tools.length ? `tools.json (${tools.length})` : undefined].filter(Boolean).join(" · ");
-  const label = `model_context · ${meta}`;
-  return transcriptRow(`<details class="agent-tool tool-model-context" data-agent-historical-detail data-controller="agent-lazy-detail" data-action="toggle->agent-lazy-detail#load">${transcriptActionItemHtml({ kind: "text", text: label }, { disclosure: true, leadingHtml: statusHtml("ok") })}${lazyTranscriptItemFrame(ctx, "model-context", true)}</details>`);
+function renderModelContextEntries(ctx: AgentRenderContext, modelContext: AgentModelContextView): string {
+  const prompt = modelContext.systemPrompt.trim()
+    ? renderLazyTranscriptEntry(ctx, "system-prompt", "System prompt") : "";
+  const tools = modelContext.tools.length
+    ? renderLazyTranscriptEntry(ctx, "tool-definitions", "Tool definitions") : "";
+  return `${prompt}${tools}`;
 }
 
-export function renderModelContextDetailFrame(ctx: AgentRenderContext, modelContext: AgentModelContextView): string {
-  const prompt = modelContext.systemPrompt.trim();
-  const blocks = [prompt ? codeBlockHtml(prompt, "system-prompt.md") : "", modelContext.tools.length ? codeBlockHtml(JSON.stringify(modelContext.tools, null, 2), "tools.json") : ""].filter(Boolean).join("");
-  return `<turbo-frame id="${ids.detailFrame(ctx, "model-context")}"><div class="agent-tool-detail">${detailFullscreen("Model context", blocks)}</div></turbo-frame>`;
+function renderLazyTranscriptEntry(ctx: AgentRenderContext, key: string, label: string): string {
+  const frame = `<turbo-frame id="${ids.detailFrame(ctx, key)}" data-agent-lazy-detail-target="frame" data-src="${escapeHtml(transcriptItemPath(ctx, key))}"></turbo-frame>`;
+  return transcriptRow(`<details data-controller="agent-lazy-detail" data-action="toggle->agent-lazy-detail#load">${transcriptActionItemHtml({ kind: "text", text: label }, { disclosure: true })}${frame}</details>`);
+}
+
+export function renderModelContextDetailFrame(ctx: AgentRenderContext, modelContext: AgentModelContextView, key: "system-prompt" | "tool-definitions"): string {
+  const content = key === "system-prompt"
+    ? renderMarkdownRow(ctx, modelContext.systemPrompt, "markdown agent-itext-md")
+    : `<div class="agent-tool-detail">${detailFullscreen("Tool definitions", codeBlockHtml(JSON.stringify(modelContext.tools, null, 2), "tools.json"))}</div>`;
+  return `<turbo-frame id="${ids.detailFrame(ctx, key)}">${content}</turbo-frame>`;
 }
 
 function renderUserMessage(ctx: AgentRenderContext, user: Extract<TranscriptItem, { type: "user" }>): string {
@@ -59,7 +59,7 @@ export function renderTranscriptItem(ctx: AgentRenderContext, item: TranscriptIt
   let body = "";
   if (item.type === "inherited-context") {
     const label = `Inherited context from ${item.source} · ${item.messageCount} ${item.messageCount === 1 ? "message" : "messages"} · filtered`;
-    body = transcriptRow(`<details data-controller="agent-lazy-detail" data-action="toggle->agent-lazy-detail#load">${transcriptActionItemHtml({ kind: "text", text: label }, { disclosure: true })}${lazyTranscriptItemFrame(ctx, item.key)}</details>`);
+    body = renderLazyTranscriptEntry(ctx, item.key, label);
   } else if (item.type === "user") body = renderUserMessage(ctx, item);
   else if (item.type === "thinking") body = renderThinkingItem(ctx, item);
   else if (item.type === "text") {

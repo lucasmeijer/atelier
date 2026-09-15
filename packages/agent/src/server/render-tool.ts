@@ -106,7 +106,7 @@ export function renderActiveToolContent(ctx: AgentRenderContext, key: string, or
   };
 }
 
-export function tailFrameAttributes(ctx: AgentRenderContext, key: string): string {
+function tailFrameAttributes(ctx: AgentRenderContext, key: string): string {
   return `id="${ids.detailFrame(ctx, key)}" data-controller="agent-tail-frame" data-action="turbo:frame-load->agent-tail-frame#loaded"`;
 }
 
@@ -129,7 +129,7 @@ export function renderToolCard(ctx: AgentRenderContext, key: string, original: T
   const summaryHtml = transcriptActionItemHtml(label, { ...labelOptions, disclosure: true });
   const open = Boolean(options.open || active);
   if (!options.live && !active && !options.open) {
-    return `<details class="agent-tool ${toolClass(tool.name)}${tool.status === "error" ? " error" : ""}" data-agent-historical-detail data-controller="agent-lazy-detail" data-action="toggle->agent-lazy-detail#load">${summaryHtml}${lazyTranscriptItemFrame(ctx, key)}</details>`;
+    return `<details class="agent-tool ${toolClass(tool.name)}${tool.status === "error" ? " error" : ""}" data-controller="agent-lazy-detail" data-action="toggle->agent-lazy-detail#load">${summaryHtml}${lazyTranscriptItemFrame(ctx, key)}</details>`;
   }
   return `<details class="agent-tool ${toolClass(tool.name)}${active ? " active" : ""}${tool.status === "error" ? " error" : ""}"${open ? " open" : ""}>${summaryHtml}<turbo-frame ${tailFrameAttributes(ctx, key)} class="agent-tool-detail-host">${renderToolDetail(ctx, key, tool, 100)}</turbo-frame></details>`;
 }
