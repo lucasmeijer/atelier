@@ -16,7 +16,7 @@ const docker = (...args: string[]) => exec("docker", ...args);
 async function api(
   path: string,
   method = "GET",
-  data?: unknown,
+  data?: { image: string },
   port = 3001,
 ): Promise<any> {
   const code = `const r=await fetch(${JSON.stringify(`http://127.0.0.1:${port}${path}`)},{method:${JSON.stringify(method)},headers:{"content-type":"application/json"},body:${data === undefined ? "undefined" : JSON.stringify(JSON.stringify(data))}});console.log(JSON.stringify({status:r.status,body:await r.text()}));`;

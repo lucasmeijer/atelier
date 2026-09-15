@@ -112,7 +112,7 @@ export async function startWorkspaceEgressProxy({ socketPath, ca, getContext, up
     socket.end(connectErrorResponse(proxyFailure(error)));
   }));
   await mkdir(dirname(socketPath), { recursive: true });
-  try { await unlink(socketPath); } catch (error) { if ((error as NodeJS.ErrnoException).code !== "ENOENT") throw error; }
+  try { await unlink(socketPath); } catch (error) { if (!(error instanceof Error && "code" in error && error.code === "ENOENT")) throw error; }
   await new Promise<void>((resolve, reject) => {
     server.once("error", reject);
     server.listen(socketPath, () => { server.off("error", reject); resolve(); });

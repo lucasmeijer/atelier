@@ -1,3 +1,5 @@
+import { Type } from "typebox";
+import { Value } from "typebox/value";
 import { mkdir, readFile, rename, writeFile } from "node:fs/promises";
 import { dirname } from "node:path";
 import { atelierDataPath, getAtelierRuntimeContext } from "@atelier/core";
@@ -13,6 +15,16 @@ export interface OriginIdentityStore {
   removeWorkspace(workspaceId: string): Promise<void>;
 }
 interface State { version: 2; assignments: RetainedOrigin[]; retiredPorts: number[] }
+const portSchema = Type.Integer({ minimum: 1, maximum: 65535 });
+const stateSchema = Type.Object({
+  version: Type.Literal(2),
+  assignments: Type.Array(Type.Object({
+    app: Type.Object({ workspaceId: Type.String(), appKey: Type.String() }),
+    port: portSchema,
+    protocol: Type.Union([Type.Literal("http"), Type.Literal("https")]),
+  })),
+  retiredPorts: Type.Array(portSchema),
+});
 const empty = (): State => ({ version: 2, assignments: [], retiredPorts: [] });
 const same = (a: WorkspaceAppRef, b: WorkspaceAppRef) => a.workspaceId === b.workspaceId && a.appKey === b.appKey;
 
@@ -56,12 +68,9 @@ export function createFileOriginIdentityStore(path = atelierDataPath(getAtelierR
   return store(async () => {
     let text: string;
     try { text = await readFile(path, "utf8"); }
-    catch (error) { if ((error as NodeJS.ErrnoException).code === "ENOENT") return empty(); throw error; }
-    const state = JSON.parse(text) as State;
-    if (state.version !== 2 || !Array.isArray(state.assignments) || !Array.isArray(state.retiredPorts)) throw new Error("Invalid ingress origin state");
-    for (const entry of state.assignments) {
-      if (!entry.app || typeof entry.app.workspaceId !== "string" || typeof entry.app.appKey !== "string" || !Number.isInteger(entry.port) || entry.port < 1 || entry.port > 65535 || !["http", "https"].includes(entry.protocol)) throw new Error("Invalid ingress origin assignment");
-    }
+    catch (error) { if ((error instanceof Error && "code" in error && error.code === "ENOENT")) return empty(); throw error; }
+    const state: unknown = JSON.parse(text);
+    if (!Value.Check(stateSchema, state)) throw new Error("Invalid ingress origin state");
     return state;
   }, async (state) => {
     await mkdir(dirname(path), { recursive: true });

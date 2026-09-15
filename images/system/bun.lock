@@ -6,10 +6,13 @@
       "name": "atelier-system",
       "dependencies": {
         "@hotwired/stimulus": "3.2.2",
+        "typebox": "^1.0.57",
       },
     },
   },
   "packages": {
     "@hotwired/stimulus": ["@hotwired/stimulus@3.2.2", "", {}, "sha512-eGeIqNOQpXoPAIP7tC1+1Yc1yl1xnwYqg+3mzqxyrbE5pg5YFBZcA6YoTiByJB6DKAEsiWtl6tjTJS4IYtbB7A=="],
+
+    "typebox": ["typebox@1.3.31", "", {}, "sha512-7++UxOb7lAJbJ8pbhN2Yl/ljadShbHZ6GQwst/YEUAlVh1nP8LqYpC2t+R1VysunFpmDffDzhZRsvGchx0PqUA=="],
   }
 }

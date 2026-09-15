@@ -18,6 +18,7 @@ afterEach(async () => { for (const dispose of cleanup.reverse()) await dispose()
 
 async function listen(server: net.Server) {
   await new Promise<void>((resolve, reject) => { server.once("error", reject); server.listen(0, "127.0.0.1", resolve); });
+  // SAFETY: The listen callback completed on an IP address, so address() is a TCP AddressInfo.
   return (server.address() as net.AddressInfo).port;
 }
 async function localRelay(socketPath: string): Promise<number> {
@@ -60,11 +61,11 @@ test("workspace socket controls HTTP and HTTPS identity, policy and reconnection
   const ca = await ensureMitmCa({ atelierDataDir: directory, dockerHostAtelierDataDir: directory, dockerBridgeHost: "127.0.0.1" });
   const leaf = await ensureLeafCertificate(ca, "127.0.0.1");
   const caPem = await readFile(ca.certPath, "utf8");
-  const received: { key?: string; authorization?: string; proxyAuthorization?: string; body: string }[] = [];
+  const received: { key?: string | string[]; authorization?: string; proxyAuthorization?: string | string[]; body: string }[] = [];
   const handler: RequestListener = (req, res) => {
     let body = "";
     req.on("data", chunk => body += chunk.toString());
-    req.on("end", () => { received.push({ key: req.headers["x-api-key"] as string, authorization: req.headers.authorization, proxyAuthorization: req.headers["proxy-authorization"] as string, body }); res.end("destination response"); });
+    req.on("end", () => { received.push({ key: req.headers["x-api-key"], authorization: req.headers.authorization, proxyAuthorization: req.headers["proxy-authorization"], body }); res.end("destination response"); });
   };
   const destination = createServer(handler);
   const httpPort = await listen(destination);

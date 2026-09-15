@@ -79,14 +79,14 @@ export async function initializeResources() {
       try {
         await writeFile(join(processes, "cgroup.procs"), pid);
       } catch (error) {
-        if ((error as NodeJS.ErrnoException).code !== "ESRCH") throw error;
+        if (!(error instanceof Error && "code" in error && error.code === "ESRCH")) throw error;
       }
     }
     try {
       await writeFile(join(root, "cgroup.subtree_control"), controllers);
       break;
     } catch (error) {
-      if ((error as NodeJS.ErrnoException).code !== "EBUSY" || attempt === 49)
+      if (!(error instanceof Error && "code" in error && error.code === "EBUSY") || attempt === 49)
         throw error;
       await Bun.sleep(100);
     }

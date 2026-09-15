@@ -147,8 +147,14 @@ export async function mutateTailscaleServeConfig(socketPath: string, mutator: Se
 }
 
 function localApiResponse(socketPath: string, method: string, path: string, body?: string, etag?: string): Promise<{ status: number; body: string; etag?: string }> {
+  const headers: import("node:http").OutgoingHttpHeaders = { host: "local-tailscaled.sock" };
+  if (body) {
+    headers["content-type"] = "application/json";
+    headers["content-length"] = Buffer.byteLength(body);
+  }
+  if (etag) headers["if-match"] = etag;
   return new Promise((resolve, reject) => {
-    const req = httpRequest({ socketPath, method, path, headers: { host: "local-tailscaled.sock", ...(body ? { "content-type": "application/json", "content-length": Buffer.byteLength(body) } : {}), ...(etag ? { "if-match": etag } : {}) } }, (res) => {
+    const req = httpRequest({ socketPath, method, path, headers }, (res) => {
       const chunks: Buffer[] = [];
       res.on("data", (chunk) => chunks.push(Buffer.from(chunk)));
       res.on("end", () => resolve({ status: res.statusCode ?? 0, body: Buffer.concat(chunks).toString(), etag: res.headers.etag }));

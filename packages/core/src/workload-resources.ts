@@ -7,7 +7,7 @@ async function resources(): Promise<
     return JSON.parse(await readFile(descriptor, "utf8"));
   } catch (error) {
     // A developer's local Docker context has no System-owned workload group.
-    if ((error as NodeJS.ErrnoException).code === "ENOENT") return undefined;
+    if ((error instanceof Error && "code" in error && error.code === "ENOENT")) return undefined;
     throw error;
   }
 }

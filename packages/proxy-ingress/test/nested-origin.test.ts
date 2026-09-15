@@ -45,11 +45,11 @@ async function gateway(identity: string) {
     downstream.on("data", read);
   });
   await new Promise<void>((resolve) => server.listen(0, "127.0.0.1", resolve));
-  const address = server.address();
-  if (!address || typeof address === "string") throw new Error("missing gateway address");
+  // SAFETY: The listen callback completed on an IP address, so address() is a TCP AddressInfo.
+  const address = server.address() as import("node:net").AddressInfo;
   return { url: new URL(`http://127.0.0.1:${address.port}`), stop() { for (const socket of connections) socket.destroy(); server.close(); } };
 }
-async function socketRequest(socket: string, input: unknown) {
+async function socketRequest(socket: string, input: { port: number | undefined; protocol?: "http" | "https"; workspaceId?: string }) {
   return await fetch("http://localhost/origins", { unix: socket, method: "POST", body: JSON.stringify(input), headers: { "content-type": "application/json" } });
 }
 
@@ -90,6 +90,7 @@ test("nested socket publication routes HTTP and WebSocket directly, retains orig
     expect(redirect.headers.get("location")).toBe(`${origin}/products?sort=true`);
     expect(redirect.headers.get("set-cookie")).toBe("session=ok; HttpOnly");
     await redirect.text();
+    // SAFETY: Tests run in Bun, whose WebSocket constructor supports Bun.WebSocketOptions.
     const Socket = WebSocket as typeof WebSocket & (new (url: string, options: Bun.WebSocketOptions) => WebSocket);
     const socket = new Socket(actual.replace("http:", "ws:") + "/live?x=1", { headers, proxy: "" });
     await new Promise<void>((resolve, reject) => {
@@ -107,7 +108,9 @@ test("nested socket publication routes HTTP and WebSocket directly, retains orig
     expect(rejected.status).toBe(400); await rejected.text();
     const another = await socketRequest(outer.socket("other"), { port: innerPort, protocol: "http" });
     expect(another.status).toBe(200);
-    expect((await another.json() as { origin: string }).origin).not.toBe(origin);
+    const publication = await another.json();
+    expect(publication).toEqual({ origin: expect.any(String) });
+    expect(publication.origin).not.toBe(origin);
     const invalid = await socketRequest(outer.socket("other"), { port: 0 });
     expect(invalid.status).toBe(400); await invalid.text();
     await inner.stop(); await outer.stop();

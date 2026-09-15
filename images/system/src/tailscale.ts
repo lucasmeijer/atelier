@@ -2,7 +2,6 @@ import { request } from "node:http";
 type ServeConfig = {
   TCP?: Record<string, { HTTPS: boolean }>;
   Web?: Record<string, { Handlers: Record<string, { Proxy: string }> }>;
-  [key: string]: unknown;
 };
 async function localApi(
   socketPath: string,
@@ -10,6 +9,12 @@ async function localApi(
   body?: string,
   etag?: string,
 ) {
+  const headers: import("node:http").OutgoingHttpHeaders = { host: "local-tailscaled.sock" };
+  if (body) {
+    headers["content-type"] = "application/json";
+    headers["content-length"] = Buffer.byteLength(body);
+  }
+  if (etag) headers["if-match"] = etag;
   return new Promise<{ status: number; etag?: string; body: string }>(
     (resolve, reject) => {
       const req = request(
@@ -17,16 +22,7 @@ async function localApi(
           socketPath,
           path: "/localapi/v0/serve-config",
           method,
-          headers: {
-            host: "local-tailscaled.sock",
-            ...(body
-              ? {
-                  "content-type": "application/json",
-                  "content-length": Buffer.byteLength(body),
-                }
-              : {}),
-            ...(etag ? { "if-match": etag } : {}),
-          },
+          headers,
         },
         (response) => {
           const chunks: Buffer[] = [];

@@ -8,7 +8,8 @@ class ProgressController extends Controller<HTMLElement> {
     this.source = new EventSource(this.eventsValue);
     this.source.addEventListener("progress", (event) => {
       const template = document.createElement("template");
-      template.innerHTML = (event as MessageEvent).data;
+      // SAFETY: EventSource dispatches server-sent events as MessageEvent instances.
+      template.innerHTML = (event as MessageEvent<string>).data;
       this.element
         .querySelector("[data-progress-content]")!
         .replaceChildren(template.content);

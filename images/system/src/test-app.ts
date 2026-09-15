@@ -1,3 +1,5 @@
+import { Type } from "typebox";
+import { Value } from "typebox/value";
 import { mkdir, readFile, writeFile } from "node:fs/promises";
 import { button, escape, page } from "./ui.ts";
 import { command } from "./process.ts";
@@ -46,10 +48,7 @@ Bun.serve({
       const form = await request.formData();
       const image = form.get("image");
       if (
-        typeof image !== "string" ||
-        !image ||
-        image.startsWith("-") ||
-        /\s/.test(image)
+        !Value.Check(Type.String({ minLength: 1, pattern: "^(?!-)[^\\s]+$" }), image)
       )
         return new Response("Expected image reference", { status: 400 });
       // Already loaded test images avoid a registry. Real app releases pull here.

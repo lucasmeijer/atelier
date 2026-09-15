@@ -1,7 +1,12 @@
+import { Type } from "typebox";
+import { Value } from "typebox/value";
 import { dirname } from "node:path";
 import { existsSync } from "node:fs";
 import { request } from "node:http";
 import { createTailscaleOriginPublisher, defaultTailscaleLocalApiSocketPath, tailscaleLocalApiRequest, type PortRange } from "./tailscale-serve.ts";
+
+const originSchema = Type.Object({ origin: Type.String() });
+const statusSchema = Type.Object({ Self: Type.Object({ DNSName: Type.String() }) });
 
 export interface ParentOriginPublisher {
   kind: "atelier" | "tailscale" | "localhost";
@@ -29,8 +34,8 @@ export function createParentAtelierPublisher(socketPath = parentIngressSocket): 
       req.setTimeout(30_000, () => req.destroy(new Error("Parent ingress publication timed out")));
       req.end(body);
     });
-    const parsed = JSON.parse(result) as { origin?: unknown };
-    if (typeof parsed.origin !== "string") throw new Error("Parent ingress did not return an origin");
+    const parsed: unknown = JSON.parse(result);
+    if (!Value.Check(originSchema, parsed)) throw new Error("Parent ingress did not return an origin");
     const url = new URL(parsed.origin);
     if (!["https:", "http:"].includes(url.protocol) || url.origin !== parsed.origin || url.username || url.password) throw new Error("Parent ingress returned an invalid origin");
     return url.origin;
@@ -40,8 +45,9 @@ export function createParentAtelierPublisher(socketPath = parentIngressSocket): 
 /** Resolve identity when publishing: first-install login can happen after app startup. */
 export function createTailscaleParentPublisher(socketPath = defaultTailscaleLocalApiSocketPath, portRange?: PortRange): ParentOriginPublisher {
   async function connectedPublisher() {
-    const status = JSON.parse(await tailscaleLocalApiRequest(socketPath, "GET", "/localapi/v0/status"));
-    const host = typeof status.Self?.DNSName === "string" ? status.Self.DNSName.replace(/\.$/, "") : "";
+    const status: unknown = JSON.parse(await tailscaleLocalApiRequest(socketPath, "GET", "/localapi/v0/status"));
+    if (!Value.Check(statusSchema, status)) throw new Error("Tailscale has no DNS name; connect Tailscale before publishing a preview");
+    const host = status.Self.DNSName.replace(/\.$/, "");
     if (!host) throw new Error("Tailscale has no DNS name; connect Tailscale before publishing a preview");
     return { host, publisher: createTailscaleOriginPublisher({ host, socketPath, portRange }) };
   }

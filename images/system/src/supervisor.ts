@@ -1,3 +1,5 @@
+import { Type } from "typebox";
+import { Value } from "typebox/value";
 import { installWorkspaceFirewall } from "./firewall.ts";
 import { initializeResources } from "./resources.ts";
 import { spawn, type ChildProcess } from "node:child_process";
@@ -124,10 +126,7 @@ async function prepareImage(reference: string, pull: boolean): Promise<string> {
     image.Config.Labels?.["eagerly-preload"] ?? "[]",
   );
   if (
-    !Array.isArray(preload) ||
-    preload.some(
-      (ref) => typeof ref !== "string" || !ref || ref.startsWith("-"),
-    )
+    !Value.Check(Type.Array(Type.String({ minLength: 1, pattern: "^(?!-)" })), preload)
   )
     throw new Error("eagerly-preload must be a JSON array of image references");
   for (const ref of preload) {
@@ -284,15 +283,15 @@ const server = Bun.serve({
           subscribers.delete(controller);
         },
       });
-      return new Response(stream, {
-        headers: {
-          "content-type": "text/event-stream",
-          "cache-control": "no-cache",
-          ...(origin
-            ? { "access-control-allow-origin": origin, vary: "Origin" }
-            : {}),
-        },
+      const headers = new Headers({
+        "content-type": "text/event-stream",
+        "cache-control": "no-cache",
       });
+      if (origin) {
+        headers.set("access-control-allow-origin", origin);
+        headers.set("vary", "Origin");
+      }
+      return new Response(stream, { headers });
     }
     if (request.method === "POST") {
       if (!allowedOrigin(request))
@@ -309,12 +308,9 @@ const server = Bun.serve({
         );
       }
       if (url.pathname === "/update") {
-        const body = await request.json().catch(() => null);
+        const body: unknown = await request.json().catch(() => null);
         if (
-          typeof body?.image !== "string" ||
-          !body.image ||
-          body.image.startsWith("-") ||
-          /\s/.test(body.image)
+          !Value.Check(Type.Object({ image: Type.String({ minLength: 1, pattern: "^(?!-)[^\\s]+$" }) }), body)
         )
           return new Response("Expected image reference", { status: 400 });
         // Reserve the operation across asynchronous validation; reject invalid requests

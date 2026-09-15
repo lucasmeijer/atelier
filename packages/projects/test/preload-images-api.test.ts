@@ -20,7 +20,7 @@ test("project preload API updates future creation settings and rejects malformed
       workspaceCommandModalHostId: "unused",
     });
     const url = new URL(`http://localhost/projects/${project.id}/preload-images`);
-    const request = (preloadImages: unknown) => new Request(url, {
+    const request = (preloadImages: string | (string | number)[] | null) => new Request(url, {
       method: "POST", headers: { "content-type": "application/json", accept: "application/json" },
       body: JSON.stringify({ preloadImages }),
     });
