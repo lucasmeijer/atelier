@@ -492,7 +492,7 @@ button.settings-link:disabled { opacity: .45; cursor: default; filter: none; }
 
 /* Project editor */
 .project-settings-save-status { flex: 1; color: var(--text-muted); }
-.project-editor-frame,.project-editor-page { display:flex; flex-direction:column; height:100%; min-height:0; }
+.project-editor-body,.project-editor-page { display:flex; flex-direction:column; height:100%; min-height:0; }
 .project-editor-detail-body { min-height:0; overflow:auto; padding:0 24px 24px; }
 .project-editor-detail-page .project-edit-section,.project-editor-detail-page .project-edit-config { padding:16px 0 16px; }
 .project-editor-detail-page .project-edit-form { display:grid; gap:12px; margin-top:16px; padding:0; }

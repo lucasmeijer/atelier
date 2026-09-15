@@ -31,7 +31,7 @@ type ProjectEditorModalOptions = { kind: "settings"; projectId: string; section:
 export interface ProjectRoutes {
   handle(request: Request, url: URL): Promise<Response | undefined>;
   byReference(reference: string): Promise<ProjectSummary>;
-  editorModal(options?: ProjectEditorModalOptions): Promise<string>;
+  editorModal(options: ProjectEditorModalOptions): Promise<string>;
 }
 
 interface ProjectWorkspaceReference {
@@ -229,10 +229,10 @@ export function createProjectRoutes(deps: {
     throw invalidArguments("section must be one of: repository, secrets, ssh-keys, environment, dockerfile, preload-images, danger");
   }
 
-  async function projectEditorFrame(project: ProjectSummary, section?: ProjectSettingsSection): Promise<string> {
+  async function projectEditorBody(project: ProjectSummary, section?: ProjectSettingsSection): Promise<string> {
     const [environment, secrets, sshKeys] = await Promise.all([listProjectEnvironmentVariables(project.id), listProjectSecrets(project.id), listProjectSshKeys(project.id)]);
     if (section === undefined && secrets.some(secretNeedsValue)) section = "secrets";
-    return `<turbo-frame id="project_editor_frame" class="project-editor-frame">
+    return `<div id="project_editor_body" class="project-editor-body">
       <div class="project-editor-page project-editor-detail-page">
         <div class="project-editor-detail-body">
           <section class="project-edit-section"${revealSection(section, "repository")}><form class="project-edit-form" aria-label="Repository" method="post" action="/projects/${encodeURIComponent(project.id)}" data-controller="settings-autosave" data-action="change->settings-autosave#save"><label class="project-edit-field"><span>Display name</span><input class="text-field" name="name" value="${escapeHtml(project.name)}" required></label><label class="project-edit-field"><span>Repository</span><input class="text-field" name="gitUrl" value="${escapeHtml(formatProjectSpec(project))}" required></label></form></section>
@@ -240,35 +240,30 @@ export function createProjectRoutes(deps: {
           <section class="project-edit-danger-zone"${revealSection(section, "danger")}>${projectConfigurationDisclosure("Danger zone", `<div class="project-edit-danger">${projectDeleteControl(project.id)}</div>`, section === "danger")}</section>
         </div>
       </div>
-    </turbo-frame>`;
+    </div>`;
   }
 
-  function newProjectEditorFrame(): string {
+  function newProjectEditorBody(): string {
     const cancelButton = buttonHtml({ type: "button", variant: "secondary", content: { kind: "caption", caption: "Cancel" }, attributesHtml: 'data-action="dialog#close"' });
     const addButton = buttonHtml({ type: "submit", variant: "primary", content: { kind: "caption", caption: "Add project" }, attributesHtml: 'data-turbo-submits-with="Adding…"' });
-    return `<turbo-frame id="project_editor_frame" class="project-editor-frame"><div class="project-editor-page project-editor-detail-page"><form class="project-editor-new-form" aria-label="Add project" method="post" action="/projects" data-turbo="true" data-action="turbo:submit-end->dialog#submitted"><div><h3>Repository source</h3><p>Save a remote URL, local path, or search for a GitHub repository.</p><div data-controller="project-github-search" data-project-github-search-url-value="/projects/github-search"><input class="text-field" name="gitUrl" placeholder="github.com/org/repo, or /path/to/repo#branch" required autofocus data-project-github-search-target="input" data-action="keydown->project-github-search#keydown input->project-github-search#input"><div class="floating-surface autocomplete-popover" popover="manual" data-project-github-search-target="menu" hidden></div></div></div><footer>${cancelButton}${addButton}</footer></form></div></turbo-frame>`;
+    return `<div id="project_editor_body" class="project-editor-body"><div class="project-editor-page project-editor-detail-page"><form class="project-editor-new-form" aria-label="Add project" method="post" action="/projects" data-turbo="true" data-action="turbo:submit-end->dialog#submitted"><div><h3>Repository source</h3><p>Save a remote URL, local path, or search for a GitHub repository.</p><div data-controller="project-github-search" data-project-github-search-url-value="/projects/github-search"><input class="text-field" name="gitUrl" placeholder="github.com/org/repo, or /path/to/repo#branch" required autofocus data-project-github-search-target="input" data-action="keydown->project-github-search#keydown input->project-github-search#input"><div class="floating-surface autocomplete-popover" popover="manual" data-project-github-search-target="menu" hidden></div></div></div><footer>${cancelButton}${addButton}</footer></form></div></div>`;
   }
 
-  async function projectEditorModal(options?: ProjectEditorModalOptions): Promise<string> {
-    const project = options?.kind === "settings" ? await projectById(options.projectId) : undefined;
-    const section = parseProjectSettingsSection(options?.kind === "settings" ? options.section : undefined);
-    const title = options?.kind === "new" ? "Add project" : "Project settings";
-    const bodyHtml = options?.kind === "new"
-      ? newProjectEditorFrame()
-      : project
-        ? await projectEditorFrame(project, section)
-        : '<turbo-frame id="project_editor_frame" class="project-editor-frame"></turbo-frame>';
+  async function projectEditorModal(options: ProjectEditorModalOptions): Promise<string> {
+    const title = options.kind === "new" ? "Add project" : "Project settings";
+    const bodyHtml = options.kind === "new"
+      ? newProjectEditorBody()
+      : await projectEditorBody(await projectById(options.projectId), parseProjectSettingsSection(options.section));
     return dialogHtml({
       element: {
         id: "project-editor-modal",
-
-        attributesHtml: `${options ? "data-dialog-auto-show" : ""}${options?.kind === "new" ? "" : ' data-controller="project-settings" data-action="settings-autosave:saving->project-settings#saving settings-autosave:saved->project-settings#saved settings-autosave:failed->project-settings#failed"'}`,
+        attributesHtml: `data-dialog-auto-show${options.kind === "new" ? "" : ' data-controller="project-settings" data-action="settings-autosave:saving->project-settings#saving settings-autosave:saved->project-settings#saved settings-autosave:failed->project-settings#failed"'}`,
       },
       iconHtml: Icons.Settings,
       titleCaption: title,
       bodyHtml,
       bodyLayout: "full-bleed",
-      footerHtml: options?.kind === "new" ? undefined : `<span class="project-settings-save-status" role="status" data-project-settings-target="status">Changes save automatically.</span>${buttonHtml({ type: "button", variant: "primary", content: { kind: "caption", caption: "OK" }, attributesHtml: 'data-action="project-settings#complete" data-project-settings-target="confirm"' })}`,
+      footerHtml: options.kind === "new" ? undefined : `<span class="project-settings-save-status" role="status" data-project-settings-target="status">Changes save automatically.</span>${buttonHtml({ type: "button", variant: "primary", content: { kind: "caption", caption: "OK" }, attributesHtml: 'data-action="project-settings#complete" data-project-settings-target="confirm"' })}`,
       closeLabel: `Close ${title.toLowerCase()}`,
     });
   }
@@ -369,7 +364,7 @@ export function createProjectRoutes(deps: {
     }
     const paneStream = await deps.refreshWorkspacePaneCollections();
     if (json) return jsonResponse({ project });
-    if (wantsTurboStream(request)) return turboStreamResponse(`${turboUpdateStream("project_editor_frame", "")}${paneStream}`);
+    if (wantsTurboStream(request)) return turboStreamResponse(`${turboUpdateStream("project_editor_body", "")}${paneStream}`);
     return Response.redirect(new URL("/", url).toString(), 303);
   }
 
@@ -530,7 +525,7 @@ export function createProjectRoutes(deps: {
     await deleteProject(projectId);
     const paneStream = await deps.refreshWorkspacePaneCollections();
     if (json) return jsonResponse({ deleted: true, blocked: false, project });
-    return turboStreamResponse(`${turboUpdateStream("project_editor_frame", "")}${paneStream}`);
+    return turboStreamResponse(`${turboUpdateStream("project_editor_body", "")}${paneStream}`);
   }
 
   async function githubRepositorySearchEndpoint(url: URL): Promise<Response> {
@@ -565,7 +560,6 @@ export function createProjectRoutes(deps: {
   async function handle(request: Request, url: URL): Promise<Response | undefined> {
     if (url.pathname === "/projects" && request.method === "GET" && requestAcceptsJson(request)) return jsonResponse(await listProjects());
     if (url.pathname === "/projects" && request.method === "POST") return await createProjectEndpoint(request, url);
-    if (url.pathname === "/projects/new/editor" && request.method === "GET") return response(newProjectEditorFrame());
     if (url.pathname === "/projects/github-search" && request.method === "GET") return await githubRepositorySearchEndpoint(url);
 
     const match = (pattern: RegExp): string[] | undefined => {
@@ -575,7 +569,6 @@ export function createProjectRoutes(deps: {
     let params: string[] | undefined;
     if ((params = match(/^\/projects\/([^/]+)\/dockerfile$/)) && request.method === "POST") return await updateProjectDockerfileEndpoint(params[0]!, request);
     if ((params = match(/^\/projects\/([^/]+)\/preload-images$/)) && request.method === "POST") return await updateProjectPreloadImagesEndpoint(params[0]!, request);
-    if ((params = match(/^\/projects\/([^/]+)\/editor$/)) && request.method === "GET") return response(await projectEditorFrame(await projectById(params[0]!)));
     if ((params = match(/^\/projects\/([^/]+)\/launch-composer$/)) && request.method === "GET") return response(await deps.renderLaunchComposer(await projectById(params[0]!)));
     if ((params = match(/^\/projects\/([^/]+)$/)) && request.method === "GET" && requestAcceptsJson(request)) return await projectDetailEndpoint(params[0]!);
     if ((params = match(/^\/projects\/([^/]+)$/)) && request.method === "POST") return await updateProjectEndpoint(params[0]!, request);

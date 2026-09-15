@@ -49,39 +49,6 @@ class SubmitShortcutController extends Controller {
   }
 }
 
-class ModalController extends Controller<HTMLDialogElement> {
-  static values = { autoShow: Boolean };
-  declare readonly autoShowValue: boolean;
-  private readonly onClose = (): void => {
-    const activeElement = document.activeElement instanceof HTMLElement ? document.activeElement : null;
-    if (activeElement && this.element.contains(activeElement)) activeElement.blur();
-  };
-
-  connect(): void {
-    this.element.addEventListener("close", this.onClose);
-    if (this.autoShowValue && !this.element.open) {
-      this.element.showModal();
-      if (this.element.autofocus) this.element.focus();
-      else focusDialogPromptEnd(this.element);
-    }
-  }
-
-  disconnect(): void {
-    this.element.removeEventListener("close", this.onClose);
-  }
-
-  close(): void {
-    this.element.close();
-  }
-
-  submitted(event: Event): void {
-    // SAFETY: The server-rendered DOM and connected controller contract establish this element shape.
-    const detail = (event as CustomEvent).detail as { success?: boolean } | undefined;
-    if (detail?.success === false) return;
-    this.element.close();
-  }
-}
-
 const launchComposerPromptHistoryStorageKey = "atelier:launch-composer-prompt-history";
 const launchComposerPromptHistorySchema = Type.Array(Type.String());
 
@@ -152,23 +119,6 @@ class LaunchComposerDialogController extends Controller<HTMLDialogElement> {
   };
 }
 
-class ModalOpenerController extends Controller<HTMLElement> {
-  static values = { targetId: String };
-  declare readonly targetIdValue: string;
-
-  open(event?: Event): void {
-    const target = event?.target instanceof HTMLElement ? event.target : null;
-    const interactive = target?.closest("a, button, input, textarea, select, form");
-    if (interactive && interactive !== this.element) return;
-    // SAFETY: The server-rendered DOM and connected controller contract establish this element shape.
-    const dialog = document.getElementById(this.targetIdValue) as HTMLDialogElement | null;
-    if (!dialog || dialog.open) return;
-    dialog.showModal();
-    this.element.blur();
-    focusDialogPromptEnd(dialog);
-  }
-}
-
 class AutoScrollController extends Controller<HTMLElement> {
   connect(): void {
     requestAnimationFrame(() => {
@@ -216,8 +166,6 @@ const ProjectGithubSearchController = createHtmlAutocompleteController(Controlle
 export function registerWorkspaceDialogControllers(): void {
   registerWorkspaceControllers({
     "submit-shortcut": SubmitShortcutController,
-    "modal": ModalController,
-    "modal-opener": ModalOpenerController,
     "launch-composer-dialog": LaunchComposerDialogController,
     "project-github-search": ProjectGithubSearchController,
     "auto-scroll": AutoScrollController,

@@ -573,7 +573,9 @@ export function createWebApp(deps: WebAppDeps): WebApp {
     const pane = await workspacePaneCollections(selectedId ?? "");
     const projectEditor = surface?.kind === "project-settings"
       ? await projectRoutes.editorModal({ kind: "settings", projectId: surface.projectId, section: surface.section })
-      : await projectRoutes.editorModal(surface?.kind === "new-project" ? { kind: "new" } : undefined);
+      : surface?.kind === "new-project"
+        ? await projectRoutes.editorModal({ kind: "new" })
+        : '<div id="project-editor-modal"></div>';
     const settings = surface?.kind === "settings"
       ? surface.development ? await renderDevelopmentSettingsDialog() : await renderSettingsDialog(surface.section)
       : "";
@@ -1226,11 +1228,21 @@ export function createWebApp(deps: WebAppDeps): WebApp {
     if (url.pathname === "/launch-composer" && request.method === "GET") return response(await renderProjectlessLaunchComposerFrame());
     if (url.pathname === "/launch-composer/settings" && request.method === "GET") return response(await launchComposerSettingsFrame(url.searchParams.get("model") ?? undefined));
     const projectSettingsMatch = url.pathname.match(/^\/projects\/([^/]+)\/settings$/);
-    if (projectSettingsMatch && request.method === "GET") return await surfacePage({ kind: "project-settings", projectId: decodeURIComponent(projectSettingsMatch[1]!), section: url.searchParams.get("section") ?? undefined });
+    if (projectSettingsMatch && request.method === "GET") {
+      const projectId = decodeURIComponent(projectSettingsMatch[1]!);
+      const section = url.searchParams.get("section") ?? undefined;
+      return wantsTurboStream(request)
+        ? turboStreamResponse(turboReplaceStream("project-editor-modal", await projectRoutes.editorModal({ kind: "settings", projectId, section })))
+        : await surfacePage({ kind: "project-settings", projectId, section });
+    }
     const projectWorkspaceMatch = url.pathname.match(/^\/projects\/([^/]+)\/workspaces\/new$/);
     if (projectWorkspaceMatch && request.method === "GET") return await surfacePage({ kind: "new-workspace", project: await projectRoutes.byReference(decodeURIComponent(projectWorkspaceMatch[1]!)) });
     if (url.pathname === "/workspaces/new" && request.method === "GET") return await surfacePage({ kind: "new-workspace" });
-    if (url.pathname === "/projects/new" && request.method === "GET") return await surfacePage({ kind: "new-project" });
+    if (url.pathname === "/projects/new" && request.method === "GET") {
+      return wantsTurboStream(request)
+        ? turboStreamResponse(turboReplaceStream("project-editor-modal", await projectRoutes.editorModal({ kind: "new" })))
+        : await surfacePage({ kind: "new-project" });
+    }
     if (url.pathname === "/settings" && request.method === "GET" && !wantsTurboStream(request)) return await surfacePage({ kind: "settings", section: url.searchParams.get("section") ?? undefined });
     if (url.pathname === "/settings/development" && request.method === "GET" && !wantsTurboStream(request)) return await surfacePage({ kind: "settings", section: undefined, development: true });
     if (url.pathname === "/workspaces" && request.method === "GET") return workspaceListEndpoint(request, url);
