@@ -20,6 +20,10 @@
   visibility: hidden;
   pointer-events: none;
 }
+:is(.activity-button__content, .progress-button__content)[aria-hidden="false"] {
+  visibility: visible;
+  pointer-events: auto;
+}
 :is(.activity-button, .progress-button).icon-only :is(.activity-button__content, .progress-button__content) { padding-inline: 0; }
 :is(.button.activity-button > .activity-button__indicator, .button.progress-button > .progress-button__perimeter) {
   position: absolute;
@@ -46,4 +50,17 @@
 @keyframes perimeter-button-orbit { to { stroke-dashoffset: -100; } }
 @media (max-width: 700px), (pointer: coarse) {
   :is(.activity-button, .progress-button):not(.icon-only) :is(.activity-button__content, .progress-button__content) { padding-inline: 16px; }
+}
+
+@media (prefers-reduced-motion: no-preference) {
+  :is(.activity-button__content, .progress-button__content) {
+    opacity: 0; transform: translateY(3px);
+    transition: opacity var(--motion-exit) ease-out, transform var(--motion-enter) var(--motion-ease-out), visibility var(--motion-exit) linear;
+  }
+  :is(.activity-button__content, .progress-button__content)[aria-hidden="false"] { opacity: 1; transform: none; }
+  @starting-style {
+    .activity-button[data-activity-state="active"] [data-activity-content="active"],
+    .progress-button[data-progress-state="in-progress"] [data-progress-content="in-progress"] { opacity: 0; transform: translateY(3px); }
+  }
+  :is(.activity-button__indicator, .progress-button__perimeter) { transition: opacity var(--motion-exit) ease-out; }
 }

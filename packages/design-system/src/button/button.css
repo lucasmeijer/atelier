@@ -41,7 +41,9 @@
   background: var(--button-hover-background);
   color: var(--button-hover-foreground);
 }
-.button:active { transform: translateY(1px); }
+@media (prefers-reduced-motion: no-preference) {
+  .button:not(:disabled):not([aria-disabled="true"]):active { transform: scale(.97); }
+}
 .button:disabled,
 .button[aria-disabled="true"] { opacity: .45; cursor: default; transform: none; }
 .button.icon-only { width: 26px; flex: 0 0 auto; padding: 0; }

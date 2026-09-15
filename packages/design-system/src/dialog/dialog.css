@@ -10,3 +10,22 @@
 .dialog > .panel > .panel__body { color: var(--text); font: var(--text-body)/var(--leading-standard) var(--font-sans); }
 .dialog__close-form { flex: 0 0 auto; margin: 0 0 0 auto; }
 @media (max-width: 700px), (pointer: coarse) { .dialog { width: calc(100vw - 16px); } }
+
+/* Keep native close/focus semantics; CSS retains only the exiting visual. */
+@media (prefers-reduced-motion: no-preference) {
+  .dialog {
+    opacity: 0;
+    transform: scale(.96);
+    transition: opacity var(--motion-exit) var(--motion-ease-out), transform var(--motion-exit) var(--motion-ease-out), display var(--motion-exit) allow-discrete, overlay var(--motion-exit) allow-discrete;
+  }
+  .dialog[open] { opacity: 1; transform: scale(1); transition-duration: var(--motion-enter); }
+  .dialog::backdrop {
+    opacity: 0;
+    transition: opacity var(--motion-exit) var(--motion-ease-out), display var(--motion-exit) allow-discrete, overlay var(--motion-exit) allow-discrete;
+  }
+  .dialog[open]::backdrop { opacity: 1; transition-duration: var(--motion-enter); }
+  @starting-style {
+    .dialog[open] { opacity: 0; transform: scale(.96); }
+    .dialog[open]::backdrop { opacity: 0; }
+  }
+}

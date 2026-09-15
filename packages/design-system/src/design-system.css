@@ -37,6 +37,11 @@
  */
 
 :root {
+  /* Brief state changes, inspired by transitions.dev. */
+  --motion-enter: 250ms;
+  --motion-exit: 150ms;
+  --motion-ease-out: cubic-bezier(0.22, 1, 0.36, 1);
+
   /* Typography */
   --font-sans: -apple-system, "Inter", "Segoe UI", system-ui, sans-serif;
   --font-mono: "JetBrains Mono", "SF Mono", ui-monospace, Menlo, monospace;
@@ -327,3 +332,21 @@
 
 ::selection { color: var(--text-bright); background: color-mix(in srgb, var(--accent) 32%, transparent); }
 :focus-visible { outline-color: var(--accent); }
+
+/* Native disclosure semantics, with intrinsic-height motion where supported. */
+@supports (interpolate-size: allow-keywords) {
+  @media (prefers-reduced-motion: no-preference) {
+    details::details-content {
+      interpolate-size: allow-keywords;
+      block-size: 0; overflow: clip; opacity: 0;
+      transition: block-size var(--motion-enter) var(--motion-ease-out), opacity var(--motion-exit) ease-out, content-visibility var(--motion-enter) allow-discrete;
+    }
+    details[open]::details-content { block-size: auto; opacity: 1; }
+  }
+}
+
+/* Shared entrance for brief feedback, suggestions and warnings. */
+@keyframes motion-reveal {
+  from { opacity: 0; translate: 0 4px; }
+  to { opacity: 1; translate: 0 0; }
+}

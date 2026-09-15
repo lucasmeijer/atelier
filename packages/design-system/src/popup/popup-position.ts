@@ -75,6 +75,10 @@ export class PopupPosition {
       ?? this.vertical(anchor, viewport, rtl);
     this.menu.style.left = `${position.left}px`;
     this.menu.style.top = `${position.top}px`;
+    // Grow from the nearest point to the trigger, including adjacent confirmations.
+    const x = clamp(anchor.left + anchor.width / 2 - position.left, 0, this.menu.offsetWidth);
+    const y = clamp(anchor.top + anchor.height / 2 - position.top, 0, this.menu.offsetHeight);
+    this.menu.style.transformOrigin = `${x}px ${y}px`;
     this.menu.style.visibility = "visible";
   };
 

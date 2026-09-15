@@ -21,7 +21,7 @@ export function perimeterButtonHtml<State extends string>(options: PerimeterButt
   const disabled = options.disabled ? " disabled" : "";
   const perimeterPart = options.component === "activity-button" ? "indicator" : "perimeter";
   const perimeter = `<svg class="${options.component}__${perimeterPart}" aria-hidden="true"><rect pathLength="100"/></svg>`;
-  const contents = options.states.map(({ name, content }) => `<span class="${options.component}__content" data-${stateName}-content="${escapeHtml(name)}">${htmlContent(content)}</span>`).join("");
+  const contents = options.states.map(({ name, content }) => `<span class="${options.component}__content" data-${stateName}-content="${escapeHtml(name)}" aria-hidden="${name !== options.state}">${htmlContent(content)}</span>`).join("");
 
   return `<button${id} class="${className}" type="${options.type ?? "button"}" data-${stateName}-state="${escapeHtml(options.state)}"${disabled}${options.ownedAttributesHtml ? ` ${options.ownedAttributesHtml}` : ""}${attributesHtml(options.attributesHtml)}>${perimeter}${contents}</button>`;
 }

@@ -12,3 +12,16 @@
   opacity: 1;
   pointer-events: auto;
 }
+
+/* Native dismissal remains immediate; only its exiting visual is retained. */
+@media (prefers-reduced-motion: no-preference) {
+  .destructive-confirmation__confirm {
+    opacity: 0;
+    transform: scale(.98);
+    transition: opacity var(--motion-exit) var(--motion-ease-out), transform var(--motion-exit) var(--motion-ease-out), display var(--motion-exit) allow-discrete, overlay var(--motion-exit) allow-discrete;
+  }
+  .destructive-confirmation__confirm:popover-open { opacity: 1; transform: scale(1); }
+  .destructive-confirmation__trigger[aria-expanded="true"] .destructive-confirmation__cancel {
+    animation: motion-reveal var(--motion-exit) var(--motion-ease-out);
+  }
+}

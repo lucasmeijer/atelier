@@ -37,6 +37,8 @@ export class DestructiveConfirmationController extends Controller<HTMLElement> {
   private readonly prepareState = (event: ToggleEvent): void => {
     this.finishEntrance();
     const confirming = event.newState === "open";
+    // A fading-out confirmation must not remain actionable.
+    this.confirmation.inert = !confirming;
     this.triggerButton.setAttribute("aria-expanded", String(confirming));
     this.triggerButton.classList.replace(confirming ? this.initialVariant : "secondary", confirming ? "secondary" : this.initialVariant);
     const label = confirming ? this.element.dataset.destructiveConfirmationCancelCaption! : this.initialLabel;
@@ -55,16 +57,17 @@ export class DestructiveConfirmationController extends Controller<HTMLElement> {
 
   private animateEntrance(): void {
     if (window.matchMedia("(prefers-reduced-motion: reduce)").matches) return;
-    const origin = this.triggerButton.getBoundingClientRect();
-    const destination = this.confirmation.getBoundingClientRect();
-    const x = origin.left + origin.width / 2 - destination.left - destination.width / 2;
-    const y = origin.top + origin.height / 2 - destination.top - destination.height / 2;
+    const style = getComputedStyle(this.confirmation);
     // The moving button must never catch a second click intended for the opt-out.
     this.confirmation.inert = true;
     this.entrance = this.confirmation.animate([
-      { transform: `translate(${x}px, ${y}px) scale(${Math.min(1, origin.width / destination.width)}, ${Math.min(1, origin.height / destination.height)})`, opacity: 0 },
-      { transform: "translate(0, 0) scale(1)", opacity: 1 },
-    ], { duration: 220, easing: "cubic-bezier(0.2, 0.8, 0.2, 1)" });
+      { transform: "scale(.96)", opacity: 0 },
+      { transform: "scale(1)", opacity: 1 },
+    ], {
+      // Shared design-system duration tokens are authored in milliseconds.
+      duration: Number.parseFloat(style.getPropertyValue("--motion-enter")),
+      easing: style.getPropertyValue("--motion-ease-out").trim(),
+    });
     this.entrance.onfinish = () => this.finishEntrance();
   }
 

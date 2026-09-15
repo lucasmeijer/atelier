@@ -23,28 +23,26 @@ export function setToggleValue(element: HTMLElement, value: string): HTMLButtonE
 }
 
 export class ToggleController extends Controller<HTMLElement> {
-  private resizeObserver?: ResizeObserver;
-  private selectionObserver?: MutationObserver;
+  private readonly resizeObserver = new ResizeObserver(() => this.positionIndicator());
+  private readonly selectionObserver = new MutationObserver(() => this.positionIndicator());
   private readyFrame?: number;
 
   connect(): void {
     this.element.addEventListener("click", this.selectFromClick);
     this.element.addEventListener("keydown", this.selectFromKeyboard);
-    if (!this.element.classList.contains("text-toggle")) return;
     this.positionIndicator();
-    this.resizeObserver = new ResizeObserver(() => this.positionIndicator());
     this.resizeObserver.observe(this.element);
-    this.selectionObserver = new MutationObserver(() => this.positionIndicator());
     this.selectionObserver.observe(this.element, { attributes: true, attributeFilter: ["aria-pressed"], subtree: true });
-    this.readyFrame = requestAnimationFrame(() => this.element.setAttribute("data-text-toggle-ready", ""));
+    this.readyFrame = requestAnimationFrame(() => this.element.setAttribute("data-toggle-ready", ""));
   }
 
   disconnect(): void {
     this.element.removeEventListener("click", this.selectFromClick);
     this.element.removeEventListener("keydown", this.selectFromKeyboard);
-    this.resizeObserver?.disconnect();
-    this.selectionObserver?.disconnect();
+    this.resizeObserver.disconnect();
+    this.selectionObserver.disconnect();
     if (this.readyFrame !== undefined) cancelAnimationFrame(this.readyFrame);
+    this.element.removeAttribute("data-toggle-ready");
   }
 
   private enabledOptions(): HTMLButtonElement[] {
@@ -54,22 +52,27 @@ export class ToggleController extends Controller<HTMLElement> {
   private select(option: HTMLButtonElement): void {
     if (option.getAttribute("aria-pressed") === "true") return;
     setToggleValue(this.element, option.value);
-    if (this.resizeObserver) this.positionIndicator(option);
     this.element.dispatchEvent(new CustomEvent<ToggleChangeDetail>("change", {
       bubbles: true,
       detail: { name: option.name, value: option.value },
     }));
   }
 
-  private readonly positionIndicator = (selected = this.element.querySelector<HTMLButtonElement>('button[aria-pressed="true"]')): void => {
+  private positionIndicator(): void {
+    const selected = this.element.querySelector<HTMLButtonElement>('button[aria-pressed="true"]');
     if (!selected) return;
-    // Measure the plain label, not the larger touch target around it.
-    const range = document.createRange();
-    range.selectNodeContents(selected);
-    const label = range.getBoundingClientRect();
-    this.element.style.setProperty("--text-toggle-indicator-left", `${label.left - this.element.getBoundingClientRect().left}px`);
-    this.element.style.setProperty("--text-toggle-indicator-width", `${label.width}px`);
-  };
+    let label = selected.getBoundingClientRect();
+    if (!this.element.classList.contains("button-toggle")) {
+      // Text indicators follow the label rather than its larger touch target.
+      const range = document.createRange();
+      range.selectNodeContents(selected);
+      label = range.getBoundingClientRect();
+    }
+    const bounds = this.element.getBoundingClientRect();
+    const offset = getComputedStyle(this.element).direction === "rtl" ? bounds.right - label.right : label.left - bounds.left;
+    this.element.style.setProperty("--toggle-indicator-offset", `${offset - this.element.clientLeft}px`);
+    this.element.style.setProperty("--toggle-indicator-width", `${label.width}px`);
+  }
 
   private readonly selectFromClick = (event: MouseEvent): void => {
     const option = event.target instanceof Element ? event.target.closest<HTMLButtonElement>("button[aria-pressed]:not(:disabled)") : null;

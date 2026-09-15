@@ -8,3 +8,10 @@
   .transient-feedback__status { min-height: 44px; }
 }
 .button.transient-feedback > .transient-feedback__content:not([hidden]) { display: inline-flex; min-width: 0; max-width: 100%; align-items: center; justify-content: center; gap: inherit; }
+
+/* Animate the acknowledgement, not the button's hit target or layout. */
+@media (prefers-reduced-motion: no-preference) {
+  .transient-feedback__content[data-transient-feedback-content="feedback"]:not([hidden]) {
+    animation: motion-reveal var(--motion-enter) var(--motion-ease-out);
+  }
+}

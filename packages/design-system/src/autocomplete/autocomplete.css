@@ -4,3 +4,9 @@
 /* The top-layer host owns scrolling and chrome; fetched results own the list. */
 .autocomplete-popover { padding: 0; }
 .autocomplete-popover > .autocomplete { max-height: none; border: 0; box-shadow: none; }
+
+@media (prefers-reduced-motion: no-preference) {
+  .autocomplete,
+  .autocomplete-popover:popover-open { animation: motion-reveal var(--motion-exit) var(--motion-ease-out); }
+  .autocomplete-popover > .autocomplete { animation: none; }
+}

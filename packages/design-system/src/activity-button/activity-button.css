@@ -1,9 +1,4 @@
 /* An indeterminate long-running button stays actionable so its active content can cancel the work. */
-.activity-button[data-activity-state="initial"] .activity-button__content[data-activity-content="initial"],
-.activity-button[data-activity-state="active"] .activity-button__content[data-activity-content="active"] {
-  visibility: visible;
-  pointer-events: auto;
-}
 .activity-button[data-activity-state="active"] { cursor: pointer; }
 .activity-button__indicator { opacity: 0; }
 .activity-button[data-activity-state="active"] .activity-button__indicator { opacity: 1; }

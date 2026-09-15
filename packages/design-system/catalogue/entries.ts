@@ -31,6 +31,241 @@ export interface CatalogueEntry {
 }
 export const entries: CatalogueEntry[] = [
   {
+    id: "motion",
+    title: "Motion · state changes",
+    when: "Try the transitions.dev-inspired animations across the shared components. Open, dismiss and repeat; these are the real shared components.",
+    contract:
+      "Menus grow from their resolved trigger edge (250ms), dialogs scale from 96% with a fading backdrop (250ms), and both dismiss faster (150ms). Feedback rises 4px while fading in. Shared motion tokens live in design-system.css. All motion respects the operating system’s reduced-motion preference, with no delayed actions or focus restoration. Native discrete CSS transitions keep closing surfaces visible without JavaScript timers. Toggles slide their selection, disclosures animate intrinsic height where supported, stateful buttons crossfade labels and soften perimeter changes, suggestions and warnings reveal gently, and enabled buttons compress while pressed. Warning regions ease to their new height after a successful Turbo Stream update.",
+    imports: {
+      popup: "popupHtml",
+      dialog: "dialogHtml",
+      button: "buttonHtml",
+      "copy-button": "copyButtonHtml",
+      "action-item": "actionItemHtml",
+      "transient-feedback": "transientFeedbackHtml",
+      icons: "Icons",
+      toggle: "toggleHtml",
+      "activity-button": "activityButtonHtml",
+      "progress-button": "progressButtonHtml",
+      autocomplete: "autocompleteHtml",
+      "warning-banner": "warningBannerHtml",
+    },
+    sources: [
+      "design-system.css",
+      "popup/popup.css",
+      "dialog/dialog.css",
+      "transient-feedback/transient-feedback.css",
+      "toggle/toggle.css",
+      "perimeter-button/perimeter-button.css",
+      "perimeter-button/perimeter-button-controller.ts",
+      "autocomplete/autocomplete.css",
+      "warning-banner/warning-banner-controller.ts",
+      "button/button.css",
+    ],
+    examples: [
+      {
+        title: "01 · Menu grows from its anchor — open, choose or press Escape",
+        render: () =>
+          popupHtml({
+            id: "motion-menu",
+            label: "Motion menu",
+            trigger: {
+              variant: "secondary",
+              content: { kind: "caption", caption: "Open animated menu" },
+            },
+            contentHtml: ["Edit details", "Duplicate", "Archive"]
+              .map((text) =>
+                actionItemHtml({
+                  kind: "single",
+                  element: {
+                    tag: "button",
+                    attributesHtml: 'type="button" role="menuitem"',
+                  },
+                  label: { kind: "text", text },
+                }),
+              )
+              .join(""),
+          }),
+      },
+      {
+        title: "02 · Modal settles in, backdrop fades — open and close",
+        render: () =>
+          buttonHtml({
+            type: "button",
+            variant: "secondary",
+            content: { kind: "caption", caption: "Open animated dialog" },
+            attributesHtml:
+              'data-action="catalogue#openDialog" data-catalogue-dialog-param="motion-dialog"',
+          }) +
+          dialogHtml({
+            element: { id: "motion-dialog" },
+            iconHtml: Icons.Plus,
+            titleCaption: "A softer change of focus",
+            bodyHtml:
+              "<p>A small scale change introduces the focused surface. The backdrop fades with it. Close with × or Escape, then open again.</p><p>Focus returns immediately; motion never delays the action.</p>",
+          }),
+      },
+      {
+        title: "03 · Acknowledgement fades and rises — resets after two seconds",
+        render: () =>
+          transientFeedbackHtml({
+            element: {
+              tag: "button",
+              attributesHtml: 'type="button" data-action="catalogue#feedback"',
+            },
+            state: "initial",
+            initialContent: { kind: "text", text: "Acknowledge" },
+            feedbackContent: { kind: "text", text: "Done!" },
+          }) +
+          copyButtonHtml({
+            label: "Copy example text",
+            caption: "Copy text",
+            copyText: "Small motion, clear feedback.",
+          }),
+      },
+      {
+        title: "04 · Selection slides — try different label widths",
+        render: () =>
+          toggleHtml({
+            variant: "button",
+            label: "Motion view",
+            name: "motion-view",
+            value: "list",
+            options: [
+              { value: "list", label: "List" },
+              { value: "board", label: "Board" },
+              { value: "timeline", label: "Timeline" },
+            ],
+          }),
+      },
+      {
+        title: "05 · Expand and collapse — native disclosure",
+        render: () =>
+          "<details>" +
+          actionItemHtml({
+            kind: "single",
+            element: { tag: "summary" },
+            leadingHtml: Icons.Disclosure,
+            label: { kind: "text", text: "Advanced options" },
+          }) +
+          '<div class="form-stack"><p>The arrow rotates as the section expands. Height follows the actual content, rather than a guessed maximum.</p><label>Display name<input class="text-field" value="My workspace"></label><p>Close and reopen, including with the keyboard.</p></div></details>',
+      },
+      {
+        title: "06 · Running states soften — activity stays cancellable",
+        render: () =>
+          activityButtonHtml({
+            state: "initial",
+            variant: "secondary",
+            initialContent: { kind: "text", text: "Start activity" },
+            activeContent: { kind: "text", text: "Stop activity" },
+            type: "button",
+            attributesHtml: 'data-action="catalogue#activity"',
+          }),
+      },
+      {
+        title: "07 · Progress — use the controls to step through a task",
+        render: () =>
+          '<div class="form-stack">' +
+          progressButtonHtml({
+            id: "motion-progress",
+            type: "button",
+            state: "initial",
+            variant: "secondary",
+            initialContent: { kind: "text", text: "Run task" },
+            progressContent: { kind: "text", text: "Working…" },
+            attributesHtml:
+              'data-action="catalogue#progress" data-catalogue-progress-param="25"',
+          }) +
+          '<div class="form-actions">' +
+          [
+            { caption: "Start · 25%", value: "25" },
+            { caption: "Advance · 75%", value: "75" },
+            { caption: "Finish / reset", value: "idle" },
+          ]
+            .map((step) =>
+              buttonHtml({
+                type: "button",
+                variant: "secondary",
+                content: { kind: "caption", caption: step.caption },
+                attributesHtml: `data-action="catalogue#progress" data-catalogue-progress-param="${step.value}"`,
+              }),
+            )
+            .join("") +
+          "</div></div>",
+      },
+      {
+        title: "08 · Suggestions reveal — preview server-rendered results",
+        render: () =>
+          '<div class="form-stack">' +
+          buttonHtml({
+            type: "button",
+            variant: "secondary",
+            content: { kind: "caption", caption: "Show / hide suggestions" },
+            attributesHtml:
+              'aria-expanded="false" aria-controls="motion-suggestions" data-action="catalogue#suggestions"',
+          }) +
+          autocompleteHtml({
+            kind: "results",
+            label: "Example suggestions",
+            attributesHtml: 'id="motion-suggestions" hidden',
+            contentHtml: ["atelier/design-system", "atelier/workspace"]
+              .map((text) =>
+                actionItemHtml({
+                  kind: "single",
+                  element: {
+                    tag: "div",
+                    attributesHtml: 'role="option" aria-selected="false"',
+                  },
+                  primary: false,
+                  label: { kind: "text", text },
+                }),
+              )
+              .join(""),
+          }) +
+          "</div>",
+      },
+      {
+        title:
+          "09 · Warning enters and its space collapses — confirm dismissal, then restore",
+        render: () =>
+          '<div class="form-stack"><div id="motion-warning-region" data-action="submit->catalogue#dismissWarning">' +
+          warningBannerHtml({
+            title: "Example warning",
+            message:
+              "This demo changes no saved settings. Real dismissals animate only after the server confirms them.",
+            dismiss: {
+              action: "/catalogue/warnings/dismiss",
+              state: "motion-example",
+            },
+          }) +
+          "</div><p>Content below follows the changing warning height.</p>" +
+          buttonHtml({
+            type: "button",
+            variant: "secondary",
+            content: { kind: "caption", caption: "Restore warning" },
+            attributesHtml:
+              'id="motion-warning-reset" data-action="catalogue#resetWarning"',
+          }) +
+          "</div>",
+      },
+      {
+        title: "10 · Tactile press — hold a button; disabled stays still",
+        render: () =>
+          buttonHtml({
+            type: "button",
+            variant: "primary",
+            content: { kind: "caption", caption: "Press and hold" },
+          }) +
+          buttonHtml({
+            type: "button",
+            variant: "secondary",
+            disabled: true,
+            content: { kind: "caption", caption: "Disabled" },
+          }),
+      },
+    ],
+  },
+  {
     id: "warning-banner", title: "Warning banner",
     when: "Persistent, non-blocking problems or configuration notices that need user attention.",
     contract: "Title and message are escaped text. Optional actionsHtml composes server-rendered actions. Supplying dismiss adds an × and destructive confirmation; the feature owns the POST action and opaque state token, persistence, and Turbo replacement. Dismissal does not resolve the condition.",
@@ -444,12 +679,12 @@ export const entries: CatalogueEntry[] = [
     title: "Destructive confirmation",
     when: "A two-step destructive form action with an in-place opt-out and an adjacent confirmation button. Use Dialog for explanations or additional input.",
     contract:
-      "Place inside a form. The trigger becomes Cancel, keeping its original size as a minimum and growing for a longer caption. This growth may nudge neighbors; use short cancel captions. Only the confirm button stays out of layout. The bare confirm button prefers the nearest container that fits both controls, then the viewport. It follows scrolling/resizing and dismisses when the trigger leaves view. Its 220ms entrance is inert and respects reduced motion. Focus stays on Cancel. Escape, outside click, or Cancel dismisses; confirm submits natively, with an optional action override. Demos intercept submission.",
+      "Place inside a form. The trigger becomes Cancel, keeping its original size as a minimum and growing for a longer caption. This growth may nudge neighbors; use short cancel captions. Only the confirm button stays out of layout. The bare confirm button prefers the nearest container that fits both controls, then the viewport. It follows scrolling/resizing and dismisses when the trigger leaves view. Its anchor-aware scale/fade entrance takes 250ms and stays inert; dismissal fades out in 150ms. Cancel reveals in place. All motion respects reduced motion. Focus stays on Cancel. Escape, outside click, or Cancel dismisses; confirm submits natively, with an optional action override. Demos intercept submission.",
     imports: { "destructive-confirmation": "destructiveConfirmationHtml" },
-    sources: ["destructive-confirmation/destructive-confirmation-controller.ts", "popup/popup-position.ts"],
+    sources: ["destructive-confirmation/destructive-confirmation-controller.ts", "destructive-confirmation/destructive-confirmation.css", "popup/popup-position.ts"],
     examples: [
       {
-        title: "In-place opt-out · adjacent confirm (safe demo)",
+        title: "Animated confirmation · open, cancel or Escape, then repeat (safe demo)",
         render: () =>
           '<form data-action="submit->catalogue#submit">' +
           destructiveConfirmationHtml({
@@ -625,7 +860,7 @@ export const entries: CatalogueEntry[] = [
             type: "button",
             variant: "secondary",
             content: { kind: "caption", caption: "Open dialog" },
-            attributesHtml: 'data-action="catalogue#openDialog"',
+            attributesHtml: 'data-action="catalogue#openDialog" data-catalogue-dialog-param="catalogue-dialog"',
           }) +
           dialogHtml({
             element: { id: "catalogue-dialog" },

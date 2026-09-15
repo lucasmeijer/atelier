@@ -1,5 +1,7 @@
 /// <reference lib="dom" />
 
+import { PerimeterButtonController } from "./perimeter-button/perimeter-button-controller.ts";
+import { WarningBannersController } from "./warning-banner/warning-banner-controller.ts";
 import { ManagedListController } from "./managed-list/managed-list-controller.ts";
 
 import type { Application } from "@hotwired/stimulus";
@@ -14,6 +16,8 @@ import { ToggleController } from "./toggle/toggle-controller.ts";
 
 const automaticBehaviors = [
   ["body", "action-items"],
+  ["body", "warning-banners"],
+  [".activity-button, .progress-button", "perimeter-button"],
   [".copy-button", "copy-button", "click->copy-button#copy"],
   [".destructive-confirmation", "destructive-confirmation"],
   [".dialog", "dialog"],
@@ -41,6 +45,8 @@ function attachAutomaticBehaviors(root: ParentNode): void {
 }
 
 export function registerDesignSystemControllers(application: Pick<Application, "register">): void {
+  application.register("perimeter-button", PerimeterButtonController);
+  application.register("warning-banners", WarningBannersController);
   application.register("action-items", ActionItemController);
   application.register("copy-button", CopyButtonController);
   application.register("destructive-confirmation", DestructiveConfirmationController);

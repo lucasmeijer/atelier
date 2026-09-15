@@ -1,3 +1,4 @@
+import { animateWarningChanges } from "../src/warning-banner/warning-banner-controller.ts";
 import { setActivityButtonState } from "../src/activity-button/activity-button-client.ts";
 import { CatalogueReloadController } from "./reload-controller.ts";
 import { Application, Controller } from "@hotwired/stimulus";
@@ -61,20 +62,46 @@ class CatalogueController extends Controller<HTMLElement> {
     const button = event.currentTarget as HTMLButtonElement;
     setActivityButtonState(button, button.dataset.activityState === "active" ? "initial" : "active");
   }
-  openDialog(): void {
+  openDialog(event: Event & { params: { dialog: string } }): void {
     this.element
-      .querySelector<HTMLDialogElement>("#catalogue-dialog")!
+      .querySelector<HTMLDialogElement>(`#${event.params.dialog}`)!
       .showModal();
   }
-  // SAFETY: The catalogue binds this action only to its declared native control.
   feedback(event: Event): void {
     // SAFETY: Stimulus invokes this action on the feedback button.
     showTransientFeedback(event.currentTarget as HTMLElement);
+  }
+  progress(event: Event & { params: { progress: string } }): void {
+    const button = this.element.querySelector<HTMLButtonElement>("#motion-progress")!;
+    const running = event.params.progress !== "idle";
+    button.dataset.progressState = running ? "in-progress" : "initial";
+    button.disabled = running;
+    if (running) button.setAttribute("aria-busy", "true");
+    else button.removeAttribute("aria-busy");
+    button.style.setProperty("--button-progress", running ? event.params.progress : "0");
+  }
+  suggestions(event: Event): void {
+    const results = this.element.querySelector<HTMLElement>("#motion-suggestions")!;
+    results.hidden = !results.hidden;
+    // SAFETY: This action belongs to the specimen's preview button.
+    (event.currentTarget as HTMLElement).setAttribute("aria-expanded", String(!results.hidden));
+  }
+  async dismissWarning(event: Event): Promise<void> {
+    event.preventDefault();
+    const region = this.element.querySelector<HTMLElement>("#motion-warning-region")!;
+    region.querySelector<HTMLElement>(":popover-open")?.hidePopover();
+    await animateWarningChanges([region], () => { region.querySelector<HTMLElement>(".warning-banner")!.hidden = true; });
+    this.element.querySelector<HTMLButtonElement>("#motion-warning-reset")!.focus();
+  }
+  async resetWarning(): Promise<void> {
+    const region = this.element.querySelector<HTMLElement>("#motion-warning-region")!;
+    await animateWarningChanges([region], () => { region.querySelector<HTMLElement>(".warning-banner")!.hidden = false; });
   }
   submit(event: Event): void {
     event.preventDefault();
     // SAFETY: Catalogue submit actions are bound to the element containing the demo and its output.
     const demo = event.currentTarget as HTMLElement;
+    demo.querySelector<HTMLElement>(":popover-open")?.hidePopover();
     demo.querySelector("output")!.textContent =
       "Submitted — demo only. Nothing was deleted.";
   }

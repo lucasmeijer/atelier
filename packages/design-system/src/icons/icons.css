@@ -1,5 +1,5 @@
 /* Canonical indicator for controls that disclose and conceal content. */
-.disclosure-icon { display: block; width: 14px; height: 14px; flex: 0 0 auto; fill: none; stroke: currentColor; stroke-width: 1.7; stroke-linecap: round; stroke-linejoin: round; transition: transform 150ms ease; }
+.disclosure-icon { display: block; width: 14px; height: 14px; flex: 0 0 auto; fill: none; stroke: currentColor; stroke-width: 1.7; stroke-linecap: round; stroke-linejoin: round; transition: transform var(--motion-enter) var(--motion-ease-out); }
 :where(button, [role="treeitem"])[aria-expanded="false"] .disclosure-icon,
 details:not([open]) > summary .disclosure-icon { transform: rotate(-90deg); }
 

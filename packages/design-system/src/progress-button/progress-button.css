@@ -1,10 +1,5 @@
 /* A long-running button traces determinate or indeterminate progress around its stable perimeter. */
 .button.progress-button { --button-progress: 0; }
-.progress-button[data-progress-state="initial"] .progress-button__content[data-progress-content="initial"],
-.progress-button[data-progress-state="in-progress"] .progress-button__content[data-progress-content="in-progress"] {
-  visibility: visible;
-  pointer-events: auto;
-}
 .progress-button[data-progress-state="in-progress"],
 .progress-button[data-progress-state="in-progress"]:disabled,
 .progress-button[data-progress-state="in-progress"][aria-disabled="true"] { opacity: 1; }
