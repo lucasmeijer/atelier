@@ -248,20 +248,6 @@ const workspaceBuildCommand = dockerBuildCommand(options, [
 
 let shouldBuildWorkspace = false;
 
-const defaultBuildArgs = [
-  `ATELIER_COMMIT_ID=${gitCommitId()}`,
-  `ATELIER_COMMIT_DESCRIPTION=${gitCommitDescription()}`,
-  `ATELIER_DEFAULT_WORKSPACE_IMAGE=${defaultWorkspaceImageRef}`,
-  `ATELIER_EAGERLY_PRELOAD=${JSON.stringify([defaultWorkspaceImageRef])}`,
-];
-const allBuildArgs = [...defaultBuildArgs, ...options.buildArgs];
-
-const appBuildCommand = dockerBuildCommand(options, [
-  ...imageRefs.flatMap((ref) => ["--tag", ref]),
-  ...allBuildArgs.flatMap((buildArg) => ["--build-arg", buildArg]),
-  "--file", "apps/web/Dockerfile", ".",
-]);
-
 console.log();
 console.log(`${options.push ? "Publishing" : "Building"} Atelier image:`);
 for (const ref of imageRefs) console.log(`  ${ref}`);
@@ -274,6 +260,28 @@ await ensureGeneratedDefaultWorkspaceImage({
   exists: async ref => workspaceImageExists(ref, options),
   build: async () => { shouldBuildWorkspace = true; await runInherited(workspaceBuildCommand); },
 });
+// Bind the app to the exact multi-platform workspace manifest just published.
+let publishedWorkspaceRef = defaultWorkspaceImageRef;
+if (options.push) {
+  const descriptor = JSON.parse(run(["docker", "buildx", "imagetools", "inspect", defaultWorkspaceImageRef, "--format", "{{json .Manifest}}"]));
+  if (!/^sha256:[a-f0-9]{64}$/.test(descriptor.digest)) throw new Error("Registry returned no workspace manifest digest");
+  publishedWorkspaceRef = `${defaultWorkspaceImageRef}@${descriptor.digest}`;
+}
+
+const defaultBuildArgs = [
+  `ATELIER_COMMIT_ID=${gitCommitId()}`,
+  `ATELIER_COMMIT_DESCRIPTION=${gitCommitDescription()}`,
+  `ATELIER_DEFAULT_WORKSPACE_IMAGE=${publishedWorkspaceRef}`,
+  `ATELIER_EAGERLY_PRELOAD=${JSON.stringify([publishedWorkspaceRef])}`,
+];
+const allBuildArgs = [...defaultBuildArgs, ...options.buildArgs];
+
+const appBuildCommand = dockerBuildCommand(options, [
+  ...imageRefs.flatMap((ref) => ["--tag", ref]),
+  ...allBuildArgs.flatMap((buildArg) => ["--build-arg", buildArg]),
+  "--file", "apps/web/Dockerfile", ".",
+]);
+
 await runInherited(appBuildCommand);
 
 console.log();
