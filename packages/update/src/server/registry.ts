@@ -4,7 +4,7 @@ import type { HttpFetcher } from "./http.ts";
 import { Type, type Static } from "typebox";
 import { Value } from "typebox/value";
 
-export interface ImageMetadata { digest: string; revision?: string; platformDigest?: string }
+export interface ImageMetadata { digest: string; revision?: string; }
 
 interface RegistryAuth { realm: string; service?: string; scope?: string }
 
@@ -23,8 +23,10 @@ const registryIndexSchema = Type.Object({
   })),
 });
 
+const layerSchema = Type.Object({ digest: Type.String({ pattern: "^sha256:[a-f0-9]{64}$" }), size: Type.Integer({ minimum: 0 }) });
 const registryImageManifestSchema = Type.Object({
   config: Type.Object({ digest: Type.String() }),
+  layers: Type.Array(layerSchema),
 });
 
 const registryManifestSchema = Type.Union([registryIndexSchema, registryImageManifestSchema]);
@@ -80,36 +82,67 @@ export function selectManifestFromIndex(index: Static<typeof registryIndexSchema
   return manifest.digest;
 }
 
-export async function fetchChannelImageMetadata(channel: ReleaseChannel, fetcher: HttpFetcher = fetch, platform = { os: "linux", architecture: currentArch() }): Promise<ImageMetadata> {
-  const manifestUrl = `https://ghcr.io/v2/${repository}/manifests/${channel}`;
+/** Shared registry protocol for update discovery and download planning. */
+async function fetchRegistryImage(base: string, version: string, fetcher: HttpFetcher, platform: { os: string; architecture: string }) {
   const accept = [
     "application/vnd.oci.image.index.v1+json",
     "application/vnd.docker.distribution.manifest.list.v2+json",
     "application/vnd.oci.image.manifest.v1+json",
     "application/vnd.docker.distribution.manifest.v2+json",
   ].join(", ");
-  let response = await authFetch(manifestUrl, { headers: { accept } }, fetcher);
+  let response = await authFetch(`${base}/manifests/${version}`, { headers: { accept } }, fetcher);
   if (!response.ok) throw new Error(`registry manifest request failed: ${response.status}`);
-  const rootDigest = response.headers.get("docker-content-digest") ?? "";
-  const rootManifest = Value.Parse(registryManifestSchema, await response.json());
-  let platformDigest: string | undefined;
-  let imageManifest: Static<typeof registryImageManifestSchema>;
-  if ("manifests" in rootManifest) {
-    platformDigest = selectManifestFromIndex(rootManifest, platform);
-    response = await authFetch(`https://ghcr.io/v2/${repository}/manifests/${platformDigest}`, { headers: { accept } }, fetcher);
+  let digest = response.headers.get("docker-content-digest");
+  const root = Value.Parse(registryManifestSchema, await response.json());
+  let manifest: Static<typeof registryImageManifestSchema>;
+  if ("manifests" in root) {
+    digest = selectManifestFromIndex(root, platform);
+    response = await authFetch(`${base}/manifests/${digest}`, { headers: { accept } }, fetcher);
     if (!response.ok) throw new Error(`registry platform manifest request failed: ${response.status}`);
-    imageManifest = Value.Parse(registryImageManifestSchema, await response.json());
-  } else imageManifest = rootManifest;
-  const configResponse = await authFetch(`https://ghcr.io/v2/${repository}/blobs/${imageManifest.config.digest}`, { headers: { accept: "application/vnd.oci.image.config.v1+json, application/vnd.docker.container.image.v1+json" } }, fetcher);
+    manifest = Value.Parse(registryImageManifestSchema, await response.json());
+  } else manifest = root;
+  const configResponse = await authFetch(`${base}/blobs/${manifest.config.digest}`, { headers: { accept: "application/vnd.oci.image.config.v1+json, application/vnd.docker.container.image.v1+json" } }, fetcher);
   if (!configResponse.ok) throw new Error(`registry config request failed: ${configResponse.status}`);
   const config = Value.Parse(registryConfigSchema, await configResponse.json());
   if (config.os !== platform.os || config.architecture !== platform.architecture) {
     throw new Error(`update image is ${config.os}/${config.architecture}, expected ${platform.os}/${platform.architecture}`);
   }
-  const labels = config.config?.Labels ?? {};
-  return {
-    digest: platformDigest ?? rootDigest,
-    platformDigest,
-    revision: labels["org.opencontainers.image.revision"],
-  };
+  if (!digest) throw new Error("Registry did not return an immutable image digest");
+  return { digest, layers: manifest.layers, labels: config.config?.Labels ?? {} };
+}
+
+export async function fetchChannelImageMetadata(channel: ReleaseChannel, fetcher: HttpFetcher = fetch, platform = { os: "linux", architecture: currentArch() }): Promise<ImageMetadata> {
+  const image = await fetchRegistryImage(`https://ghcr.io/v2/${repository}`, channel, fetcher, platform);
+  return { digest: image.digest, revision: image.labels["org.opencontainers.image.revision"] };
+}
+
+const imageReferenceSchema = Type.String({ pattern: "^[a-zA-Z0-9][a-zA-Z0-9._/:@-]*$" });
+
+export interface PlannedImage {
+  reference: string;
+  layers: Static<typeof layerSchema>[];
+  dependencies: string[];
+}
+
+/** Read only manifests and configuration; no image layers are downloaded here. */
+export async function resolveImage(reference: string, fetcher: HttpFetcher = fetch, platform = { os: "linux", architecture: currentArch() }): Promise<PlannedImage> {
+  Value.Assert(imageReferenceSchema, reference);
+  const parts = reference.split("/");
+  const explicitRegistry = parts.length > 1 && (parts[0]!.includes(".") || parts[0]!.includes(":") || parts[0] === "localhost");
+  const registry = explicitRegistry ? parts.shift()! : "docker.io";
+  let name = parts.join("/");
+  const separator = name.includes("@") ? name.indexOf("@") : name.lastIndexOf(":");
+  const version = separator === -1 ? "latest" : name.slice(separator + 1);
+  name = separator === -1 ? name : name.slice(0, separator);
+  if (reference.includes("@") && name.includes(":")) name = name.slice(0, name.lastIndexOf(":"));
+  if (registry === "docker.io" && !name.includes("/")) name = `library/${name}`;
+  const host = registry === "docker.io" ? "registry-1.docker.io" : registry;
+  const protocol = /^(localhost|127\.0\.0\.1)(:|$)/.test(host) ? "http" : "https";
+  const base = `${protocol}://${host}/v2/${name}`;
+  const image = await fetchRegistryImage(base, version, fetcher, platform);
+  const dependencies = Value.Parse(Type.Array(imageReferenceSchema), JSON.parse(image.labels["eagerly-preload"] ?? "[]"));
+  // Preserve an explicitly selected index digest so Docker also registers that declared reference.
+  const pinnedDigest = reference.includes("@") ? version : image.digest;
+  if (!/^sha256:[a-f0-9]{64}$/.test(pinnedDigest)) throw new Error("Invalid image digest");
+  return { reference: `${registry}/${name}@${pinnedDigest}`, layers: image.layers, dependencies };
 }

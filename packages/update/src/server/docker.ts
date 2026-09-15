@@ -1,3 +1,4 @@
+import { resolveImage, type PlannedImage } from "./registry.ts";
 import { readFile } from "node:fs/promises";
 import { request } from "node:http";
 import { hostname } from "node:os";
@@ -65,80 +66,91 @@ export async function detectSelfUpdateRuntime(exec: DockerExec = dockerExec, con
 }
 export interface PreparedUpdate { imageId: string; reference: string; }
 export async function prepareUpdate(reference: string, progress: (progress: PullProgress) => void, deps: {
-  pull?: typeof pullImageReference; inspect?: typeof dockerImageInspect;
+  pull?: typeof pullImageReference; inspect?: typeof dockerImageInspect; resolve?: typeof resolveImage; exec?: DockerExec;
 } = {}): Promise<PreparedUpdate> {
   const pull = deps.pull ?? pullImageReference;
   const inspect = deps.inspect ?? dockerImageInspect;
-  await pull(reference, (event) => progress({ ...event, percent: event.percent === undefined ? undefined : Math.floor(event.percent / 2), message: "Downloading Atelier" }));
-  const image = await inspect(reference);
-  const dependencies = Value.Parse(Type.Array(Type.String({ minLength: 1 })), JSON.parse(image.Config?.Labels?.["eagerly-preload"] ?? "[]"));
-  for (const dependency of dependencies) {
-    if (dependency.startsWith("-") || /\s/.test(dependency)) throw new Error(`Invalid eagerly-preload image: ${dependency}`);
+  const resolve = deps.resolve ?? resolveImage;
+  progress({ kind: "progress", message: "Preparing…" });
+  const images = new Map<string, PlannedImage>();
+  const aliases = new Map<string, string>();
+  async function discover(requested: string): Promise<void> {
+    if (aliases.has(requested)) return;
+    const image = await resolve(requested);
+    aliases.set(requested, image.reference);
+    if (images.has(image.reference)) return;
+    images.set(image.reference, image);
+    for (const dependency of image.dependencies) await discover(dependency);
   }
-  const images = [...new Set(dependencies)];
-  progress({ kind: "progress", percent: images.length ? 50 : 100, message: "Atelier downloaded" });
-  for (const [index, dependency] of images.entries()) {
-    await pull(dependency, (event) => progress({ ...event, percent: event.percent === undefined ? undefined : Math.min(99, 50 + Math.floor((index * 50 + event.percent / 2) / images.length)), message: `Downloading workspace image ${index + 1} of ${images.length}` }));
-    await inspect(dependency);
+  await discover(reference);
+  const layers = new Map<string, { size: number; current: number }>();
+  for (const image of images.values()) for (const layer of image.layers) layers.set(layer.digest, { size: layer.size, current: 0 });
+  const total = [...layers.values()].reduce((sum, layer) => sum + layer.size, 0);
+  function report(): void {
+    const current = [...layers.values()].reduce((sum, layer) => sum + layer.current, 0);
+    const percent = total ? Math.min(99, Math.floor(current / total * 100)) : 0;
+    progress({ kind: "progress", percent, message: `Downloading… ${percent}%` });
+  }
+  report();
+  for (const image of images.values()) {
+    await pull(image.reference, (event) => {
+      const matches = image.layers.filter((layer) => layer.digest.slice(7).startsWith(event.id));
+      if (matches.length !== 1) return;
+      const layer = layers.get(matches[0]!.digest)!;
+      const downloaded = event.complete ? layer.size : Math.min(layer.size, event.current ?? 0);
+      layer.current = Math.max(layer.current, downloaded);
+      report();
+    });
+    for (const entry of image.layers) layers.get(entry.digest)!.current = entry.size;
+    report();
+  }
+  progress({ kind: "progress", percent: 99, message: "Finalizing…" });
+  const appReference = aliases.get(reference)!;
+  const appImage = await inspect(appReference);
+  for (const image of images.values()) {
+    if (image.reference !== appReference) await inspect(image.reference);
+  }
+  // Keep declared mutable names usable by workspace creation, but only after all pulls succeed.
+  for (const [alias, pinned] of aliases) {
+    if (alias.includes("@")) continue;
+    const result = await (deps.exec ?? dockerExec)(["image", "tag", pinned, alias]);
+    if (result.code !== 0) throw new Error(result.stderr.trim() || `Could not tag image: ${alias}`);
   }
   progress({ kind: "progress", percent: 100 });
-  return { imageId: image.Id, reference };
+  return { imageId: appImage.Id, reference };
 }
 
-export interface PullProgress { kind: "progress"; percent?: number; message?: string }
+export interface PullProgress {
+  kind: "progress"; percent?: number; message?: string;
+}
 
 const dockerPullEventSchema = Type.Object({
   id: Type.Optional(Type.String()),
   status: Type.Optional(Type.String()),
   progressDetail: Type.Optional(Type.Object({
     current: Type.Optional(Type.Number()),
-    total: Type.Optional(Type.Number()),
   })),
   error: Type.Optional(Type.String()),
 });
 
-export type DockerPullEvent = Static<typeof dockerPullEventSchema>;
-type PullLayer = { current: number; total: number };
+export interface PullLayerProgress { id: string; current?: number; complete: boolean }
 
-export function parseDockerPullEventLine(line: string): DockerPullEvent {
-  return Value.Parse(dockerPullEventSchema, JSON.parse(line));
-}
-
-function dockerApiImageCreatePath(reference: string): string {
-  return `/images/create?${new URLSearchParams({ fromImage: reference }).toString()}`;
-}
-
-function pullPercent(layers: Map<string, PullLayer>): number | undefined {
-  let current = 0;
-  let total = 0;
-  for (const layer of layers.values()) {
-    current += Math.min(layer.current, layer.total);
-    total += layer.total;
-  }
-  return total > 0 ? Math.max(1, Math.min(99, Math.round((current / total) * 100))) : undefined;
-}
-
-function recordPullEvent(line: string, layers: Map<string, PullLayer>): PullProgress {
-  const event = parseDockerPullEventLine(line);
-  if (event.error) throw new Error(event.error);
-  if (event.id && event.progressDetail?.total) layers.set(event.id, { current: event.progressDetail.current ?? 0, total: event.progressDetail.total });
-  if (event.id && (event.status === "Pull complete" || event.status === "Already exists") && layers.has(event.id)) {
-    const layer = layers.get(event.id)!;
-    layers.set(event.id, { current: layer.total, total: layer.total });
-  }
-  return { kind: "progress", percent: pullPercent(layers), message: event.status };
-}
-
-export async function pullImageReference(reference: string, onProgress: (progress: PullProgress) => void, socketPath = "/var/run/docker.sock"): Promise<void> {
-  const layers = new Map<string, PullLayer>();
+export async function pullImageReference(reference: string, onProgress: (progress: PullLayerProgress) => void, socketPath = "/var/run/docker.sock"): Promise<void> {
   await new Promise<void>((resolve, reject) => {
-    const req = request({ socketPath, path: dockerApiImageCreatePath(reference), method: "POST" }, (res) => {
+    const req = request({ socketPath, path: `/images/create?${new URLSearchParams({ fromImage: reference })}`, method: "POST" }, (res) => {
       let buffer = "";
       let errorBody = "";
       res.setEncoding("utf8");
       const emitLine = (line: string) => {
         const trimmed = line.trim();
-        if (trimmed) onProgress(recordPullEvent(trimmed, layers));
+        if (!trimmed) return;
+        const event = Value.Parse(dockerPullEventSchema, JSON.parse(trimmed));
+        if (event.error) throw new Error(event.error);
+        if (event.id) onProgress({
+          id: event.id,
+          current: event.status === "Downloading" ? event.progressDetail?.current : undefined,
+          complete: event.status === "Download complete" || event.status === "Pull complete" || event.status === "Already exists",
+        });
       };
       res.on("data", (chunk: string) => {
         if ((res.statusCode ?? 500) >= 400) {
@@ -161,5 +173,4 @@ export async function pullImageReference(reference: string, onProgress: (progres
     req.on("error", reject);
     req.end();
   });
-  onProgress({ kind: "progress", percent: 100 });
 }
