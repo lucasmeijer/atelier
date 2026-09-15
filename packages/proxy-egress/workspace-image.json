@@ -1,9 +1,3 @@
 {
-  "files": [
-    {
-      "from": "rootfs/usr/local/lib/atelier-egress-proxy.mjs",
-      "to": "/usr/local/lib/atelier-egress-proxy.mjs",
-      "mode": "0644"
-    }
-  ]
+  "aptPackages": ["socat"]
 }

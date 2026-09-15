@@ -7,7 +7,6 @@ import { mkdtemp, readFile, rm } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { spawn } from "node:child_process";
-import { fileURLToPath } from "node:url";
 import { startWorkspaceEgressProxy } from "../src/egress/egress-proxy.ts";
 import { ensureMitmCa, ensureLeafCertificate } from "../src/egress/mitm-ca.ts";
 import { createHttpHooks } from "../src/secrets/placeholder-hooks.ts";
@@ -22,19 +21,28 @@ async function listen(server: net.Server) {
   return (server.address() as net.AddressInfo).port;
 }
 async function localRelay(socketPath: string): Promise<number> {
-  // Run the same standalone module with Node, exactly as the workspace does.
-  const source = fileURLToPath(new URL("../rootfs/usr/local/lib/atelier-egress-proxy.mjs", import.meta.url));
-  const child = spawn("node", ["--input-type=module", "-e", `
-    const { createLocalProxy } = await import(process.argv[2]);
-    const { server } = createLocalProxy(process.argv[3]);
-    server.listen(0, "127.0.0.1", () => process.stdout.write(String(server.address().port) + "\\n"));
-  `, "test-relay", source, socketPath], { stdio: ["ignore", "pipe", "pipe"] });
-  cleanup.push(async () => { child.kill(); await new Promise(resolve => child.once("close", resolve)); });
+  // Use the workspace's transport, with an ephemeral port reported by socat.
+  const child = spawn("socat", ["-d", "-d", "TCP4-LISTEN:0,bind=127.0.0.1,reuseaddr,fork", `UNIX-CONNECT:${socketPath}`], {
+    stdio: ["ignore", "ignore", "pipe"], detached: true,
+  });
+  const closed = new Promise<void>(resolve => child.once("close", () => resolve()));
+  cleanup.push(async () => {
+    // Stop the listener and every connection child, not just the parent.
+    if (child.exitCode === null && child.signalCode === null) process.kill(-child.pid!, "SIGTERM");
+    await closed;
+  });
   return await new Promise<number>((resolve, reject) => {
-    child.once("error", reject);
-    child.stderr.on("data", data => reject(new Error(data.toString())));
-    child.stdout.once("data", data => resolve(Number(data.toString().trim())));
-    child.once("exit", code => reject(new Error(`Local proxy exited ${code}`)));
+    let logs = "";
+    let ready = false;
+    const timeout = setTimeout(() => reject(new Error(`Local proxy did not listen: ${logs}`)), 5000);
+    child.once("error", error => { clearTimeout(timeout); reject(error); });
+    child.stderr.on("data", data => {
+      if (ready) return;
+      logs += data.toString();
+      const listening = logs.match(/listening on AF=2 127\.0\.0\.1:(\d+)/);
+      if (listening) { ready = true; clearTimeout(timeout); resolve(Number(listening[1])); }
+    });
+    child.once("exit", code => { clearTimeout(timeout); reject(new Error(`Local proxy exited ${code}: ${logs}`)); });
   });
 }
 
@@ -159,3 +167,52 @@ test("workspace socket controls HTTP and HTTPS identity, policy and reconnection
   expect(reconnected.body).toBe("destination response");
   expect(received.at(-1)?.key).toBe("alpha-secret");
 }, 20000);
+
+
+test("local relay survives an unavailable socket and forwards concurrent large transfers", async () => {
+  const directory = await mkdtemp(join(tmpdir(), "atelier-relay-"));
+  cleanup.push(() => rm(directory, { recursive: true, force: true }));
+  const socketPath = join(directory, "egress.sock");
+  const port = await localRelay(socketPath);
+  // A failed UNIX-CONNECT must only terminate that connection's child.
+  await new Promise<void>((resolve, reject) => {
+    const client = net.connect(port, "127.0.0.1");
+    client.setTimeout(5000, () => client.destroy(new Error("Unavailable socket did not close")));
+    client.on("error", error => {
+      if (!("code" in error) || error.code !== "ECONNRESET") reject(error);
+    });
+    client.on("close", () => resolve());
+    client.resume();
+  });
+  const connections = new Set<net.Socket>();
+  const server = net.createServer(socket => {
+    connections.add(socket);
+    socket.once("close", () => connections.delete(socket));
+    socket.pipe(socket);
+  });
+  cleanup.push(async () => {
+    for (const socket of connections) socket.destroy();
+    await new Promise<void>(resolve => server.close(() => resolve()));
+  });
+  await new Promise<void>((resolve, reject) => {
+    server.once("error", reject);
+    server.listen(socketPath, resolve);
+  });
+  await Promise.all(Array.from({ length: 5 }, (_, index) => new Promise<void>((resolve, reject) => {
+    const payload = Buffer.alloc(256 * 1024, index);
+    const chunks: Buffer[] = [];
+    let received = 0;
+    const client = net.connect(port, "127.0.0.1", () => client.write(payload));
+    client.setTimeout(5000, () => client.destroy(new Error("Relay transfer timed out")));
+    client.on("error", reject);
+    client.on("data", (chunk: Buffer) => {
+      chunks.push(chunk);
+      received += chunk.length;
+      if (received === payload.length) client.end();
+    });
+    client.on("close", () => {
+      try { expect(Buffer.concat(chunks)).toEqual(payload); resolve(); }
+      catch (error) { reject(error); }
+    });
+  })));
+}, 15000);
