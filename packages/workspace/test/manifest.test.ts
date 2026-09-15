@@ -17,13 +17,19 @@ describe("workspace manifest config seeding", () => {
   test("accepts Pi and Atelier config destinations", () => {
     expect(parse({
       version: 1,
-      seedPiConfig: { authJson: "/nested/auth.json", modelsJson: "/nested/models.json" },
+      seedPiConfig: { authJson: "/nested/auth.json", modelsJson: "/nested/models.json", modelsStoreJson: "/nested/models-store.json" },
       seedAtelierConfig: { projectsJson: "/nested/projects.json" },
     })).toEqual({
       version: 1,
-      seedPiConfig: { authJson: "/nested/auth.json", modelsJson: "/nested/models.json" },
+      seedPiConfig: { authJson: "/nested/auth.json", modelsJson: "/nested/models.json", modelsStoreJson: "/nested/models-store.json" },
       seedAtelierConfig: { projectsJson: "/nested/projects.json" },
     });
+  });
+
+  test("rejects malformed Pi catalogue cache destinations", () => {
+    for (const modelsStoreJson of ["", "   ", true, 42]) {
+      expectInvalid({ version: 1, seedPiConfig: { modelsStoreJson } }, "seedPiConfig.modelsStoreJson must be a non-empty string");
+    }
   });
 
   test("rejects malformed Atelier config destinations", () => {

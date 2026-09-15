@@ -229,6 +229,7 @@ export interface RepoWorkspaceManifest {
   seedPiConfig?: {
     authJson?: string;
     modelsJson?: string;
+    modelsStoreJson?: string;
   };
   seedAtelierConfig?: {
     projectsJson?: string;
@@ -277,6 +278,7 @@ export function parseRepoWorkspaceManifest(text: string, path = workspaceManifes
   const seedPiConfigRecord = optionalRecord(record, "seedPiConfig", path);
   const authJson = seedPiConfigRecord ? optionalString(seedPiConfigRecord, "authJson", path, "seedPiConfig.authJson") : undefined;
   const modelsJson = seedPiConfigRecord ? optionalString(seedPiConfigRecord, "modelsJson", path, "seedPiConfig.modelsJson") : undefined;
+  const modelsStoreJson = seedPiConfigRecord ? optionalString(seedPiConfigRecord, "modelsStoreJson", path, "seedPiConfig.modelsStoreJson") : undefined;
   const seedAtelierConfigRecord = optionalRecord(record, "seedAtelierConfig", path);
   const projectsJson = seedAtelierConfigRecord ? optionalString(seedAtelierConfigRecord, "projectsJson", path, "seedAtelierConfig.projectsJson") : undefined;
   const manifest: RepoWorkspaceManifest = { version: 1 };
@@ -286,6 +288,7 @@ export function parseRepoWorkspaceManifest(text: string, path = workspaceManifes
     manifest.seedPiConfig = {};
     if (authJson) manifest.seedPiConfig.authJson = authJson;
     if (modelsJson) manifest.seedPiConfig.modelsJson = modelsJson;
+    if (modelsStoreJson) manifest.seedPiConfig.modelsStoreJson = modelsStoreJson;
   }
   if (seedAtelierConfigRecord) {
     manifest.seedAtelierConfig = {};
@@ -300,6 +303,7 @@ function applySeedConfigManifest(manifest: RepoWorkspaceManifest, plan: Workspac
   const entries = [
     manifest.seedPiConfig?.authJson ? { source: atelierDataPath(runtime, "pi-config", "auth.json"), staging: "/.atelier/seed-pi-auth.json", target: manifest.seedPiConfig.authJson } : undefined,
     manifest.seedPiConfig?.modelsJson ? { source: atelierDataPath(runtime, "pi-config", "models.json"), staging: "/.atelier/seed-pi-models.json", target: manifest.seedPiConfig.modelsJson } : undefined,
+    manifest.seedPiConfig?.modelsStoreJson ? { source: atelierDataPath(runtime, "pi-config", "models-store.json"), staging: "/.atelier/seed-pi-models-store.json", target: manifest.seedPiConfig.modelsStoreJson } : undefined,
     manifest.seedAtelierConfig?.projectsJson ? { source: atelierDataPath(runtime, "projects.json"), staging: "/.atelier/seed-projects.json", target: manifest.seedAtelierConfig.projectsJson } : undefined,
   ].filter((entry): entry is { source: string; staging: string; target: string } => Boolean(entry));
   for (const entry of entries) {
