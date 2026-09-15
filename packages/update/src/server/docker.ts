@@ -89,7 +89,7 @@ export async function prepareUpdate(reference: string, progress: (progress: Pull
   function report(): void {
     const current = [...layers.values()].reduce((sum, layer) => sum + layer.current, 0);
     const percent = total ? Math.min(99, Math.floor(current / total * 100)) : 0;
-    progress({ kind: "progress", percent, message: `Downloading… ${percent}%` });
+    progress({ kind: "progress", percent, message: "Downloading…" });
   }
   report();
   for (const image of images.values()) {
