@@ -2,13 +2,13 @@ import { expect, test } from "bun:test";
 
 const installer = await Bun.file(new URL("./install.sh", import.meta.url)).text();
 
-function run(options: { installed?: boolean; old?: boolean; pullFails?: boolean; running?: boolean; appFails?: boolean; pendingHealth?: boolean; missingFilesystem?: boolean; loadable?: boolean } = {}, args = ["--non-interactive"]) {
+function run(options: { mac?: boolean; vmKernelFails?: boolean; installed?: boolean; old?: boolean; pullFails?: boolean; running?: boolean; appFails?: boolean; pendingHealth?: boolean; missingFilesystem?: boolean; loadable?: boolean } = {}, args = ["--non-interactive"]) {
   const logPath = `/tmp/atelier-install-test-${crypto.randomUUID()}.log`;
   const mock = `
 mktemp() { echo "${logPath}"; }
 sleep() { command sleep 0.01; }
-uname() { echo Linux; }
-id() { echo 0; }
+uname() { echo ${options.mac ? "Darwin" : "Linux"}; }
+id() { echo ${options.mac ? 501 : 0}; }
 module_loaded=0
 grep() { [ "$module_loaded" -eq 1 ] || return ${options.missingFilesystem ? 1 : 0}; }
 modprobe() {
@@ -25,6 +25,7 @@ docker() {
         atelier-system) return ${options.installed ? 0 : 1} ;;
         atelier) return ${options.old ? 0 : 1} ;;
       esac ;;
+    'run --rm') return ${options.vmKernelFails ? 1 : 0} ;;
     'pull '*) return ${options.pullFails ? 1 : 0} ;;
     'exec atelier-system')
       if [[ "$*" == *3001/status* ]]; then
@@ -40,7 +41,7 @@ docker() {
   esac
 }
 `;
-  const result = Bun.spawnSync(["bash", "-c", mock + installer.replace("> /etc/modules-load.d/atelier-system.conf", "> /dev/null"), "installer", ...args], { stdin: "ignore" });
+  const result = Bun.spawnSync([process.platform === "darwin" ? "/bin/bash" : "bash", "-c", mock + installer.replace("> /etc/modules-load.d/atelier-system.conf", "> /dev/null"), "installer", ...args], { stdin: "ignore" });
   const log = Bun.spawnSync(["cat", logPath]).stdout.toString();
   Bun.spawnSync(["rm", "-f", logPath, `${logPath}.checked`]);
   return { status: result.exitCode, output: result.stdout.toString() + result.stderr.toString() + log };
@@ -129,4 +130,23 @@ test("waits for supervisor readiness without interpreting the activity descripti
   const result = run({ pendingHealth: true });
   expect(result.status).toBe(0);
   expect(result.output.match(/http:\/\/127\.0\.0\.1:3001\/status/g)?.length).toBe(2);
+});
+
+
+test("macOS uses Docker Desktop kernel and stock Bash without modifying host modules", () => {
+  const result = run({ mac: true, missingFilesystem: true });
+  expect(result.status).toBe(0);
+  expect(result.output).toContain("DOCKER run --rm --entrypoint /bin/sh");
+  expect(result.output).toContain("Checking Docker Desktop kernel");
+  expect(result.output).not.toContain("MODPROBE");
+  expect(result.output).toContain("Open https://app.example/custom-path");
+});
+
+
+test("unsupported Desktop kernel leaves the existing System running", () => {
+  const result = run({ mac: true, installed: true, vmKernelFails: true });
+  expect(result.status).not.toBe(0);
+  expect(result.output).toContain("Checking Docker Desktop kernel failed");
+  expect(result.output).not.toContain("DOCKER stop");
+  expect(result.output).not.toContain("DOCKER rm");
 });

@@ -124,13 +124,24 @@ while [ "$#" -gt 0 ]; do
   esac
 done
 case "$action" in ""|install|update|connect|open) ;; *) fail "unknown action: $action" ;; esac
-[ "$(uname -s)" = Linux ] || fail "Atelier System requires a Linux host"
-[ "$(id -u)" -eq 0 ] || fail "run this installer as root"
+host_os="$(uname -s)"
+case "$host_os" in
+  Linux) [ "$(id -u)" -eq 0 ] || fail "run this installer as root" ;;
+  Darwin)
+    # Docker Desktop belongs to the logged-in user, including when the installer
+    # was invoked with sudo. Keep that user's Docker context and credentials.
+    if [ "$(id -u)" -eq 0 ] && [ -n "${SUDO_USER:-}" ]; then
+      docker_binary="$(command -v docker)" || fail "install and start Docker Desktop first"
+      docker() { sudo -H -u "$SUDO_USER" "$docker_binary" "$@"; }
+    fi ;;
+  *) fail "Atelier System requires Linux or macOS with Docker Desktop" ;;
+esac
 
-log_file="$(mktemp /tmp/atelier-install.XXXXXX.log)"
+log_file="$(mktemp /tmp/atelier-install.XXXXXX)"
 printf "\n  %sWelcome to your Atelier!%s\n  %sLet's get you setup.%s\n\n" "$violet" "$reset" "$dim" "$reset"
 status "Preparing your server"
 if ! command -v docker >/dev/null; then
+  [ "$host_os" != Darwin ] || fail "install and start Docker Desktop first, then run this installer again"
   if command -v apt-get >/dev/null; then
     run_quiet "Preparing your server · installing Docker" apt-get update
     run_quiet "Preparing your server · installing Docker" apt-get install -y docker.io
@@ -145,16 +156,18 @@ run_quiet "Checking Docker" docker info
 
 # Nested daemons share the host kernel; privileged containers cannot supply
 # filesystem drivers missing from that kernel.
-for filesystem in erofs overlay; do
-  if ! grep -qw "$filesystem" /proc/filesystems; then
-    if ! command -v modprobe >/dev/null || ! modprobe "$filesystem"; then
-      fail "$filesystem is unavailable; install the filesystem modules for $(uname -r), or use a kernel with $filesystem support"
+if [ "$host_os" = Linux ]; then
+  for filesystem in erofs overlay; do
+    if ! grep -qw "$filesystem" /proc/filesystems; then
+      if ! command -v modprobe >/dev/null || ! modprobe "$filesystem"; then
+        fail "$filesystem is unavailable; install the filesystem modules for $(uname -r), or use a kernel with $filesystem support"
+      fi
+      grep -qw "$filesystem" /proc/filesystems || fail "$filesystem is still unavailable after modprobe; use a kernel with $filesystem support"
     fi
-    grep -qw "$filesystem" /proc/filesystems || fail "$filesystem is still unavailable after modprobe; use a kernel with $filesystem support"
-  fi
-done
-mkdir -p /etc/modules-load.d
-printf 'erofs\noverlay\n' > /etc/modules-load.d/atelier-system.conf
+  done
+  mkdir -p /etc/modules-load.d
+  printf 'erofs\noverlay\n' > /etc/modules-load.d/atelier-system.conf
+fi
 
 installed=0
 if docker container inspect "$system_name" >/dev/null 2>&1; then installed=1; fi
@@ -221,7 +234,8 @@ wait_for_system() {
       if supervisor_connect >>"$log_file" 2>&1; then request_connect=0; fi
     fi
     if reply="$(supervisor_status 2>>"$log_file")"; then
-      mapfile -t fields <<<"$reply"
+      fields=()
+      while IFS= read -r field; do fields+=("$field"); done <<<"$reply"
       description="${fields[1]}"
       percent="${fields[2]:-}"
       app_url="${fields[3]:-}"
@@ -287,6 +301,16 @@ case "$action" in
       fi
     fi
     run_quiet "Downloading Atelier services" docker pull "$system_image"
+    if [ "$host_os" = Darwin ]; then
+      run_quiet "Checking Docker Desktop kernel" docker run --rm --entrypoint /bin/sh "$system_image" -ec '
+        for filesystem in erofs overlay; do
+          grep -qw "$filesystem" /proc/filesystems || {
+            echo "$filesystem is unavailable in Docker Desktop; update Docker Desktop" >&2
+            exit 1
+          }
+        done
+      '
+    fi
     if [ "$installed" -eq 1 ]; then
       run_quiet "Stopping Atelier services" docker stop --time 120 "$system_name"
       run_quiet "Replacing Atelier services" docker rm "$system_name"

@@ -1,3 +1,4 @@
+import { existsSync } from "node:fs";
 import { chown, mkdir, readFile, writeFile } from "node:fs/promises";
 import { dirname, join } from "node:path";
 const GiB = 1024 ** 3;
@@ -99,7 +100,13 @@ export async function initializeResources() {
     [workloads, 100],
   ] as const) {
     await writeFile(join(group, "cpu.weight"), String(weight));
-    await writeFile(join(group, "io.weight"), `default ${weight}`);
+    // Docker Desktop exposes the io controller without a proportional-I/O
+    // scheduler. CPU and memory protection still apply on those kernels.
+    if (existsSync(join(group, "io.weight"))) {
+      await writeFile(join(group, "io.weight"), `default ${weight}`);
+    } else {
+      console.info(`I/O weight protection unavailable for ${group}; CPU and memory protection remain enabled`);
+    }
   }
   await writeFile(join(management, "memory.low"), String(policy.reserve));
   await writeFile(join(workloads, "memory.max"), String(policy.memory));
