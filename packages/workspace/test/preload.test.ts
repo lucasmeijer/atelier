@@ -2,7 +2,7 @@ import { afterEach, expect, test } from "bun:test";
 import { mkdtemp, readFile, rm, mkdir, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
-import { createImagePreloader, normalizeImageReference } from "../src/preload.ts";
+import { createImagePreloader, normalizeImageReference, defaultWorkspacePreload } from "../src/preload.ts";
 
 const digestA = `sha256:${"a".repeat(64)}`;
 const digestB = `sha256:${"b".repeat(64)}`;
@@ -227,4 +227,35 @@ test("concurrent resolution of the same tag fetches once and persists the same d
   const results = await Promise.all([first, second]);
   expect(results.map((images) => images[0]!.reference)).toEqual([`${postgres}@${digestA}`, `${postgres}@${digestA}`]);
   expect(f.calls.filter((args) => args.includes("fetch"))).toHaveLength(1);
+});
+
+
+test("default workspace alias is pinned at creation and survives a changed app default", async () => {
+  const f = fixture();
+  f.images.set(postgres, digestA);
+  let selected = postgres;
+  let resolutions = 0;
+  const preloader = createImagePreloader(f.run, f.docker, await directory(), async () => { resolutions++; return selected; });
+  const path = await directory();
+  const referenceFile = await preloader.snapshot([defaultWorkspacePreload, defaultWorkspacePreload], path);
+  expect(await readFile(referenceFile!, "utf8")).toBe(`${postgres}@${digestA}\n`);
+  selected = redis;
+  f.images.set(postgres, digestB);
+  const images = await preloader.load(path);
+  expect(images).toEqual([{ requested: defaultWorkspacePreload, reference: `${postgres}@${digestA}` }]);
+  await preloader.install(images, "workspace");
+  expect(f.builds()[0]).toContain(`${postgres}@${digestA}`);
+  expect(f.imports).toHaveLength(1);
+  expect(resolutions).toBe(1);
+  expect(f.calls.some(args => args.includes("fetch"))).toBe(false);
+  const restarted = createImagePreloader(f.run, f.docker);
+  expect(await restarted.load(path)).toEqual(images);
+});
+
+test("ordinary preloads do not resolve or expose the default workspace", async () => {
+  const f = fixture();
+  const preloader = createImagePreloader(f.run, f.docker, await directory(), async () => { throw new Error("must not resolve default"); });
+  const path = await directory();
+  expect(await preloader.snapshot(["postgres:17"], path)).toBeUndefined();
+  await expect(readFile(join(path, "atelier", "default-workspace-image"))).rejects.toThrow();
 });

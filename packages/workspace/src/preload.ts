@@ -1,6 +1,9 @@
 import { mkdir, readFile, writeFile, rename, stat } from "node:fs/promises";
 import { join } from "node:path";
 import { requireDocker, workloadCommand } from "@atelier/core";
+import { ensureDefaultWorkspaceImage } from "@atelier/workspace-image";
+
+export const defaultWorkspacePreload = "atelier:default-workspace";
 
 export interface PreparedImage { requested: string; reference?: string }
 type Command = (args: string[]) => Promise<{ stdout: Buffer; stderr: string }>;
@@ -23,7 +26,7 @@ export function normalizeImageReference(input: string): string {
 
 /** One app owns the shared directory. Image prep is deduplicated; mkfs commands
  * serialize so different manifests sharing a layer cannot replace each other's files. */
-export function createImagePreloader(run: Command = command, docker: typeof requireDocker = requireDocker, cacheDirectory = "/data/erofs-cache") {
+export function createImagePreloader(run: Command = command, docker: typeof requireDocker = requireDocker, cacheDirectory = "/data/erofs-cache", defaultWorkspace: () => Promise<string> = ensureDefaultWorkspaceImage) {
   const resolving = new Map<string, Promise<string>>();
   const preparing = new Map<string, Promise<void>>();
   let cacheQueue = Promise.resolve();
@@ -80,9 +83,19 @@ export function createImagePreloader(run: Command = command, docker: typeof requ
     return task;
   }
   return {
-    async snapshot(images: string[], directory: string): Promise<void> {
+    async snapshot(images: string[], directory: string): Promise<string | undefined> {
       await mkdir(directory, { recursive: true });
-      await writeFile(join(directory, "preloads.json"), JSON.stringify([...new Set(images)].map((requested) => ({ requested }))));
+      const prepared: PreparedImage[] = [...new Set(images)].map((requested) => ({ requested }));
+      const workspace = prepared.find((image) => image.requested === defaultWorkspacePreload);
+      let referenceFile: string | undefined;
+      if (workspace) {
+        workspace.reference = await resolve(await defaultWorkspace());
+        await mkdir(join(directory, "atelier"), { recursive: true });
+        referenceFile = join(directory, "atelier", "default-workspace-image");
+        await writeFile(referenceFile, `${workspace.reference}\n`);
+      }
+      await writeFile(join(directory, "preloads.json"), JSON.stringify(prepared));
+      return referenceFile;
     },
     async load(directory: string): Promise<PreparedImage[]> {
       const images: PreparedImage[] = JSON.parse(await readFile(join(directory, "preloads.json"), "utf8"));

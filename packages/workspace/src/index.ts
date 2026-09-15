@@ -520,7 +520,8 @@ export async function createWorkspace(options: CreateWorkspaceOptions = {}): Pro
       await options.events?.emit("workspace_image_configure", configuration);
       activePlan.image = await provisionStep(options.events, id, "workspace.image", "Resolve workspace image", () => resolveWorkspaceImage({ workspaceId: id, events: options.events, sourcePath: source.worktreePath, dockerfile: configuration.dockerfile }));
     }
-    await provisionStep(options.events, id, "workspace.preload-resolve", "Save configured preload images", () => workspaceImagePreloader.snapshot(activePlan.preloadImages, atelierDataPath(getAtelierRuntimeContext(), "workspaces", id)));
+    const defaultWorkspaceFile = await provisionStep(options.events, id, "workspace.preload-resolve", "Save configured preload images", () => workspaceImagePreloader.snapshot(activePlan.preloadImages, atelierDataPath(getAtelierRuntimeContext(), "workspaces", id)));
+    if (defaultWorkspaceFile) activePlan.containerFiles.push({ source: dirname(defaultWorkspaceFile), target: "/etc" });
     await prepareWorkspaceSystemd(activePlan, atelierDataPath(getAtelierRuntimeContext(), "workspaces", id, "systemd"), workspaceInitScript(activePlan));
     await provisionStep(options.events, id, "workspace.container", "Start workspace container", async () => {
       const image = activePlan.image;

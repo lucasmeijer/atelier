@@ -122,7 +122,7 @@ export function createProjectRoutes(deps: {
       <label><span>Image references, one per line</span><textarea class="textarea" name="preloadImages" rows="4" spellcheck="false" autocomplete="off" placeholder="docker.io/library/postgres:17">${escapeHtml((project.preloadImages ?? []).join("\n"))}</textarea></label>
     </form>`;
     return `<section class="project-configuration-list" id="${domId("project_preload_images", project.id)}"${revealSection(section, "preload-images")}>
-      <div class="project-configuration-head"><h3>Preloaded Docker images</h3><p>Prepare these images before new workspaces become ready. Changes apply only to workspaces created afterwards.</p></div>
+      <div class="project-configuration-head"><h3>Preloaded Docker images</h3><p>Prepare these images before new workspaces become ready. Use <code>atelier:default-workspace</code> for this Atelier's default workspace image. Its resolved reference is available inside the workspace at <code>/etc/atelier/default-workspace-image</code>. Changes apply only to workspaces created afterwards.</p></div>
       ${projectConfigurationDisclosure("Configure preloaded images", fields, section === "preload-images")}
     </section>`;
   }

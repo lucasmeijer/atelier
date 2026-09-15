@@ -11,7 +11,7 @@ test("preload settings preserve old projects, normalize references and do not in
     const { project } = await addProject("/tmp/example", file);
     expect(project.preloadImages).toEqual([]);
     const fingerprint = project.configurationFingerprint;
-    const images = ["docker.io/library/postgres:17", "registry.example:5000/team/image:tag@sha256:" + "a".repeat(64)];
+    const images = ["atelier:default-workspace", "registry.example:5000/team/image:tag@sha256:" + "a".repeat(64)];
     const updated = await setProjectPreloadImages(project.id, [` ${images[0]} `, images[1]!, images[0]!], file);
     expect(updated.project.preloadImages).toEqual(images);
     expect(updated.project.configurationFingerprint).toBe(fingerprint);
