@@ -29,5 +29,5 @@ export function backendTransport(backend: WorkspaceHttpAppBackend, headers: Head
   const target = new URL(backend.gateway.url);
   target.pathname = backend.target.pathname;
   target.search = backend.target.search;
-  return { target, headers };
+  return { target, headers, workspacePort: port };
 }

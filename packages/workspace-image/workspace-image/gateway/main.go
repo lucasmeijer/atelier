@@ -82,6 +82,7 @@ func newGateway(token string, transport http.RoundTripper) http.Handler {
 	}
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		if len(r.Header.Values(tokenHeader)) != 1 || subtle.ConstantTimeCompare([]byte(r.Header.Get(tokenHeader)), []byte(token)) != 1 {
+			w.Header().Set(errorHeader, "authentication")
 			http.Error(w, "Workspace gateway authentication required", http.StatusUnauthorized)
 			return
 		}

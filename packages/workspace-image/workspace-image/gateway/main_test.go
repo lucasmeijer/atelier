@@ -75,6 +75,9 @@ func TestAuthenticationAndDestinationValidation(t *testing.T) {
 			if w.Code != tc.status {
 				t.Fatalf("got %d, want %d", w.Code, tc.status)
 			}
+			if tc.status == http.StatusUnauthorized && w.Header().Get(errorHeader) != "authentication" {
+				t.Fatal("gateway authentication failures must be distinguishable from app login responses")
+			}
 		})
 	}
 	for _, value := range []string{"1", "80", "443", "5173", "8000", "65535"} {

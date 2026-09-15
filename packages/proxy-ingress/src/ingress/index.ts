@@ -1,3 +1,5 @@
+import { ingressErrorPage } from "./error-page.ts";
+import { errorCategory, UnknownWorkspaceAppError, WorkspaceAuthenticationError, WorkspaceConnectionError, WorkspaceUpstreamError } from "./failure.ts";
 import { createLocalOriginPublisher, type ParentOriginPublisher } from "./parent.ts";
 import { adaptLocalAppResponse, localAppHost, translateLocalAppOrigin } from "./local-app.ts";
 import { backendTransport } from "./backend-transport.ts";
@@ -10,25 +12,14 @@ import {
   type PortRange,
 } from "./tailscale-serve.ts";
 
-export class UnknownWorkspaceAppError extends Error {
-  constructor(public readonly app: WorkspaceAppRef) {
-    super(`unknown workspace app: ${app.appKey}`);
-    this.name = "UnknownWorkspaceAppError";
-  }
-}
-
-export class StoppedWorkspaceError extends Error {
-  constructor(public readonly workspaceId: string) {
-    super(`Workspace ${workspaceId} is stopped. Start the workspace and try again.`);
-    this.name = "StoppedWorkspaceError";
-  }
-}
+export { UnknownWorkspaceAppError, StoppedWorkspaceError } from "./failure.ts";
 
 export type WorkspaceAppHost = WorkspaceAppRef;
 export type WorkspaceAppResolver = (app: WorkspaceAppRef, requestUrl: URL) => Promise<WorkspaceAppBackend | undefined> | WorkspaceAppBackend | undefined;
 
 export interface WorkspaceIngressOptions {
   hostname: string;
+  workspaceName?(workspaceId: string): string | undefined;
   resolveWorkspace(workspaceId: string): Promise<void> | void;
   resolveApp: WorkspaceAppResolver;
   originPortRange?: PortRange;
@@ -115,6 +106,10 @@ export function createWorkspaceIngress(options: WorkspaceIngressOptions): Worksp
   const pendingLeases = new Map<string, Promise<OriginLease>>();
   const recentFailures = new Map<string, RecentFailure>();
 
+  function ingressError(error: Error, app: WorkspaceAppRef): Promise<Response> {
+    return ingressErrorPage(error, options.workspaceName?.(app.workspaceId) ?? app.workspaceId);
+  }
+
   function recordFailure(app: WorkspaceAppRef, error: Error): void {
     recentFailures.set(appIdentity(app), { app, message: error.message, category: errorCategory(error), at: Date.now() });
     while (recentFailures.size > 200) recentFailures.delete(recentFailures.keys().next().value!);
@@ -162,7 +157,7 @@ export function createWorkspaceIngress(options: WorkspaceIngressOptions): Worksp
             if (request.headers.get("upgrade")?.toLowerCase() === "websocket") {
               try {
                 const backend = await resolveBackend(lease.app, new URL(request.url), lease.protocol);
-                if (backend.kind !== "http") return textResponse("This workspace app does not support WebSockets", 400);
+                if (backend.kind !== "http") throw new Error("This workspace app does not support WebSockets");
                 lease.target = backend.target.toString();
                 const { headers: upstreamHeaders } = await appRequestHeaders(lease, backend, request);
                 for (const name of ["sec-websocket-key", "sec-websocket-version", "sec-websocket-extensions", "sec-websocket-protocol"]) upstreamHeaders.delete(name);
@@ -171,13 +166,13 @@ export function createWorkspaceIngress(options: WorkspaceIngressOptions): Worksp
                 const headers = upstream.protocol ? { "sec-websocket-protocol": upstream.protocol } : undefined;
                 if (server.upgrade(request, { data: { upstream, lease }, headers })) return undefined;
                 upstream.close(1011, "Downstream WebSocket upgrade failed");
-                return textResponse("WebSocket upgrade failed", 400);
+                throw new Error("WebSocket upgrade failed");
               } catch (thrown) {
                 const error = thrown instanceof Error ? thrown : new Error(String(thrown));
                 lease.lastFailure = error.message;
                 recordFailure(lease.app, error);
                 logIngress("websocket_failed", lease.app, { port: lease.port, error: lease.lastFailure, category: errorCategory(error) });
-                return ingressError(error);
+                return ingressError(error, lease.app);
               }
             }
             return await dispatchRequest(lease, request);
@@ -251,7 +246,7 @@ export function createWorkspaceIngress(options: WorkspaceIngressOptions): Worksp
         redirect: "manual",
       };
       if (init.body) init.duplex = "half";
-      let response = normalizeDecodedFetchResponse(await fetchWithStartupRetry(transport.target, init, Boolean(backend.gateway)));
+      let response = normalizeDecodedFetchResponse(await fetchWithStartupRetry(transport.target, init, transport.workspacePort));
       // Module response adapters need the public identity, not spoofable request
       // metadata or the local forwarded headers seen by the app.
       request.headers.set(publicOriginHeader, appPublicOrigin(lease, request));
@@ -267,7 +262,7 @@ export function createWorkspaceIngress(options: WorkspaceIngressOptions): Worksp
       lease.lastFailure = error.message;
       recordFailure(lease.app, error);
       logIngress("request_failed", lease.app, { port: lease.port, error: lease.lastFailure, category: errorCategory(error) });
-      return ingressError(error);
+      return ingressError(error, lease.app);
     }
   }
 
@@ -302,7 +297,7 @@ export function createWorkspaceIngress(options: WorkspaceIngressOptions): Worksp
       } catch (thrown) {
         const error = thrown instanceof Error ? thrown : new Error(String(thrown));
         recordFailure(app, error);
-        return ingressError(error);
+        return ingressError(error, app);
       }
     },
 
@@ -380,19 +375,29 @@ function appPublicOrigin(lease: OriginLease, _request: Request): string {
   return lease.origin;
 }
 
-async function fetchWithStartupRetry(target: URL, init: RequestInit, throughGateway: boolean): Promise<Response> {
+async function fetchWithStartupRetry(target: URL, init: RequestInit, workspacePort: number | undefined): Promise<Response> {
   const retryable = init.method === "GET" || init.method === "HEAD";
   for (let attempt = 0; ; attempt += 1) {
     try {
-      const response = await fetch(target, init);
-      if (throughGateway && response.headers.get(workspaceGatewayErrorHeader) === "upstream") {
+      let response: Response;
+      try {
+        response = await fetch(target, init);
+      } catch (error) {
+        if (workspacePort !== undefined) throw new WorkspaceConnectionError(error);
+        throw error;
+      }
+      if (workspacePort !== undefined && response.headers.get(workspaceGatewayErrorHeader) === "authentication") {
+        await response.body?.cancel();
+        throw new WorkspaceAuthenticationError();
+      }
+      if (workspacePort !== undefined && response.headers.get(workspaceGatewayErrorHeader) === "upstream") {
         // Consume the failed response before retrying so its connection is reusable.
         const message = (await response.text()).trim();
-        throw new Error(message || "Workspace app connection failed");
+        throw new WorkspaceUpstreamError(message || "Workspace app connection failed", workspacePort);
       }
       return response;
     } catch (error) {
-      if (!retryable || attempt >= 2 || init.signal?.aborted) throw error;
+      if (error instanceof WorkspaceAuthenticationError || !retryable || attempt >= 2 || init.signal?.aborted) throw error;
       await new Promise((resolve) => setTimeout(resolve, 100 * (attempt + 1)));
     }
   }
@@ -548,43 +553,6 @@ export function normalizeDecodedFetchResponse(response: Response): Response {
   const etag = headers.get("etag");
   if (etag && !etag.trimStart().startsWith("W/")) headers.delete("etag");
   return new Response(response.body, { status: response.status, statusText: response.statusText, headers });
-}
-
-function ingressError(error: Error): Response {
-  const category = errorCategory(error);
-  const message = errorMessage(error);
-  if (error instanceof UnknownWorkspaceAppError) return textResponse(`Workspace app does not exist: ${error.app.appKey}. Check or recreate the app.`, 404);
-  if (category === "unknown_workspace") return textResponse(`${message}. Check whether the workspace was deleted.`, 404);
-  if (category === "stopped_workspace") return textResponse(message, 503);
-  if (category === "ineligible_port") return textResponse(`${message}. Choose a documented preview port.`, 400);
-  if (category === "capacity_exhausted") return textResponse(message, 507);
-  if (category === "connection_refused") return textResponse(`Workspace app connection was refused: ${message}. Verify that the service is listening.`, 503);
-  if (category === "connection_timeout") return textResponse(`Workspace app connection timed out: ${message}. Check the service and workspace networking.`, 504);
-  if (category === "unsupported_target") return textResponse(message, 422);
-  if (category === "malformed_upstream") return textResponse(`Workspace app returned malformed HTTP behavior: ${message}`, 502);
-  return textResponse(`Workspace app could not be reached: ${message}`, 502);
-}
-
-function errorCategory(error: Error): string {
-  if (error instanceof UnknownWorkspaceAppError) return "unknown_app";
-  if (error instanceof StoppedWorkspaceError) return "stopped_workspace";
-  const message = errorMessage(error);
-  if (/workspace.*not found|no such container/i.test(message)) return "unknown_workspace";
-  if (/unsupported workspace preview port|ineligible port|not published for browser previews/i.test(message)) return "ineligible_port";
-  if (/capacity exhausted|no browser origins available/i.test(message)) return "capacity_exhausted";
-  if (/ECONNREFUSED|connection refused|Unable to connect|connection failed/i.test(message)) return "connection_refused";
-  if (/timeout|timed out/i.test(message)) return "connection_timeout";
-  if (/does not support WebSockets|unsupported target/i.test(message)) return "unsupported_target";
-  if (/fetch failed|invalid HTTP|malformed/i.test(message)) return "malformed_upstream";
-  return "routing_failure";
-}
-
-function textResponse(message: string, status: number): Response {
-  return new Response(`${message}\n`, { status, headers: { "content-type": "text/plain; charset=utf-8", "cache-control": "no-store" } });
-}
-
-function errorMessage(error: Error): string {
-  return error.message;
 }
 
 function appIdentity(app: WorkspaceAppRef): string {

@@ -363,6 +363,7 @@ async function resolveWorkspaceApp(app: WorkspaceAppRef, requestUrl: URL): Promi
 }
 
 const workspaceIngress = createWorkspaceIngress({
+  workspaceName: (id) => registry.get(id)?.title ?? undefined,
   hostname: "127.0.0.1",
   resolveWorkspace: async (workspaceId) => {
     await resolveWorkspace(workspaceId);
