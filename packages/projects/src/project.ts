@@ -86,6 +86,7 @@ const projectRecordSchema = Type.Object({
   gitUrl: Type.String(),
   branch: Type.Union([Type.String(), Type.Null()]),
   sessionShareKey: Type.String(),
+  lastWorkspaceCreatedAt: Type.Optional(Type.Number()),
   secrets: Type.Optional(Type.Array(storedProjectSecretSchema)),
   sshKeys: Type.Optional(Type.Array(storedProjectSshKeySchema)),
   environment: Type.Optional(Type.Array(projectEnvironmentVariableSchema)),
@@ -183,6 +184,7 @@ function projectSummary(project: ProjectRecord): ProjectSummary {
     gitUrl: project.gitUrl,
     branch: project.branch,
     sessionShareKey: project.sessionShareKey,
+    lastWorkspaceCreatedAt: project.lastWorkspaceCreatedAt,
     dockerfile: project.dockerfile,
     preloadImages: [...(project.preloadImages ?? [])],
     configurationFingerprint: projectConfigurationFingerprint(project),
@@ -230,6 +232,14 @@ export async function addProject(spec: string, file = projectsFile()): Promise<A
     const project = { id, name, gitUrl, branch, sessionShareKey: name };
     store.projects.push(project);
     return { project: projectSummary(project) };
+  });
+}
+
+/** Retained on the project so parking or deleting a workspace cannot erase recency. */
+export async function recordProjectWorkspaceCreation(projectId: string, createdAt = Date.now(), file = projectsFile()): Promise<void> {
+  await updateProjectStore(file, (store) => {
+    const project = findProjectRecord(store, projectId);
+    project.lastWorkspaceCreatedAt = Math.max(project.lastWorkspaceCreatedAt ?? 0, createdAt);
   });
 }
 

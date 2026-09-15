@@ -345,7 +345,7 @@ export function createWebApp(deps: WebAppDeps): WebApp {
 
   async function workspacePaneCollections(activeWorkspaceId: string): Promise<WorkspacePanePresentation> {
     const { projects: savedProjects } = await listProjects();
-    const projectTitles = new Map(savedProjects.map((project) => [project.id, project.name]));
+    const projectsById = new Map(savedProjects.map((project) => [project.id, project]));
     const grouped = new Map<string, WorkspaceEntry[]>();
     const parkedByProject = new Map<string, WorkspaceEntry[]>();
     const projectless: WorkspaceEntry[] = [];
@@ -390,9 +390,10 @@ export function createWebApp(deps: WebAppDeps): WebApp {
         const parkedEntries = parkedByProject.get(id) ?? [];
         const init = (entries[0] ?? parkedEntries[0])!.init;
         if (!isGitProjectInit(init)) throw new Error(`Project ${id} contains a projectless Workspace`);
-        return { id, title: projectTitles.get(id) ?? init.name, workspaces: entries.map(paneEntry), parkedWorkspaces: parkedEntries.map(paneEntry) };
+        const project = projectsById.get(id);
+        return { id, title: project?.name ?? init.name, lastWorkspaceCreatedAt: project?.lastWorkspaceCreatedAt, workspaces: entries.map(paneEntry), parkedWorkspaces: parkedEntries.map(paneEntry) };
       }),
-      emptyProjects: savedProjects.filter((project) => !workspaceProjectIds.has(project.id)).map((project) => ({ id: project.id, title: project.name })),
+      emptyProjects: savedProjects.filter((project) => !workspaceProjectIds.has(project.id)).map((project) => ({ id: project.id, title: project.name, lastWorkspaceCreatedAt: project.lastWorkspaceCreatedAt })),
       projectlessWorkspaces: projectless.map(paneEntry),
       projectlessParkedWorkspaces: projectlessParked.map(paneEntry),
     };

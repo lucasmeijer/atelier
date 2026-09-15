@@ -21,6 +21,7 @@ class EmptyWorkspaceOnboardingController extends Controller<HTMLElement> {
 
   connect(): void {
     window.addEventListener("resize", this.draw);
+    window.addEventListener("projects-pane:layout-changed", this.draw);
     const empty = this.element.closest(".workspace-detail-empty")!;
     this.observer = new MutationObserver(this.draw);
     this.observer.observe(empty, { attributes: true, attributeFilter: ["hidden"] });
@@ -30,6 +31,7 @@ class EmptyWorkspaceOnboardingController extends Controller<HTMLElement> {
 
   disconnect(): void {
     window.removeEventListener("resize", this.draw);
+    window.removeEventListener("projects-pane:layout-changed", this.draw);
     this.observer?.disconnect();
   }
 
@@ -38,6 +40,8 @@ class EmptyWorkspaceOnboardingController extends Controller<HTMLElement> {
     if (origin.width === 0) return;
     const start = { x: origin.left + origin.width / 2, y: origin.bottom + 12 };
     const destination = document.querySelector<HTMLElement>(`[data-empty-workspace-onboarding-destination="${this.destinationValue}"]`)!.getBoundingClientRect();
+    this.svgTarget.style.visibility = destination.width === 0 ? "hidden" : "";
+    if (destination.width === 0) return;
     const end = { x: destination.right + 5, y: destination.top + destination.height / 2 };
     const horizontalDirection = end.x >= start.x ? 1 : -1;
     const horizontalBend = Math.min(180, Math.max(40, Math.abs(end.x - start.x) * 0.7));
@@ -45,6 +49,30 @@ class EmptyWorkspaceOnboardingController extends Controller<HTMLElement> {
     this.svgTarget.setAttribute("viewBox", `0 0 ${window.innerWidth} ${window.innerHeight}`);
     this.pathTarget.setAttribute("d", `M ${start.x} ${start.y} C ${start.x} ${start.y + verticalBend}, ${end.x - horizontalDirection * horizontalBend} ${end.y}, ${end.x} ${end.y}`);
   };
+}
+
+class ProjectsPaneController extends Controller<HTMLElement> {
+  static targets = ["toggle", "list"];
+  declare readonly toggleTarget: HTMLButtonElement;
+  declare readonly listTarget: HTMLElement;
+
+  connect(): void {
+    this.setCollapsed(localStorage.getItem("atelier:projects-pane-collapsed") === "true");
+  }
+
+  toggle(): void {
+    const collapsed = !this.element.classList.contains("is-collapsed");
+    this.setCollapsed(collapsed);
+    localStorage.setItem("atelier:projects-pane-collapsed", String(collapsed));
+  }
+
+  private setCollapsed(collapsed: boolean): void {
+    this.element.classList.toggle("is-collapsed", collapsed);
+    this.listTarget.hidden = collapsed;
+    this.toggleTarget.setAttribute("aria-expanded", String(!collapsed));
+    this.toggleTarget.setAttribute("aria-label", collapsed ? "Expand Projects pane" : "Collapse Projects pane");
+    this.dispatch("layout-changed");
+  }
 }
 
 class WorkspaceNavigationController extends Controller<HTMLElement> {
@@ -199,10 +227,9 @@ class WorkspaceNavigationController extends Controller<HTMLElement> {
   private restoreProjectDisclosures(): void {
     const disclosures = this.projectDisclosures();
     this.element.querySelectorAll<HTMLElement>(".fixed-shell-project[data-project-id]").forEach((project) => {
-      const onboardingTarget = project.querySelector('[data-empty-workspace-onboarding-destination="first-workspace"]');
       const id = project.dataset.projectId!;
-      if (!(id in disclosures) && !onboardingTarget) return;
-      const expanded = onboardingTarget ? true : disclosures[id]!;
+      if (!(id in disclosures)) return;
+      const expanded = disclosures[id]!;
       project.classList.toggle("is-collapsed", !expanded);
       project.querySelector<HTMLElement>("[data-project-id][aria-expanded]")?.setAttribute("aria-expanded", String(expanded));
     });
@@ -223,5 +250,6 @@ export function registerWorkspaceNavigationControllers(): void {
   registerWorkspaceControllers({
     "empty-workspace-onboarding": EmptyWorkspaceOnboardingController,
     "workspace-navigation": WorkspaceNavigationController,
+    "projects-pane": ProjectsPaneController,
   });
 }

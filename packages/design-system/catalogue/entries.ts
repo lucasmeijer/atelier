@@ -878,15 +878,15 @@ export const entries: CatalogueEntry[] = [
     title: "Panel",
     when: "A bounded surface with fixed chrome and flexible body. Dialog composes this; workspace panes use it directly.",
     contract:
-      "Supply semantic element tag, trusted header/body and optional footer. Use an outer layout container for dimensions. bodyLayout: padded/full-bleed and bodyOverflow: scroll/contained are the supported body behaviors. No root or body classes.",
-    imports: { panel: "panelHtml" },
+      "Supply semantic element tag, trusted header/body and optional footer. Use an outer layout container for dimensions. bodyLayout: padded/full-bleed and bodyOverflow: scroll/contained are the supported body behaviors. No root or body classes. panel__title uses normal body text and accepts a leading icon; strong.panel__title adds emphasis for the Atelier identity.",
+    imports: { panel: "panelHtml", icons: "Icons" },
     examples: [
       {
         title: "Header · body · footer",
         render: () =>
           panelHtml({
             element: { tag: "section" },
-            headerHtml: '<h3 class="title">Panel title</h3>',
+            headerHtml: `<h3 class="panel__title">${Icons.Projects}Projects</h3>`,
             bodyHtml: "<p>A flexible content region.</p>",
             bodyLayout: "padded",
             footerHtml: "Optional footer",
@@ -1020,7 +1020,7 @@ export const entries: CatalogueEntry[] = [
     title: "Icons",
     when: "Shared decorative vocabulary. Use icon-only Button for standalone icon actions.",
     contract:
-      "Icons exports trusted decorative SVG strings. atelierLogoPathsHtml exports the same logo geometry without a nested SVG viewport for animated scenes using 24×24 user units. Put the accessible name on the containing control. Never use an unlabeled icon as an action.",
+      "Icons exports trusted decorative SVG strings. Projects uses a repository/book outline; Files uses a folder. atelierLogoPathsHtml exports the same logo geometry without a nested SVG viewport for animated scenes using 24×24 user units. Put the accessible name on the containing control. Never use an unlabeled icon as an action.",
     imports: { icons: "Icons" },
     examples: [
       {

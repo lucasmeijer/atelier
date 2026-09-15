@@ -28,9 +28,11 @@
   align-items: center;
   gap: 8px;
   margin: 0;
-  color: var(--text-bright);
-  font: var(--weight-semibold) var(--text-body)/var(--leading-standard) var(--font-sans);
+  color: var(--text);
+  font: var(--text-body)/var(--leading-standard) var(--font-sans);
 }
+
+strong.panel__title { color: var(--text-bright); font-weight: var(--weight-semibold); }
 
 .panel__body {
   min-width: 0;

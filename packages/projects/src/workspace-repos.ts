@@ -1,5 +1,6 @@
 import { AtelierCoreError, shellQuote, type AtelierEventBus, type JsonObject } from "@atelier/core";
 import { execWorkspaceShell, workspaceRoot } from "@atelier/workspace";
+import { isGitProjectInit, recordProjectWorkspaceCreation } from "./project.ts";
 import { registerGitIdentityWorkspaceEvents } from "./git-identity.ts";
 import { registerProjectWorkspaceInitEvents } from "./workspace-source.ts";
 
@@ -50,5 +51,8 @@ async function inspectWorkspaceDeleteSafety(id: string): Promise<WorkspaceDelete
 export function registerProjectWorkspaceEvents(events: AtelierEventBus): void {
   registerProjectWorkspaceInitEvents(events);
   registerGitIdentityWorkspaceEvents(events);
+  events.on("workspace_created", async ({ init }) => {
+    if (isGitProjectInit(init)) await recordProjectWorkspaceCreation(init.projectId);
+  });
   events.on("workspace_delete_inspect", async ({ workspaceId, issues }) => { issues.push(...(await inspectWorkspaceDeleteSafety(workspaceId))); });
 }

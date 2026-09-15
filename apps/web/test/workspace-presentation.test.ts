@@ -10,7 +10,6 @@ import {
   openWorkViewTurboStream,
   removeWorkspaceResidentTurboStream,
   renderAgentBodyFrame,
-  renderAtelierBar,
   renderWorkspacePane,
   renderWorkspacePresentation,
   renderWorkViewBodyFrame,
@@ -20,7 +19,6 @@ import {
   workViewPaneDomId,
   workViewSelectorDomId,
   workViewsTurboStream,
-  workspacePaneCollectionsTurboStream,
   type WorkspacePresentation,
 } from "../src/server/workspace-presentation.ts";
 
@@ -91,18 +89,6 @@ describe("role-fixed Workspace presentation", () => {
     expect(mixedProject).toContain('data-action="submit->workspace-navigation#unparkWorkspace"');
     expect(activeOnlyProject).not.toContain("fixed-shell-parked");
     expect(activeOnlyProject).not.toContain("parked");
-  });
-
-  test("keeps the Projectless launcher in Workspaces and marks the first Project target", () => {
-    const html = renderWorkspacePane({ projects: [], projectlessWorkspaces: [] });
-    const workspaceSection = html.slice(html.indexOf('class="fixed-shell-workspace-scroll"'), html.indexOf('class="fixed-shell-project action-list fixed-shell-projects-drawer'));
-    const projectsSection = html.slice(html.indexOf('class="fixed-shell-project action-list fixed-shell-projects-drawer'));
-
-    expect(workspaceSection).toContain('data-project-id="__projectless__"');
-    expect(workspaceSection).toContain("Projectless");
-    expect(workspaceSection).toContain('href="/launch-composer"');
-    expect(projectsSection).not.toContain('data-project-id="__projectless__"');
-    expect(projectsSection).toContain('class="fixed-shell-project action-list fixed-shell-projects-drawer is-collapsed"');
   });
 
   test("renders expensive Work bodies as lazy hydration frames", () => {

@@ -38,6 +38,7 @@ export interface WorkspacePaneEntry {
 export interface WorkspacePaneProject {
   id: string;
   title: string;
+  lastWorkspaceCreatedAt?: number;
   workspaces: readonly WorkspacePaneEntry[];
   parkedWorkspaces?: readonly WorkspacePaneEntry[];
 }
@@ -72,7 +73,7 @@ export interface WorkPaneContribution {
 
 export interface WorkspacePanePresentation {
   projects: readonly WorkspacePaneProject[];
-  emptyProjects?: readonly Pick<WorkspacePaneProject, "id" | "title">[];
+  emptyProjects?: readonly Pick<WorkspacePaneProject, "id" | "title" | "lastWorkspaceCreatedAt">[];
   projectlessWorkspaces?: readonly WorkspacePaneEntry[];
   projectlessParkedWorkspaces?: readonly WorkspacePaneEntry[];
 }
@@ -169,11 +170,9 @@ function renderWorkspaceRow(workspace: WorkspacePaneEntry, projectId?: string, o
 }
 
 const projectlessWorkspaceGroupId = "__projectless__";
-const projectsDrawerGroupId = "__projects_drawer__";
 
 interface WorkspaceGroupAddAction {
   href: string;
-  target: "launch-composer" | "project-dialog";
   label: string;
 }
 
@@ -181,16 +180,15 @@ const projectDialogTarget = 'data-turbo-frame="_top" data-turbo-stream="true"';
 
 interface WorkspaceGroupHeadingOptions {
   mode?: "disclosure" | "static" | "launcher";
-  expanded?: boolean;
   settingsHref?: string;
-  onboardingDestination?: Exclude<WorkspacePaneOnboardingState, "workspaces">;
+  onboardingDestination?: "first-workspace";
 }
 
 function renderWorkspaceGroupHeading(id: string, title: string, add: WorkspaceGroupAddAction, options: WorkspaceGroupHeadingOptions = {}): string {
   const mode = options.mode ?? "disclosure";
-  const addTarget = add.target === "project-dialog" ? projectDialogTarget : 'data-turbo-frame="launch_composer"';
+  const addTarget = 'data-turbo-frame="launch_composer"';
   const primary = mode === "disclosure"
-    ? { tag: "button" as const, attributesHtml: `type="button" aria-expanded="${options.expanded ?? true}" data-action="click->workspace-navigation#toggleProject" data-project-id="${escapeHtml(id)}"` }
+    ? { tag: "button" as const, attributesHtml: `type="button" aria-expanded="true" data-action="click->workspace-navigation#toggleProject" data-project-id="${escapeHtml(id)}"` }
     : mode === "launcher"
       ? { tag: "a" as const, attributesHtml: `href="${escapeHtml(add.href)}" ${addTarget} aria-label="${escapeHtml(add.label)}"` }
       : { tag: "span" as const, };
@@ -207,13 +205,13 @@ function renderWorkspaceGroupHeading(id: string, title: string, add: WorkspaceGr
     content: { kind: "icon-only", iconHtml: Icons.Plus, label: add.label },
     attributesHtml: `${onboardingAttribute} ${addTarget}`,
   });
-  const actions = `<span class="fixed-shell-project-actions">${buttonGroupHtml({ orientation: "horizontal", semantics: "layout", itemsHtml: `${settings}${addLink}` })}</span>`;
-  return actionItemHtml({ kind: "compound", label: { kind: "text", text: title }, leadingHtml: mode === "disclosure" ? Icons.Disclosure : "", container: {  }, primary, engagedActionsHtml: actions });
+  const actions = buttonGroupHtml({ orientation: "horizontal", semantics: "layout", itemsHtml: `${settings}${addLink}` });
+  return actionItemHtml({ kind: "compound", label: { kind: "text", text: title }, leadingHtml: mode === "disclosure" ? Icons.Disclosure : "", primary, engagedActionsHtml: actions });
 }
 
-function renderProjectHeading(project: Pick<WorkspacePaneProject, "id" | "title">, mode: "disclosure" | "launcher" = "disclosure", onboardingDestination?: Exclude<WorkspacePaneOnboardingState, "workspaces">): string {
+function renderProjectHeading(project: Pick<WorkspacePaneProject, "id" | "title">, mode: "disclosure" | "launcher" = "disclosure", onboardingDestination?: "first-workspace"): string {
   const id = encodeURIComponent(project.id);
-  return renderWorkspaceGroupHeading(project.id, project.title, { href: `/projects/${id}/launch-composer`, target: "launch-composer", label: `New workspace: ${project.title}` }, { mode, settingsHref: `/projects/${id}/settings`, onboardingDestination });
+  return renderWorkspaceGroupHeading(project.id, project.title, { href: `/projects/${id}/launch-composer`, label: `New workspace: ${project.title}` }, { mode, settingsHref: `/projects/${id}/settings`, onboardingDestination });
 }
 
 function renderParkedWorkspaceGroup(workspaces: readonly WorkspacePaneEntry[], parentId: string): string {
@@ -223,8 +221,7 @@ function renderParkedWorkspaceGroup(workspaces: readonly WorkspacePaneEntry[], p
     kind: "compound",
     label: { kind: "text", text: `${workspaces.length} parked` },
     leadingHtml: Icons.Disclosure,
-    container: {  },
-    primary: { tag: "button",  attributesHtml: `type="button" aria-expanded="false" data-action="click->workspace-navigation#toggleProject" data-project-id="${escapeHtml(groupId)}"` },
+    primary: { tag: "button", attributesHtml: `type="button" aria-expanded="false" data-action="click->workspace-navigation#toggleProject" data-project-id="${escapeHtml(groupId)}"` },
   });
   return `<section class="fixed-shell-project action-list fixed-shell-parked is-collapsed" data-project-id="${escapeHtml(groupId)}">
     ${heading}
@@ -232,45 +229,51 @@ function renderParkedWorkspaceGroup(workspaces: readonly WorkspacePaneEntry[], p
   </section>`;
 }
 
-interface WorkspacePaneCollectionRegions {
-  scrollHtml: string;
-  projectsDrawerHtml: string;
-}
-
-function renderWorkspacePaneCollectionRegions(presentation: WorkspacePanePresentation): WorkspacePaneCollectionRegions {
+function renderWorkspacePaneRows(presentation: WorkspacePanePresentation): string {
   const projects = presentation.projects.map((project) => `<section class="fixed-shell-project action-list" data-project-id="${escapeHtml(project.id)}">
     ${renderProjectHeading(project)}
     <div class="fixed-shell-project-workspaces action-list">${project.workspaces.map((workspace) => renderWorkspaceRow(workspace, project.id)).join("")}${renderParkedWorkspaceGroup(project.parkedWorkspaces ?? [], project.id)}</div>
   </section>`).join("");
   const projectlessWorkspaces = presentation.projectlessWorkspaces ?? [];
   const projectlessParkedWorkspaces = presentation.projectlessParkedWorkspaces ?? [];
-  const projectlessAdd = { href: "/launch-composer", target: "launch-composer", label: "New projectless workspace" } as const;
+  const projectlessAdd = { href: "/launch-composer", label: "New projectless workspace" };
+  const hasProjectlessWorkspaces = projectlessWorkspaces.length > 0 || projectlessParkedWorkspaces.length > 0;
   const projectless = `<section class="fixed-shell-project action-list" data-project-id="${projectlessWorkspaceGroupId}">
-    ${renderWorkspaceGroupHeading(projectlessWorkspaceGroupId, "Projectless", projectlessAdd, { mode: projectlessWorkspaces.length > 0 || projectlessParkedWorkspaces.length > 0 ? "disclosure" : "static" })}
-    ${projectlessWorkspaces.length > 0 || projectlessParkedWorkspaces.length > 0 ? `<div class="fixed-shell-project-workspaces action-list">${projectlessWorkspaces.map((workspace) => renderWorkspaceRow(workspace)).join("")}${renderParkedWorkspaceGroup(projectlessParkedWorkspaces, projectlessWorkspaceGroupId)}</div>` : ""}
+    ${renderWorkspaceGroupHeading(projectlessWorkspaceGroupId, "Projectless", projectlessAdd, { mode: hasProjectlessWorkspaces ? "disclosure" : "static" })}
+    ${hasProjectlessWorkspaces ? `<div class="fixed-shell-project-workspaces action-list">${projectlessWorkspaces.map((workspace) => renderWorkspaceRow(workspace)).join("")}${renderParkedWorkspaceGroup(projectlessParkedWorkspaces, projectlessWorkspaceGroupId)}</div>` : ""}
   </section>`;
-  const drawerProjects = [...presentation.projects, ...(presentation.emptyProjects ?? [])].sort((left, right) => left.title.localeCompare(right.title));
+  return `${projects}${projectless}`;
+}
+
+function renderProjectsPane(presentation: WorkspacePanePresentation): string {
+  const paneProjects = [...presentation.projects, ...(presentation.emptyProjects ?? [])].sort((left, right) => (right.lastWorkspaceCreatedAt ?? 0) - (left.lastWorkspaceCreatedAt ?? 0) || left.title.localeCompare(right.title));
   const onboardingState = workspacePaneOnboardingState(presentation);
   const needsFirstProject = onboardingState === "first-project";
   const needsFirstWorkspace = onboardingState === "first-workspace";
-  const projectsDrawerHtml = `<section id="${workspaceProjectsDrawerDomId}" class="fixed-shell-project action-list fixed-shell-projects-drawer${needsFirstWorkspace ? "" : " is-collapsed"}" data-project-id="${projectsDrawerGroupId}">
-    ${renderWorkspaceGroupHeading(projectsDrawerGroupId, "Projects", { href: "/projects/new", target: "project-dialog", label: "New project" }, { expanded: needsFirstWorkspace, onboardingDestination: needsFirstProject ? "first-project" : undefined })}
-    <div class="fixed-shell-project-workspaces action-list">${drawerProjects.map((project, index) => `<section class="fixed-shell-project action-list">${renderProjectHeading(project, "launcher", needsFirstWorkspace && index === 0 ? "first-workspace" : undefined)}</section>`).join("")}</div>
-  </section>`;
-  return { scrollHtml: `${projects}${projectless}`, projectsDrawerHtml };
-}
-
-function renderWorkspacePaneCollections(presentation: WorkspacePanePresentation, sidebarContributionsHtml = ""): string {
-  const regions = renderWorkspacePaneCollectionRegions(presentation);
-  return `<div class="fixed-shell-pane-collections" data-workspace-pane-collections data-workspace-navigation-target="scroll">
-    <div id="${workspacePaneScrollDomId}" class="fixed-shell-workspace-scroll">${regions.scrollHtml}</div>
-    <section id="global_sidebar_contributions">${sidebarContributionsHtml}</section>
-    ${regions.projectsDrawerHtml}
-  </div>`;
+  const addProject = actionLinkHtml({
+    href: "/projects/new",
+    variant: "secondary",
+    content: { kind: "icon-only", iconHtml: Icons.Plus, label: "New project" },
+    attributesHtml: `${projectDialogTarget}${needsFirstProject ? ' data-empty-workspace-onboarding-destination="first-project"' : ""}`,
+  });
+  const collapseProjects = buttonHtml({
+    type: "button",
+    variant: "secondary",
+    content: { kind: "icon-only", iconHtml: Icons.Disclosure, label: "Collapse Projects pane" },
+    attributesHtml: 'data-action="projects-pane#toggle" data-projects-pane-target="toggle" aria-expanded="true" aria-controls="workspace_projects_list"',
+  });
+  return `<div id="${workspaceProjectsPaneDomId}" class="fixed-shell-projects-pane" data-controller="projects-pane">${panelHtml({
+    element: { tag: "section", attributesHtml: 'aria-label="Projects"' },
+    headerHtml: `<span class="panel__title">${Icons.Projects}Projects</span>${buttonGroupHtml({ orientation: "horizontal", semantics: "layout", itemsHtml: `${collapseProjects}${addProject}` })}`,
+    bodyOverflow: "scroll",
+    bodyHtml: `<div id="workspace_projects_list" class="fixed-shell-projects-list action-list" data-projects-pane-target="list">${paneProjects.length
+      ? paneProjects.map((project, index) => renderProjectHeading(project, "launcher", needsFirstWorkspace && index === 0 ? "first-workspace" : undefined)).join("")
+      : '<p class="fixed-shell-projects-empty">No projects yet, make one!</p>'}</div>`,
+  })}</div>`;
 }
 
 const workspacePaneScrollDomId = "fixed_shell_workspace_scroll";
-const workspaceProjectsDrawerDomId = "fixed_shell_projects_drawer";
+const workspaceProjectsPaneDomId = "fixed_shell_projects_pane";
 
 export function renderWorkspacePane(presentation: WorkspacePanePresentation, sidebarContributionsHtml = "", moduleActionsHtml = ""): string {
   const settings = actionLinkHtml({
@@ -279,11 +282,14 @@ export function renderWorkspacePane(presentation: WorkspacePanePresentation, sid
     content: { kind: "icon-only", iconHtml: Icons.Settings, label: "Settings" },
     attributesHtml: 'data-controller="settings-prefetch" data-action="pointerenter->settings-prefetch#prefetch focus->settings-prefetch#prefetch click->settings-prefetch#open"',
   });
-  return `<div class="fixed-shell-workspace-pane">${panelHtml({
+  return `<div class="fixed-shell-workspace-pane"><div class="fixed-shell-workspace-main">${panelHtml({
     element: { tag: "aside",  attributesHtml: 'aria-label="Workspaces"' },
     headerHtml: `<strong class="panel__title">${atelierEasterEggHtml()}Atelier</strong>${buttonGroupHtml({ orientation: "horizontal", semantics: "layout", itemsHtml: `${renderPwaReminder()}${moduleActionsHtml}${settings}${barButton("Collapse Workspace pane", "click->workspace-navigation#toggleWorkspacePaneCollapsed", Icons.Panel, "data-collapse-workspace-pane")}` })}`,
-    bodyHtml: renderWorkspacePaneCollections(presentation, sidebarContributionsHtml),
-  })}</div>`;
+    bodyHtml: `<div class="fixed-shell-pane-collections" data-workspace-pane-collections>
+      <div id="${workspacePaneScrollDomId}" class="fixed-shell-workspace-scroll" data-workspace-navigation-target="scroll">${renderWorkspacePaneRows(presentation)}</div>
+      <section id="global_sidebar_contributions">${sidebarContributionsHtml}</section>
+    </div>`,
+  })}</div>${renderProjectsPane(presentation)}</div>`;
 }
 
 const atelierNextUnreadDomId = "fixed_shell_atelier_next_unread";
@@ -707,10 +713,9 @@ export function removeWorkspaceResidentTurboStream(workspaceId: string): string 
 }
 
 export function workspacePaneCollectionsTurboStream(presentation: WorkspacePanePresentation): string {
-  const regions = renderWorkspacePaneCollectionRegions(presentation);
   return [
-    turboStream("update", workspacePaneScrollDomId, regions.scrollHtml),
-    turboStream("replace", workspaceProjectsDrawerDomId, regions.projectsDrawerHtml),
+    turboStream("update", workspacePaneScrollDomId, renderWorkspacePaneRows(presentation)),
+    turboStream("replace", workspaceProjectsPaneDomId, renderProjectsPane(presentation)),
     turboStream("replace", atelierNextUnreadDomId, renderAtelierNextUnreadButton()),
     '<turbo-stream action="workspace-pane-changed" targets="[data-workspace-pane-collections]"></turbo-stream>',
   ].join("");
