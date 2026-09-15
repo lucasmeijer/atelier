@@ -4,6 +4,7 @@ import { join, resolve } from "node:path";
 import { createHash } from "node:crypto";
 import { Type } from "typebox";
 import { Value } from "typebox/value";
+import { acquireReleaseLock } from "./release-lock.ts";
 
 const image = "ghcr.io/lucasmeijer/atelier";
 const platforms = ["linux/amd64", "linux/arm64"];
@@ -270,19 +271,28 @@ async function main(options: ReturnType<typeof parseReleaseArgs>, common: string
 if (import.meta.main) {
   try {
     const args = process.argv.slice(2);
-    const locked = args[0] === "--lock-held";
-    const options = parseReleaseArgs(locked ? args.slice(1) : args);
+    const worker = args[0] === "--release-worker";
+    const options = parseReleaseArgs(worker ? args.slice(1) : args);
     if (options.help) {
       console.log(usage);
     } else {
       const git = Bun.spawnSync(["git", "rev-parse", "--path-format=absolute", "--git-common-dir"], { cwd: root, stdin: "ignore", stdout: "pipe", stderr: "pipe" });
       if (git.exitCode !== 0) throw new Error(git.stderr.toString());
       const common = git.stdout.toString().trim();
-      if (locked) {
-        await main(options, common);
+      if (worker) {
+        const unlock = acquireReleaseLock(join(common, "atelier-release.lock"));
+        if (!unlock) {
+          process.exitCode = 75;
+        } else {
+          try {
+            await main(options, common);
+          } finally {
+            unlock();
+          }
+        }
       } else {
-        // OS advisory lock is released even on crashes. Shared by worktrees, not remote workspaces.
-        const child = Bun.spawn(["flock", "--nonblock", "--conflict-exit-code", "75", "--no-fork", join(common, "atelier-release.lock"), "bun", import.meta.path, "--lock-held", ...args], { stdin: "ignore", stdout: "inherit", stderr: "inherit", detached: true });
+        // The worker owns the lock; keep a separate process group for cancellation.
+        const child = Bun.spawn([process.execPath, import.meta.path, "--release-worker", ...args], { stdin: "ignore", stdout: "inherit", stderr: "inherit", detached: true });
         const stop = () => { process.kill(-child.pid, "SIGTERM"); };
         process.on("SIGINT", stop);
         process.on("SIGTERM", stop);

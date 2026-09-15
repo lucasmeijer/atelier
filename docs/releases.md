@@ -7,8 +7,10 @@ bun run release --check     # validate the builder without publishing
 ```
 
 Publishing requires the existing `GH_PACKAGE_TOKEN` with GHCR package write access.
-Docker, Buildx, Bun, Git and `flock` are supplied by the Atelier workspace. No GitHub
-Actions or host Docker socket is needed.
+Docker, Buildx, Bun and Git are required and supplied by the Atelier workspace.
+The release CLI runs on Linux and macOS; it calls the native OS locking API through
+Bun rather than requiring a `flock` executable. No GitHub Actions or host Docker
+socket is needed.
 
 ## What runs
 
