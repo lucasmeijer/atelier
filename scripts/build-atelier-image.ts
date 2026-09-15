@@ -218,9 +218,6 @@ function dockerBuildCommand(options: Options, args: string[]): string[] {
   return [
     ...command,
     ...resourceBuildArgs,
-    // Under arm64 QEMU, Go tools such as git-lfs need the low-address mmap
-    // layout selected by an unlimited stack. This affects build processes only.
-    ...(arch() === "arm64" && requestedPlatforms(options).includes("linux/amd64") ? ["--ulimit", "stack=-1:-1"] : []),
     ...(options.builder ? ["--builder", options.builder] : []),
     ...(options.platform ? ["--platform", options.platform] : []),
     ...(options.noCache ? ["--no-cache"] : []),
