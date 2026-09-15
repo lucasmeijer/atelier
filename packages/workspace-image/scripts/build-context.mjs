@@ -49,7 +49,6 @@ await mkdir(join(outDir, "files"), { recursive: true });
 const hash = createHash("sha256");
 // v14 embeds the resulting signature as an image label.
 hash.update("atelier-workspace-image-v14\n");
-const apt = [];
 const env = {};
 const moduleNames = [];
 const modules = [];
@@ -70,7 +69,6 @@ for (const { path, dir, name, manifest, hashPath } of manifests) {
   const moduleCopyInstructions = [];
   const manifestText = await readFile(path, "utf8");
   hash.update(hashPath); hash.update("\0"); hash.update(manifestText); hash.update("\0");
-  apt.push(...(manifest.aptPackages ?? []));
   Object.assign(env, manifest.env ?? {});
   for (const file of manifest.files ?? []) {
     const from = join(dir, file.from);
@@ -81,7 +79,7 @@ for (const { path, dir, name, manifest, hashPath } of manifests) {
     const copyInstruction = { rel: `files/${rel}`, to: file.to, mode: file.mode };
     (file.afterRun ? finalCopies : moduleCopyInstructions).push(copyInstruction);
   }
-  modules.push({ name, copyInstructions: moduleCopyInstructions, runInstructions: manifest.run ?? [] });
+  modules.push({ name, aptPackages: [...new Set(manifest.aptPackages ?? [])].sort(), copyInstructions: moduleCopyInstructions, runInstructions: manifest.run ?? [] });
 }
 
 // The gateway is built separately so Go never enters the runtime image.
@@ -92,12 +90,7 @@ for (const name of (await readdir(gatewaySource)).sort()) {
   hash.update(await readFile(join(gatewaySource, name)));
 }
 
-const uniqueApt = [...new Set(apt)].sort();
 let dockerfile = `FROM golang:1.26.0 AS gateway-build\nWORKDIR /src\nCOPY gateway/ ./\nRUN go test ./... && CGO_ENABLED=0 go build -trimpath -ldflags="-s -w" -o /atelier-workspace-gateway .\n\nFROM oven/bun:1.4.0 AS bun-dist\n\nFROM ${runtimeImage}\n\nARG DEBIAN_FRONTEND=noninteractive\nLABEL com.atelier.workspace-image.modules=${quote(moduleNames.join(","))}\n\n`;
-if (uniqueApt.length) {
-  const aptPackages = dockerContinuationList(uniqueApt);
-  dockerfile += `RUN --mount=type=cache,target=/var/cache/apt,sharing=locked \\\n    --mount=type=cache,target=/var/lib/apt/lists,sharing=locked \\\n    apt-get update \\\n && apt-get install -y --no-install-recommends \\\n${aptPackages}\n\n`;
-}
 dockerfile += `COPY --from=bun-dist /usr/local/bin/bun /usr/local/bin/bun\nCOPY --from=bun-dist /usr/local/bin/bunx /usr/local/bin/bunx\nRUN bun --version\n\n`;
 function appendCopies(copies) {
   for (const copy of copies) {
@@ -109,6 +102,10 @@ function appendCopies(copies) {
 
 for (const module of modules) {
   dockerfile += `# Module: ${module.name}\n`;
+  if (module.aptPackages.length) {
+    const aptPackages = dockerContinuationList(module.aptPackages);
+    dockerfile += `RUN --mount=type=cache,target=/var/cache/apt,sharing=locked \\\n    --mount=type=cache,target=/var/lib/apt/lists,sharing=locked \\\n    apt-get update \\\n && apt-get install -y --no-install-recommends \\\n${aptPackages}\n\n`;
+  }
   appendCopies(module.copyInstructions);
   for (const script of module.runInstructions) dockerfile += `RUN ${dockerEscapeRun(script)}\n\n`;
 }

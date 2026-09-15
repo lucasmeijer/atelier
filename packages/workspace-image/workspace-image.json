@@ -70,7 +70,8 @@
     {
       "from": "rootfs/usr/local/bin/atelier-workspace-init",
       "to": "/usr/local/bin/atelier-workspace-init",
-      "mode": "0755"
+      "mode": "0755",
+      "afterRun": true
     }
   ],
   "run": [
