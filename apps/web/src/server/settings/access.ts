@@ -6,7 +6,7 @@ import { actionLinkHtml } from "@atelier/design-system/action-link";
 import { escapeHtml } from "@atelier/shared";
 import { response } from "./http.ts";
 
-const managed = () => existsSync("/run/atelier-system/resources.json");
+const managed = () => existsSync("/run/atelier-system/access-v1");
 const schema = Type.Object({ mode: Type.Union([Type.Literal("localhost"), Type.Literal("tailscale")]), connectionState: Type.String(), authUrl: Type.Optional(Type.String()), error: Type.Optional(Type.String()) });
 export async function renderAccessSettings(source = true): Promise<string> {
   if (!managed()) return "";

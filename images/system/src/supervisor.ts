@@ -34,6 +34,8 @@ await Promise.all(
     "/run/tailscale",
   ].map((path) => mkdir(path, { recursive: true })),
 );
+await mkdir("/run/atelier-system", { recursive: true });
+await writeFile("/run/atelier-system/access-v1", "");
 type State = { accessMode?: "localhost" | "tailscale"; localPort?: number; currentImage?: string; runningContainers?: string[] };
 const persisted: State = (await Bun.file(`${stateDir}/state.json`).exists())
   ? JSON.parse(await readFile(`${stateDir}/state.json`, "utf8"))
@@ -233,6 +235,8 @@ async function replace(reference: string, pull: boolean) {
       `type=bind,src=${resources.commandsCgroup},dst=/run/atelier-system/workload-processes`,
       "--mount",
       "type=bind,src=/run/atelier-system/resources.json,dst=/run/atelier-system/resources.json,readonly",
+      "--mount",
+      "type=bind,src=/run/atelier-system/access-v1,dst=/run/atelier-system/access-v1,readonly",
       "--label",
       "atelier.role=app",
       "--mount",

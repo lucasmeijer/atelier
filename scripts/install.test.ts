@@ -162,3 +162,14 @@ test("unsupported Desktop kernel leaves the existing System running", () => {
   expect(remote.status).toBe(0);
   expect(remote.output).toContain("--access-mode tailscale");
 });
+
+
+for (const action of ["open", "connect"]) {
+  test(`${action} does not require local access support from an existing System`, () => {
+    const result = run({ installed: true }, ["--non-interactive", "--action", action]);
+    expect(result.status).toBe(0);
+    expect(result.output).not.toContain("3080/tcp");
+    expect(result.output).not.toContain("3001/access");
+    expect(result.output).not.toContain("DOCKER stop");
+  });
+}

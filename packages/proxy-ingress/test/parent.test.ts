@@ -3,7 +3,7 @@ import { createServer } from "node:http";
 import { mkdtemp, rm } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
-import { createTailscaleParentPublisher } from "../src/ingress/parent.ts";
+import { detectParentOriginPublisher, createTailscaleParentPublisher } from "../src/ingress/parent.ts";
 
 test("Tailscale parent starts before login, fails publication clearly, and works after login without restart", async () => {
   const directory = await mkdtemp(join(tmpdir(), "parent-tailscale-"));
@@ -56,4 +56,15 @@ test("System mode is queried for each origin without relying on Tailscale socket
   port = 53001;
   expect(await publisher.publish(41001)).toBe("http://p41001.atelier.localhost:53001");
   expect(publisher.refresh).toBe(true);
+});
+
+
+test("older System resources do not advertise the access protocol", async () => {
+  const oldFiles = new Set(["/run/atelier-system/resources.json", "/var/run/tailscale"]);
+  const old = await detectParentOriginPublisher(undefined, path => oldFiles.has(path));
+  expect(old.kind).toBe("tailscale");
+  oldFiles.add("/run/atelier-system/access-v1");
+  expect((await detectParentOriginPublisher(undefined, path => oldFiles.has(path))).kind).toBe("system");
+  oldFiles.add("/run/atelier-parent");
+  expect((await detectParentOriginPublisher(undefined, path => oldFiles.has(path))).kind).toBe("atelier");
 });

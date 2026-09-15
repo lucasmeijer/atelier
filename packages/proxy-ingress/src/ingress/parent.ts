@@ -81,9 +81,9 @@ export function createSystemOriginPublisher(portRange?: PortRange, fetcher: (url
 }
 
 /** A mounted parent directory is configuration even while its server is down. */
-export async function detectParentOriginPublisher(portRange?: PortRange): Promise<ParentOriginPublisher> {
-  if (existsSync("/run/atelier-parent")) return createParentAtelierPublisher();
-  if (existsSync("/run/atelier-system/resources.json")) return createSystemOriginPublisher(portRange);
-  if (existsSync(dirname(defaultTailscaleLocalApiSocketPath))) return createTailscaleParentPublisher(defaultTailscaleLocalApiSocketPath, portRange);
+export async function detectParentOriginPublisher(portRange?: PortRange, hasPath: (path: string) => boolean = existsSync): Promise<ParentOriginPublisher> {
+  if (hasPath("/run/atelier-parent")) return createParentAtelierPublisher();
+  if (hasPath("/run/atelier-system/access-v1")) return createSystemOriginPublisher(portRange);
+  if (hasPath(dirname(defaultTailscaleLocalApiSocketPath))) return createTailscaleParentPublisher(defaultTailscaleLocalApiSocketPath, portRange);
   return createLocalOriginPublisher();
 }
