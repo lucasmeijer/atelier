@@ -19,6 +19,8 @@ const githubRepositorySearchResponseSchema = Type.Object({
 
 const searchCache = new Map<string, { expiresAt: number; results: GitHubRepositorySearchResult[] }>();
 const searchCacheMs = 60_000;
+const ownerCache = new Map<string, { expiresAt: number; owners: string[] }>();
+const githubOwnerSchema = Type.Object({ login: Type.String() });
 
 export class GitHubRepositorySearchRateLimitError extends Error {
   constructor(message: string, readonly retryAfterSeconds?: number) {
@@ -41,13 +43,26 @@ export function shouldSearchGitHubRepositories(query: string): boolean {
   return trimmed.length >= 2 && !looksLikeProjectSpec(trimmed);
 }
 
-async function searchGitHubRepositoryPage(query: string, visibility: "public" | "private", token: string | undefined, perPage: number): Promise<GitHubRepositorySearchResult[]> {
+async function searchGitHubRepositoryPage(query: string, scope: string, token: string | undefined): Promise<GitHubRepositorySearchResult[]> {
   const url = new URL("https://api.github.com/search/repositories");
-  url.searchParams.set("q", `${query.trim()} in:name,description is:${visibility}`);
+  url.searchParams.set("q", `${query.trim()} in:name,description ${scope}`);
   url.searchParams.set("sort", "stars");
   url.searchParams.set("order", "desc");
-  url.searchParams.set("per_page", String(perPage));
+  url.searchParams.set("per_page", "12");
 
+  const response = await fetchGitHub(url, token);
+  const body = Value.Parse(githubRepositorySearchResponseSchema, await response.json());
+  return body.items.map((repo) => ({
+    fullName: repo.full_name,
+    description: repo.description,
+    private: repo.private,
+    cloneUrl: repo.clone_url,
+    htmlUrl: repo.html_url,
+    defaultBranch: repo.default_branch,
+  }));
+}
+
+async function fetchGitHub(url: URL, token: string | undefined): Promise<Response> {
   const headers: HeadersInit = {
     Accept: "application/vnd.github+json",
     "X-GitHub-Api-Version": "2022-11-28",
@@ -61,15 +76,28 @@ async function searchGitHubRepositoryPage(query: string, visibility: "public" | 
     throw new Error(`GitHub repository search failed: ${response.status} ${message}`);
   }
 
-  const body = Value.Parse(githubRepositorySearchResponseSchema, await response.json());
-  return body.items.map((repo) => ({
-    fullName: repo.full_name,
-    description: repo.description,
-    private: repo.private,
-    cloneUrl: repo.clone_url,
-    htmlUrl: repo.html_url,
-    defaultBranch: repo.default_branch,
-  }));
+  return response;
+}
+
+async function authenticatedOwners(token: string, credentialKey: string): Promise<string[]> {
+  const now = Date.now();
+  for (const [key, entry] of ownerCache) {
+    if (entry.expiresAt <= now) ownerCache.delete(key);
+  }
+  const cached = ownerCache.get(credentialKey);
+  if (cached) return cached.owners;
+
+  const response = await fetchGitHub(new URL("https://api.github.com/user"), token);
+  const user = Value.Parse(githubOwnerSchema, await response.json());
+  const owners = [user.login];
+  for (let page = 1; ; page += 1) {
+    const response = await fetchGitHub(new URL(`https://api.github.com/user/orgs?per_page=100&page=${page}`), token);
+    const organizations = Value.Parse(Type.Array(githubOwnerSchema), await response.json());
+    owners.push(...organizations.map((org) => org.login));
+    if (organizations.length < 100) break;
+  }
+  ownerCache.set(credentialKey, { expiresAt: Date.now() + searchCacheMs, owners });
+  return owners;
 }
 
 export async function searchGitHubRepositories(query: string): Promise<GitHubRepositorySearchResult[]> {
@@ -85,14 +113,22 @@ export async function searchGitHubRepositories(query: string): Promise<GitHubRep
   const cached = searchCache.get(cacheKey);
   if (cached) return cached.results;
 
-  let results: GitHubRepositorySearchResult[];
-  if (token) {
-    const privateResults = await searchGitHubRepositoryPage(query, "private", token, 12);
-    results = privateResults.length >= 12
-      ? privateResults
-      : [...privateResults, ...await searchGitHubRepositoryPage(query, "public", token, 12 - privateResults.length)];
-  } else {
-    results = await searchGitHubRepositoryPage(query, "public", token, 12);
+  const results: GitHubRepositorySearchResult[] = [];
+  // Search affiliations separately so popular global matches cannot crowd them out.
+  // GitHub combines repeated user qualifiers with OR, including organization owners.
+  const scopes = token
+    ? [(await authenticatedOwners(token, credentialKey)).map((owner) => `user:${owner}`).join(" "), "is:private", "is:public"]
+    : ["is:public"];
+  const seen = new Set<string>();
+  for (const scope of scopes) {
+    for (const repo of await searchGitHubRepositoryPage(query, scope, token)) {
+      const name = repo.fullName.toLowerCase();
+      if (seen.has(name)) continue;
+      seen.add(name);
+      results.push(repo);
+      if (results.length === 12) break;
+    }
+    if (results.length === 12) break;
   }
   searchCache.set(cacheKey, { expiresAt: Date.now() + searchCacheMs, results });
   return results;
