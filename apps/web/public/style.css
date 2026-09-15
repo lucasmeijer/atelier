@@ -107,7 +107,7 @@ a { color: inherit; text-decoration: none; }
 
 .side { display: flex; flex-direction: column; gap: 16px; position: sticky; top: 80px; }
 .workspace-boot .main, .workspace-boot .body { height: 100%; }
-.workspace-boot .body { display: grid; place-items: safe center; overflow: auto; }
+.workspace-boot .body { display: grid; align-items: start; justify-items: safe center; padding-top: 64px; overflow: auto; }
 .workspace-boot-content { width: min(720px, 100%); }
 .kv { display: flex; justify-content: space-between; font-size: var(--text-body); padding: 4px 0; }
 .kv span { color: var(--text); }
