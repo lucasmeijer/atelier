@@ -26,7 +26,8 @@ export const atelierClientModule: WorkspaceClientModule = {
         try {
           const response = await fetch(action, { method: "POST", headers: { Accept: "text/vnd.turbo-stream.html" }, credentials: "same-origin" });
           if (response.headers.get("x-atelier-reload") === "true") {
-            window.location.reload();
+            // The app origin now points at the System supervisor, not workspace routes.
+            window.location.replace("/");
             return;
           }
           window.Turbo!.renderStreamMessage(await response.text());

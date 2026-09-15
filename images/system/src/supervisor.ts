@@ -356,7 +356,12 @@ const server = Bun.serve({
         Bun.file(new URL(`.${url.pathname}`, import.meta.url)),
         { headers: { "access-control-allow-origin": "*" } },
       );
-    if (url.pathname !== "/") return new Response("Not found", { status: 404 });
+    // Tailscale preserves the app path when routing this origin to the supervisor.
+    // Open workspace tabs must reach progress rather than a missing app route.
+    if (request.method !== "GET" && request.method !== "HEAD")
+      return new Response("Not found", { status: 404 });
+    if (url.pathname !== "/")
+      return new Response(null, { status: 303, headers: { location: "/", "cache-control": "no-store" } });
     const diagnostic = url.port === "8443";
     const events = tailnetHost
       ? `https://${tailnetHost}:8443/events`

@@ -132,6 +132,12 @@ try {
   const acceptedAt = Date.now();
   await good.restart();
   assert.equal((await statusSnapshot()).healthy, false, "ACK occurs after switching away from healthy app");
+  for (const path of ["/workspaces/existing?agent=root", "/settings?section=update"]) {
+    const response = await supervisor(path);
+    assert.equal(response.status, 303, "app destinations redirect to System progress");
+    assert.equal(response.headers.get("location"), "/");
+    assert.equal(response.headers.get("cache-control"), "no-store");
+  }
   await restored(initialApp);
   assert.deepEqual(await workspaceIds(), beforeWorkspaces);
   assert.equal(JSON.parse(await readFile("/data/app/update.json", "utf8")).releaseChannel, "latest");
