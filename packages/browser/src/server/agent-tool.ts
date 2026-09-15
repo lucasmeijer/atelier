@@ -12,7 +12,7 @@ export function createBrowserPresenter(workspaceId: string, deps: BrowserPresent
     description: "Present a URL in Atelier's inline preview browser.",
     parameters: {
       url: Type.String({
-        description: "URL to load in the preview browser, written from the network perspective of the workspace container. For local dev servers, use localhost with one of Atelier's exposed preview ports, for example: http://localhost:3000/",
+        description: "URL to load in the preview browser, written from the network perspective of the workspace container.",
       }),
     },
     execute: async (_toolCallId: string, params: { kind: "browser"; url: string }) => {
