@@ -68,7 +68,7 @@ class ProjectsPaneController extends Controller<HTMLElement> {
 
   private setCollapsed(collapsed: boolean): void {
     this.element.classList.toggle("is-collapsed", collapsed);
-    this.listTarget.hidden = collapsed;
+    this.listTarget.inert = collapsed;
     this.toggleTarget.setAttribute("aria-expanded", String(!collapsed));
     this.toggleTarget.setAttribute("aria-label", collapsed ? "Expand Projects pane" : "Collapse Projects pane");
     this.dispatch("layout-changed");

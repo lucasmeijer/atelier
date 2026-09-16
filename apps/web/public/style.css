@@ -219,15 +219,35 @@ turbo-frame { display: contents; }
 .fixed-shell-pane-collections { height: 100%; min-height: 0; display: flex; flex-direction: column; }
 .fixed-shell-pane-collections > #global_sidebar_contributions { flex: 0 0 auto; }
 .fixed-shell-workspace-main { flex: 1; min-height: 0; display: grid; grid-template-rows: minmax(0, 1fr); }
-.fixed-shell-projects-pane { --project-row-height: 28px; flex: 0 0 auto; height: calc(47px + 9 * var(--project-row-height) + 8 * 2px + 16px); max-height: 50%; display: grid; grid-template-rows: minmax(0, 1fr); }
-.fixed-shell-projects-pane.is-collapsed { height: 47px; }
+/* Reserve space once, then slide a full-sized Projects panel below the shell.
+ * Its header remains visible; list contents never resize during the animation. */
+.fixed-shell-app > .fixed-shell-workspace-pane {
+  --project-row-height: 28px;
+  --projects-pane-height: calc(47px + 9 * var(--project-row-height) + 8 * 2px + 16px);
+  display: grid;
+  grid-template-rows: minmax(0, 1fr) min(var(--projects-pane-height), 50%);
+  overflow: clip;
+}
+.fixed-shell-app > .fixed-shell-workspace-pane:has(.fixed-shell-projects-pane.is-collapsed) { grid-template-rows: minmax(0, 1fr) 47px; }
+.fixed-shell-projects-pane {
+  position: absolute;
+  inset: auto 0 0;
+  height: var(--projects-pane-height);
+  max-height: 50%;
+  display: grid;
+  grid-template-rows: minmax(0, 1fr);
+  transform: translateY(0);
+  transition: transform 160ms ease-out;
+}
+.fixed-shell-projects-pane.is-collapsed { transform: translateY(calc(100% - 47px)); }
+.fixed-shell-projects-pane > .panel > .panel__body { transition: opacity 160ms ease-out, visibility 160ms; }
+.fixed-shell-projects-pane.is-collapsed > .panel > .panel__body { opacity: 0; visibility: hidden; pointer-events: none; }
 .fixed-shell-projects-pane.is-collapsed [data-projects-pane-target="toggle"] svg { transform: rotate(180deg); }
 .fixed-shell-projects-list { padding: 8px; }
-.fixed-shell-projects-list[hidden] { display: none; }
 .fixed-shell-projects-empty { position: relative; margin: 0; padding: 16px 56px 16px 8px; color: var(--text-muted); }
 .fixed-shell-projects-empty-arrow { position: absolute; top: 0; right: 10px; pointer-events: none; }
 @media (max-width: 700px), (pointer: coarse) {
-  .fixed-shell-projects-pane { --project-row-height: 50px; }
+  .fixed-shell-app > .fixed-shell-workspace-pane { --project-row-height: 50px; }
 }
 .fixed-shell-workspace-status { position: relative; display: inline-grid; width: 16px; height: 16px; place-items: center; overflow: visible; }
 .fixed-shell-workspace-warning { color: var(--warning); font-style: normal; line-height: 1; }
@@ -293,8 +313,37 @@ turbo-frame { display: contents; }
 
 .fixed-shell-work-pane { position: relative; min-width: 360px; flex: 1; }
 @media (min-width: 701px) and (hover: hover) and (pointer: fine) {
-  .fixed-shell-app.is-workspace-pane-collapsed > .fixed-shell-workspace-pane,
-  .fixed-workspace-presentation:not(.is-work-pane-open) .fixed-shell-work-pane { display: none; }
+  .fixed-shell-app > .fixed-shell-workspace-pane {
+    position: absolute;
+    inset: var(--fixed-shell-gap) auto var(--fixed-shell-gap) var(--fixed-shell-gap);
+    z-index: 1;
+    transform: translateX(0);
+    transition: transform 160ms ease-out, opacity 160ms ease-out, visibility 160ms;
+  }
+  .fixed-shell-app > .fixed-shell-app-main { margin-left: calc(var(--fixed-workspace-width) + var(--fixed-shell-gap)); }
+  .fixed-shell-app.is-workspace-pane-collapsed > .fixed-shell-app-main { margin-left: 0; }
+  .fixed-shell-app.is-workspace-pane-collapsed > .fixed-shell-workspace-pane {
+    transform: translateX(calc(-100% - var(--fixed-shell-gap)));
+    opacity: 0;
+    visibility: hidden;
+    pointer-events: none;
+  }
+  .fixed-workspace-presentation .fixed-shell-main { position: relative; }
+  /* Keep embedded surfaces at their final size: animating flex/width makes
+   * terminals and browsers relayout on every frame. Only composite the slide. */
+  .fixed-shell-work-pane {
+    position: absolute;
+    inset: 0 0 0 auto;
+    width: calc(100% - var(--fixed-agent-width) - var(--fixed-shell-gap));
+    transform: translateX(0);
+    transition: transform 160ms ease-out, opacity 160ms ease-out, visibility 160ms;
+  }
+  .fixed-workspace-presentation:not(.is-work-pane-open) .fixed-shell-work-pane {
+    transform: translateX(calc(100% + var(--fixed-shell-gap)));
+    opacity: 0;
+    visibility: hidden;
+    pointer-events: none;
+  }
 }
 
 /* Below the preferred pane minimums (380 + 360 + 8), shrink both panes
@@ -302,8 +351,8 @@ turbo-frame { display: contents; }
  * the sidebar so neither pane overflows the available desktop width. */
 @media (min-width: 701px) and (hover: hover) and (pointer: fine) {
   @container workspace-content (width < 748px) {
-    .fixed-shell-agent-pane { min-width: 0; flex: 1 1 380px; }
-    .fixed-shell-work-pane { min-width: 0; flex: 1 1 360px; }
+    .fixed-shell-agent-pane { min-width: 0; flex: 0 1 calc((100% - var(--fixed-shell-gap)) * 380 / 740); }
+    .fixed-shell-work-pane { min-width: 0; width: calc((100% - var(--fixed-shell-gap)) * 360 / 740); }
     .fixed-shell-work-resizer { display: none; }
   }
 }
@@ -364,7 +413,7 @@ html.software-keyboard-visible .fixed-shell-app .fixed-shell-mobile-nav { displa
 }
 
 @media (prefers-reduced-motion: reduce) {
-  .fixed-shell-workspace-pane, .fixed-shell-work-pane, .fixed-shell-agent-pane { transition-duration: 1ms !important; }
+  .fixed-shell-workspace-pane, .fixed-shell-work-pane, .fixed-shell-agent-pane, .fixed-workspace-presentation .fixed-shell-main, .fixed-shell-projects-pane, .fixed-shell-projects-pane > .panel > .panel__body { transition-duration: 1ms !important; }
   .fixed-shell-availability-mark { animation-duration: 1ms !important; animation-iteration-count: 1 !important; }
 }
 
