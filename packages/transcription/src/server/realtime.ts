@@ -1,10 +1,11 @@
 import { atelierDataPath, getAtelierRuntimeContext } from "@atelier/core";
 import type { WorkspaceServerSocketHandler, WorkspaceSocketConnection } from "@atelier/shared";
-import { mkdir, stat } from "node:fs/promises";
+import { stat } from "node:fs/promises";
 import { availableParallelism } from "node:os";
 import { join } from "node:path";
 import { readTranscriptionModel, transcriptionModel, type TranscriptionModelId } from "./models.ts";
 import { captureProcessStderr, processExitMessage } from "./process-diagnostics.ts";
+import { ensureTranscriptionRuntime } from "./runtime.ts";
 
 const transcriptionPort = 8098;
 const transcriptionReadyUrl = `http://127.0.0.1:${transcriptionPort}/ready`;
@@ -40,11 +41,8 @@ async function artifactProgress(modelId: TranscriptionModelId): Promise<number> 
 async function startTranscriptionServer(model: TranscriptionModelId): Promise<void> {
   if (await isTranscriptionServerReady()) return;
 
-  const executable = Bun.which("nemo-speech");
-  if (!executable) throw new Error("The server image does not include the NeMo Speech CPU runtime");
-
   const cacheDir = transcriptionCacheDir();
-  await mkdir(cacheDir, { recursive: true });
+  const executable = await ensureTranscriptionRuntime(cacheDir);
   const child = Bun.spawn([
     executable,
     "serve",
@@ -112,6 +110,9 @@ export const createTranscriptionSocketSession: WorkspaceServerSocketHandler = (u
         const message = progress < 100 ? `Downloading ${model.name} · ${progress}%` : `Loading ${model.name}…`;
         status(browser, "loading", message, progress);
       };
+      if (browser) status(browser, "loading", "Preparing the CPU transcription runtime…", 0);
+      await ensureTranscriptionRuntime(transcriptionCacheDir());
+      if (!browser) return;
       await reportProgress();
       progressTimer = setInterval(() => void reportProgress(), 250);
       await ensureTranscriptionServer(modelId);
