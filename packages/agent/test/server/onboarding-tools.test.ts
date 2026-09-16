@@ -22,6 +22,7 @@ describe("onboarding tool capabilities", () => {
   let deps: OnboardingToolDependencies;
   const shell = mock(async (_workspaceId: string, command: string) => ({ stdout: command.includes(".exit") && command.startsWith("cat ") ? "0\n" : command.includes("capture-pane") ? "hello\n" : "", stderr: "", exitCode: 0, durationMs: 0 }));
   const create = mock<OnboardingToolDependencies["createWorkspace"]>(async () => ({ workspaceId: "child", url: "/workspaces/child", status: "ready", timings: { totalMs: 10, phases: [] } }));
+  const remove = mock<OnboardingToolDependencies["deleteWorkspace"]>(async () => ({ deleted: true, blocked: false }));
   const secret = mock<OnboardingToolDependencies["requestSecretValue"]>(async (_projectId, request) => ({ status: "cancelled", envName: request.envName }));
 
   beforeEach(async () => {
@@ -30,9 +31,9 @@ describe("onboarding tool capabilities", () => {
     process.env.ATELIER_DATA_DIR = dir;
     source = projectWorkspaceInit((await addProject("https://github.com/example/app.git")).project);
     destination = { ...source, createdBy: { workspaceId: "parent", conversationId: "conversation" } };
-    shell.mockClear(); create.mockClear(); secret.mockClear();
+    shell.mockClear(); create.mockClear(); secret.mockClear(); remove.mockClear();
     deps = {
-      createWorkspace: create, requestSecretValue: secret,
+      createWorkspace: create, requestSecretValue: secret, deleteWorkspace: remove,
       getWorkspaceInit: async (id) => id === "parent" ? source : id === "child" ? destination : undefined,
       createBashTool: (workspaceId) => createTmuxBashTool(workspaceId, shell),
     };
@@ -46,12 +47,12 @@ describe("onboarding tool capabilities", () => {
     return createOnboardingTools("parent", conversationId, deps).find((tool) => tool.name === name)!;
   }
 
-  test("all five tools are registered but absent from the default active set", () => {
+  test("all six tools are registered but absent from the default active set", () => {
     const createBashTool = mock(deps.createBashTool!);
     configureOnboardingTools({ ...deps, createBashTool });
     try {
       const group = createRegisteredOnboardingTools("parent", "conversation");
-      expect(group.map((tool) => tool.name)).toEqual(["read_project_settings", "write_project_settings", "request_secret_value", "bash_in_other_workspace", "create_workspace"]);
+      expect(group.map((tool) => tool.name)).toEqual(["read_project_settings", "write_project_settings", "request_secret_value", "bash_in_other_workspace", "delete_workspace", "create_workspace"]);
       expect(createBashTool).toHaveBeenCalledTimes(1);
       const defaults = createWorkspaceAgentTools("parent").map((tool) => tool.name);
       for (const tool of group) expect(defaults).not.toContain(tool.name);
@@ -104,6 +105,32 @@ describe("onboarding tool capabilities", () => {
     destination = { ...destination, projectId: "other-project" };
     await expect(execute(tool("bash_in_other_workspace"), { workspace_id: "child", command: "pwd" })).rejects.toThrow("only execute bash");
     expect(shell).not.toHaveBeenCalled();
+  });
+
+  test("deletion delegates safety checks and returns the host result", async () => {
+    destination = JSON.parse(JSON.stringify(destination));
+    for (const force of [false, true]) {
+      const response = await execute(tool("delete_workspace"), { workspace_id: "child", force });
+      expect(remove).toHaveBeenLastCalledWith("child", force);
+      expect(response.details).toEqual({ deleted: true, blocked: false });
+    }
+    expect(Value.Check(tool("delete_workspace").parameters, { force: false })).toBe(false);
+  });
+
+  test("deletion rejects targets not created by this conversation for this project", async () => {
+    for (const id of ["parent", "unknown"]) await expect(execute(tool("delete_workspace"), { workspace_id: id, force: true })).rejects.toThrow("only delete");
+    await expect(execute(tool("delete_workspace", "other-agent"), { workspace_id: "child", force: true })).rejects.toThrow("only delete");
+    for (const target of [
+      { ...destination, projectId: "other-project" },
+      { ...destination, createdBy: { workspaceId: "other-parent", conversationId: "conversation" } },
+      { ...destination, createdBy: undefined },
+    ]) {
+      destination = target;
+      await expect(execute(tool("delete_workspace"), { workspace_id: "child", force: true })).rejects.toThrow("only delete");
+    }
+    deps.getWorkspaceInit = async () => undefined;
+    await expect(execute(tool("delete_workspace"), { workspace_id: "child", force: true })).rejects.toThrow("does not belong to a project");
+    expect(remove).not.toHaveBeenCalled();
   });
 
   test("a recreated tool instance retains access via persisted workspace creator metadata", async () => {

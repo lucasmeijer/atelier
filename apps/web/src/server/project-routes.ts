@@ -287,8 +287,8 @@ export function createProjectRoutes(deps: {
       element: { id: "project-editor-modal", attributesHtml: "data-dialog-auto-show data-project-onboarding-dialog" },
       iconHtml: Icons.Settings,
       titleCaption: "Agent setup",
-      bodyHtml: "Let's ask an agent to find the best project settings for your project",
-      footerHtml: `${buttonHtml({ type: "button", variant: "secondary", content: { kind: "caption", caption: "No thanks" }, attributesHtml: 'data-action="dialog#close"' })}<form method="post" action="/projects/${encodeURIComponent(project.id)}/onboarding" data-turbo="true">${buttonHtml({ type: "submit", variant: "primary", content: { kind: "caption", caption: "Lets go!" }, attributesHtml: 'autofocus data-turbo-submits-with="Starting…"' })}</form>`,
+      bodyHtml: "Let's ask an agent to find the best project settings for your project.<br>Nothing will be committed or pushed.",
+      footerHtml: `${buttonHtml({ type: "button", variant: "secondary", content: { kind: "caption", caption: "No thanks" }, attributesHtml: 'data-action="dialog#close"' })}<form method="post" action="/projects/${encodeURIComponent(project.id)}/onboarding" data-turbo="true">${buttonHtml({ type: "submit", variant: "primary", content: { kind: "caption", caption: "Let's go!" }, attributesHtml: 'autofocus data-turbo-submits-with="Starting…"' })}</form>`,
     });
   }
 

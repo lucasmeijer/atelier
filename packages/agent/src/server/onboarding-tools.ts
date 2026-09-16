@@ -1,3 +1,4 @@
+import type { DeleteCurrentWorkspaceResult } from "@atelier/shared";
 import { AtelierCoreError } from "@atelier/core";
 import { isGitProjectInit, projectWorkspaceInitWithSettings, projectWorkspaceSettingsSchema, readProjectWorkspaceSettings, writeProjectWorkspaceSettings, type GitProjectInitInstruction, type ProjectWorkspaceSettings } from "@atelier/projects";
 import { getWorkspaceInit, type WorkspaceInitInstruction, type WorkspaceProvisionStep } from "@atelier/workspace";
@@ -31,6 +32,7 @@ export type RequestedSecretValue = { status: "cancelled"; envName: string } | {
   existingProcessEnvironmentUpdated: false;
 };
 export interface OnboardingToolDependencies {
+  deleteWorkspace(workspaceId: string, force: boolean): Promise<DeleteCurrentWorkspaceResult>;
   createWorkspace(init: GitProjectInitInstruction, title: string, signal: AbortSignal | undefined, onUpdate: ToolUpdate | undefined): Promise<CreatedOnboardingWorkspace>;
   requestSecretValue(projectId: string, request: SecretValueRequest, signal: AbortSignal | undefined, onUpdate: ToolUpdate | undefined): Promise<RequestedSecretValue>;
   getWorkspaceInit?: (workspaceId: string) => Promise<WorkspaceInitInstruction | undefined>;
@@ -48,6 +50,13 @@ export function createOnboardingTools(workspaceId: string, conversationId: strin
     const init = await loadInit(workspaceId);
     if (!isGitProjectInit(init)) throw new AtelierCoreError("project_required", "This workspace does not belong to a project");
     return init;
+  }
+  async function requireOwnedWorkspace(targetId: string, action: string) {
+    const source = await project();
+    const target = await loadInit(targetId);
+    if (targetId === workspaceId || !isGitProjectInit(target) || target.projectId !== source.projectId || target.createdBy?.workspaceId !== workspaceId || target.createdBy.conversationId !== conversationId) {
+      throw new AtelierCoreError("workspace_access_denied", `You may only ${action} another workspace created by this agent conversation for its own project`);
+    }
   }
   const bashFactory = deps.createBashTool ?? createTmuxBashTool;
   const bash = bashFactory(workspaceId);
@@ -75,13 +84,18 @@ export function createOnboardingTools(workspaceId: string, conversationId: strin
       description: "Execute bash in another workspace created by this agent conversation. Supply the destination workspace_id every time. For your current workspace, use normal bash. Output file paths belong to the destination workspace.\n\n" + bash.description,
       parameters: Type.Object({ ...bash.parameters.properties, workspace_id: Type.String({ description: "ID of another workspace created by this agent conversation" }) }, { additionalProperties: false }),
       execute: async (id, args: { workspace_id: string; command: string; timeout?: number }, signal, update, context) => {
-        const source = await project();
-        const target = await loadInit(args.workspace_id);
-        if (args.workspace_id === workspaceId || !isGitProjectInit(target) || target.projectId !== source.projectId || target.createdBy?.workspaceId !== workspaceId || target.createdBy.conversationId !== conversationId) {
-          throw new AtelierCoreError("workspace_access_denied", "You may only execute bash in another workspace created by this agent conversation for its own project");
-        }
+        await requireOwnedWorkspace(args.workspace_id, "execute bash in");
         const remote = bashFactory(args.workspace_id);
         return remote.execute(id, { command: args.command, timeout: args.timeout }, signal, update, context);
+      },
+    }),
+    defineTool({
+      name: "delete_workspace", label: "Delete workspace",
+      description: "Delete another workspace created by this agent conversation for its own project. Cannot delete your current workspace. Supply workspace_id every time. Set force to false to run deletion safety checks; use force only when the user explicitly approves discarding unsaved changes. Deletion is permanent and runs asynchronously.",
+      parameters: Type.Object({ workspace_id: Type.String({ description: "ID of another workspace created by this agent conversation" }), force: Type.Boolean() }, { additionalProperties: false }),
+      execute: async (_id, args) => {
+        await requireOwnedWorkspace(args.workspace_id, "delete");
+        return result(await deps.deleteWorkspace(args.workspace_id, args.force));
       },
     }),
     defineTool({

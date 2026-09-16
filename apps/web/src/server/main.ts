@@ -250,7 +250,7 @@ app = createWebApp({
   },
 });
 
-configureOnboardingTools({ createWorkspace: app.createWorkspaceFromAgent, requestSecretValue: createProjectSecretRequester() });
+configureOnboardingTools({ deleteWorkspace: app.deleteCurrentWorkspaceFromAgent, createWorkspace: app.createWorkspaceFromAgent, requestSecretValue: createProjectSecretRequester() });
 
 atelierEvents.on("workspace_user_activity", ({ workspaceId }) => registry.touch(workspaceId));
 atelierEvents.on("workspace_title_changed", ({ workspaceId, title }) => registry.setTitle(workspaceId, title || null));
