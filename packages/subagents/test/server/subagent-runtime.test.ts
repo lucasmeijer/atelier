@@ -252,7 +252,7 @@ describe("persisted incoming dispatch decisions", () => {
     expect(snapshots.at(-1)!.messages[0].dispatchReason).toBe(reason);
   });
 
-  test("distinguishes a recipient waiting in wait_agent from other active work", async () => {
+  test("classifies delivery during wait_agent as immediate rather than queued active work", async () => {
     const { runtime, drain, steer } = harness();
     const child = await runtime.spawn("parent", "explain", "Task");
     const waiting = runtime.wait("parent", 1000);
@@ -261,16 +261,16 @@ describe("persisted incoming dispatch decisions", () => {
     // classification in a real peer must occur before that wake boundary.
     await waiting;
     await runtime.dispatching(message.id, false, true, new Set());
-    expect(runtime.state.messages.find((entry) => entry.id === message.id)!.dispatchReason).toBe("working");
+    expect(runtime.state.messages.find((entry) => entry.id === message.id)!).toMatchObject({ dispatchMode: "queued", dispatchReason: "working" });
 
     drain("parent");
     const nextWait = runtime.wait("parent", 1000);
     await Promise.resolve();
     await runtime.dispatching(message.id, false, true, new Set());
-    expect(runtime.state.messages.find((entry) => entry.id === message.id)!.dispatchReason).toBe("waiting");
+    expect(runtime.state.messages.find((entry) => entry.id === message.id)!).toMatchObject({ dispatchMode: "immediate", dispatchReason: "waiting" });
     steer("parent");
     await nextWait;
-    expect(runtime.state.messages.find((entry) => entry.id === message.id)!.dispatchReason).toBe("waiting");
+    expect(runtime.state.messages.find((entry) => entry.id === message.id)!).toMatchObject({ dispatchMode: "immediate", dispatchReason: "waiting" });
   });
 });
 

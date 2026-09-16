@@ -160,8 +160,8 @@ export class SubagentRuntime {
   async dispatching(id: string, triggerTurn: boolean, streaming: boolean, readMessageIds: ReadonlySet<string>): Promise<void> {
     const message = this.state.messages.find((candidate) => candidate.id === id);
     if (!message) throw new Error(`Unknown subagent message: ${id}`);
-    message.dispatchMode = triggerTurn && !streaming ? "immediate" : "queued";
     message.dispatchReason = streaming ? (this.waiters.has(message.to) ? "waiting" : "working") : triggerTurn ? "idle-task" : "idle-message";
+    message.dispatchMode = message.dispatchReason === "waiting" || message.dispatchReason === "idle-task" ? "immediate" : "queued";
     if (message.dispatchMode === "queued") message.queueSizeOnArrival = unreadMessageCount(this.state, message.to, readMessageIds);
     await this.persist();
   }

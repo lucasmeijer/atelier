@@ -9,6 +9,9 @@ interface SubagentTranscriptMessage extends Pick<SubagentMessage, "id" | "kind" 
 }
 
 function incomingHandling(message: SubagentTranscriptMessage): string {
+  if (message.dispatchMode === "immediate" && message.dispatchReason === "waiting") return message.immediateRead
+    ? "Read as soon as wait_agent returned after the incoming message woke it."
+    : "Immediate reading pending while wait_agent returns after the incoming message woke it.";
   if (message.dispatchMode === "immediate") return message.immediateRead
     ? "Read straight away because the agent was idle and this task starts a new inference."
     : "Immediate reading pending because the agent was idle and this task starts a new inference.";
