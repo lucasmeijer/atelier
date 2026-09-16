@@ -2,7 +2,7 @@ import { renderStreamingMarkdownSnapshot } from "@atelier/markdown";
 import { escapeHtml } from "./html.ts";
 import { thinkingBlockRendererFor } from "./thinking-block-renderers.ts";
 import { formatDuration, formatTokens, type TranscriptItem, type WorkingTranscriptItem } from "./transcript.ts";
-import { ids, sessionImageUrl, transcriptItemPath, type AgentRenderContext } from "./render-context.ts";
+import { commentaryContext, ids, sessionImageUrl, transcriptItemPath, type AgentRenderContext } from "./render-context.ts";
 import { codeBlockHtml, detailFullscreen, fullscreenAttributes, markdown, renderMarkdownRow, transcriptActionItemHtml, transcriptRow } from "./render-markup.ts";
 import { renderToolCard, renderToolDetail } from "./render-tool.ts";
 
@@ -88,9 +88,11 @@ function renderWorkingItems(ctx: AgentRenderContext, section: WorkingTranscriptI
 function renderWorkingSection(ctx: AgentRenderContext, section: WorkingTranscriptItem): string {
   if (section.completedAt !== undefined && section.items.length === 0 && !section.timing) return "";
   const summary = renderWorkingSummary(ctx, section);
+  const commentary = commentaryContext(ctx);
+  const commentaryHtml = section.items.filter((item) => item.type === "text").map((item) => renderTranscriptItem(commentary, item)).join("");
   const revealing = Boolean(ctx.revealTarget && section.items.some((item) => item.anchor === ctx.revealTarget || item.key === ctx.revealTarget));
   const attributes = ` data-controller="agent-turn" data-agent-turn-workspace-id-value="${escapeHtml(ctx.workspaceId)}" data-agent-turn-conversation-id-value="${escapeHtml(ctx.conversationId)}" data-agent-turn-turn-id-value="${escapeHtml(section.key)}" data-agent-turn-branch-id-value="${escapeHtml(ctx.branchId ?? "")}"${revealing ? ` open data-agent-turn-reveal-value="${escapeHtml(ctx.revealTarget!)}"` : ""} data-action="toggle->agent-turn#toggle"`;
-  return `<details class="agent-working" id="${ids.item(ctx, section.key)}"${attributes}>${summary}<div class="agent-working-items" id="${ids.workingItems(ctx, section.key)}" data-agent-turn-target="items"></div></details>`;
+  return `<div class="agent-working-block" id="${ids.item(ctx, section.key)}"><details class="agent-working"${attributes}>${summary}<div class="agent-working-items" id="${ids.workingItems(ctx, section.key)}" data-agent-turn-target="items"></div></details><div class="agent-working-commentary" id="${ids.workingItems(commentary, section.key)}">${commentaryHtml}</div></div>`;
 }
 
 export function renderWorkingSummary(ctx: AgentRenderContext, section: WorkingTranscriptItem): string {

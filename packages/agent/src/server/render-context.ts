@@ -8,6 +8,12 @@ export interface AgentRenderContext {
   model?: ModelRef;
   revealTarget?: string;
   branchId?: string;
+  /** Distinct DOM identities for the collapsed commentary projection. */
+  commentary?: boolean;
+}
+
+export function commentaryContext(ctx: AgentRenderContext): AgentRenderContext {
+  return { ...ctx, commentary: true };
 }
 
 export function agentConversationKey(conversationId: string): string {
@@ -15,7 +21,7 @@ export function agentConversationKey(conversationId: string): string {
 }
 
 function prefix(ctx: AgentRenderContext): string {
-  return domId("ag", ctx.workspaceId, ctx.conversationId);
+  return domId("ag", ctx.workspaceId, ctx.conversationId, ...(ctx.commentary ? ["commentary"] : []));
 }
 
 export const ids = {

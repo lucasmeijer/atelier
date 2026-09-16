@@ -10,7 +10,7 @@ import { escapeHtml, turboStream } from "./html.ts";
 import { createSnapshotFirstLivePresentation } from "./live-presentation.ts";
 import { renderNotice } from "./render-attachments.ts";
 import { renderAgentPaneComposerFooter, renderPromptActions, type AgentPaneState, type AgentStatsView } from "./render-composer.ts";
-import { ids, type AgentRenderContext } from "./render-context.ts";
+import { commentaryContext, ids, type AgentRenderContext } from "./render-context.ts";
 import { renderActiveToolContent, toolPresentation } from "./render-tool.ts";
 import {
   renderModelContextDetailFrame,
@@ -106,7 +106,7 @@ export abstract class BaseAgentRuntime implements WorkspaceAgentRuntime {
   private toolArgsFlushTimer?: ReturnType<typeof setTimeout>;
   protected liveSubscriberCount = 0;
   private readonly livePresentation = createSnapshotFirstLivePresentation((publishToExisting) => {
-    if (this.openTextItem()?.final) this.alignTextStreamForSnapshot(publishToExisting);
+    this.alignTextStreamForSnapshot(publishToExisting, "live");
     return this.captureAuthoritativePresentationUpdate();
   });
 
@@ -170,7 +170,7 @@ export abstract class BaseAgentRuntime implements WorkspaceAgentRuntime {
       channel = {
         subscriptions: new Set(),
         presentation: createSnapshotFirstLivePresentation((publishToExisting) => {
-          if (this.live?.working.key === turnId && !this.openTextItem()?.final) this.alignTextStreamForSnapshot(publishToExisting);
+          if (this.live?.working.key === turnId && !this.openTextItem()?.final) this.alignTextStreamForSnapshot(publishToExisting, "turn");
           const turn = findTranscriptItem(this.itemsForDisplay(), turnId);
           if (turn?.type !== "working") throw new Error(`Unknown turn: ${turnId}`);
           const html = turboStream("update", ids.workingItems(this.ctx, turnId), renderWorkingContent(this.ctx, turn, { live: turn.live }));
@@ -220,9 +220,15 @@ export abstract class BaseAgentRuntime implements WorkspaceAgentRuntime {
     return (item.type === "user" && !item.steering) || item.type === "error" || item.type === "note" || (item.type === "text" && item.final);
   }
 
-  private streamItem(item: TranscriptItem, html: string): void {
-    if (this.itemIsOutside(item)) this.stream(html);
-    else this.streamTurn(html);
+  /** Commentary goes to both the lazy full turn and the always-visible projection. */
+  private streamItem(item: TranscriptItem, render?: (ctx: AgentRenderContext) => string, kind?: "paced-text"): void {
+    if (this.disposed) return;
+    const options = kind ? { kind } : undefined;
+    if (this.itemIsOutside(item)) this.livePresentation.publish(render?.(this.ctx), options);
+    else {
+      this.streamTurn(render?.(this.ctx), kind);
+      if (item.type === "text") this.livePresentation.publish(render?.(commentaryContext(this.ctx)), options);
+    }
   }
 
   protected livePendingUser(key: string, text: string, images: SessionImageRef[] = []): void {
@@ -239,12 +245,6 @@ export abstract class BaseAgentRuntime implements WorkspaceAgentRuntime {
   protected stream(html: string): void {
     if (this.disposed) return;
     this.livePresentation.publish(html);
-  }
-
-  private streamText(html?: string): void {
-    if (this.disposed) return;
-    if (this.openTextItem()?.final) this.livePresentation.publish(html, { kind: "paced-text" });
-    else this.streamTurn(html, "paced-text");
   }
 
   protected async streamRendered(render: () => Promise<string>): Promise<void> {
@@ -341,8 +341,10 @@ export abstract class BaseAgentRuntime implements WorkspaceAgentRuntime {
 
   private appendLiveItem(item: TranscriptItem, options: { live?: boolean; open?: boolean } = {}): void {
     item.timestamp ??= Date.now();
-    const target = this.itemIsOutside(item) ? ids.transcript(this.ctx) : ids.workingItems(this.ctx, this.live!.working.key);
-    this.streamItem(item, turboStream("append", target, renderTranscriptItem(this.ctx, item, options)));
+    this.streamItem(item, (ctx) => {
+      const target = this.itemIsOutside(item) ? ids.transcript(ctx) : ids.workingItems(ctx, this.live!.working.key);
+      return turboStream("append", target, renderTranscriptItem(ctx, item, options));
+    });
   }
 
   private openTextItem(): Extract<TranscriptItem, { type: "text" }> | undefined {
@@ -359,7 +361,7 @@ export abstract class BaseAgentRuntime implements WorkspaceAgentRuntime {
   }
 
   /** Bring existing listeners to the exact full-text boundary captured for a joining subscriber. */
-  private alignTextStreamForSnapshot(publishToExisting: (html: string) => void): void {
+  private alignTextStreamForSnapshot(publishToExisting: (html: string) => void, source: "live" | "turn"): void {
     const item = this.openTextItem();
     const streamState = this.live?.textStream;
     if (!item || !streamState) return;
@@ -368,14 +370,24 @@ export abstract class BaseAgentRuntime implements WorkspaceAgentRuntime {
     // advanced the shared renderer while its ordered delivery is still queued
     // behind this snapshot, so displayedLength alone cannot prove that every
     // listener has observed it.
-    publishToExisting(turboStream("replace", ids.item(this.ctx, item.key), renderTranscriptItem(this.ctx, item, { live: true })));
+    // Both projections share the Markdown renderer's stable-text boundary.
+    // Joining either channel must advance the other before further deltas.
+    const replacement = (ctx: AgentRenderContext): string => turboStream("replace", ids.item(ctx, item.key), renderTranscriptItem(ctx, item, { live: true }));
+    if (item.final) publishToExisting(replacement(this.ctx));
+    else if (source === "live") {
+      publishToExisting(replacement(commentaryContext(this.ctx)));
+      this.streamTurn(replacement(this.ctx));
+    } else {
+      publishToExisting(replacement(this.ctx));
+      this.stream(replacement(commentaryContext(this.ctx)));
+    }
     streamState.renderer.sync(item.text);
     streamState.displayedLength = item.text.length;
   }
 
   private scheduleTextFlush(): void {
     const streamState = this.live?.textStream;
-    if (!streamState || streamState.timer || (this.openTextItem()?.final ? this.liveSubscriberCount : this.turnSubscriberCount) === 0) return;
+    if (!streamState || streamState.timer || this.liveSubscriberCount + this.turnSubscriberCount === 0) return;
     streamState.timer = setTimeout(() => {
       streamState.timer = undefined;
       this.flushText();
@@ -389,10 +401,12 @@ export abstract class BaseAgentRuntime implements WorkspaceAgentRuntime {
     if (item.text.length === streamState.displayedLength) return;
     const update = streamState.renderer.render(item.text);
     streamState.displayedLength = item.text.length;
-    const stable = update.stableHtmlAddition
-      ? turboStream("append", ids.itemTextStable(this.ctx, item.key), update.stableHtmlAddition)
-      : "";
-    this.streamText(stable + turboStream("update", ids.itemTextTail(this.ctx, item.key), update.tailHtml));
+    this.streamItem(item, (ctx) => {
+      const stable = update.stableHtmlAddition
+        ? turboStream("append", ids.itemTextStable(ctx, item.key), update.stableHtmlAddition)
+        : "";
+      return stable + turboStream("update", ids.itemTextTail(ctx, item.key), update.tailHtml);
+    }, "paced-text");
   }
 
   private releaseTextStream(): void {
@@ -422,7 +436,7 @@ export abstract class BaseAgentRuntime implements WorkspaceAgentRuntime {
     if (item?.type === "text") {
       item.live = false;
       item.final = final;
-      this.streamItem(item, turboStream("replace", ids.item(this.ctx, item.key), renderTranscriptItem(this.ctx, item)));
+      this.streamItem(item, (ctx) => turboStream("replace", ids.item(ctx, item.key), renderTranscriptItem(ctx, item)));
     }
     live.open = undefined;
   }
@@ -459,7 +473,7 @@ export abstract class BaseAgentRuntime implements WorkspaceAgentRuntime {
       const item = live.items[live.open.index];
       if (item?.type === "text" && !item.final) {
         this.releaseTextStream();
-        this.streamTurn(turboStream("remove", ids.item(this.ctx, item.key)));
+        this.streamItem(item, (ctx) => turboStream("remove", ids.item(ctx, item.key)));
         item.final = true;
         live.textStream = { displayedLength: item.text.length, renderer: new StreamingMarkdownRenderer(this.workspaceId) };
         live.textStream.renderer.sync(item.text);
@@ -493,7 +507,7 @@ export abstract class BaseAgentRuntime implements WorkspaceAgentRuntime {
     item.text += text;
     // Authoritative text changes immediately even though its visible update is paced.
     // Invalidate any in-flight snapshot so it cannot straddle this change.
-    this.streamText();
+    this.streamItem(item, undefined, "paced-text");
     this.scheduleTextFlush();
   }
 
@@ -666,7 +680,7 @@ export abstract class BaseAgentRuntime implements WorkspaceAgentRuntime {
       if (item?.type !== "text" || !item.final) continue;
       this.stream(turboStream("remove", ids.item(this.ctx, item.key)));
       item.final = false;
-      this.streamTurn(turboStream("append", ids.workingItems(this.ctx, live.working.key), renderTranscriptItem(this.ctx, item)));
+      this.appendLiveItem(item);
     }
     live.finalStarted = false;
   }
@@ -688,7 +702,7 @@ export abstract class BaseAgentRuntime implements WorkspaceAgentRuntime {
     const removeIndices = new Set([...live.messageTextIndices].filter(([contentIndex]) => selected.has(contentIndex)).map(([, index]) => index));
     for (const index of removeIndices) {
       const item = live.items[index]!;
-      this.streamItem(item, turboStream("remove", ids.item(this.ctx, item.key)));
+      this.streamItem(item, (ctx) => turboStream("remove", ids.item(ctx, item.key)));
     }
     live.items = live.items.filter((_, index) => !removeIndices.has(index));
     // All tools in this assistant message have completed before a final answer.

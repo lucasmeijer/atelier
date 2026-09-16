@@ -1,6 +1,6 @@
 import { AsyncLocalStorage } from "node:async_hooks";
 
-const signals = new AsyncLocalStorage<AbortSignal>();
+const signals = /* @__PURE__ */ new AsyncLocalStorage<AbortSignal>();
 
 /** Propagates cancellation through provisioning hooks without coupling them to the runner. */
 export function withCommandSignal<T>(signal: AbortSignal, work: () => T): T {

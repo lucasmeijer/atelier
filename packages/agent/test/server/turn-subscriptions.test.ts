@@ -1,7 +1,7 @@
 import { expect, test } from "bun:test";
 import { BaseAgentRuntime } from "../../src/server/base-agent-runtime.ts";
 import type { AgentStatsView } from "../../src/server/render-composer.ts";
-import { ids } from "../../src/server/render-context.ts";
+import { commentaryContext, ids } from "../../src/server/render-context.ts";
 import type { TranscriptItem } from "../../src/server/transcript.ts";
 
 const stats: AgentStatsView = { contextPercent: null, compactAvailable: false, inputTokens: 0, outputTokens: 0, cost: 0, modelName: undefined, thinkingLevel: "off", thinkingLevels: [], models: [] };
@@ -29,7 +29,16 @@ class Runtime extends BaseAgentRuntime {
   branch(id: string) { this.resetTurnSubscriptions(id); }
   refresh() { return this.refreshTranscript(); }
   get subscribers() { return this.turnSubscriberCount; }
-  get targets() { return { transcript: ids.transcript(this.ctx), turn: ids.workingItems(this.ctx, "entry:working"), text: ids.item(this.ctx, "entry:1:text") }; }
+  get targets() {
+    const commentary = commentaryContext(this.ctx);
+    return {
+      transcript: ids.transcript(this.ctx),
+      turn: ids.workingItems(this.ctx, "entry:working"),
+      text: ids.item(this.ctx, "entry:1:text"),
+      commentary: ids.workingItems(commentary, "entry:working"),
+      commentaryText: ids.item(commentary, "entry:1:text"),
+    };
+  }
   protected modelContext() { return { systemPrompt: "", tools: [] }; }
   protected canonicalItems() { return this.history; }
   protected async statsView() { this.statsStarted(); await this.statsBarrier; return stats; }
@@ -64,17 +73,24 @@ function deferred() {
   return { promise: new Promise<void>((done) => { resolve = done; }), resolve };
 }
 
-test("actual runtime suppresses thousands of inner operations on the main subscription", async () => {
+test("main receives commentary while thousands of tool and thinking operations stay lazy", async () => {
   const runtime = new Runtime();
   const main: string[] = [];
   const subscription = runtime.subscribeLivePresentation((payload) => main.push(payload));
   await subscription.ready;
   runtime.begin();
+  main.length = 0;
+  expect(runtime.subscribers).toBe(0);
+  for (let index = 0; index < 2000; index++) runtime.text("commentary_increment ");
+  runtime.endText();
+  expect(operations(main)).toEqual([
+    { action: "append", target: runtime.targets.commentary },
+    { action: "replace", target: runtime.targets.commentaryText },
+  ]);
+  expect(main.join("")).toContain("commentary_increment");
   const count = main.length;
   const bytes = main.join("").length;
-  expect(runtime.subscribers).toBe(0);
-  for (let index = 0; index < 2000; index++) runtime.text("private_increment ");
-  runtime.endText();
+  for (let index = 0; index < 2000; index++) runtime.thinking("private_thinking ");
   runtime.tool();
   for (let index = 0; index < 2000; index++) runtime.toolUpdate(`private_tool_${index}`);
   runtime.toolEnd("private_tool_failure", true);
@@ -82,15 +98,16 @@ test("actual runtime suppresses thousands of inner operations on the main subscr
   expect(main.join("").length).toBe(bytes);
   expect(runtime.subscribers).toBe(0);
   await runtime.refresh();
-  // Confidential payload routing, not a check of the HTML rendering.
-  expect(main.some((payload) => payload.includes("private_increment") || payload.includes("private_tool"))).toBe(false);
+  // Payload routing, not a check of the HTML rendering.
+  expect(main.at(-1)).toContain("commentary_increment");
+  expect(main.some((payload) => payload.includes("private_thinking") || payload.includes("private_tool"))).toBe(false);
   runtime.failure("outside_failure");
   expect(main.length).toBeGreaterThan(count + 1);
   subscription.unsubscribe();
   await runtime.dispose();
 });
 
-test("late final promotion removes the inner operation and appends only through main", async () => {
+test("late final promotion removes both commentary projections and appends the final through main", async () => {
   const runtime = new Runtime();
   runtime.begin();
   const main: string[] = [];
@@ -99,18 +116,25 @@ test("late final promotion removes the inner operation and appends only through 
   const turn = runtime.subscribeTurnPresentation("entry:working", "session:branch", (payload) => inner.push(payload));
   await Promise.all([outer.ready, turn.ready]);
   main.length = inner.length = 0;
-  runtime.text("late_final_private");
+  runtime.text("late_final_text");
   runtime.endText();
-  expect(main).toEqual([]);
+  expect(operations(main)).toEqual([
+    { action: "append", target: runtime.targets.commentary },
+    { action: "replace", target: runtime.targets.commentaryText },
+  ]);
+  expect(main.join("")).toContain("late_final_text");
   expect(operations(inner)).toContainEqual({ action: "append", target: runtime.targets.turn });
-  inner.length = 0;
-  runtime.final("late_final_private");
+  main.length = inner.length = 0;
+  runtime.final("late_final_text");
   expect(operations(inner)).toEqual([{ action: "remove", target: runtime.targets.text }]);
-  expect(operations(main)).toEqual([{ action: "append", target: runtime.targets.transcript }]);
+  expect(operations(main)).toEqual([
+    { action: "remove", target: runtime.targets.commentaryText },
+    { action: "append", target: runtime.targets.transcript },
+  ]);
   const reopened: string[] = [];
   const second = runtime.subscribeTurnPresentation("entry:working", "session:branch", (payload) => reopened.push(payload));
   await second.ready;
-  expect(reopened.some((payload) => payload.includes("late_final_private"))).toBe(false);
+  expect(reopened.some((payload) => payload.includes("late_final_text"))).toBe(false);
   outer.unsubscribe(); turn.unsubscribe(); second.unsubscribe();
   expect(runtime.subscribers).toBe(0);
   await runtime.dispose();
@@ -128,11 +152,14 @@ test("early final classification migrates an open provisional text and routes su
   runtime.text(" certainly final", true);
   runtime.endText();
   expect(operations(inner)).toEqual([{ action: "remove", target: runtime.targets.text }]);
-  expect(operations(main)).toContainEqual({ action: "append", target: runtime.targets.transcript });
+  expect(operations(main).slice(0, 2)).toEqual([
+    { action: "remove", target: runtime.targets.commentaryText },
+    { action: "append", target: runtime.targets.transcript },
+  ]);
   outer.unsubscribe(); turn.unsubscribe(); await runtime.dispose();
 });
 
-test("a delayed main snapshot remains first and does not receive interleaved inner payload", async () => {
+test("a delayed main snapshot precedes subsequent commentary delivery and final promotion", async () => {
   const runtime = new Runtime();
   runtime.begin();
   const barrier = deferred();
@@ -142,16 +169,23 @@ test("a delayed main snapshot remains first and does not receive interleaved inn
   const main: string[] = [];
   const subscription = runtime.subscribeLivePresentation((payload) => main.push(payload));
   await started.promise;
-  runtime.text("private_during_snapshot");
+  runtime.text("commentary_during_snapshot");
   runtime.endText();
   runtime.final("public_final");
   expect(main).toEqual([]);
   barrier.resolve();
   await subscription.ready;
-  expect(main).toHaveLength(2);
+  expect(main).toHaveLength(5);
   expect(operations(main.slice(0, 1))).toContainEqual({ action: "update", target: runtime.targets.transcript });
-  expect(operations(main.slice(1))).toEqual([{ action: "append", target: runtime.targets.transcript }]);
-  expect(main.some((payload) => payload.includes("private_during_snapshot"))).toBe(false);
+  expect(main[0]).not.toContain("commentary_during_snapshot");
+  expect(operations(main.slice(1))).toEqual([
+    { action: "append", target: runtime.targets.commentary },
+    { action: "replace", target: runtime.targets.commentaryText },
+    { action: "remove", target: runtime.targets.commentaryText },
+    { action: "append", target: runtime.targets.transcript },
+  ]);
+  expect(main[2]).toContain("commentary_during_snapshot");
+  expect(main[4]).toContain("public_final");
   subscription.unsubscribe(); await runtime.dispose();
 });
 
@@ -181,13 +215,13 @@ test("runtime validates branch and turn membership, cancelling obsolete subscrip
   await runtime.dispose();
 });
 
-test("completed history and reconnect snapshots never deliver folded turn payload", async () => {
+test("completed history and reconnect snapshots include commentary but keep tools and thinking lazy", async () => {
   const runtime = new Runtime();
   runtime.history = [
     { type: "working", key: "persisted:working", startedAt: 1, completedAt: 4, items: [
-      { type: "text", key: "persisted:text", text: "private_persisted_text", final: false },
+      { type: "text", key: "persisted:text", text: "persisted_commentary", final: false },
       { type: "thinking", key: "persisted:thinking", text: "private_persisted_thinking" },
-      { type: "tool", key: "persisted:tool", tool: { callId: "saved-call", name: "read", args: {}, status: "ok", resultText: "private_persisted_tool" } },
+      { type: "tool", key: "persisted:tool", tool: { callId: "saved-call", name: "read", args: { path: "private_persisted_path" }, status: "ok", resultText: "private_persisted_tool" } },
     ] },
     { type: "text", key: "persisted:final", final: true, text: "public_persisted_final" },
   ];
@@ -196,14 +230,20 @@ test("completed history and reconnect snapshots never deliver folded turn payloa
     const subscription = runtime.subscribeLivePresentation((payload) => deliveries.push(payload));
     await subscription.ready;
     expect(deliveries).toHaveLength(1);
+    expect(deliveries[0]).toContain("persisted_commentary");
+    expect(deliveries[0]).toContain("public_persisted_final");
     expect(deliveries.some((payload) => payload.includes("private_persisted"))).toBe(false);
     expect(runtime.subscribers).toBe(0);
     subscription.unsubscribe();
   }
-  let delivered = 0;
-  const turn = runtime.subscribeTurnPresentation("persisted:working", "session:branch", () => { delivered++; });
+  const inner: string[] = [];
+  const turn = runtime.subscribeTurnPresentation("persisted:working", "session:branch", (payload) => inner.push(payload));
   await turn.ready;
-  expect(delivered).toBe(1);
+  expect(inner).toHaveLength(1);
+  expect(inner[0]).toContain("persisted_commentary");
+  expect(inner[0]).toContain("private_persisted_thinking");
+  expect(inner[0]).toContain("private_persisted_path");
+  expect(inner[0]).not.toContain("public_persisted_final");
   turn.unsubscribe();
   await runtime.dispose();
 });

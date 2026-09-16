@@ -277,18 +277,25 @@
 .agent-item + .agent-item { margin-top: 2px; }
 .agent-item:has(.agent-user) { margin-top: 12px; margin-bottom: 8px; }
 .agent-item:has(.agent-final) { margin-top: .5rem; margin-bottom: .75rem; }
-.agent-working { width: 100%; margin: 2px 0; }
+.agent-working-block { width: 100%; margin: 2px 0; }
+.agent-working { width: 100%; margin: 0; }
 .agent-working > summary.action-item,
 .agent-lazy-detail > summary.action-item { width: fit-content; max-width: 100%; }
 /* Keep the run label readable; secondary statistics yield space first. */
 .agent-working > summary > .action-item__content { flex: 0 0 auto; }
 .agent-working > summary > .action-item__metadata { flex: 0 1 auto; min-width: 0; overflow: hidden; }
+.agent-working[open]:has(> .agent-working-items:not(:empty)) + .agent-working-commentary { display: none; }
 .agent-working > summary, .agent-tool > summary { list-style: none; cursor: pointer; }
 .agent-working > summary::-webkit-details-marker, .agent-tool > summary::-webkit-details-marker { display: none; }
 .agent-working-timing { min-width: 0; overflow: hidden; white-space: nowrap; text-overflow: ellipsis; color: var(--text-muted); }
 .agent-working-empty { margin: 4px 0; color: var(--text-muted); }
-.agent-working-items { margin: 2px 0 4px; }
-.agent-working-items > .agent-item + .agent-item { margin-top: 8px; }
+.agent-working-items:not(:empty), .agent-working-commentary:not(:empty) {
+  margin: 8px 0 12px 14px;
+  padding-inline-start: 16px;
+  border-inline-start: 1px solid var(--line-strong);
+}
+.agent-working-items > .agent-item + .agent-item,
+.agent-working-commentary > .agent-item + .agent-item { margin-top: 8px; }
 .agent-working-items > .agent-item:has(.agent-tool) + .agent-item:has(.agent-tool) { margin-top: 2px; }
 .agent-itext-md { color: var(--text); }
 .agent-stream-markdown > div { display: contents; }
