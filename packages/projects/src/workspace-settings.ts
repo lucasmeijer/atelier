@@ -73,7 +73,7 @@ export async function writeProjectWorkspaceSettings(projectId: string, expectedR
   });
 }
 
-export async function projectWorkspaceInitWithSettings(projectId: string, expectedRevision: string, settings: ProjectWorkspaceSettings, createdBy: NonNullable<GitProjectInitInstruction["createdBy"]>, file = projectsFile()): Promise<GitProjectInitInstruction> {
+export async function projectWorkspaceInitWithSettings(projectId: string, expectedRevision: string, settings: ProjectWorkspaceSettings, createdBy?: GitProjectInitInstruction["createdBy"], file = projectsFile()): Promise<GitProjectInitInstruction> {
   validateProjectWorkspaceSettings(settings);
   const project = findProjectRecord(await readProjectStore(file), projectId);
   checkRevision(project, expectedRevision);

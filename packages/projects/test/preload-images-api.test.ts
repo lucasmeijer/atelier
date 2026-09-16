@@ -16,6 +16,7 @@ test("project preload API updates future creation settings and rejects malformed
       refreshWorkspacePaneCollections: async () => "",
       refreshProjectWarnings: async () => { throw new Error("preload changes must not invalidate existing workspaces"); },
       renderLaunchComposer: async () => "",
+      createOnboardingWorkspace: async () => { throw new Error("unused"); },
       createAgentWorkspace: async () => new Response(),
       workspaceCommandModalHostId: "unused",
     });

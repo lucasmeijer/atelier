@@ -4,7 +4,9 @@ import { join } from "node:path";
 import { createKeyedOperationQueue, getAtelierRuntimeContext } from "@atelier/core";
 import type { GitProjectInitInstruction } from "@atelier/projects";
 import { isGitProjectInit } from "@atelier/projects";
-import type { WorkspaceInitInstruction } from "@atelier/workspace";
+import { createWorkspaceMetadataState, type WorkspaceInitInstruction } from "@atelier/workspace";
+import { Type, type Static } from "typebox";
+import { Value } from "typebox/value";
 
 export interface WorkspaceAgentConversationInfo {
   workspaceId: string;
@@ -16,6 +18,26 @@ export interface WorkspaceAgentConversationInfo {
 
 export interface WorkspaceAgentConversationCreateOptions {
   topic?: string;
+  /** Set only by host-owned project-onboarding launch context. */
+  projectOnboarding?: true;
+}
+
+const capabilitiesSchema = Type.Object({ projectOnboarding: Type.Array(Type.String()) });
+function capabilities() {
+  return createWorkspaceMetadataState("agent-capabilities.json", (value) => Value.Parse(capabilitiesSchema, value), (): Static<typeof capabilitiesSchema> => ({ projectOnboarding: [] }));
+}
+
+/** Host metadata is not mounted into workspaces or trusted from shared transcripts. */
+function markProjectOnboardingConversation(agent: Pick<WorkspaceAgentConversationInfo, "workspaceId" | "conversationId">): void {
+  const store = capabilities();
+  const state = store.read(agent.workspaceId);
+  if (!state.projectOnboarding.includes(agent.conversationId)) {
+    store.write(agent.workspaceId, { projectOnboarding: [...state.projectOnboarding, agent.conversationId] });
+  }
+}
+
+export function isProjectOnboardingConversation(agent: Pick<WorkspaceAgentConversationInfo, "workspaceId" | "conversationId">): boolean {
+  return capabilities().read(agent.workspaceId).projectOnboarding.includes(agent.conversationId);
 }
 
 const sharedAgentFilePattern = /^([a-z0-9][a-z0-9-]*)--([a-zA-Z0-9][a-zA-Z0-9_.-]*)--agent-([1-9]\d*)--([0-9a-f]{8}-[0-9a-f]{4}-[1-8][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12})\.jsonl$/;
@@ -110,11 +132,13 @@ async function sessionDirForWorkspace(workspaceId: string, dataDir = getAtelierR
   return { shareKey, dir: sessionShareDir(shareKey, dataDir) };
 }
 
-async function createWorkspaceAgentConversation(workspaceId: string, label: string, topic = "agent-session", conversationId = randomUUID()): Promise<WorkspaceAgentConversationInfo> {
+async function createWorkspaceAgentConversation(workspaceId: string, label: string, options: WorkspaceAgentConversationCreateOptions): Promise<WorkspaceAgentConversationInfo> {
+  const conversationId = randomUUID();
   const store = await sessionDirForWorkspace(workspaceId);
   await mkdir(store.dir, { recursive: true });
-  const path = sharedAgentSessionPath(store.shareKey, workspaceId, label, topic, conversationId);
+  const path = sharedAgentSessionPath(store.shareKey, workspaceId, label, options.topic ?? "agent-session", conversationId);
   await writeConversationTitle(path, untitledAgentConversationTitle);
+  if (options.projectOnboarding) markProjectOnboardingConversation({ workspaceId, conversationId });
   // Listing discovers only .jsonl files, so publish the session after its title
   // is durable. Readers can never observe a conversation without metadata.
   await touch(path);
@@ -124,7 +148,8 @@ async function createWorkspaceAgentConversation(workspaceId: string, label: stri
 export async function ensureDefaultWorkspaceAgentConversation(workspaceId: string, options: WorkspaceAgentConversationCreateOptions = {}): Promise<WorkspaceAgentConversationInfo> {
   return await serializeConversationOperation(workspaceId, async () => {
     const current = (await listWorkspaceAgentConversationsUnlocked(workspaceId)).find((agent) => agent.label === "Agent 1");
-    return current ?? await createWorkspaceAgentConversation(workspaceId, "Agent 1", options.topic);
+    if (current && options.projectOnboarding) markProjectOnboardingConversation(current);
+    return current ?? await createWorkspaceAgentConversation(workspaceId, "Agent 1", options);
   });
 }
 
@@ -159,7 +184,7 @@ export async function createNextWorkspaceAgentConversation(workspaceId: string, 
     const used = new Set((await listWorkspaceAgentConversationsUnlocked(workspaceId)).map((agent) => Number(agent.label.slice("Agent ".length))));
     let next = 1;
     while (used.has(next)) next += 1;
-    return await createWorkspaceAgentConversation(workspaceId, `Agent ${next}`, options.topic);
+    return await createWorkspaceAgentConversation(workspaceId, `Agent ${next}`, options);
   });
 }
 

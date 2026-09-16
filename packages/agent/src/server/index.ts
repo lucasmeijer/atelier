@@ -74,3 +74,5 @@ export { type AgentTranscriptSnapshot, type AgentTranscriptAddition, type AgentT
 export { renderNotificationHeader } from "./render-notification.ts";
 
 export { configureOnboardingTools, createOnboardingTools, type OnboardingToolDependencies, type SecretValueRequest } from "./onboarding-tools.ts";
+
+export { projectOnboardingInitialPrompt } from "./project-onboarding.ts";

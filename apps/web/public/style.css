@@ -661,3 +661,5 @@ button.settings-link:disabled { opacity: .45; cursor: default; filter: none; }
 .secret-value-request__field > span { font-family: var(--font-mono); overflow-wrap: anywhere; }
 .secret-value-request__field > input { width: 100%; }
 .secret-value-request__note { color: var(--text-muted); }
+
+.dialog[data-project-onboarding-dialog] { width: min(540px, calc(100vw - 32px)); }

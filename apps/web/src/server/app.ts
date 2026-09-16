@@ -3,6 +3,7 @@ import {
   hasAvailableConfiguredAgentModel,
   refreshConfiguredAgentRuntimes,
   type OnboardingToolDependencies,
+  projectOnboardingInitialPrompt,
   prepareNewWorkspaceAgentParameters,
   renderLaunchComposer,
   renderLaunchComposerSettings,
@@ -24,7 +25,7 @@ import { dialogHtml } from "@atelier/design-system/dialog";
 import { Icons } from "@atelier/design-system/icons";
 import { warningBannerHtml } from "@atelier/design-system/warning-banner";
 import { workspaceWarnings, type WorkspaceWarning } from "./workspace-warnings.ts";
-import { getProjectConfiguration, type ProjectConfiguration, isGitProjectInit, listProjects, projectWorkspaceInit, type ProjectSummary } from "@atelier/projects";
+import { getProjectConfiguration, type ProjectConfiguration, isGitProjectInit, listProjects, projectWorkspaceInit, projectWorkspaceInitWithSettings, readProjectWorkspaceSettings, type ProjectSummary } from "@atelier/projects";
 import { createWorkspaceProvisioning, type WorkspaceProvisioning, type WorkspaceProvisionRun, createWorkspacePresentationStore, generateWorkspaceId, listWorkspaces, setWorkspaceParked, setWorkspaceTitle, type WorkspaceCreationContext, type WorkspaceInitInstruction, type WorkspaceWorkViewReference, type WorkspaceWorkViewState } from "@atelier/workspace";
 import { renderWorkspaceProvisioning } from "@atelier/workspace/server/provisioning";
 import {
@@ -62,7 +63,7 @@ import { agentTabsTurboStream, openWorkViewTurboStream, presentWorkViewTurboStre
 import type { CableBroadcastOptions } from "./cable.ts";
 import { jsonResponse, problemJsonResponse, httpErrorStatus, response, turboReplaceStream, turboUpdateStream, wantsTurboStream } from "./http-responses.ts";
 import { createPageLayout } from "./page-layout.ts";
-import { createProjectRoutes } from "./project-routes.ts";
+import { createProjectRoutes, type ProjectEditorModalOptions } from "./project-routes.ts";
 import { setTimeout as delay } from "node:timers/promises";
 import { createWorkspaceDeletion } from "./workspace-deletion.ts";
 
@@ -197,6 +198,7 @@ export function createWebApp(deps: WebAppDeps): WebApp {
     refreshProjectWarnings,
     renderLaunchComposer: renderProjectLaunchComposerFrame,
     createAgentWorkspace: async (project, request) => await createAgentWorkspaceFromForm(request, { project }),
+    createOnboardingWorkspace,
     workspaceCommandModalHostId,
   });
 
@@ -567,21 +569,13 @@ export function createWebApp(deps: WebAppDeps): WebApp {
 
   type ShellSurface =
     | { kind: "module-modal"; dialogHtml: string }
-    | { kind: "secret-value"; projectId: string; secretId: string; purpose?: string }
-    | { kind: "project-settings"; projectId: string; section: string | undefined }
-    | { kind: "new-project" }
+    | { kind: "project-editor"; dialogHtml: string }
     | { kind: "new-workspace"; project?: ProjectSummary }
     | { kind: "settings"; section: string | undefined; development?: true };
 
   async function renderWorkspaceShell(selectedId?: string, surface?: ShellSurface): Promise<string> {
     const pane = await workspacePaneCollections(selectedId ?? "");
-    const projectEditor = surface?.kind === "secret-value"
-      ? await projectRoutes.secretValueModal(surface.projectId, surface.secretId, surface.purpose)
-      : surface?.kind === "project-settings"
-      ? await projectRoutes.editorModal({ kind: "settings", projectId: surface.projectId, section: surface.section })
-      : surface?.kind === "new-project"
-        ? await projectRoutes.editorModal({ kind: "new" })
-        : '<div id="project-editor-modal"></div>';
+    const projectEditor = surface?.kind === "project-editor" ? surface.dialogHtml : '<div id="project-editor-modal"></div>';
     const settings = surface?.kind === "settings"
       ? surface.development ? await renderDevelopmentSettingsDialog() : await renderSettingsDialog(surface.section)
       : "";
@@ -605,6 +599,13 @@ export function createWebApp(deps: WebAppDeps): WebApp {
   async function homePage(): Promise<Response> {
     const selected = registry.list().find((entry) => !entry.parked);
     return response(layout(await renderWorkspaceShell(selected?.id)));
+  }
+
+  async function projectEditorResponse(request: Request, options: ProjectEditorModalOptions): Promise<Response> {
+    const dialogHtml = await projectRoutes.editorModal(options);
+    return wantsTurboStream(request)
+      ? turboStreamResponse(turboReplaceStream("project-editor-modal", dialogHtml))
+      : surfacePage({ kind: "project-editor", dialogHtml });
   }
 
   async function surfacePage(surface: ShellSurface): Promise<Response> {
@@ -696,12 +697,6 @@ export function createWebApp(deps: WebAppDeps): WebApp {
     })();
   }
 
-  type WorkspaceCreateSource = { type: "empty" } | { type: "project"; project: ProjectSummary };
-
-  function initForSource(source: WorkspaceCreateSource): WorkspaceInitInstruction | undefined {
-    return source.type === "project" ? projectWorkspaceInit(source.project) : undefined;
-  }
-
   function agentContext(agent: AgentWorkspaceParameters | undefined): AgentWorkspaceParameters | undefined {
     const initialPrompt = agent?.initialPrompt?.trim() ?? "";
     const initialPromptMode = agent?.initialPromptMode;
@@ -721,13 +716,14 @@ export function createWebApp(deps: WebAppDeps): WebApp {
     isFirstWorkspace: boolean;
   }
 
-  async function createWorkspaceFromCommand(command: { source: WorkspaceCreateSource; agent?: AgentWorkspaceParameters; title?: string }): Promise<CreatedWorkspace> {
+  async function createWorkspaceFromCommand(command: { init?: WorkspaceInitInstruction; agent?: AgentWorkspaceParameters; title?: string; projectOnboarding?: true }): Promise<CreatedWorkspace> {
     const isFirstWorkspace = registry.list().length === 0;
     const id = generateWorkspaceId();
-    const init = initForSource(command.source);
+    const init = command.init;
     const title = command.title?.trim() ?? "";
     const agent = agentContext(await prepareNewWorkspaceAgentParameters(command.agent));
-    const context: WorkspaceCreationContext | undefined = agent ? { agent } : undefined;
+    let context: WorkspaceCreationContext | undefined = agent ? { agent } : undefined;
+    if (command.projectOnboarding) context = { agent, projectOnboarding: true };
     registry.add(id, title || null, init);
     const options: Parameters<typeof startWorkspaceProvisioning>[1] = {};
     if (init !== undefined) options.init = init;
@@ -737,21 +733,41 @@ export function createWebApp(deps: WebAppDeps): WebApp {
     return { id, isFirstWorkspace };
   }
 
+  function workspaceCreatedJsonResponse(id: string): Response {
+    const location = `/workspaces/${encodeURIComponent(id)}`;
+    return jsonResponse({ workspace: { id, phase: "starting", url: location } }, { status: 202, headers: { location } });
+  }
+
+  async function createOnboardingWorkspace(project: ProjectSummary, request: Request): Promise<Response> {
+    const { settingsRevision } = await readProjectWorkspaceSettings(project.id);
+    const init = await projectWorkspaceInitWithSettings(project.id, settingsRevision, { dockerfile: "FROM atelier-workspace", preloadImages: [], environment: [] });
+    const { id } = await createWorkspaceFromCommand({
+      init,
+      projectOnboarding: true,
+      title: `Set up ${project.name}`,
+      agent: { initialPrompt: projectOnboardingInitialPrompt(project.name) },
+    });
+    const location = `/workspaces/${encodeURIComponent(id)}`;
+    if (requestAcceptsJson(request)) return workspaceCreatedJsonResponse(id);
+    if (wantsTurboStream(request)) return turboStreamResponse(`${turboReplaceStream("project-editor-modal", '<div id="project-editor-modal"></div>')}${workspacePaneCollectionsTurboStream(await workspacePaneCollections(""))}${selectWorkspaceTurboStream(id)}`);
+    return new Response(null, { status: 303, headers: { location } });
+  }
+
   async function createWorkspaceEndpoint(request: Request): Promise<Response> {
     if (requestAcceptsJson(request)) {
       const body = await readWorkspaceCreateJson(request);
       const sourceType = stringField(body.source?.type, "source.type") ?? "empty";
       if (sourceType !== "empty" && sourceType !== "project") throw invalidArguments("source.type must be empty or project");
       const projectReference = stringField(body.source?.project, "source.project");
-      let source: WorkspaceCreateSource = { type: "empty" };
+      let init: WorkspaceInitInstruction | undefined;
       if (sourceType === "project") {
         if (!projectReference) throw invalidArguments("source.project is required for project workspaces");
-        source = { type: "project", project: await projectRoutes.byReference(projectReference) };
+        init = projectWorkspaceInit(await projectRoutes.byReference(projectReference));
       }
       const agent = body.agent;
       const serviceTier = stringField(agent?.serviceTier, "agent.serviceTier");
       const { id } = await createWorkspaceFromCommand({
-        source,
+        init,
         title: stringField(body.title, "title"),
         agent: {
           initialPrompt: stringField(agent?.initialPrompt, "agent.initialPrompt") ?? "",
@@ -761,11 +777,10 @@ export function createWebApp(deps: WebAppDeps): WebApp {
           attachmentDraft: stringField(agent?.attachmentDraft, "agent.attachmentDraft") ?? "",
         },
       });
-      const location = `/workspaces/${encodeURIComponent(id)}`;
-      return jsonResponse({ workspace: { id, phase: "starting", url: location } }, { status: 202, headers: { location } });
+      return workspaceCreatedJsonResponse(id);
     }
 
-    const { id } = await createWorkspaceFromCommand({ source: { type: "empty" } });
+    const { id } = await createWorkspaceFromCommand({});
     const location = `/workspaces/${encodeURIComponent(id)}`;
     if (wantsTurboStream(request)) return turboStreamResponse(workspacePaneCollectionsTurboStream(await workspacePaneCollections("")), { headers: { location } });
     return new Response(null, { status: 303, headers: { location } });
@@ -783,7 +798,7 @@ export function createWebApp(deps: WebAppDeps): WebApp {
         const thinkingLevel = String(form.get("level") ?? "");
         await rememberNewWorkspaceAgentSettings(model, thinkingLevel);
         return await createWorkspaceFromCommand({
-          source: options.project ? { type: "project", project: options.project } : { type: "empty" },
+          init: options.project ? projectWorkspaceInit(options.project) : undefined,
           agent: {
             initialPrompt: String(form.get("text") ?? ""),
             model,
@@ -1221,30 +1236,29 @@ export function createWebApp(deps: WebAppDeps): WebApp {
     if (url.pathname === "/openapi.json" && request.method === "GET") return jsonResponse(atelierOpenApi(workspaceModuleCommands(), Object.assign({}, ...workspaceModules.map((module) => module.openApiPaths ?? {}))));
     if (url.pathname === "/launch-composer" && request.method === "GET") return response(await renderProjectlessLaunchComposerFrame());
     if (url.pathname === "/launch-composer/settings" && request.method === "GET") return response(await launchComposerSettingsFrame(url.searchParams.get("model") ?? undefined, url.searchParams.get("level") ?? undefined));
+    const projectOnboardingMatch = url.pathname.match(/^\/projects\/([^/]+)\/onboarding$/);
+    if (projectOnboardingMatch && request.method === "GET") {
+      const projectId = decodeURIComponent(projectOnboardingMatch[1]!);
+      return projectEditorResponse(request, { kind: "onboarding", projectId });
+    }
     const secretValueMatch = url.pathname.match(/^\/projects\/([^/]+)\/secrets\/([^/]+)\/value$/);
     if (secretValueMatch && request.method === "GET") {
       const projectId = decodeURIComponent(secretValueMatch[1]!);
       const secretId = decodeURIComponent(secretValueMatch[2]!);
       const purpose = url.searchParams.get("purpose") ?? undefined;
-      return wantsTurboStream(request)
-        ? turboStreamResponse(turboReplaceStream("project-editor-modal", await projectRoutes.secretValueModal(projectId, secretId, purpose)))
-        : await surfacePage({ kind: "secret-value", projectId, secretId, purpose });
+      return projectEditorResponse(request, { kind: "secret-value", projectId, secretId, purpose });
     }
     const projectSettingsMatch = url.pathname.match(/^\/projects\/([^/]+)\/settings$/);
     if (projectSettingsMatch && request.method === "GET") {
       const projectId = decodeURIComponent(projectSettingsMatch[1]!);
       const section = url.searchParams.get("section") ?? undefined;
-      return wantsTurboStream(request)
-        ? turboStreamResponse(turboReplaceStream("project-editor-modal", await projectRoutes.editorModal({ kind: "settings", projectId, section })))
-        : await surfacePage({ kind: "project-settings", projectId, section });
+      return projectEditorResponse(request, { kind: "settings", projectId, section });
     }
     const projectWorkspaceMatch = url.pathname.match(/^\/projects\/([^/]+)\/workspaces\/new$/);
     if (projectWorkspaceMatch && request.method === "GET") return await surfacePage({ kind: "new-workspace", project: await projectRoutes.byReference(decodeURIComponent(projectWorkspaceMatch[1]!)) });
     if (url.pathname === "/workspaces/new" && request.method === "GET") return await surfacePage({ kind: "new-workspace" });
     if (url.pathname === "/projects/new" && request.method === "GET") {
-      return wantsTurboStream(request)
-        ? turboStreamResponse(turboReplaceStream("project-editor-modal", await projectRoutes.editorModal({ kind: "new" })))
-        : await surfacePage({ kind: "new-project" });
+      return projectEditorResponse(request, { kind: "new" });
     }
     if (url.pathname === "/settings" && request.method === "GET" && !wantsTurboStream(request)) return await surfacePage({ kind: "settings", section: url.searchParams.get("section") ?? undefined });
     if (url.pathname === "/settings/development" && request.method === "GET" && !wantsTurboStream(request)) return await surfacePage({ kind: "settings", section: undefined, development: true });
@@ -1342,9 +1356,7 @@ export function createWebApp(deps: WebAppDeps): WebApp {
     provisioning,
     async createWorkspaceFromAgent(init, title, signal, onUpdate) {
       signal?.throwIfAborted();
-      const id = generateWorkspaceId();
-      registry.add(id, title, init);
-      startWorkspaceProvisioning(id, { init, title });
+      const { id } = await createWorkspaceFromCommand({ init, title });
       const identity = { workspaceId: id, url: `/workspaces/${id}` };
       while (true) {
         signal?.throwIfAborted();

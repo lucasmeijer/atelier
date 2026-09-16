@@ -89,6 +89,15 @@ export function atelierOpenApi(commands: WorkspaceModuleCommandHandler[], contri
           responses: htmlSurfaceResponses("Atelier with project settings open"),
         },
       },
+      "/projects/{projectId}/onboarding": {
+        get: { summary: "Offer agent-assisted project setup", parameters: [projectId], responses: htmlSurfaceResponses("Project onboarding confirmation") },
+        post: {
+          summary: "Accept agent-assisted project setup",
+          description: "Creates an ordinary workspace for this project using the default image, bypassing saved and committed Dockerfiles, environment overrides and image preloads. Starts a host-authorized onboarding conversation with setup instructions. When no model is available, stages the initial message for sending after model setup. Does not change saved project settings. No repository, settings or agent overrides are accepted.",
+          parameters: [projectId],
+          responses: jsonResponse("Onboarding workspace creation started", { $ref: "#/components/schemas/WorkspaceEnvelope" }, "202"),
+        },
+      },
       "/projects/{projectId}/workspaces/new": { get: { summary: "Present a new project workspace composer", parameters: [projectId], responses: htmlSurfaceResponses("Atelier with the project workspace composer open") } },
       "/projects/{projectId}/preload-images": { post: { summary: "Set images to preload in future project workspaces", description: "Replaces the image list. An empty array disables preloading. Existing workspaces are unchanged.", parameters: [projectId], requestBody: jsonBody({ type: "object", required: ["preloadImages"], properties: { preloadImages: { type: "array", items: { type: "string" } } }, additionalProperties: false }), responses: jsonResponse("Preload images saved", { $ref: "#/components/schemas/ProjectEnvelope" }) } },
       "/projects/{projectId}/dockerfile": { post: { summary: "Set the project workspace Dockerfile override", description: "Must start with FROM atelier-workspace. An empty string clears the override. Takes priority over .atelier/Dockerfile for new workspaces.", parameters: [projectId], requestBody: jsonBody({ type: "object", required: ["dockerfile"], properties: { dockerfile: { type: "string" } }, additionalProperties: false }), responses: jsonResponse("Dockerfile saved", { $ref: "#/components/schemas/ProjectEnvelope" }) } },

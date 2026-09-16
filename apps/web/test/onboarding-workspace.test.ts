@@ -1,6 +1,6 @@
 import { afterEach, beforeEach, describe, expect, test } from "bun:test";
-import { addProject, projectWorkspaceInitWithSettings, readProjectWorkspaceSettings } from "@atelier/projects";
-import { createTestApp, deferred, temporaryAtelierDataDir } from "./support/test-web-app.ts";
+import { addProject, projectWorkspaceInitWithSettings, readProjectWorkspaceSettings, writeProjectWorkspaceSettings, isGitProjectInit } from "@atelier/projects";
+import { createTestApp, deferred, temporaryAtelierDataDir, postJson, type ProvisionWorkspaceOptions } from "./support/test-web-app.ts";
 
 const data = temporaryAtelierDataDir();
 beforeEach(data.setUp);
@@ -68,5 +68,58 @@ describe("agent workspace creation through normal provisioning", () => {
     pending.resolve();
     await Bun.sleep(5);
     expect(registry.get(workspace.id)?.phase).toBe("ready");
+  });
+});
+
+describe("project onboarding launch", () => {
+  test("acceptance creates a same-project recovery workspace with a host-owned onboarding context", async () => {
+    const configuration = await init();
+    const before = await readProjectWorkspaceSettings(configuration.projectId);
+    const saved = await writeProjectWorkspaceSettings(configuration.projectId, before.settingsRevision, {
+      dockerfile: "FROM atelier-workspace\nRUN exit 1", preloadImages: ["missing-image:broken"], environment: [{ name: "PATH", value: "/broken" }],
+    });
+    const provisioned = deferred<ProvisionWorkspaceOptions>();
+    const { app, registry } = createTestApp({ provision: async (_id, options) => { provisioned.resolve(options); } });
+    const response = await app.fetch(postJson(`/projects/${configuration.projectId}/onboarding`, {}));
+    expect(response.status).toBe(202);
+    const { workspace } = await response.json();
+    expect(response.headers.get("location")).toBe(workspace.url);
+    const options = await provisioned.promise;
+    expect(isGitProjectInit(options.init)).toBe(true);
+    if (!isGitProjectInit(options.init)) throw new Error("Expected project init");
+    expect(options.init).toMatchObject({ projectId: configuration.projectId, gitUrl: configuration.gitUrl, branch: configuration.branch,
+      settings: { dockerfile: "FROM atelier-workspace", preloadImages: [], environment: [] } });
+    expect(options.init.createdBy).toBeUndefined();
+    expect(options.context?.projectOnboarding).toBe(true);
+    expect(options.context?.agent?.initialPrompt).toContain(before.project.name);
+    expect(options.context?.agent?.initialPrompt).toContain("I understand this may take a few minutes.");
+    expect(registry.get(workspace.id)?.init).toEqual(options.init);
+    expect((await readProjectWorkspaceSettings(configuration.projectId)).settingsRevision).toBe(saved.settingsRevision);
+  });
+
+  test("adding a project alone creates no workspace", async () => {
+    const { app, registry } = createTestApp();
+    expect((await app.fetch(postJson("/projects", { gitUrl: "https://example.com/declined.git" }))).status).toBe(200);
+    expect(registry.list()).toEqual([]);
+  });
+
+  test("ordinary workspace parameters cannot enable onboarding or select its recovery source", async () => {
+    const configuration = await init();
+    const provisioned = deferred<ProvisionWorkspaceOptions>();
+    const { app } = createTestApp({ provision: async (_id, options) => { provisioned.resolve(options); } });
+    const response = await app.fetch(postJson("/workspaces", {
+      source: { type: "project", project: configuration.projectId, projectOnboarding: true },
+      projectOnboarding: true,
+      agent: { initialPrompt: "Please onboard this project", projectOnboarding: true },
+    }));
+    expect(response.status).toBe(202);
+    expect((await provisioned.promise).context?.projectOnboarding).toBeUndefined();
+    expect((await app.fetch(postJson("/workspaces", { source: { type: "project-onboarding", project: configuration.projectId } }))).status).toBe(400);
+  });
+
+  test("rejects unknown projects before provisioning", async () => {
+    const { app, registry } = createTestApp();
+    expect((await app.fetch(postJson("/projects/missing/onboarding", {}))).status).toBe(404);
+    expect(registry.list()).toEqual([]);
   });
 });
