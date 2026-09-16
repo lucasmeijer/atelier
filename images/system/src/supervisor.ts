@@ -157,7 +157,8 @@ async function pullImage(reference: string, description: string) {
   stage(description);
   try {
     await command(["docker", "pull", reference], (chunk) => {
-      activity = { description, percent: progress.push(chunk) };
+      const layers = progress.push(chunk);
+      activity = { description: layers ? `${description} · ${layers.completed}/${layers.total} layers ready` : description };
       log(chunk);
     }, 1_800_000);
   } finally {

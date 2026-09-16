@@ -46,7 +46,7 @@ export function installationStatus(input: {
   return {
     state,
     activity: state === "failed" ? { description: input.failure ?? "Atelier services stopped" }
-      : ready ? { description: "Atelier is ready" }
+      : ready ? { description: "Your Atelier is ready!" }
       : action ? { description: "Waiting for your private connection" }
       : input.appResponding && !input.busy ? { description: "Connecting Atelier securely" }
       : input.activity,

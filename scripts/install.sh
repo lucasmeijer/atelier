@@ -18,6 +18,7 @@ if [ -t 1 ] && [ "${TERM:-dumb}" != dumb ]; then
   amber=$'\033[33m' dim=$'\033[2m' reset=$'\033[0m'
 fi
 last_status=""
+spinner_frame=0
 supervisor_url=""
 active_pid=""
 
@@ -29,12 +30,16 @@ status() {
   local text="$1" elapsed="${2:-}" percent="${3:-}" bar="" i suffix
   local rows columns available
   local frames="⠋⠙⠹⠸⠼⠴⠦⠧⠇⠏"
-  local frame="${frames:SECONDS%10:1}"
+  local frame="${frames:spinner_frame:1}"
+  spinner_frame=$(((spinner_frame + 1) % 10))
   if [ -n "$percent" ]; then
     for ((i=0; i<10; i++)); do
       if [ "$i" -lt "$((percent/10))" ]; then bar+="━"; else bar+="─"; fi
     done
     suffix="$bar $percent%"
+  elif [[ "$text" == *" · "*" layers ready" ]]; then
+    suffix="${text##* · }  $elapsed"
+    text="${text% · *}"
   else
     suffix="$elapsed"
   fi
@@ -74,7 +79,7 @@ run_quiet() {
       active_pid=""
       fail "Timed out: $label."
     fi
-    sleep 1
+    sleep 0.1
   done
   active_pid=""
   wait "$pid" || code=$?
@@ -144,7 +149,7 @@ case "$host_os" in
 esac
 
 log_file="$(mktemp /tmp/atelier-install.XXXXXX)"
-printf "\n  %sWelcome to your Atelier!%s\n  %sLet's get you setup.%s\n\n" "$violet" "$reset" "$dim" "$reset"
+printf "\n  %sLet's get your Atelier setup!%s\n\n" "$violet" "$reset"
 status "Preparing your server"
 if ! command -v docker >/dev/null; then
   [ "$host_os" != Darwin ] || fail "install and start Docker Desktop first, then run this installer again"
@@ -230,7 +235,8 @@ supervisor_connect() {
   '
 }
 wait_for_system() {
-  local reply previous="" activity_start=$SECONDS start=$SECONDS description percent code
+  local reply previous="" activity_start=$SECONDS start=$SECONDS description="Waiting for the supervisor" percent="" code pid status_file tick
+  status_file="${log_file}.status"
   local request_connect=0 last_action="" current_action app_url
   local -a fields
   [ "$action" != connect ] || request_connect=1
@@ -239,7 +245,18 @@ wait_for_system() {
     if [ "$request_connect" -eq 1 ]; then
       if supervisor_connect >>"$log_file" 2>&1; then request_connect=0; fi
     fi
-    if reply="$(supervisor_status 2>>"$log_file")"; then
+    supervisor_status >"$status_file" 2>>"$log_file" &
+    pid=$!
+    active_pid=$pid
+    while kill -0 "$pid" 2>/dev/null; do
+      status "$description" "$((SECONDS-activity_start))s" "$percent"
+      sleep 0.1
+    done
+    active_pid=""
+    code=0
+    wait "$pid" || code=$?
+    reply="$(cat "$status_file")"
+    if [ "$code" -eq 0 ]; then
       fields=()
       while IFS= read -r field; do fields+=("$field"); done <<<"$reply"
       description="${fields[1]}"
@@ -269,15 +286,18 @@ wait_for_system() {
           fi ;;
       esac
     else
-      code=$?
       [ "$code" -ne 2 ] || fail "The supervisor returned an invalid status."
       description="Waiting for the supervisor"; percent=""
     fi
-    if [ "$description" != "$previous" ]; then activity_start=$SECONDS; previous="$description"; fi
+    if [ "${description%% · *}" != "$previous" ]; then activity_start=$SECONDS; previous="${description%% · *}"; fi
     status "$description" "$((SECONDS-activity_start))s" "$percent"
     [ "$((SECONDS-start))" -lt 2400 ] || fail "Atelier did not finish starting within 40 minutes."
-    sleep 1
+    for ((tick=0; tick<10; tick++)); do
+      status "$description" "$((SECONDS-activity_start))s" "$percent"
+      sleep 0.1
+    done
   done
+  rm "$status_file"
   finish_line
   printf '  %s✓ %s%s\n\n  Open %s\n\n' "$green" "$description" "$reset" "$app_url"
 }
