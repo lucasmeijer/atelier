@@ -1,4 +1,3 @@
-import { copyButtonHtml } from "@atelier/design-system/copy-button";
 import { buttonHtml } from "@atelier/design-system/button";
 import { domId, escapeHtml } from "@atelier/shared";
 import { terminalViewKey } from "../shared.ts";
@@ -35,12 +34,6 @@ export function renderTerminalPane(workspaceId: string, terminal: WorkspaceTermi
         touchend->terminal-pane#finishTerminalTouch:!passive">
         <div class="terminal-loading" role="status" aria-label="Loading terminal"><span class="activity-spinner" aria-hidden="true"></span></div>
       </div>
-      <div class="terminal-clipboard-bar" role="toolbar" aria-label="Terminal clipboard">
-        <span class="terminal-selection-hint">Drag to select · Shift+drag for app mouse input</span>
-        ${copyButtonHtml({ label: "Copy selected terminal text", caption: "Copy", attributesHtml: 'data-action="mousedown->terminal-pane#preserveTerminalFocus click->terminal-pane#copySelection"' })}
-        ${buttonHtml({ type: "button", variant: "secondary", content: { kind: "caption", caption: "Paste" }, attributesHtml: 'data-action="mousedown->terminal-pane#preserveTerminalFocus click->terminal-pane#pasteClipboard"' })}
-      </div>
-      <span class="terminal-clipboard-status" role="status" data-terminal-pane-target="clipboardStatus"></span>
       ${renderTerminalAccessoryBar()}
     </div>
   </section>`;
