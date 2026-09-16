@@ -1,3 +1,4 @@
+import { defaultProviderModels } from "./hardcoded-provider-knowledge.ts";
 import { mkdir, readFile, rename, unlink, writeFile } from "node:fs/promises";
 import { dirname, join } from "node:path";
 import { createKeyedOperationQueue, atelierDataPath, getAtelierRuntimeContext, isJsonObject, type JsonObject, type JsonValue } from "@atelier/core";
@@ -217,6 +218,10 @@ function configuredFromSettings(config: AgentModelsSettings | undefined): Config
 }
 
 export async function getConfiguredAgentModels(): Promise<ConfiguredAgentModel[]> { return configuredFromSettings(await getAgentModelsSettings()); }
+export function hasConnectedModelProvider(runtime: Pick<ModelRuntime, "getProviders" | "getProviderAuthStatus">): boolean {
+  return runtime.getProviders().some((provider) => runtime.getProviderAuthStatus(provider.id).configured);
+}
+
 export async function hasAvailableConfiguredAgentModel(): Promise<boolean> {
   const runtime = await createPiModelRuntime();
   const available = new Set((await runtime.getAvailable()).map((model) => modelSettingsKey(model.provider, model.id)));
@@ -328,4 +333,25 @@ export async function connectModelProviderApiKey(provider: string, key: string, 
 }
 export async function disconnectModelProvider(provider: string): Promise<void> {
   await (await createPiModelRuntime()).logout(provider);
+  await updateAgentModelsSettings((settings) => {
+    settings.picker = (settings.picker ?? []).filter((model) => model.provider !== provider);
+    if (settings.activeModel?.provider === provider) settings.activeModel = settings.picker[0];
+  });
+}
+
+export async function seedProviderFavoriteModels(provider: string): Promise<void> {
+  const runtime = await createPiModelRuntime();
+  const available = await runtime.getAvailable();
+  const defaults = defaultProviderModels(provider, available.filter((model) => model.provider === provider));
+  const usable = new Set(available.map((model) => modelSettingsKey(model.provider, model.id)));
+  await updateAgentModelsSettings((settings) => {
+    const favorites = settings.picker ?? [];
+    if (!favorites.some((model) => model.provider === provider)) {
+      settings.picker = [...favorites, ...defaults.map((model) => ({ provider, id: model.id, label: model.name ?? model.id }))];
+    }
+    const active = settings.activeModel;
+    if (!active || !usable.has(modelSettingsKey(active.provider, active.id))) {
+      settings.activeModel = settings.picker?.find((model) => usable.has(modelSettingsKey(model.provider, model.id)));
+    }
+  });
 }

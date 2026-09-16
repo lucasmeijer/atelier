@@ -8,6 +8,9 @@
 .dialog > .panel > .panel__header,
 .dialog .dialog__title,
 .dialog > .panel > .panel__body { color: var(--text); font: var(--text-body)/var(--leading-standard) var(--font-sans); }
+.dialog__header-actions { display: flex; align-items: center; gap: 8px; flex: 0 0 auto; }
+.dialog__header-actions form { margin: 0; }
+.dialog__header-actions + .dialog__close-form { margin-inline-start: 0; }
 .dialog__close-form { flex: 0 0 auto; margin: 0 0 0 auto; }
 @media (max-width: 700px), (pointer: coarse) { .dialog { width: calc(100vw - 16px); } }
 

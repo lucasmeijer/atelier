@@ -1,3 +1,4 @@
+import { createPiModelRuntime, setPickerAgentModels } from "@atelier/agent/server";
 import { afterEach, beforeEach, describe, expect, test } from "bun:test";
 import { addProject, isGitProjectInit } from "@atelier/projects";
 import {
@@ -11,7 +12,18 @@ import {
 
 const dataDir = temporaryAtelierDataDir();
 beforeEach(dataDir.setUp);
-afterEach(dataDir.tearDown);
+let configuredRuntime = false;
+afterEach(async () => {
+  if (configuredRuntime) await (await createPiModelRuntime()).removeRuntimeApiKey("openai");
+  configuredRuntime = false;
+  await dataDir.tearDown();
+});
+
+async function configureLaunchModel(): Promise<void> {
+  await (await createPiModelRuntime()).setRuntimeApiKey("openai", "test-only-key");
+  configuredRuntime = true;
+  await setPickerAgentModels([{ provider: "openai", id: "gpt-5.4", label: "Test model" }]);
+}
 
 describe("workspace lifecycle", () => {
   test("workspace creation returns before provisioning finishes", async () => {
@@ -135,6 +147,7 @@ describe("workspace lifecycle", () => {
   });
 
   test("project workspace creation records project identity and temporary title", async () => {
+    await configureLaunchModel();
     const project = (await addProject("https://github.com/org/sample-project.git")).project;
     const { app, registry } = createTestApp();
     await registry.seed([]);
@@ -151,7 +164,7 @@ describe("workspace lifecycle", () => {
     expect(isGitProjectInit(entry.init) && entry.init).toMatchObject({ projectId: project.id, name: "sample-project" });
   });
 
-  test("workspace creation preserves the prompt when no model is available", async () => {
+  test("launch without an available model does not create or provision a workspace", async () => {
     let captured: ProvisionWorkspaceOptions | undefined;
     const { app, registry } = createTestApp({ provision: async (_id, options) => { captured = options; } });
     await registry.seed([{ id: "existing", title: "Existing" }]);
@@ -165,18 +178,12 @@ describe("workspace lifecycle", () => {
     })));
 
     expect(response.status).toBe(200);
-    expect(captured?.context).toEqual({
-      agent: {
-        initialPrompt: "Do this when a model is connected",
-        initialPromptMode: "composer",
-        model: "",
-        thinkingLevel: "",
-        attachmentDraft,
-      },
-    });
+    expect(captured).toBeUndefined();
+    expect(registry.list().map((entry) => entry.id)).toEqual(["existing"]);
   });
 
   test("concurrent duplicate submissions create and provision one workspace", async () => {
+    await configureLaunchModel();
     let provisionCount = 0;
     const { app, registry } = createTestApp({ provision: async () => { provisionCount++; } });
     await registry.seed([]);

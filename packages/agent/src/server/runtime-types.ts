@@ -45,6 +45,7 @@ export interface WorkspaceAgentRuntime {
   currentModel(): { provider: string; id: string } | undefined;
   currentThinkingLevel(): string;
   availableThinkingLevels(): string[];
+  refreshModelConfiguration(): Promise<void>;
   setModel(provider: string, modelId: string): Promise<void>;
   setThinkingLevel(level: string): Promise<void>;
   setServiceTier(serviceTier: AgentServiceTier): Promise<void>;

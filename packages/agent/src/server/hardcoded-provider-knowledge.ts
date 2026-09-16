@@ -44,8 +44,18 @@ export function getPopularModelRank(provider: string, id: string): number | unde
   return rank < 0 ? undefined : rank;
 }
 
-/** Provider order follows its first appearance in the curated popular-model list. */
 export function getPopularProviderRank(provider: string): number | undefined {
+  if (provider === "openai") return undefined;
   const rank = hardcodedPopularModels.findIndex((model) => model.provider === provider);
   return rank < 0 ? undefined : rank;
+}
+
+/** Curated defaults first; otherwise one model with the highest known input price. */
+export function defaultProviderModels<T extends { id: string; name?: string; cost?: { input?: number } }>(provider: string, models: readonly T[]): T[] {
+  const curated = models.filter((model) => getPopularModelRank(provider, model.id) !== undefined)
+    .sort((a, b) => getPopularModelRank(provider, a.id)! - getPopularModelRank(provider, b.id)!);
+  if (curated.length) return curated;
+  const priced = models.filter((model) => model.cost?.input !== undefined && Number.isFinite(model.cost.input))
+    .sort((a, b) => b.cost!.input! - a.cost!.input! || (a.name ?? a.id).localeCompare(b.name ?? b.id) || a.id.localeCompare(b.id));
+  return priced.slice(0, 1);
 }

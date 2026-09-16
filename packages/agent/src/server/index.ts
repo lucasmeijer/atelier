@@ -14,6 +14,7 @@ export {
 } from "./session-store.ts";
 export {
   getWorkspaceAgentRuntime,
+  refreshConfiguredAgentRuntimes,
   unloadWorkspaceAgentRuntime,
   closeWorkspaceAgentConversation,
   removeWorkspaceAgentRuntimes,
@@ -55,6 +56,7 @@ export {
   setCustomModelsJson,
   setModelThinkingLevel,
   setPickerAgentModels,
+  seedProviderFavoriteModels,
   type ConfiguredAgentModel,
   type CustomModelsSaveResult,
 } from "./pi-config-models.ts";

@@ -1,3 +1,4 @@
+import { resolveNewWorkspaceAgentModel, launchComposerThinkingSettings } from "./model-state.ts";
 import { applyTranscriptContributions } from "./transcript-contributions.ts";
 import { isJsonObject } from "@atelier/core";
 import { contentText, type UserMessage } from "@earendil-works/pi-ai";
@@ -8,7 +9,7 @@ import { turboStream } from "./html.ts";
 import { isFinalAssistantTextEvent } from "./live-presentation.ts";
 import { createPiSession, type AgentSessionDelegation } from "./pi-session.ts";
 import { configuredModelOptionViews } from "./model-state.ts";
-import { getModelThinkingLevel } from "./pi-config-models.ts";
+import { getModelThinkingLevel, hasConnectedModelProvider } from "./pi-config-models.ts";
 import type { AgentStatsView } from "./render-composer.ts";
 import { ids } from "./render-context.ts";
 import {
@@ -51,6 +52,7 @@ function normalizedPromiseError(error: unknown): Error {
 }
 
 export class RealAgentRuntime extends BaseAgentRuntime {
+  private followingSetupDefaults = false;
   // Present until Pi settles the entire prompt, including retries and overflow recovery.
   private turnTiming?: TurnTiming;
   private turnEntryId?: string;
@@ -144,6 +146,8 @@ export class RealAgentRuntime extends BaseAgentRuntime {
 
   currentModel(): { provider: string; id: string } | undefined {
     const model = this.session.model;
+    // Pi represents a session with no model using its "unknown" placeholder.
+    if (model?.provider === "unknown" && model.id === "unknown") return undefined;
     return model?.provider && model?.id ? { provider: model.provider, id: model.id } : undefined;
   }
 
@@ -195,7 +199,7 @@ export class RealAgentRuntime extends BaseAgentRuntime {
     const stats = this.session.getSessionStats?.();
     const costs = await this.delegation.attachment?.costs?.snapshot();
     const context = this.session.getContextUsage?.();
-    const model = this.session.model;
+    const model = this.currentModel() ? this.session.model : undefined;
     const estimate = this.postCompactionEstimate;
     const branch = this.session.sessionManager.getBranch();
     const latestCompactionEntryId = branch.findLast((entry: any) => entry.type === "compaction")?.id;
@@ -222,6 +226,7 @@ export class RealAgentRuntime extends BaseAgentRuntime {
       thinkingLevel,
       thinkingLevels,
       models,
+      connectedProvider: hasConnectedModelProvider(this.session.modelRuntime),
     };
   }
 
@@ -552,8 +557,24 @@ export class RealAgentRuntime extends BaseAgentRuntime {
     return this.disposal;
   }
 
+  async refreshModelConfiguration(): Promise<void> {
+    const current = this.currentModel();
+    if (!current || (this.followingSetupDefaults && this.userMessages().length === 0)) {
+      const model = await resolveNewWorkspaceAgentModel();
+      if (model && (model.provider !== current?.provider || model.id !== current.id)) {
+        await this.setModel(model.provider, model.id);
+        const { selected: thinking } = await launchComposerThinkingSettings(model);
+        if (thinking) await this.setThinkingLevel(thinking);
+        this.followingSetupDefaults = true;
+        return;
+      }
+    }
+    await this.refreshStats();
+  }
+
   async setModel(provider: string, modelId: string): Promise<void> {
     this.assertActive();
+    this.followingSetupDefaults = false;
     const model = this.session.modelRuntime.getModel(provider, modelId);
     if (!model) throw new Error(`Model not available: ${provider}/${modelId}`);
     await this.session.setModel(model);

@@ -1,3 +1,4 @@
+import { createPiModelRuntime, hasConnectedModelProvider } from "./pi-config-models.ts";
 import { activityButtonHtml } from "@atelier/design-system/activity-button";
 import { actionItemHtml } from "@atelier/design-system/action-item";
 import { buttonHtml } from "@atelier/design-system/button";
@@ -5,7 +6,7 @@ import { popupHtml } from "@atelier/design-system/popup";
 import { renderTranscriptionComposerControl, transcriptionComposerController } from "@atelier/transcription/server";
 import { providerBrandIconHtml } from "@atelier/shared";
 import { domId, escapeHtml, turboStream } from "./html.ts";
-import { launchComposerThinkingLevel, launchComposerThinkingLevels, configuredModelOptionViews, modelRefValue, resolveNewWorkspaceAgentModel, type ModelRef } from "./model-state.ts";
+import { launchComposerThinkingSettings, configuredModelOptionViews, modelRefValue, parseModelRef, selectAvailableConfiguredModel } from "./model-state.ts";
 import type { WorkspaceAgentConversationInfo } from "./session-store.ts";
 import { agentAttachmentDraftId, listStagedAttachments, type StagedAttachment } from "./attachment-drafts.ts";
 import { readInitialPromptDraft } from "./initial-prompt-draft.ts";
@@ -35,6 +36,7 @@ export interface AgentStatsView {
   thinkingLevel: string;
   thinkingLevels: string[];
   models: AgentModelOption[];
+  connectedProvider?: boolean;
 }
 
 export interface AgentPaneState {
@@ -153,9 +155,9 @@ async function renderSharedComposer(options: SharedComposerRenderOptions): Promi
     ...(options.formTarget ? ["input->agent-pane#promptChanged"] : []),
   ];
   const inputActions = inputActionsList.length ? ` data-action="${inputActionsList.join(" ")}"` : "";
-  const formActions = options.formTarget
+  const formActions = "submit->agent-model-setup#guard " + (options.formTarget
     ? ["keydown->agent-completions#keydown", "keydown->agent-pane#inputKeydown", ...actionAttrs].join(" ")
-    : ["submit->transcription-composer#submit", options.formActions].filter(Boolean).join(" ");
+    : ["submit->transcription-composer#submit", options.formActions].filter(Boolean).join(" "));
   const actions = options.includePaneActions && options.ctx
     ? `<span class="composer-primary-action" id="${ids.actions(options.ctx)}">${renderPromptActions(options.ctx, Boolean(options.busy))}</span>`
     : renderPromptActionButton(false);
@@ -165,7 +167,7 @@ async function renderSharedComposer(options: SharedComposerRenderOptions): Promi
     : `<div class="composer-footer">${await renderLaunchComposerSettings({ ...options.launchComposerSettings!, formId })}</div>`;
   const turboAttr = options.formTurbo === undefined ? "" : ` data-turbo="${options.formTurbo ? "true" : "false"}"`;
   const dropTarget = options.dropTarget ?? true;
-  const promptControllers = ["composer-focus", dropTarget ? "agent-attachments" : "", completionsEnabled ? "agent-completions" : "", transcriptionComposerController].filter(Boolean).join(" ");
+  const promptControllers = ["composer-focus", "agent-model-setup", dropTarget ? "agent-attachments" : "", completionsEnabled ? "agent-completions" : "", transcriptionComposerController].filter(Boolean).join(" ");
   const promptAttrs = [
     `data-controller="${promptControllers}"`,
     `data-action="mousedown->composer-focus#preserveInputFocus${dropTarget ? ` ${agentAttachmentDropAction}` : ""}"`,
@@ -190,7 +192,8 @@ async function renderSharedComposer(options: SharedComposerRenderOptions): Promi
             </div>
             <div class="composer-actions">
               <span class="spacer"></span>
-              ${actions}
+              <span class="composer-send-action">${actions}</span>
+              <span class="composer-connect-action">${buttonHtml({ type: "button", variant: "primary", content: { kind: "caption", caption: "Connect to send" }, attributesHtml: 'data-action="agent-model-setup#open"' })}</span>
             </div>
             <p role="status" data-agent-attachments-target="status" hidden></p>
           </form>
@@ -202,21 +205,6 @@ async function renderSharedComposer(options: SharedComposerRenderOptions): Promi
       </div>`;
 }
 
-async function launchComposerModels(selectedModel?: string): Promise<AgentModelOption[]> {
-  const selected = await resolveNewWorkspaceAgentModel(selectedModel);
-  const models = await configuredModelOptionViews(selected);
-  return models.map((model, index) => ({ ...model, selected: selected ? model.selected : index === 0 }));
-}
-
-async function launchComposerSettingsState(selectedModel?: string): Promise<{ selected: ModelRef | undefined; selectedThinkingLevel: string | undefined; thinkingLevels: string[] }> {
-  const selected = await resolveNewWorkspaceAgentModel(selectedModel);
-  return {
-    selected,
-    selectedThinkingLevel: await launchComposerThinkingLevel(selected),
-    thinkingLevels: await launchComposerThinkingLevels(selected),
-  };
-}
-
 interface SharedComposerSelectionsOptions {
   modelFormId: string;
   thinkingFormId: string;
@@ -224,9 +212,10 @@ interface SharedComposerSelectionsOptions {
   thinkingLevels: string[];
   selectedThinkingLevel: string;
   autosubmitThinking?: boolean;
+  connectedProvider?: boolean;
 }
 
-function renderModelSelection(formId: string, models: AgentModelOption[]): string {
+function renderModelSelection(formId: string, models: AgentModelOption[], connectedProvider = false): string {
   const selected = models.find((model) => model.selected) ?? models[0];
   const hasAvailableModel = models.some((model) => model.available !== false);
   const menuId = `${formId}_popup`;
@@ -241,7 +230,7 @@ function renderModelSelection(formId: string, models: AgentModelOption[]): strin
       element: { tag: "button", attributesHtml: `type="submit" name="model" value="${escapeHtml(`${model.provider}::${model.id}`)}" form="${escapeHtml(formId)}" role="menuitemradio" aria-checked="${model.selected}"${model.available === false ? " disabled" : ""}` },
     });
   }).join("");
-  if (!hasAvailableModel) return buttonHtml({ type: "button", variant: "secondary", content: { kind: "caption", caption: "Configure models" }, attributesHtml: setupAction });
+  if (!hasAvailableModel) return buttonHtml({ type: "button", variant: "secondary", content: { kind: "caption", caption: connectedProvider ? "Choose models" : "Connect a model" }, attributesHtml: setupAction });
   return popupHtml({ id: menuId, label: "Model", placement: "above",
     trigger: { variant: "secondary", content: { kind: "caption", caption: selected?.name ?? "Model" } },
     contentHtml: `${configure}<hr class="popup-menu__separator">${modelItems}`,
@@ -255,24 +244,28 @@ function renderSharedComposerSelections(options: SharedComposerSelectionsOptions
   const thinkingSelection = options.thinkingLevels.length > 0
     ? `<span class="composer-selection-field"${autosubmit}><select class="composer-selection popup-select" data-popup-placement="above" name="level" form="${escapeHtml(options.thinkingFormId)}" title="Thinking level">${options.thinkingLevels.map((level) => `<option value="${escapeHtml(level)}"${level === options.selectedThinkingLevel ? " selected" : ""}>${escapeHtml(level)}</option>`).join("")}</select></span>`
     : "";
-  return `<span class="composer-selections">
-${renderModelSelection(options.modelFormId, options.models)}
-${thinkingSelection}
+  const ready = options.models.some((model) => model.selected && model.available !== false);
+  return `<span class="composer-selections" data-model-ready="${ready}">
+${renderModelSelection(options.modelFormId, options.models, options.connectedProvider)}
+${ready ? thinkingSelection : ""}
 </span>`;
 }
 
-export async function renderLaunchComposerSettings(options: { frameId: string; formId: string; url: string; selectedModel?: string }): Promise<string> {
-  const { selected, selectedThinkingLevel, thinkingLevels } = await launchComposerSettingsState(options.selectedModel);
+export async function renderLaunchComposerSettings(options: { frameId: string; formId: string; url: string; selectedModel?: string; selectedThinkingLevel?: string }): Promise<string> {
+  const models = await configuredModelOptionViews();
+  const selected = selectAvailableConfiguredModel(models, options.selectedModel ? parseModelRef(options.selectedModel) : undefined);
   const selectedValue = selected ? modelRefValue(selected) : "";
+  const { selected: selectedThinkingLevel, levels: thinkingLevels } = await launchComposerThinkingSettings(selected);
   const modelFormId = `${options.frameId}_model_form`;
   return `<turbo-frame id="${escapeHtml(options.frameId)}"><form id="${escapeHtml(modelFormId)}" method="get" action="${escapeHtml(options.url)}" data-turbo-frame="${escapeHtml(options.frameId)}" hidden></form>
 <input type="hidden" name="model" value="${escapeHtml(selectedValue)}" form="${escapeHtml(options.formId)}">
 ${renderSharedComposerSelections({
     modelFormId,
     thinkingFormId: options.formId,
-    models: await launchComposerModels(selectedValue || undefined),
+    models: models.map((model) => ({ ...model, selected: modelRefValue(model) === selectedValue })),
     thinkingLevels,
-    selectedThinkingLevel: selectedThinkingLevel ?? "",
+    selectedThinkingLevel: options.selectedThinkingLevel && thinkingLevels.includes(options.selectedThinkingLevel) ? options.selectedThinkingLevel : selectedThinkingLevel ?? "",
+    connectedProvider: hasConnectedModelProvider(await createPiModelRuntime()),
   })}</turbo-frame>`;
 }
 
@@ -339,5 +332,6 @@ ${renderSharedComposerSelections({
     thinkingLevels: stats.thinkingLevels,
     selectedThinkingLevel: stats.thinkingLevel,
     autosubmitThinking: true,
+    connectedProvider: stats.connectedProvider,
   })}`;
 }

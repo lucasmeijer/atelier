@@ -77,13 +77,11 @@ export async function configuredModelOptionViews(current?: ModelRef | null, runt
   });
 }
 
-export async function launchComposerThinkingLevel(model: ModelRef | undefined): Promise<string | undefined> {
-  return model ? await getModelThinkingLevel(model.provider, model.id) : undefined;
-}
-
-export async function launchComposerThinkingLevels(model: ModelRef | undefined): Promise<string[]> {
-  if (!model) return [];
+export async function launchComposerThinkingSettings(model: ModelRef | undefined): Promise<{ levels: string[]; selected?: string }> {
+  if (!model) return { levels: [] };
   const runtime = await createPiModelRuntime();
   const piModel = runtime.getModel(model.provider, model.id);
-  return piModel ? getSupportedThinkingLevels(piModel) : [];
+  const levels: string[] = piModel ? getSupportedThinkingLevels(piModel) : [];
+  const remembered = await getModelThinkingLevel(model.provider, model.id);
+  return { levels, selected: remembered && levels.includes(remembered) ? remembered : levels.includes("medium") ? "medium" : levels[0] };
 }

@@ -851,6 +851,7 @@ export abstract class BaseAgentRuntime implements WorkspaceAgentRuntime {
   abstract currentModel(): { provider: string; id: string } | undefined;
   abstract currentThinkingLevel(): string;
   abstract availableThinkingLevels(): string[];
+  async refreshModelConfiguration(): Promise<void> { await this.refreshStats(); }
   abstract setModel(provider: string, modelId: string): Promise<void>;
   abstract setThinkingLevel(level: string): Promise<void>;
   abstract setServiceTier(serviceTier: AgentServiceTier): Promise<void>;

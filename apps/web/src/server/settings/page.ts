@@ -8,6 +8,7 @@ import { invalidArguments } from "@atelier/core";
 import { escapeHtml } from "@atelier/shared";
 import { clearWorkspaceGitHubToken } from "@atelier/proxy-egress";
 import { clearGitIdentity, getGitIdentity, setGitIdentity } from "@atelier/projects";
+import { resetOnboarding } from "../onboarding/state.ts";
 import { renderOnboardingDialog } from "../onboarding/routes.ts";
 import { workspaceModules } from "../workspace-modules.ts";
 import { remove, replace, response, stream, update, wantsStream } from "./http.ts";
@@ -130,6 +131,7 @@ export async function renderDevelopmentSettingsDialog(): Promise<string> {
 }
 
 async function deleteAllStoredSettings(): Promise<void> {
+  await resetOnboarding();
   clearWorkspaceGitHubToken();
   await clearGitIdentity();
   await setPickerAgentModels([]);
@@ -148,7 +150,7 @@ export async function handleSettingsPageRequest(request: Request, url: URL, opti
   }
   if (url.pathname === "/settings/reset" && request.method === "POST") {
     await deleteAllStoredSettings();
-    return stream(`${replace("settings_dialog", await renderDevelopmentSettingsDialog())}${update("onboarding_modal_host", await renderOnboardingDialog())}${remove("settings_flow_dialog")}`);
+    return stream(`${replace("settings_dialog", await renderDevelopmentSettingsDialog())}${update("onboarding_modal_host", await renderOnboardingDialog())}${remove("model_setup_dialog")}`);
   }
   if (url.pathname === "/settings/workspaces/force-delete" && request.method === "POST" && devSettingsEnabled()) {
     const result = options.forceDeleteAllWorkspaces

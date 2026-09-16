@@ -58,3 +58,10 @@ export async function closeWorkspaceAgentConversation(workspaceId: string, conve
   await unloadWorkspaceAgentRuntime(workspaceId, conversationId);
   await agentDelegation?.closingConversation(workspaceId, conversationId);
 }
+
+/** Update live composer controls without replacing drafts or existing model selections. */
+export async function refreshConfiguredAgentRuntimes(): Promise<void> {
+  await Promise.all([...runtimes.values()].map(async (pending) => {
+    await (await pending).refreshModelConfiguration();
+  }));
+}

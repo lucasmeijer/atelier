@@ -1,4 +1,7 @@
+import { renderModelSetupDialog } from "./settings/models.ts";
 import {
+  hasAvailableConfiguredAgentModel,
+  refreshConfiguredAgentRuntimes,
   prepareNewWorkspaceAgentParameters,
   renderLaunchComposer,
   renderLaunchComposerSettings,
@@ -265,12 +268,13 @@ export function createWebApp(deps: WebAppDeps): WebApp {
 
   const layout = createPageLayout({ devReload: deps.devReload, workspaceModules });
 
-  async function launchComposerSettingsFrame(selectedModel?: string): Promise<string> {
+  async function launchComposerSettingsFrame(selectedModel?: string, selectedThinkingLevel?: string): Promise<string> {
     return await renderLaunchComposerSettings({
       frameId: launchComposerSettingsFrameId,
       formId: launchComposerFormId,
       url: "/launch-composer/settings",
       selectedModel,
+      selectedThinkingLevel,
     });
   }
 
@@ -762,6 +766,7 @@ export function createWebApp(deps: WebAppDeps): WebApp {
   }
 
   async function createAgentWorkspaceFromForm(request: Request, options: { project?: ProjectSummary } = {}): Promise<Response> {
+    if (!await hasAvailableConfiguredAgentModel()) return turboStreamResponse(turboUpdateStream("settings_modal_host", await renderModelSetupDialog()));
     const form = await request.formData();
     const attachmentDraft = String(form.get("attachmentDraft") ?? "");
     if (!attachmentDraft) throw invalidArguments("attachmentDraft is required");
@@ -1140,6 +1145,7 @@ export function createWebApp(deps: WebAppDeps): WebApp {
   }
 
   async function renderModelPickerUpdates(request: Request): Promise<string> {
+    await refreshConfiguredAgentRuntimes();
     const invalidations: string[] = [];
     for (const entry of registry.list().filter((workspace) => workspace.phase === "ready")) {
       const presentation = await fixedWorkspacePresentation(entry.id);
@@ -1147,7 +1153,7 @@ export function createWebApp(deps: WebAppDeps): WebApp {
         invalidations.push(workspacePreparationInvalidatedTurboStream(entry.id, conversation.id));
       }
     }
-    const html = invalidations.join("") + turboReplaceStream(launchComposerSettingsFrameId, await launchComposerSettingsFrame());
+    const html = invalidations.join("") + `<turbo-stream action="append" target="${launchComposerSettingsFrameId}"><template><span hidden data-controller="launch-model-refresh"></span></template></turbo-stream>`;
     return deliverShellMutation(request, html);
   }
 
@@ -1211,7 +1217,7 @@ export function createWebApp(deps: WebAppDeps): WebApp {
     }
     if (url.pathname === "/openapi.json" && request.method === "GET") return jsonResponse(atelierOpenApi(workspaceModuleCommands(), Object.assign({}, ...workspaceModules.map((module) => module.openApiPaths ?? {}))));
     if (url.pathname === "/launch-composer" && request.method === "GET") return response(await renderProjectlessLaunchComposerFrame());
-    if (url.pathname === "/launch-composer/settings" && request.method === "GET") return response(await launchComposerSettingsFrame(url.searchParams.get("model") ?? undefined));
+    if (url.pathname === "/launch-composer/settings" && request.method === "GET") return response(await launchComposerSettingsFrame(url.searchParams.get("model") ?? undefined, url.searchParams.get("level") ?? undefined));
     const projectSettingsMatch = url.pathname.match(/^\/projects\/([^/]+)\/settings$/);
     if (projectSettingsMatch && request.method === "GET") {
       const projectId = decodeURIComponent(projectSettingsMatch[1]!);

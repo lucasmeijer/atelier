@@ -2,7 +2,7 @@ import { afterEach, beforeEach, describe, expect, test } from "bun:test";
 import { mkdtemp, readFile, rm } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
-import { getConfiguredAgentModels, getCustomModelsJson, getLastProviderServiceTier, getModelThinkingLevel, setActiveAgentModel, setCustomModelsJson, setLastProviderServiceTier, setModelThinkingLevel, setPickerAgentModels } from "../../src/server/pi-config-models.ts";
+import { createPiModelRuntime, disconnectModelProvider, seedProviderFavoriteModels, getConfiguredAgentModels, getCustomModelsJson, getLastProviderServiceTier, getModelThinkingLevel, setActiveAgentModel, setCustomModelsJson, setLastProviderServiceTier, setModelThinkingLevel, setPickerAgentModels } from "../../src/server/pi-config-models.ts";
 
 let dataDir: string;
 
@@ -71,4 +71,33 @@ describe("Agent model settings transactions", () => {
     for (let index = 0; index < 8; index++) expect(await getModelThinkingLevel("openai-codex", `model-${index}`)).toBe("high");
     expect(JSON.parse(await getCustomModelsJson()).providers["openai-codex"].models).toEqual([{ id: "future-model" }]);
   });
+});
+
+
+test("connecting seeds defaults once, preserves other selections, and disconnect removes only that provider", async () => {
+  const runtime = await createPiModelRuntime();
+  await runtime.login("openai", "api_key", { prompt: async () => "test-only-key", notify: () => {} });
+  await seedProviderFavoriteModels("openai");
+  const first = await getConfiguredAgentModels();
+  expect(first.length).toBeGreaterThan(0);
+  expect(first[0]!.active).toBe(true);
+
+  const retained = { provider: "openai", id: "gpt-5.4", label: "My selection", active: true };
+  await setPickerAgentModels([retained]);
+  await seedProviderFavoriteModels("openai");
+  expect(await getConfiguredAgentModels()).toEqual([retained]);
+
+  await runtime.login("anthropic", "api_key", { prompt: async () => "test-only-key", notify: () => {} });
+  await seedProviderFavoriteModels("anthropic");
+  const both = await getConfiguredAgentModels();
+  expect(both.find((model) => model.active)?.provider).toBe("openai");
+  expect(both.some((model) => model.provider === "anthropic")).toBe(true);
+
+  await disconnectModelProvider("openai");
+  expect(runtime.getProviderAuthStatus("openai").configured).toBe(false);
+  expect((await getConfiguredAgentModels()).every((model) => model.provider === "anthropic")).toBe(true);
+  expect((await getConfiguredAgentModels())[0]!.active).toBe(true);
+
+  await disconnectModelProvider("anthropic");
+  expect(await getConfiguredAgentModels()).toEqual([]);
 });

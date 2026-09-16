@@ -1,3 +1,4 @@
+import { finishOnboarding } from "../onboarding/state.ts";
 import { actionItemHtml } from "@atelier/design-system/action-item";
 import { actionLinkHtml } from "@atelier/design-system/action-link";
 import { buttonHtml } from "@atelier/design-system/button";
@@ -15,7 +16,7 @@ import {
   getPopularModelRank,
   getPopularProviderRank,
   getProviderApiKeyExample,
-  hasAvailableConfiguredAgentModel,
+  seedProviderFavoriteModels,
   modelRefValue as modelKey,
   parseModelRef,
   loginPiOAuthProvider,
@@ -27,13 +28,7 @@ import {
 import { domId, escapeHtml } from "@atelier/shared";
 import { append, remove, replace, replaceTargets, response, stream, update, wantsStream } from "./http.ts";
 import { registerSettingsContribution } from "./registry.ts";
-import { providerIcon, type SettingsSurface } from "./views.ts";
-
-const providerDisconnectConfirmation = destructiveConfirmationHtml({
-  trigger: { type: "button", variant: "danger", content: { kind: "caption", caption: "Disconnect" } },
-  confirmCaption: "Disconnect",
-  cancelCaption: "Cancel",
-});
+import { providerIcon } from "./views.ts";
 
 type ProviderSummary = { provider: string; label: string; connected: boolean; methods: string[] };
 
@@ -43,23 +38,17 @@ async function providerSummaries(): Promise<ProviderSummary[]> {
     const status = runtime.getProviderAuthStatus(provider.id);
     return {
       provider: provider.id,
-      label: provider.name ?? provider.id,
+      label: provider.id === "openai-codex" ? "ChatGPT / Codex" : provider.id === "openai" ? "OpenAI API" : provider.name ?? provider.id,
       connected: status.configured,
       methods: [provider.auth.oauth && "oauth", provider.auth.apiKey?.login && "api_key"].filter((method): method is string => Boolean(method)),
     };
   }).sort((a, b) => (getPopularProviderRank(a.provider) ?? Number.MAX_SAFE_INTEGER) - (getPopularProviderRank(b.provider) ?? Number.MAX_SAFE_INTEGER) || a.label.localeCompare(b.label));
 }
 
-type ModelSetupSurface = SettingsSurface | "dialog";
-const modelSetupSurfaces: readonly ModelSetupSurface[] = ["settings", "onboarding", "dialog"];
+type ModelSetupSurface = "settings" | "onboarding" | "dialog" | "settings-dialog";
+const modelSetupSurfaces: readonly ModelSetupSurface[] = ["settings", "onboarding", "dialog", "settings-dialog"];
 
 type ModelCatalogueEntry = ConfiguredAgentModel & { configured: boolean };
-
-type ModelSetupData = { providers: ProviderSummary[]; working: boolean };
-
-async function modelSetupData(): Promise<ModelSetupData> {
-  return { providers: await providerSummaries(), working: await hasAvailableConfiguredAgentModel() };
-}
 
 async function providerCatalogue(provider: string): Promise<ModelCatalogueEntry[]> {
   const runtime = await createPiModelRuntime();
@@ -72,69 +61,97 @@ async function providerCatalogue(provider: string): Promise<ModelCatalogueEntry[
   for (const model of favorites) {
     if (!models.has(model.id)) models.set(model.id, { ...model, configured: true });
   }
-  return [...models.values()].sort((a, b) => Number(b.configured) - Number(a.configured)
-    || (getPopularModelRank(provider, a.id) ?? Number.MAX_SAFE_INTEGER) - (getPopularModelRank(provider, b.id) ?? Number.MAX_SAFE_INTEGER)
+  return [...models.values()].sort((a, b) => (getPopularModelRank(provider, a.id) ?? Number.MAX_SAFE_INTEGER) - (getPopularModelRank(provider, b.id) ?? Number.MAX_SAFE_INTEGER)
     || a.label.localeCompare(b.label));
 }
 
+function setupId(surface: ModelSetupSurface): string { return (surface === "dialog" || surface === "settings-dialog") ? "model_setup_dialog_content" : `model_setup_${surface}`; }
+function setupUrl(surface: ModelSetupSurface, provider?: string): string {
+  return `/settings/models/step?surface=${surface}${provider ? `&provider=${encodeURIComponent(provider)}` : ""}`;
+}
+function setupBack(surface: ModelSetupSurface): string {
+  if (surface === "settings-dialog") return buttonHtml({ type: "button", variant: "secondary", content: { kind: "caption", caption: "Back" }, attributesHtml: 'data-action="dialog#close"' });
+  return actionLinkHtml({ href: setupUrl(surface), variant: "secondary", content: { kind: "caption", caption: "Back" }, attributesHtml: `data-turbo-frame="${setupId(surface)}"` });
+}
+function setupSkip(surface: ModelSetupSurface): string {
+  return surface === "onboarding" ? `<form method="post" action="/onboarding/finish" data-turbo="true">${buttonHtml({ type: "submit", variant: "secondary", content: { kind: "caption", caption: "Set up later" } })}</form>` : "";
+}
+function setupFrame(surface: ModelSetupSurface, body: string): string {
+  return `<turbo-frame id="${setupId(surface)}" class="model-setup form-stack">${body}</turbo-frame>`;
+}
+function providerHeading(provider: Pick<ProviderSummary, "provider" | "label">): string {
+  return `<div class="model-setup-heading">${providerIcon(provider.provider, provider.label)}<span>${escapeHtml(provider.label)}</span></div>`;
+}
+/** Every connection state supplies content; this shell alone owns its placement. */
+function renderConnectionStep(provider: Pick<ProviderSummary, "provider" | "label">, surface: ModelSetupSurface, options: {
+  bodyHtml: string;
+  actionsHtml?: string;
+  attributesHtml?: string;
+}): string {
+  return setupFrame(surface, `<div id="model_connection_step" class="model-provider-connection"${options.attributesHtml ? ` ${options.attributesHtml}` : ""}>
+    ${providerHeading(provider)}
+    <div class="model-connection-content">
+      ${options.bodyHtml}
+    </div>
+    <div class="model-setup-actions">${options.actionsHtml ?? setupBack(surface)}</div>
+  </div>`);
+}
 function providerAuthAction(provider: ProviderSummary, method: string, surface: ModelSetupSurface): string {
-  return `/settings/providers/${encodeURIComponent(provider.provider)}/flow?method=${encodeURIComponent(method)}${surface === "onboarding" ? "&surface=onboarding" : ""}`;
+  return `/settings/providers/${encodeURIComponent(provider.provider)}/flow?method=${encodeURIComponent(method)}&surface=${surface}`;
 }
-
-function providerAuthenticationActions(provider: ProviderSummary, surface: ModelSetupSurface): string {
-  return provider.methods.map((method) => `<form method="post" action="${providerAuthAction(provider, method, surface)}" data-turbo="true">${buttonHtml({ type: "submit", variant: "secondary", content: { kind: "caption", caption: method === "oauth" ? "Sign in" : "Add API Key" } })}</form>`).join("");
+function renderConnectionMethods(provider: ProviderSummary, surface: ModelSetupSurface): string {
+  return renderConnectionStep(provider, surface, {
+    bodyHtml: `<div class="model-setup-choices">${provider.methods.map((method) => `<form method="post" action="${providerAuthAction(provider, method, surface)}" data-turbo="true">${buttonHtml({ type: "submit", variant: "secondary", content: { kind: "caption", caption: method === "oauth" ? "Use subscription" : "Use API key" } })}</form>`).join("")}</div>`,
+  });
 }
-
-function providerListFrameId(surface: ModelSetupSurface): string {
-  return domId("model_providers", surface);
-}
-
+function providerListFrameId(surface: ModelSetupSurface): string { return domId("model_providers", surface); }
 function groupModelProviders(providers: ProviderSummary[]) {
-  const popular = providers.filter((provider) => getPopularProviderRank(provider.provider) !== undefined).slice(0, 4);
+  const popular = providers.filter((provider) => getPopularProviderRank(provider.provider) !== undefined);
   return { popular, other: providers.filter((provider) => !popular.includes(provider)) };
 }
-
+function renderProvider(provider: ProviderSummary, surface: ModelSetupSurface): string {
+  return `<form method="post" action="${setupUrl(surface, provider.provider)}" data-turbo="true">${actionItemHtml({ kind: "single", element: { tag: "button", attributesHtml: 'type="submit"' }, label: { kind: "text", text: provider.label }, leadingHtml: `<span aria-hidden="true">${providerIcon(provider.provider, provider.label)}</span>` })}</form>`;
+}
 function renderProviderList(providers: ProviderSummary[], surface: ModelSetupSurface, query = ""): string {
   const normalized = query.trim().toLowerCase();
   const matching = providers.filter((provider) => `${provider.label} ${provider.provider}`.toLowerCase().includes(normalized));
-  return `<turbo-frame id="${providerListFrameId(surface)}"><div class="model-providers" tabindex="0" role="region" aria-label="Other model providers">${matching.map((provider) => renderProvider(provider, surface)).join("") || '<div class="managed-list__empty" role="status">No matching providers.</div>'}</div></turbo-frame>`;
+  return `<turbo-frame id="${providerListFrameId(surface)}"><div class="model-providers" tabindex="0" role="region" aria-label="Other providers">${matching.map((provider) => renderProvider(provider, surface)).join("") || '<div class="managed-list__empty" role="status">No matching providers.</div>'}</div></turbo-frame>`;
 }
-
-function providerFrameId(surface: ModelSetupSurface, provider: string): string {
-  return domId("model_provider_models", surface, provider);
+function providerFrameId(surface: ModelSetupSurface, provider: string): string { return domId("model_provider_models", surface, provider); }
+function renderFavorites(favorites: ConfiguredAgentModel[], surface: ModelSetupSurface, provider: string): string {
+  const rows = favorites.filter((model) => model.provider === provider).map((model) => `<div class="model-favorite-row"><span class="model-favorite-name">${escapeHtml(model.label)}</span>
+    <form method="post" action="/settings/models/remove" data-turbo="true"><input type="hidden" name="model" value="${escapeHtml(modelKey(model))}">
+      ${buttonHtml({ type: "submit", variant: "secondary", content: { kind: "icon-only", iconHtml: Icons.Close, label: `Remove ${model.label}` } })}
+    </form></div>`).join("");
+  return `<div class="${domId("model_favorites", surface, provider)} model-favorites"><p>Favorite models</p><div class="model-favorites-list">${rows || '<p class="managed-list__empty">No favorites yet.</p>'}</div></div>`;
 }
-
-function favoriteAction(model: ModelCatalogueEntry, surface: ModelSetupSurface): string {
-  return `<form class="${domId("model_favorite", surface, model.provider, model.id)}" method="post" action="/settings/models/${model.configured ? "remove" : "add"}" data-turbo="true">
+function catalogueModelRow(model: ModelCatalogueEntry, surface: ModelSetupSurface): string {
+  return `<form class="${domId("model_catalogue_row", surface, model.provider, model.id)}" method="post" action="/settings/models/add" data-turbo="true">
     <input type="hidden" name="model" value="${escapeHtml(modelKey(model))}">
-    ${buttonHtml({ type: "submit", variant: "secondary", content: { kind: "icon-only", iconHtml: model.configured ? Icons.StarFilled : Icons.Star, label: `${model.configured ? "Unfavorite" : "Favorite"} ${model.label}` }, attributesHtml: `aria-pressed="${model.configured}"` })}
+    ${actionItemHtml({ kind: "single", element: { tag: "button", attributesHtml: `type="submit"${model.configured ? " disabled" : ""} title="${escapeHtml(model.id)}"` }, label: { kind: "text", text: `${model.label}${model.configured ? " (Already added)" : ""}` } })}
   </form>`;
 }
-
 function renderProviderModels(catalogue: ModelCatalogueEntry[], surface: ModelSetupSurface, provider: ProviderSummary, query: string): string {
   const normalized = query.trim().toLowerCase();
   const models = catalogue.filter((model) => `${model.label} ${model.id}`.toLowerCase().includes(normalized));
-  const rows = models.map((model) => `<div class="model-favorite-row"><span class="model-favorite-name" title="${escapeHtml(model.id)}">${escapeHtml(model.label)}</span>${favoriteAction(model, surface)}</div>`).join("");
-  return `<turbo-frame class="model-provider-results" id="${providerFrameId(surface, provider.provider)}"><div class="model-provider-models" tabindex="0" role="region" aria-label="${escapeHtml(provider.label)} models">${rows || '<div class="managed-list__empty">No matching models.</div>'}</div></turbo-frame>`;
+  return `<turbo-frame class="model-provider-results" id="${providerFrameId(surface, provider.provider)}"><div class="model-provider-models" tabindex="0" role="region" aria-label="${escapeHtml(provider.label)} models">${models.map((model) => catalogueModelRow(model, surface)).join("") || '<div class="managed-list__empty">No matching models.</div>'}</div></turbo-frame>`;
 }
-
-function renderProvider(provider: ProviderSummary, surface: ModelSetupSurface, open = false): string {
-  const id = domId("model_provider", surface, provider.provider);
+function continueButton(provider: string, working: boolean): string {
+  return `<span class="${domId("model_setup_continue", provider)}">${buttonHtml({ type: "submit", variant: "primary", content: { kind: "caption", caption: "Continue" }, disabled: !working })}</span>`;
+}
+async function providerHasFavorite(provider: string): Promise<boolean> {
+  const available = new Set((await (await createPiModelRuntime()).getAvailable()).filter((model) => model.provider === provider).map((model) => model.id));
+  return (await getConfiguredAgentModels()).some((model) => model.provider === provider && available.has(model.id));
+}
+async function renderModelSelection(provider: ProviderSummary, surface: ModelSetupSurface, error = ""): Promise<string> {
   const frameId = providerFrameId(surface, provider.provider);
-  const catalogueUrl = `/settings/models/catalogue?surface=${surface}&provider=${encodeURIComponent(provider.provider)}`;
-  const connection = provider.connected
-    ? `<span class="model-provider-status"><span class="status-dot success" aria-hidden="true"></span> Connected</span><form method="post" action="/settings/providers/${encodeURIComponent(provider.provider)}/disconnect" data-turbo="true">${providerDisconnectConfirmation}</form>`
-    : `<div class="model-provider-auth-methods">${providerAuthenticationActions(provider, surface)}</div>`;
-  return `<section id="${id}" data-provider-accordion-target="provider">
-    <div class="model-provider-header"><div class="model-provider-name">${actionItemHtml({ kind: "single", element: { tag: "button", attributesHtml: `type="button" aria-expanded="${open}" aria-controls="${id}_body" data-action="provider-accordion#toggle"` }, label: { kind: "text", text: provider.label }, leadingHtml: Icons.Disclosure })}</div>${connection}</div>
-    <div class="model-provider-body" id="${id}_body"${open ? "" : " hidden"}>
-      ${provider.connected ? `<div class="managed-list" data-managed-list-server-filter="true"><form class="managed-list__filter" method="get" action="/settings/models/catalogue" data-controller="server-filter" data-action="input->server-filter#submit" data-turbo-frame="${frameId}">
-        <input type="hidden" name="surface" value="${surface}"><input type="hidden" name="provider" value="${escapeHtml(provider.provider)}">
-        <input class="text-field" type="search" name="q" placeholder="Filter models…" aria-label="Filter ${escapeHtml(provider.label)} models" autocomplete="off">
-        <button type="submit" hidden>Filter models</button>
-      </form><turbo-frame class="model-provider-results" id="${frameId}" src="${escapeHtml(catalogueUrl)}" loading="lazy"><div class="managed-list__empty" role="status">Loading models…</div></turbo-frame></div>` : '<p class="model-provider-connection-note">Connect this provider first.</p>'}
-    </div>
-  </section>`;
+  return setupFrame(surface, `${error ? `<p class="settings-error" role="alert">${escapeHtml(error)}</p>` : ""}
+    ${renderFavorites(await getConfiguredAgentModels(), surface, provider.provider)}
+    <div class="model-all-models"><p>All models</p><div class="managed-list" data-managed-list-server-filter="true"><form class="managed-list__filter" method="get" action="/settings/models/catalogue" data-controller="server-filter" data-action="input->server-filter#submit" data-turbo-frame="${frameId}">
+      <input type="hidden" name="surface" value="${surface}"><input type="hidden" name="provider" value="${escapeHtml(provider.provider)}">
+      <input class="text-field" type="search" name="q" placeholder="Find a model…" aria-label="Find a model" autocomplete="off"><button type="submit" hidden>Search</button>
+    </form>${renderProviderModels(await providerCatalogue(provider.provider), surface, provider, "")}</div></div>
+    <div class="model-setup-actions model-selection-actions">${surface === "dialog" ? setupBack(surface) : ""}${setupSkip(surface)}<form method="post" action="/settings/models/finish?surface=${surface}&provider=${encodeURIComponent(provider.provider)}" data-turbo="true">${continueButton(provider.provider, await providerHasFavorite(provider.provider))}</form></div>`);
 }
 
 const customModelsPlaceholder = `{
@@ -177,76 +194,74 @@ function renderCustomModelsSettings(view: CustomModelsView): string {
   </details>`;
 }
 
-function renderModelSetupData(data: ModelSetupData, surface: ModelSetupSurface, customModels?: CustomModelsView): string {
-  const working = data.working;
-  const { popular, other } = groupModelProviders(data.providers);
-  const id = surface === "dialog" ? "model_setup_dialog_content" : `model_setup_${surface}`;
-  return `<div class="model-setup form-stack" id="${id}">
-    ${modelSetupWorkingState(working)}
-    <div class="model-provider-groups" data-controller="provider-accordion">
-      <div class="model-popular-providers">${popular.map((provider, index) => renderProvider(provider, surface, index === 0 && provider.connected)).join("")}</div>
-      <details>
-        ${actionItemHtml({ kind: "single", element: { tag: "summary" }, label: { kind: "text", text: "Other providers" }, leadingHtml: Icons.Disclosure })}
-        <div class="model-other-providers-body">
-          <form method="get" action="/settings/models/providers" data-controller="server-filter" data-action="input->server-filter#submit" data-turbo-frame="${providerListFrameId(surface)}">
-            <input type="hidden" name="surface" value="${surface}">
-            <input class="text-field" type="search" name="q" placeholder="Filter providers…" aria-label="Filter other providers" autocomplete="off">
-            <button type="submit" hidden>Filter providers</button>
-          </form>
-          ${renderProviderList(other, surface)}
-        </div>
-      </details>
-    </div>
-    ${surface === "settings" && customModels ? renderCustomModelsSettings(customModels) : ""}
+function renderProviderPicker(providers: ProviderSummary[], surface: ModelSetupSurface, customModels?: CustomModelsView): string {
+  if (surface !== "onboarding") {
+    const connected = providers.filter((provider) => provider.connected);
+    return setupFrame(surface, `<p>Connected providers</p><div class="model-popular-providers">${connected.map((provider) => renderProvider(provider, surface)).join("") || '<p class="model-empty-providers">No connected providers.</p>'}</div>
+      <p>Connect more providers</p>
+      ${renderProviderChoices(providers.filter((provider) => !provider.connected), surface)}
+      ${customModels ? renderCustomModelsSettings(customModels) : ""}`);
+  }
+  return setupFrame(surface, `<p>Bring your own subscription or API key</p>${renderProviderChoices(providers, surface)}${setupSkip(surface)}`);
+}
+function renderProviderChoices(providers: ProviderSummary[], surface: ModelSetupSurface): string {
+  const { popular, other } = groupModelProviders(providers);
+  return `<div class="model-provider-groups"><div class="model-popular-providers">${popular.map((provider) => renderProvider(provider, surface)).join("")}</div>
+    <details>${actionItemHtml({ kind: "single", element: { tag: "summary" }, label: { kind: "text", text: "Other providers" }, leadingHtml: Icons.Disclosure })}
+      <div class="model-other-providers-body"><form method="get" action="/settings/models/providers" data-controller="server-filter" data-action="input->server-filter#submit" data-turbo-frame="${providerListFrameId(surface)}">
+        <input type="hidden" name="surface" value="${surface}"><input class="text-field" type="search" name="q" placeholder="Find a provider…" aria-label="Find a provider" autocomplete="off"><button type="submit" hidden>Search</button>
+      </form>${renderProviderList(other, surface)}</div>
+    </details>
   </div>`;
 }
 
-export async function renderModelSetup(surface: ModelSetupSurface = "settings", customModelsView?: Omit<CustomModelsView, "source">): Promise<string> {
+async function renderModelSetup(surface: ModelSetupSurface = "settings", customModelsView?: Omit<CustomModelsView, "source">): Promise<string> {
   const customModels = surface === "settings" ? { source: await getCustomModelsJson(), ...customModelsView } : undefined;
-  return renderModelSetupData(await modelSetupData(), surface, customModels);
+  return renderProviderPicker(await providerSummaries(), surface, customModels);
 }
-
-export async function renderModelSetupDialog(): Promise<string> {
-  const data = await modelSetupData();
+function modelSetupDialog(body: string, surface: ModelSetupSurface = "dialog"): string {
+  return dialogHtml({ element: { id: surface === "onboarding" ? "onboarding_dialog" : "model_setup_dialog", attributesHtml: "data-dialog-auto-show" }, iconHtml: Icons.Settings, titleCaption: surface === "onboarding" ? "Set up Atelier" : "Models", bodyHtml: body, omitCancelButton: surface === "onboarding" });
+}
+async function modelSelectionDialog(provider: ProviderSummary, surface: ModelSetupSurface, error = ""): Promise<string> {
+  const forgetCaption = `Forget ${provider.label.replace(" / ", "/")} credentials`;
+  const disconnect = surface === "settings-dialog" ? `<form method="post" action="/settings/providers/${encodeURIComponent(provider.provider)}/disconnect?surface=${surface}" data-turbo="true">${destructiveConfirmationHtml({
+    trigger: { type: "button", variant: "secondary", content: { kind: "icon-only", iconHtml: Icons.Trash, label: forgetCaption } },
+    confirmCaption: forgetCaption,
+    cancelCaption: "Cancel",
+  })}</form>` : "";
   return dialogHtml({
-    element: { id: "model_setup_dialog", attributesHtml: "data-dialog-auto-show" },
-    iconHtml: Icons.Settings,
-    titleCaption: "Configure models",
-    bodyHtml: renderModelSetupData(data, "dialog"),
-    footerHtml: `<form method="dialog">${modelSetupDialogButton(data.working)}</form>`,
+    element: { id: surface === "onboarding" ? "onboarding_dialog" : "model_setup_dialog", attributesHtml: "data-dialog-auto-show" },
+    iconHtml: providerIcon(provider.provider, provider.label),
+    titleCaption: `${provider.label} Models`,
+    headerActionsHtml: disconnect,
+    bodyHtml: await renderModelSelection(provider, surface, error),
+    omitCancelButton: surface === "onboarding",
   });
 }
-
+export async function renderModelSetupDialog(surface: "dialog" | "settings-dialog" | "onboarding" = "dialog"): Promise<string> {
+  const providers = await providerSummaries();
+  const connected = providers.filter((provider) => provider.connected);
+  if (surface === "onboarding" && connected.length) {
+    return modelSelectionDialog(connected[0]!, surface);
+  }
+  return modelSetupDialog(renderProviderPicker(providers, surface), surface);
+}
+async function refreshConnectedProviders(): Promise<string> {
+  return replace(setupId("settings"), await renderModelSetup("settings"));
+}
 async function renderModelSetupSettings(): Promise<string> {
   return `<section class="settings-sec settings-sec-models" id="settings-sec-models">${await renderModelSetup("settings")}</section>`;
 }
-
 registerSettingsContribution({ id: "models", label: "Models", order: 40, render: renderModelSetupSettings });
-
-function apiKeyModal(id: string, label: string, surface: SettingsSurface, error = ""): string {
+function renderApiKeyConnectionStep(id: string, label: string, surface: ModelSetupSurface, error = ""): string {
   const inputId = domId("provider_api_key", id);
   const formId = domId("provider_api_key_form", id);
-  const action = `/settings/providers/${encodeURIComponent(id)}/connect${surface === "onboarding" ? "?surface=onboarding" : ""}`;
-  const cancelButton = buttonHtml({ type: "submit", variant: "secondary", content: { kind: "caption", caption: "Cancel" } });
-  const connectButton = buttonHtml({
-    type: "submit",
-    variant: "primary",
-    content: { kind: "caption", caption: "Connect" },
-    attributesHtml: `form="${formId}"`,
-  });
-  return dialogHtml({
-    element: {
-      id: "settings_flow_dialog",
-      attributesHtml: "data-dialog-auto-show",
-    },
-    iconHtml: providerIcon(id, label),
-    titleCaption: `Connect ${label}`,
-    bodyHtml: `<form id="${formId}" class="form-stack" method="post" action="${action}" data-turbo="true">
-      ${error ? `<p class="settings-error">${escapeHtml(error)}</p>` : ""}
-      <label for="${inputId}">API key</label>
-      <input id="${inputId}" class="settings-input text-field" type="password" data-1p-ignore name="secret" placeholder="${escapeHtml(getProviderApiKeyExample(id) ?? "API key")}" autocomplete="off" required autofocus>
-    </form>`,
-    footerHtml: `<form method="dialog">${cancelButton}</form>${connectButton}`,
+  return renderConnectionStep({ provider: id, label }, surface, {
+    bodyHtml: `${error ? `<p class="settings-error" role="alert">${escapeHtml(error)}</p>` : ""}
+      <form id="${formId}" class="form-stack" method="post" action="/settings/providers/${encodeURIComponent(id)}/connect?surface=${surface}" data-turbo="true">
+        <input id="${inputId}" class="text-field" type="password" aria-label="API key" data-1p-ignore name="secret" placeholder="${escapeHtml(getProviderApiKeyExample(id) ?? "API key")}" autocomplete="off" required autofocus>
+      </form>`,
+    actionsHtml: setupBack(surface) + buttonHtml({ type: "submit", variant: "primary", content: { kind: "caption", caption: "Connect" }, attributesHtml: `form="${formId}"` }),
   });
 }
 
@@ -255,6 +270,8 @@ type PendingOAuthFlow = {
   id: string;
   provider: string;
   label: string;
+  surface: ModelSetupSurface;
+  revision: number;
   status: "pending" | "complete" | "error";
   abort: AbortController;
   authUrl?: string;
@@ -269,18 +286,19 @@ type PendingOAuthFlow = {
 
 const pendingOAuthFlows = new Map<string, PendingOAuthFlow>();
 
-async function startOAuthFlow(provider: string, label: string): Promise<PendingOAuthFlow> {
-  const flow: PendingOAuthFlow = { id: crypto.randomUUID(), provider, label, status: "pending", abort: new AbortController() };
+async function startOAuthFlow(provider: string, label: string, surface: ModelSetupSurface, refreshComposers: () => Promise<string>): Promise<PendingOAuthFlow> {
+  const flow: PendingOAuthFlow = { id: crypto.randomUUID(), provider, label, surface, revision: 0, status: "pending", abort: new AbortController() };
   pendingOAuthFlows.set(flow.id, flow);
   void loginPiOAuthProvider(provider, {
     signal: flow.abort.signal,
     notify: (event) => {
-      if (event.type === "auth_url") { flow.authUrl = event.url; flow.instructions = event.instructions; }
-      else if (event.type === "device_code") { flow.userCode = event.userCode; flow.verificationUri = event.verificationUri; flow.intervalSeconds = event.intervalSeconds; }
-      else if (event.type === "progress") { /* progress is reflected by polling status rows */ }
+      if (event.type === "auth_url") { flow.revision++; flow.authUrl = event.url; flow.instructions = event.instructions; }
+      else if (event.type === "device_code") { flow.revision++; flow.userCode = event.userCode; flow.verificationUri = event.verificationUri; flow.intervalSeconds = event.intervalSeconds; }
     },
     prompt: (prompt) => handleOAuthPrompt(flow, prompt),
-  }).then(() => {
+  }).then(async () => {
+    await seedProviderFavoriteModels(provider);
+    await refreshComposers();
     flow.status = "complete";
     flow.prompt = undefined;
   }).catch((error) => {
@@ -322,6 +340,7 @@ function handleOAuthPrompt(flow: PendingOAuthFlow, prompt: PiAuthPrompt): Promis
       cleanup();
       reject(error);
     };
+    flow.revision++;
     flow.prompt = { input: prompt, resolve: finish, reject: fail };
   });
 }
@@ -342,7 +361,7 @@ function oauthAuthenticationAction(flow: PendingOAuthFlow, url: string, hidden =
   return actionLinkHtml({
     href: url,
     variant: "primary",
-    content: { kind: "caption", caption: `Open ${authenticationName} Authentication page so I can paste the code there` },
+    content: { kind: "caption", caption: `Open ${authenticationName} sign-in page` },
     attributesHtml: `target="_blank" rel="noreferrer"${hidden ? ' data-oauth-device-auth hidden data-action="oauth-flow#showWaitingStatus"' : ""}`,
   });
 }
@@ -350,14 +369,14 @@ function oauthAuthenticationAction(flow: PendingOAuthFlow, url: string, hidden =
 function oauthDeviceCodeBody(flow: PendingOAuthFlow, complete = false): string {
   const copyButton = copyButtonHtml({
     label: `Copy ${flow.userCode ?? ""} into clipboard`,
-    caption: `Copy ${flow.userCode ?? ""} into clipboard`,
+    caption: `Copy ${flow.userCode ?? ""}`,
     copyText: flow.userCode ?? "",
-    attributesHtml: 'data-oauth-copy-button="true" data-action="oauth-flow#showDeviceAuth"',
+    attributesHtml: 'data-action="oauth-flow#showDeviceAuth"',
   });
   const confirmationName = flow.provider === "openai-codex" ? "OpenAI-Codex" : flow.label;
   const status = complete
     ? `<p class="settings-oauth-waiting-status" role="status"><span class="settings-oauth-complete-marker" aria-hidden="true">✓</span><span>${escapeHtml(flow.label)} connected</span></p>`
-    : `<p class="settings-oauth-waiting-status" data-oauth-waiting-status hidden><span class="status-spinner" aria-hidden="true"></span><span>This step will complete when ${escapeHtml(confirmationName)} confirms they have received the code</span></p>`;
+    : `<p class="settings-oauth-waiting-status" data-oauth-waiting-status hidden><span class="status-spinner" aria-hidden="true"></span><span>Waiting for ${escapeHtml(confirmationName)}…</span></p>`;
   return `<div class="settings-oauth-card">
     ${copyButton}
     ${oauthAuthenticationAction(flow, flow.verificationUri ?? "#", !complete)}
@@ -380,7 +399,7 @@ function oauthBrowserRedirectBody(flow: PendingOAuthFlow): string {
   const prompt = flow.prompt;
   const promptForm = oauthPromptForm(flow);
   return `<div class="settings-oauth-card">
-    <div class="settings-oauth-callout"><b>Before you start</b>${escapeHtml(flow.label)} assumes you will sign in on your local machine, but that’s not how Atelier works.<br><br>${escapeHtml(flow.label)} will redirect you to a localhost URL after you sign in. That URL will fail to load. You need to copy the long URL from the address bar, and paste it here.</div>
+    <p>After signing in, copy the localhost URL here—even if that page won’t load.</p>
     ${oauthAuthenticationAction(flow, flow.authUrl ?? "#")}
     ${promptForm}
     ${!prompt && flow.redirectSubmitted ? oauthStatus("pending", `Waiting for ${flow.label}`, "Confirming the pasted redirect URL.") : ""}
@@ -393,10 +412,10 @@ function oauthCompleteBody(flow: PendingOAuthFlow): string {
   return `<div class="settings-oauth-card">${oauthStatus("done", `${flow.label} connected`, detail)}</div>`;
 }
 
-function oauthFlowModal(flow: PendingOAuthFlow): string {
+function renderOAuthConnectionStep(flow: PendingOAuthFlow): string {
   const pollMs = Math.max(1500, Math.min(15000, (flow.intervalSeconds ?? 3) * 1000));
   const doneButton = buttonHtml({ type: "submit", variant: "primary", content: { kind: "caption", caption: "Done" } });
-  const cancelButton = buttonHtml({ type: "submit", variant: "secondary", content: { kind: "caption", caption: "Cancel" } });
+  const backButton = buttonHtml({ type: "submit", variant: "secondary", content: { kind: "caption", caption: "Back" } });
   const submitUrlButton = buttonHtml({
     type: "submit",
     variant: "primary",
@@ -417,63 +436,55 @@ function oauthFlowModal(flow: PendingOAuthFlow): string {
   const action = flow.status === "complete"
     ? `<form method="post" action="/settings/providers/${encodeURIComponent(flow.provider)}/oauth/${encodeURIComponent(flow.id)}/finish" data-turbo="true">${doneButton}</form>`
     : flow.status === "pending"
-      ? `<form method="post" action="/settings/providers/${encodeURIComponent(flow.provider)}/oauth/${encodeURIComponent(flow.id)}/cancel" data-turbo="true">${cancelButton}</form>${flow.prompt ? submitUrlButton : ""}`
-      : `<form method="post" action="/settings/providers/${encodeURIComponent(flow.provider)}/oauth/${encodeURIComponent(flow.id)}/finish" data-turbo="true">${buttonHtml({ type: "submit", variant: "secondary", content: { kind: "caption", caption: "Close" } })}</form>`;
-  return dialogHtml({
-    element: {
-      id: "settings_flow_dialog",
-      attributesHtml: `data-controller="oauth-flow" data-dialog-auto-show data-oauth-flow-status-url-value="/settings/providers/${encodeURIComponent(flow.provider)}/oauth/${encodeURIComponent(flow.id)}/status" data-oauth-flow-active-value="${flow.status === "pending" && !(flow.prompt && !flow.authUrl && !flow.verificationUri) ? "true" : "false"}" data-oauth-flow-poll-ms-value="${pollMs}"`,
-    },
-    iconHtml: providerIcon(flow.provider, flow.label),
-    titleCaption: `Sign in with ${flow.label}`,
+      ? `<form method="post" action="/settings/providers/${encodeURIComponent(flow.provider)}/oauth/${encodeURIComponent(flow.id)}/cancel" data-turbo="true">${backButton}</form>${flow.prompt ? submitUrlButton : ""}`
+      : `<form method="post" action="/settings/providers/${encodeURIComponent(flow.provider)}/oauth/${encodeURIComponent(flow.id)}/finish" data-turbo="true">${backButton}</form>`;
+  return renderConnectionStep(flow, flow.surface, {
     bodyHtml: body,
-    footerHtml: action,
-    omitCancelButton: true,
+    actionsHtml: action,
+    attributesHtml: `data-controller="oauth-flow" data-oauth-flow-status-url-value="/settings/providers/${encodeURIComponent(flow.provider)}/oauth/${encodeURIComponent(flow.id)}/status?revision=${flow.revision}" data-oauth-flow-active-value="${flow.status === "pending" && !(flow.prompt && !flow.authUrl && !flow.verificationUri)}" data-oauth-flow-poll-ms-value="${pollMs}"`,
   });
 }
-
-function modelSetupWorkingState(working: boolean): string {
-  return `<span class="model-setup-working-state" data-working="${working}" hidden></span>`;
-}
-
-function modelSetupDialogButton(working: boolean): string {
-  return buttonHtml({
-    type: "submit",
-    variant: "secondary",
-    content: { kind: "caption", caption: working ? "Done" : "No favorite model available" },
-    attributesHtml: "data-model-setup-dialog-button",
-  });
-}
-
-async function refreshWorkingState(): Promise<string> {
-  const working = await hasAvailableConfiguredAgentModel();
-  return `${replaceTargets(".model-setup-working-state", modelSetupWorkingState(working))}${replaceTargets("[data-model-setup-dialog-button]", modelSetupDialogButton(working))}`;
-}
-
-async function refreshProviderState(providerId: string, renderPickerUpdates: () => Promise<string>): Promise<string> {
-  const provider = (await providerSummaries()).find((candidate) => candidate.provider === providerId);
-  if (!provider) throw new Error(`Unknown provider: ${providerId}`);
-  return modelSetupSurfaces.map((surface) => replace(domId("model_provider", surface, providerId), renderProvider(provider, surface, provider.connected))).join("") + await refreshWorkingState() + await renderPickerUpdates();
-}
-
-function providerErrorModal(provider: string, label: string, title: string, message: string): string {
-  return dialogHtml({
-    element: { id: "settings_flow_dialog", attributesHtml: "data-dialog-auto-show" },
-    iconHtml: providerIcon(provider, label), titleCaption: title,
-    bodyHtml: `<p class="settings-error" role="alert">${escapeHtml(message)}</p>`,
-  });
+async function connectedStep(provider: string, surface: ModelSetupSurface, renderPickerUpdates: () => Promise<string>, error = ""): Promise<Response> {
+  const summary = (await providerSummaries()).find((candidate) => candidate.provider === provider)!;
+  return stream(replace(surface === "onboarding" ? "onboarding_dialog" : "model_setup_dialog", await modelSelectionDialog(summary, surface, error)) + await refreshConnectedProviders() + await renderPickerUpdates());
 }
 
 export async function handleModelSettingsRequest(request: Request, url: URL, renderPickerUpdates: () => Promise<string>): Promise<Response | undefined> {
+  const surface = modelSetupSurfaces.find((candidate) => candidate === (url.searchParams.get("surface") ?? "settings"));
+  if (!surface) return response("Unknown model setup surface", { status: 400 });
+  if (url.pathname === "/settings/models/step" && (request.method === "GET" || request.method === "POST")) {
+    const providerId = url.searchParams.get("provider");
+    if (!providerId) {
+      if (surface === "dialog" || surface === "settings-dialog") return stream(replace("model_setup_dialog", modelSetupDialog(await renderModelSetup(surface))));
+      return response(await renderModelSetup(surface));
+    }
+    const provider = (await providerSummaries()).find((candidate) => candidate.provider === providerId);
+    if (!provider) return response("Unknown provider", { status: 400 });
+    const targetSurface = surface === "settings" ? "settings-dialog" : surface;
+    if (provider.connected) {
+      const html = await modelSelectionDialog(provider, targetSurface);
+      return stream(surface === "settings" ? remove("model_setup_dialog") + append("settings_modal_host", html)
+        : replace(surface === "onboarding" ? "onboarding_dialog" : "model_setup_dialog", html));
+    }
+    const step = provider.methods.length === 1
+        ? provider.methods[0] === "oauth" ? renderOAuthConnectionStep(await startOAuthFlow(provider.provider, provider.label, targetSurface, renderPickerUpdates)) : renderApiKeyConnectionStep(provider.provider, provider.label, targetSurface)
+        : renderConnectionMethods(provider, targetSurface);
+    return stream(surface === "settings"
+      ? remove("model_setup_dialog") + append("settings_modal_host", modelSetupDialog(step))
+      : replace(setupId(surface), step));
+  }
+  if (url.pathname === "/settings/models/finish" && request.method === "POST") {
+    const provider = url.searchParams.get("provider") ?? "";
+    if (!await providerHasFavorite(provider)) return response("Choose at least one available model", { status: 422 });
+    if (surface === "onboarding") return await finishOnboarding();
+    return stream(remove("model_setup_dialog") + await refreshConnectedProviders() + await renderPickerUpdates());
+  }
   if (url.pathname === "/settings/models/providers" && request.method === "GET") {
-    const surface = modelSetupSurfaces.find((candidate) => candidate === (url.searchParams.get("surface") ?? "settings"));
-    if (!surface) return response("Unknown model setup surface", { status: 400 });
-    return response(renderProviderList(groupModelProviders(await providerSummaries()).other, surface, url.searchParams.get("q") ?? ""));
+    const providers = await providerSummaries();
+    const choices = surface === "onboarding" ? providers : providers.filter((provider) => !provider.connected);
+    return response(renderProviderList(groupModelProviders(choices).other, surface, url.searchParams.get("q") ?? ""));
   }
   if (url.pathname === "/settings/models/catalogue" && request.method === "GET") {
-    const requestedSurface = url.searchParams.get("surface") ?? "settings";
-    const surface = modelSetupSurfaces.find((candidate) => candidate === requestedSurface);
-    if (!surface) return response("Unknown model catalogue surface", { status: 400 });
     const provider = (await providerSummaries()).find((candidate) => candidate.provider === url.searchParams.get("provider"));
     if (!provider) return response("Unknown provider", { status: 400 });
     const catalogue = provider.connected ? await providerCatalogue(provider.provider) : [];
@@ -495,8 +506,9 @@ export async function handleModelSettingsRequest(request: Request, url: URL, ren
     return stream(replace("model_setup_settings", await renderModelSetup("settings", { open: true, ...feedback })) + await renderPickerUpdates());
   }
   if (url.pathname === "/settings/models/dialog" && request.method === "GET") {
-    const html = await renderModelSetupDialog();
-    return wantsStream(request) ? stream(update("settings_modal_host", html)) : response(html);
+    const fromSettings = surface === "settings-dialog";
+    const html = await renderModelSetupDialog(fromSettings ? "settings-dialog" : "dialog");
+    return wantsStream(request) ? stream(fromSettings ? remove("model_setup_dialog") + append("settings_modal_host", html) : update("settings_modal_host", html)) : response(html);
   }
   if (url.pathname === "/settings/models/custom" && request.method === "POST") {
     const form = await request.formData();
@@ -516,38 +528,27 @@ export async function handleModelSettingsRequest(request: Request, url: URL, ren
   if (match && request.method === "POST") {
     const provider = decodeURIComponent(match[1]!);
     const method = url.searchParams.get("method") ?? "";
-    const surface = url.searchParams.get("surface") === "onboarding" ? "onboarding" : "settings";
     const summary = (await providerSummaries()).find((candidate) => candidate.provider === provider);
     if (!summary) return response("Unknown provider", { status: 400 });
-    const label = summary.label;
+    if (summary.connected) return connectedStep(provider, surface, renderPickerUpdates);
     if (!summary.methods.includes(method)) return response("Unsupported authentication method", { status: 400 });
-    if (method === "oauth") {
-      try {
-        const flow = await startOAuthFlow(provider, label);
-        return stream(append(surface === "onboarding" ? "onboarding_modal_host" : "settings_modal_host", oauthFlowModal(flow)));
-      } catch (error) {
-        return stream(append(surface === "onboarding" ? "onboarding_modal_host" : "settings_modal_host", providerErrorModal(provider, label, `Could not connect ${label}`, error instanceof Error ? error.message : String(error))));
-      }
-    }
-    return stream(append(surface === "onboarding" ? "onboarding_modal_host" : "settings_modal_host", apiKeyModal(provider, label, surface)));
+    return stream(replace(setupId(surface), method === "oauth" ? renderOAuthConnectionStep(await startOAuthFlow(provider, summary.label, surface, renderPickerUpdates)) : renderApiKeyConnectionStep(provider, summary.label, surface)));
   }
   match = url.pathname.match(/^\/settings\/providers\/([^/]+)\/connect$/);
   if (match && request.method === "POST") {
     const provider = decodeURIComponent(match[1]!);
-    const surface = url.searchParams.get("surface") === "onboarding" ? "onboarding" : "settings";
-    const runtime = await createPiModelRuntime();
-    const label = runtime.getProvider(provider)?.name ?? provider;
+    const summary = (await providerSummaries()).find((candidate) => candidate.provider === provider);
+    if (!summary || !summary.methods.includes("api_key")) return response("Unknown API key provider", { status: 400 });
+    if (summary.connected) return connectedStep(provider, surface, renderPickerUpdates);
     const form = await request.formData();
-    const secret = String(form.get("secret") ?? "");
     try {
-      await connectModelProviderApiKey(provider, secret);
+      await connectModelProviderApiKey(provider, String(form.get("secret") ?? ""));
+      await seedProviderFavoriteModels(provider);
     } catch (error) {
-      if (error instanceof ProviderCatalogueRefreshError) {
-        return stream(`${await refreshProviderState(provider, renderPickerUpdates)}${replace("settings_flow_dialog", providerErrorModal(provider, label, `${label} connected`, error.message))}`);
-      }
-      return stream(replace("settings_flow_dialog", apiKeyModal(provider, label, surface, error instanceof Error ? error.message : String(error))));
+      if (error instanceof ProviderCatalogueRefreshError) return connectedStep(provider, surface, renderPickerUpdates, error.message);
+      return stream(replace(setupId(surface), renderApiKeyConnectionStep(provider, summary.label, surface, error instanceof Error ? error.message : String(error))));
     }
-    return stream(`${await refreshProviderState(provider, renderPickerUpdates)}${remove("settings_flow_dialog")}`);
+    return connectedStep(provider, surface, renderPickerUpdates);
   }
   match = url.pathname.match(/^\/settings\/providers\/([^/]+)\/oauth\/([^/]+)\/(status|prompt|finish|cancel)$/);
   if (match && request.method === "POST") {
@@ -555,27 +556,31 @@ export async function handleModelSettingsRequest(request: Request, url: URL, ren
     const flowId = decodeURIComponent(match[2]!);
     const action = match[3]!;
     const flow = pendingOAuthFlows.get(flowId);
-    if (!flow || flow.provider !== provider) return stream(remove("settings_flow_dialog"));
+    if (!flow || flow.provider !== provider) return response("Sign-in session expired", { status: 410 });
     if (action === "prompt") {
       const form = await request.formData();
       flow.redirectSubmitted = true;
       flow.prompt?.resolve(String(form.get("value") ?? ""));
       flow.prompt = undefined;
       await waitForOAuthFlowReady(flow);
-      return stream(replace("settings_flow_dialog", oauthFlowModal(flow)));
+    }
+    if (flow.status === "complete") {
+      pendingOAuthFlows.delete(flowId);
+      return connectedStep(provider, flow.surface, renderPickerUpdates);
     }
     if (action === "cancel" || action === "finish") {
-      if (action === "cancel") flow.abort.abort();
+      flow.abort.abort();
       pendingOAuthFlows.delete(flowId);
-      return stream(`${await refreshProviderState(provider, renderPickerUpdates)}${remove("settings_flow_dialog")}`);
+      return stream((flow.surface === "settings-dialog" ? remove("model_setup_dialog") : replace(setupId(flow.surface), await renderModelSetup(flow.surface))) + (flow.status === "error" ? await refreshConnectedProviders() : "") + await renderPickerUpdates());
     }
-    return stream(replace("settings_flow_dialog", oauthFlowModal(flow)));
+    if (action === "status" && flow.status === "pending" && url.searchParams.get("revision") === String(flow.revision)) return stream("");
+    return stream(replace(setupId(flow.surface), renderOAuthConnectionStep(flow)));
   }
   match = url.pathname.match(/^\/settings\/providers\/([^/]+)\/disconnect$/);
   if (match && request.method === "POST") {
     const provider = decodeURIComponent(match[1]!);
     await disconnectModelProvider(provider);
-    return stream(await refreshProviderState(provider, renderPickerUpdates));
+    return stream(remove("model_setup_dialog") + await refreshConnectedProviders() + await renderPickerUpdates());
   }
   if (["/settings/models/add", "/settings/models/remove"].includes(url.pathname) && request.method === "POST") return await handleModelPickerAction(request, url.pathname, renderPickerUpdates);
   return undefined;
@@ -594,6 +599,9 @@ async function handleModelPickerAction(request: Request, pathname: string, rende
   if (favorite && index < 0) current.push({ provider: option.provider, id: option.id, label: option.label });
   if (!favorite && index >= 0) current.splice(index, 1);
   await setPickerAgentModels(current, current.find((candidate) => candidate.active));
-  const actions = modelSetupSurfaces.map((surface) => replaceTargets(`.${domId("model_favorite", surface, model.provider, model.id)}`, favoriteAction({ ...option, configured: favorite }, surface))).join("");
-  return stream(actions + await refreshWorkingState() + await renderPickerUpdates());
+  const actions = modelSetupSurfaces.map((surface) =>
+    replaceTargets(`.${domId("model_catalogue_row", surface, model.provider, model.id)}`, catalogueModelRow({ ...option, configured: favorite }, surface))
+    + replaceTargets(`.${domId("model_favorites", surface, model.provider)}`, renderFavorites(current, surface, model.provider)),
+  ).join("");
+  return stream(actions + replaceTargets(`.${domId("model_setup_continue", model.provider)}`, continueButton(model.provider, await providerHasFavorite(model.provider))) + await renderPickerUpdates());
 }

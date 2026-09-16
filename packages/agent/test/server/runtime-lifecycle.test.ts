@@ -1036,3 +1036,13 @@ test("rejected completion subscribers are reported at the session event boundary
     logged.mockRestore();
   }
 });
+
+test("Pi's unknown model placeholder is an unconfigured conversation, not a selected model", async () => {
+  const { session } = fakeSession(deferred());
+  session.model = { provider: "unknown", id: "unknown" };
+  const runtime = runtimeFor(session);
+  expect(runtime.currentModel()).toBeUndefined();
+  session.model = { provider: "openai", id: "gpt-5.4" };
+  expect(runtime.currentModel()).toEqual({ provider: "openai", id: "gpt-5.4" });
+  await runtime.dispose();
+});
