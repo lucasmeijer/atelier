@@ -43,6 +43,7 @@ const projectSecretSummarySchema = Type.Object({
   annotation: Type.String(),
   optional: Type.Boolean(),
   configured: Type.Boolean(),
+  valueRevision: Type.Optional(Type.String()),
   createdAt: Type.String(),
   updatedAt: Type.String(),
 }, { additionalProperties: false });

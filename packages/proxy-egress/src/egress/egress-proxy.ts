@@ -22,7 +22,8 @@ const workspaceMitmCaPath = "/run/atelier-mitm-ca.crt";
 const workspaceProxies = new Map<string, Promise<WorkspaceEgressProxy>>();
 type SecretContext = () => Promise<WorkspaceSecretContext>;
 type FetchUpstream = (url: string, init: RequestInit) => Promise<Response>;
-type ProxyContext = { secrets: SecretContext; fetch: FetchUpstream };
+type ConnectUpstream = (port: number, hostname: string) => net.Socket;
+type ProxyContext = { secrets: SecretContext; fetch: FetchUpstream; connect: ConnectUpstream };
 export type WorkspaceEgressProxy = { close(): Promise<void> };
 const mitmTargetServers = new Map<string, Promise<MitmTargetServer>>();
 
@@ -97,10 +98,10 @@ export async function ensureWorkspaceEgressProxy(workspaceId: string): Promise<v
 
 // The listener's closure supplies identity. Nothing in HTTP headers, CONNECT,
 // or the requested URL can select another workspace's secrets.
-export async function startWorkspaceEgressProxy({ socketPath, ca, getContext, upstreamFetch = fetch }: {
-  socketPath: string; ca: MitmCa; getContext: SecretContext; upstreamFetch?: FetchUpstream;
+export async function startWorkspaceEgressProxy({ socketPath, ca, getContext, upstreamFetch = fetch, upstreamConnect = (port, hostname) => net.connect(port, hostname) }: {
+  socketPath: string; ca: MitmCa; getContext: SecretContext; upstreamFetch?: FetchUpstream; upstreamConnect?: ConnectUpstream;
 }): Promise<WorkspaceEgressProxy> {
-  const context: ProxyContext = { secrets: getContext, fetch: upstreamFetch };
+  const context: ProxyContext = { secrets: getContext, fetch: upstreamFetch, connect: upstreamConnect };
   const connections = new Set<net.Socket>();
   const server = createServer((req, res) => void handleProxyHttp(context, req, res).catch((thrown) => {
     const error = thrown instanceof Error ? thrown : new Error(String(thrown));
@@ -128,7 +129,7 @@ export async function startWorkspaceEgressProxy({ socketPath, ca, getContext, up
 async function handleConnect(ca: MitmCa, context: ProxyContext, req: IncomingMessage, socket: Duplex, head: Buffer): Promise<void> {
   const { hostname, port } = parseConnectTarget(req.url || "");
   await assertDestinationAllowed(context, hostname, port, port === 443 ? "https" : "http");
-  if (!(await shouldMitmConnectTarget(context, hostname))) return tunnelConnect(hostname, port, socket, head);
+  if (!(await shouldMitmConnectTarget(context, hostname))) return tunnelConnect(context.connect, hostname, port, socket, head);
   if (port !== 443) throw new HttpRequestBlockedError("MITM CONNECT only allowed to port 443");
   const targetServer = await ensureMitmTargetServer(ca, hostname);
   socket.write("HTTP/1.1 200 Connection Established\r\n\r\n");
@@ -153,9 +154,9 @@ async function shouldMitmConnectTarget(context: ProxyContext, hostname: string):
   return secrets.secrets.some((secret) => secret.hosts.some((host) => matchHostname(hostname, host)));
 }
 
-async function tunnelConnect(hostname: string, port: number, socket: Duplex, head: Buffer): Promise<void> {
+async function tunnelConnect(connect: ConnectUpstream, hostname: string, port: number, socket: Duplex, head: Buffer): Promise<void> {
   await new Promise<void>((resolve, reject) => {
-    const upstream = net.connect(port, hostname);
+    const upstream = connect(port, hostname);
     const onError = (error: Error) => {
       socket.destroy();
       reject(error);

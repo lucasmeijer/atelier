@@ -29,7 +29,7 @@ export type {
 } from "./events.ts";
 
 export { createWorkspaceMetadataState, type WorkspaceMetadataState } from "./metadata-state.ts";
-export { createWorkspaceProvisioning, type WorkspaceProvisioning, type WorkspaceProvisionRun } from "./provisioning.ts";
+export { createWorkspaceProvisioning, type WorkspaceProvisioning, type WorkspaceProvisionRun, type WorkspaceProvisionStep } from "./provisioning.ts";
 import type { WorkspaceProvisionRun } from "./provisioning.ts";
 
 export {

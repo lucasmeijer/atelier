@@ -11,7 +11,7 @@ export class DialogController extends Controller<HTMLDialogElement> {
     this.element.addEventListener("close", this.restoreFocus);
     if (this.element.hasAttribute("data-dialog-auto-show") && !this.element.open) {
       this.element.showModal();
-      requestAnimationFrame(() => this.element.querySelector<HTMLElement>("[autofocus], button, input, select, textarea")?.focus());
+      requestAnimationFrame(() => (this.element.querySelector<HTMLElement>("[autofocus]") ?? this.element.querySelector<HTMLElement>("button, input, select, textarea"))?.focus());
     }
   }
 

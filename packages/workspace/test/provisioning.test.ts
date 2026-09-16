@@ -21,7 +21,7 @@ describe("workspace provisioning execution", () => {
     });
     await tick();
     expect(provisioning.snapshot("one")?.steps).toEqual([
-      { id: "image", label: "Use configured image", status: "done" },
+      { id: "image", label: "Use configured image", status: "done", durationMs: expect.any(Number) },
       { id: "preload", label: "Save preload images", status: "running", detail: "Saving", output: "log" },
     ]);
     pending.resolve();
@@ -29,6 +29,24 @@ describe("workspace provisioning execution", () => {
     expect(provisioning.snapshot("one")).toMatchObject({ status: "done", steps: [
       { id: "image", status: "done" }, { id: "preload", status: "done", output: "saved" }, { id: "container", status: "done" },
     ] });
+  });
+
+  test("reports actual phase and total timings on success and failure", async () => {
+    const provisioning = createWorkspaceProvisioning();
+    await provisioning.run("success", async (run) => {
+      await run.step("work", "Work", () => new Promise((resolve) => setTimeout(resolve, 15)));
+    });
+    const success = provisioning.snapshot("success")!;
+    expect(success.steps[0]!.durationMs).toBeGreaterThanOrEqual(10);
+    expect(success.totalMs!).toBeGreaterThanOrEqual(success.steps[0]!.durationMs!);
+    await expect(provisioning.run("failure", async (run) => {
+      await run.step("work", "Work", () => { throw new Error("failed"); });
+    })).rejects.toThrow("failed");
+    const failure = provisioning.snapshot("failure")!;
+    expect(failure.steps[0]).toMatchObject({ status: "failed", durationMs: expect.any(Number) });
+    const elapsed = failure.totalMs;
+    await tick();
+    expect(provisioning.snapshot("failure")!.totalMs).toBe(elapsed);
   });
 
   test("retry stays in the same row, clears stale output, and cannot be submitted twice", async () => {
@@ -48,7 +66,7 @@ describe("workspace provisioning execution", () => {
     expect(() => provisioning.resume("one", "retry")).toThrow("not waiting");
     await finished;
     expect(attempts).toBe(2);
-    expect(provisioning.snapshot("one")?.steps).toEqual([{ id: "prepare", label: "Prepare", status: "done" }]);
+    expect(provisioning.snapshot("one")?.steps).toEqual([{ id: "prepare", label: "Prepare", status: "done", durationMs: expect.any(Number) }]);
   });
 
   test("continuing retains the warning and permits subsequent work, but not unsupported retry", async () => {

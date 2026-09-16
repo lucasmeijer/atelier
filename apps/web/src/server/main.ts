@@ -1,3 +1,5 @@
+import { configureOnboardingTools } from "@atelier/agent/server";
+import { createProjectSecretRequester } from "./project-secret-request.ts";
 import { ensureDefaultWorkspaceImage } from "@atelier/workspace-image";
 import { recoverWorkspaces, prepareWorkspaceForUse } from "./workspace-recovery.ts";
 import { designSystemCatalogueHtml } from "@atelier/design-system/catalogue";
@@ -247,6 +249,8 @@ app = createWebApp({
     await deleteWorkspace(id, { force: true, events: atelierEvents });
   },
 });
+
+configureOnboardingTools({ createWorkspace: app.createWorkspaceFromAgent, requestSecretValue: createProjectSecretRequester() });
 
 atelierEvents.on("workspace_user_activity", ({ workspaceId }) => registry.touch(workspaceId));
 atelierEvents.on("workspace_title_changed", ({ workspaceId, title }) => registry.setTitle(workspaceId, title || null));

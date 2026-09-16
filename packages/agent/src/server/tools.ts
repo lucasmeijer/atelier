@@ -81,10 +81,6 @@ export function registerWorkspacePresenter(kind: string, factory: WorkspacePrese
   };
 }
 
-export function workspaceAgentToolNames(): string[] {
-  return ["read", "write", "edit", "bash", ...(registeredWorkspacePresenters.size ? ["present"] : []), ...registeredWorkspaceAgentTools.keys()];
-}
-
 function createPresentTool(workspaceId: string, options: WorkspaceAgentToolOptions): ToolDefinition<any, any> | undefined {
   const presenters = [...registeredWorkspacePresenters.values()].map((factory) => factory(workspaceId, options));
   if (!presenters.length) return undefined;

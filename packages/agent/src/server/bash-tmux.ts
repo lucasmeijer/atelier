@@ -152,7 +152,7 @@ printf '%s\\n' "$status" > ${shellQuote(exitFile)}`;
       );
       if (create.exitCode !== 0) throw new Error(create.stderr.trim() || `could not start command session`);
 
-      onUpdate?.({ content: [], details: { tmuxSession: sessionName, command: params.command } });
+      onUpdate?.({ content: [], details: { workspaceId, tmuxSession: sessionName, command: params.command } });
 
       const startedAt = Date.now();
       let exitCode: number | undefined;
@@ -209,6 +209,7 @@ printf '%s\\n' "$status" > ${shellQuote(exitFile)}`;
       return {
         content: [{ type: "text" as const, text: body }],
         details: {
+          workspaceId,
           exitCode,
           displayAnsi,
           aborted,

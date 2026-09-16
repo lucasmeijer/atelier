@@ -2,7 +2,7 @@ import { afterEach, beforeEach, describe, expect, test } from "bun:test";
 import { mkdtemp, rm } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
-import { addProject, createProjectSecret, type GitProjectInitInstruction } from "@atelier/projects";
+import { addProject, createProjectSecret, updateProjectSecret, deleteProjectSecret, type GitProjectInitInstruction } from "@atelier/projects";
 import { createWorkspaceSecretContext, clearWorkspaceGitHubToken, forgetWorkspaceSecretContext, getWorkspaceSecretContext, setWorkspaceGitHubToken } from "../../src/secrets/workspace-secrets.ts";
 
 function projectInit(projectId: string): GitProjectInitInstruction {
@@ -93,6 +93,24 @@ describe("workspace secrets", () => {
     expect(context.env.PACKAGE_TOKEN).toBe("PACKAGE_TOKEN");
     expect(context.secrets).toContainEqual({ name: "PACKAGE_TOKEN", placeholder: "PACKAGE_TOKEN", hosts: ["registry.example.com"] });
     expect(result.headers.get("authorization")).toBe("Bearer real-package-secret");
+  });
+
+  test("new, replaced and deleted secrets take effect on running workspace egress without restart", async () => {
+    const project = (await addProject("https://github.com/org/repo.git")).project;
+    const init = projectInit(project.id);
+    const initial = await createWorkspaceSecretContext("test-workspace", init);
+    expect(initial.env.TOKEN).toBeUndefined();
+    const secret = await createProjectSecret(project.id, { envName: "TOKEN", hostPattern: "api.example.com", secretValue: "first" });
+    const load = () => getWorkspaceSecretContext("test-workspace", async () => init);
+    const first = await load();
+    const outbound = () => new Request("https://api.example.com/", { headers: { authorization: "Bearer ATELIER_PROXY_READY_TOKEN" } });
+    expect((await first.hooks.onRequest(outbound())).headers.get("authorization")).toBe("Bearer first");
+    // The old process's environment is unchanged; callers explicitly supply the placeholder.
+    expect(initial.env.TOKEN).toBeUndefined();
+    await updateProjectSecret(project.id, secret.id, { envName: "TOKEN", hostPattern: "api.example.com", secretValue: "second" });
+    expect((await (await load()).hooks.onRequest(outbound())).headers.get("authorization")).toBe("Bearer second");
+    await deleteProjectSecret(project.id, secret.id);
+    expect((await load()).env.TOKEN).toBeUndefined();
   });
 
   test("egress cannot bypass workspace isolation to reach management, LAN or tailnet addresses", async () => {

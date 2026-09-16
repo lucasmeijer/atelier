@@ -1,4 +1,5 @@
-import { randomUUID } from "node:crypto";
+import { Type, type Static } from "typebox";
+import { createHash, randomUUID } from "node:crypto";
 import { AtelierCoreError } from "@atelier/core";
 import { decryptProjectValue, encryptProjectValue } from "./secret-crypto.ts";
 import { findProjectRecord, projectSecretSummary, projectSecretSummaries, projectsFile, readProjectStore, updateProjectStore, type ProjectRecord, type ProjectSecretSummary, type StoredProjectSecret } from "./project.ts";
@@ -85,6 +86,38 @@ export async function updateProjectSecret(projectId: string, secretId: string, v
     if (values.annotation !== undefined) secret.annotation = values.annotation.trim();
     if (values.optional !== undefined) secret.optional = values.optional;
     if (values.secretValue) secret.encryptedSecret = await encryptProjectValue(projectId, secretId, values.secretValue, keyFile);
+    secret.updatedAt = new Date().toISOString();
+    return projectSecretSummary(secret);
+  });
+}
+
+export function projectSecretPlaceholder(name: string): string {
+  return `ATELIER_PROXY_READY_${name.replaceAll(/[^A-Za-z0-9_]/g, "_").toUpperCase()}`;
+}
+
+export function projectSecretHosts(pattern: string): string[] {
+  return [...new Set(pattern.split(/[,;]/).map((host) => host.trim().toLowerCase()).filter(Boolean))];
+}
+
+/** Binds a value-entry confirmation to the exact routing metadata the user reviewed. */
+export function projectSecretRoutingRevision(secret: Pick<ProjectSecretSummary, "envName" | "hostPattern" | "placeholder">): string {
+  return createHash("sha256").update(JSON.stringify([secret.envName.trim(), projectSecretHosts(secret.hostPattern).sort(), secret.placeholder?.trim() || projectSecretPlaceholder(secret.envName.trim())])).digest("hex");
+}
+
+export const projectSecretValueInputSchema = Type.Object({
+  secretValue: Type.String({ minLength: 1, writeOnly: true }),
+  expectedRoutingRevision: Type.String({ minLength: 1, description: "Routing confirmation from the secret-value dialog" }),
+}, { additionalProperties: false });
+export type ProjectSecretValueInput = Static<typeof projectSecretValueInputSchema>;
+
+/** Value-only entry must not overwrite metadata that changed while its dialog was open. */
+export async function setProjectSecretValue(projectId: string, secretId: string, input: ProjectSecretValueInput, file = projectsFile(), keyFile?: string): Promise<ProjectSecretSummary> {
+  const { secretValue, expectedRoutingRevision } = input;
+  if (!secretValue.trim()) throw new AtelierCoreError("invalid_arguments", "Enter a secret value");
+  return updateProjectStore(file, async (store) => {
+    const secret = findProjectSecret(findProjectRecord(store, projectId), secretId);
+    if (projectSecretRoutingRevision(secret) !== expectedRoutingRevision) throw new AtelierCoreError("project_secret_routing_changed", "Secret destination or placeholder changed. Reopen the secret dialog and review its restrictions before saving.");
+    secret.encryptedSecret = await encryptProjectValue(projectId, secretId, secretValue, keyFile);
     secret.updatedAt = new Date().toISOString();
     return projectSecretSummary(secret);
   });

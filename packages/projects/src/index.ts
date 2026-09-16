@@ -1,5 +1,6 @@
 export {
   addProject,
+  onProjectStoreChanged,
   deleteProject,
   formatProjectSpec,
   getProjectConfiguration,
@@ -44,7 +45,12 @@ export {
   listProjectSecrets,
   revealProjectSecrets,
   updateProjectSecret,
+  setProjectSecretValue,
+  projectSecretValueInputSchema,
+  projectSecretRoutingRevision,
   secretNeedsValue,
+  projectSecretPlaceholder,
+  projectSecretHosts,
   type ProjectSecretInput,
   type ProjectSecretPlaintext,
 } from "./secrets.ts";
@@ -72,3 +78,6 @@ export {
   type WorkspaceDeleteBlockedDetails,
   type WorkspaceDeleteSafetyIssue,
 } from "./workspace-repos.ts";
+
+export { projectWorkspaceSettingsSchema, type ProjectWorkspaceSettings } from "./project.ts";
+export { readProjectWorkspaceSettings, writeProjectWorkspaceSettings, projectWorkspaceInitWithSettings, validateProjectWorkspaceSettings } from "./workspace-settings.ts";

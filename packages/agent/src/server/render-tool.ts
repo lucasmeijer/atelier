@@ -1,4 +1,5 @@
 import { agentDelegation } from "./delegation.ts";
+import { actionLinkHtml } from "@atelier/design-system/action-link";
 import { copyButtonHtml } from "@atelier/design-system/copy-button";
 import { toggleHtml } from "@atelier/design-system/toggle";
 import { isJsonObject, type JsonObject, type JsonValue } from "@atelier/core";
@@ -8,11 +9,11 @@ import { parseDiffFromFile, processPatch, type FileDiffMetadata } from "@pierre/
 import { diffStats, type DiffOperation } from "./diff.ts";
 import { embeddedBashCommand, formatBashCommandForDisplay, highlightedBashCommandHtml } from "./embedded-code.ts";
 import { escapeHtml } from "./html.ts";
-import { formatDuration, formatTokens, type ToolView, type ToolViewDetails } from "./transcript.ts";
+import { isBashTool, formatDuration, formatTokens, type ToolView, type ToolViewDetails } from "./transcript.ts";
 import { ids, sessionImageUrl, transcriptItemPath, type AgentRenderContext } from "./render-context.ts";
 import { codeBlockHtml, detailFullscreen, fullscreenAttributes, transcriptActionItemHtml } from "./render-markup.ts";
 
-type ToolArgumentKey = "command" | "path" | "file_path" | "content" | "offset" | "limit" | "timeout" | "edits" | "oldText" | "newText";
+type ToolArgumentKey = "workspace_id" | "command" | "path" | "file_path" | "content" | "offset" | "limit" | "timeout" | "edits" | "oldText" | "newText";
 
 const toolStringArgumentSchema = Type.String();
 const toolNumberArgumentSchema = Type.Number();
@@ -44,7 +45,7 @@ function bashSummary(tool: ToolView): string {
 }
 
 function toolSummaryHtml(tool: ToolView): string {
-  if (tool.name === "bash") return bashSummary(tool);
+  if (isBashTool(tool.name)) return bashSummary(tool);
   if (tool.name === "read") {
     const image = tool.resultImages?.[0];
     const imageMeta = image ? [image.width && image.height ? `${image.width}×${image.height}` : "", image.mimeType ?? ""].filter(Boolean).join(" · ") : "";
@@ -72,7 +73,7 @@ function toolSummaryText(tool: ToolView): string {
 }
 
 function toolSummaryMetadataHtml(tool: ToolView): string {
-  if (tool.name !== "bash" || tool.status !== "running" || tool.startedAt === undefined) return "";
+  if (!isBashTool(tool.name) || tool.status !== "running" || tool.startedAt === undefined) return "";
   const timeout = tool.timeoutSeconds ?? numberArg(toolArgs(tool), "timeout") ?? 600;
   return `<span class="agent-tool-elapsed agent-duration-slot" data-controller="agent-elapsed" data-agent-elapsed-since-value="${tool.startedAt}" data-agent-elapsed-max-value="${timeout}"><span data-agent-elapsed-target="time">${formatDuration(Date.now() - tool.startedAt)} / ${formatDuration(timeout * 1000)}</span></span>`;
 }
@@ -231,10 +232,12 @@ function renderBashCommand(command: string, streaming: boolean): string {
 
 function renderBashDetail(ctx: AgentRenderContext, key: string, tool: ToolView, count: number): string {
   const command = stringArg(toolArgs(tool), "command") ?? "";
-  const commandHtml = renderBashCommand(command, tool.status === "streaming");
+  const destination = tool.name === "bash_in_other_workspace" ? tool.details?.workspaceId ?? stringArg(toolArgs(tool), "workspace_id") : undefined;
+  const destinationHtml = destination ? `<div class="agent-region-header">Workspace · <a href="/workspaces/${encodeURIComponent(destination)}" data-turbo-frame="_top">${escapeHtml(destination)}</a></div>` : "";
+  const commandHtml = destinationHtml + renderBashCommand(command, tool.status === "streaming");
   if (tool.status === "streaming") return `<div class="agent-tool-detail">${commandHtml}</div>`;
   if (tool.status === "running") {
-    const terminal = tool.tmuxSession && tool.terminalVisible ? `<section class="agent-tool-region agent-bash-output agent-terminal-awaiting-output"><div class="agent-region-header">Live terminal</div><div class="agent-terminal-viewport"><div class="agent-tool-term observable-terminal-host" data-controller="agent-term" data-agent-term-workspace-id-value="${escapeHtml(ctx.workspaceId)}" data-agent-term-session-value="${escapeHtml(tool.tmuxSession)}"></div></div></section>` : "";
+    const terminal = tool.tmuxSession && tool.terminalVisible ? `<section class="agent-tool-region agent-bash-output agent-terminal-awaiting-output"><div class="agent-region-header">Live terminal</div><div class="agent-terminal-viewport"><div class="agent-tool-term observable-terminal-host" data-controller="agent-term" data-agent-term-workspace-id-value="${escapeHtml(destination ?? ctx.workspaceId)}" data-agent-term-session-value="${escapeHtml(tool.tmuxSession)}"></div></div></section>` : "";
     return `<div class="agent-tool-detail agent-bash-detail">${commandHtml}${terminal}</div>`;
   }
   return `<div class="agent-tool-detail agent-bash-detail">${commandHtml}${renderBashResultViews(ctx, key, tool, count)}</div>`;
@@ -308,7 +311,11 @@ function renderGenericDetail(ctx: AgentRenderContext, tool: ToolView): string {
 export function renderToolDetail(ctx: AgentRenderContext, key: string, tool: ToolView, count: number): string {
   const custom = agentDelegation?.toolPresentations?.get(tool.name)?.detail(ctx, tool);
   if (custom !== undefined) return custom;
-  if (tool.name === "bash") return renderBashDetail(ctx, key, tool, count);
+  if (isBashTool(tool.name)) return renderBashDetail(ctx, key, tool, count);
+  if (tool.name === "request_secret_value" && tool.status === "running" && tool.details?.secretRequestUrl) {
+    const link = actionLinkHtml({ href: tool.details.secretRequestUrl, variant: "primary", content: { kind: "caption", caption: "Provide secret" }, attributesHtml: 'data-turbo-frame="_top" data-turbo-stream="true"' });
+    return `<div class="agent-tool-detail"><p>The value is saved to this project immediately. Do not enter it in chat.</p>${link}</div>${renderGenericDetail(ctx, tool)}`;
+  }
   if (tool.name === "read") return renderReadDetail(ctx, key, tool, count);
   if (tool.name === "write") return renderWriteDetail(ctx, key, tool, count);
   if (tool.name === "edit") return renderEditDetail(tool);
@@ -605,7 +612,11 @@ type StreamedToolArgs = JsonValue | { command: string } | { path?: string; conte
 function parseKnownStreamedArgs(name: string, stream: string): StreamedToolArgs | undefined {
   const parsed = parseStreamedArgs(stream);
   if (parsed) return parsed;
-  if (name === "bash") return { command: partialStringField(stream, "command") ?? "" };
+  if (isBashTool(name)) {
+    const command = partialStringField(stream, "command") ?? "";
+    const workspaceId = partialStringField(stream, "workspace_id");
+    return workspaceId ? { command, workspace_id: workspaceId } : { command };
+  }
   if (name === "write") return { path: partialStringField(stream, "path"), content: partialStringField(stream, "content") ?? "" };
   if (name === "read" || name === "edit") return { path: partialStringField(stream, "path") };
   return undefined;

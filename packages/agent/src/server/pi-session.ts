@@ -15,7 +15,8 @@ import { AgentServiceTierState, modelRuntimeWithServiceTiers, supportsFastMode, 
 import type { WorkspaceAgentConversationInfo } from "./session-store.ts";
 import { loadWorkspaceSkills } from "./skills.ts";
 import { createAtelierResourceLoader } from "./system-prompt.ts";
-import { createWorkspaceAgentTools, workspaceAgentToolNames } from "./tools.ts";
+import { createWorkspaceAgentTools } from "./tools.ts";
+import { createRegisteredOnboardingTools } from "./onboarding-tools.ts";
 import type { AgentToolDefinitionView } from "./render-transcript.ts";
 
 export interface AgentSessionDelegation {
@@ -73,7 +74,8 @@ export async function createPiSession(agent: WorkspaceAgentConversationInfo, opt
   const sessionManager = SessionManager.open(agent.path, dirname(agent.path), workspaceRoot);
   preparation?.seedHistory?.(sessionManager);
   const serviceTiers = new AgentServiceTierState(sessionManager);
-  const customTools = [...createWorkspaceAgentTools(agent.workspaceId, { events: options.events }), ...(preparation?.tools ?? [])];
+  const defaultTools = [...createWorkspaceAgentTools(agent.workspaceId, { events: options.events }), ...(preparation?.tools ?? [])];
+  const customTools = [...defaultTools, ...createRegisteredOnboardingTools(agent.workspaceId, agent.conversationId)];
   const inheritedModel = preparation?.model;
   let promptSession: AgentSession | undefined;
   const { session } = await createAgentSession({
@@ -87,13 +89,14 @@ export async function createPiSession(agent: WorkspaceAgentConversationInfo, opt
       ...(promptSession ? preparation?.modelPrompt?.(promptSession.model?.id, promptSession.thinkingLevel) ?? [] : []),
     ], skillResources),
     customTools,
-    tools: [...workspaceAgentToolNames(), ...(preparation?.tools ?? []).map((tool) => tool.name)],
+    tools: customTools.map((tool) => tool.name),
     sessionManager,
     settingsManager: SettingsManager.inMemory(sessionSettings),
   });
   promptSession = session;
-  // Rebuild using the effective (possibly restored or inherited) model, not defaults.
-  session.setActiveToolsByName(session.getActiveToolNames());
+  // Pi's `tools` option above is a registration allowlist. Keep onboarding tools registered
+  // for later activation, but never include them in an ordinary agent's initial context.
+  session.setActiveToolsByName(defaultTools.map((tool) => tool.name));
   let attachment: AgentSessionAttachment | undefined;
   let detachPipeline: (() => void) | undefined;
   const disposeDelegation = async () => {

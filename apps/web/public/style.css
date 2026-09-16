@@ -603,3 +603,12 @@ button.settings-link:disabled { opacity: .45; cursor: default; filter: none; }
 .composer-connect-action { display: none; }
 .composer:has([data-model-ready="false"]):not(:has([data-agent-busy="true"])) .composer-send-action { display: none; }
 .composer:has([data-model-ready="false"]):not(:has([data-agent-busy="true"])) .composer-connect-action { display: inline-flex; }
+
+/* Agent-requested secret entry: one value, not the full project editor. */
+.dialog[data-secret-value-dialog] { width: min(480px, calc(100vw - 32px)); }
+.secret-value-request { display: grid; gap: 20px; }
+.secret-value-request p { margin: 0; overflow-wrap: anywhere; }
+.secret-value-request__field { display: grid; gap: 8px; }
+.secret-value-request__field > span { font-family: var(--font-mono); overflow-wrap: anywhere; }
+.secret-value-request__field > input { width: 100%; }
+.secret-value-request__note { color: var(--text-muted); }

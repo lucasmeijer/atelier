@@ -116,7 +116,10 @@ test("workspace socket controls HTTP and HTTPS identity, policy and reconnection
     if (target.protocol === "https:" && !target.port) { target.hostname = "127.0.0.1"; target.port = String(httpsPort); }
     return fetch(target, { ...init, proxy: "", tls: { ca: caPem } });
   };
-  const start = (id: string) => startWorkspaceEgressProxy({ socketPath: join(directory, id, "egress.sock"), ca, getContext: async () => contexts.get(id)!, upstreamFetch });
+  const start = (id: string) => startWorkspaceEgressProxy({ socketPath: join(directory, id, "egress.sock"), ca, getContext: async () => contexts.get(id)!, upstreamFetch,
+    // Like upstreamFetch, map logical HTTPS port 443 to the local TLS fixture.
+    upstreamConnect: (port, hostname) => net.connect(port === 443 ? httpsPort : port, hostname),
+  });
   let alpha = await start("alpha");
   const beta = await start("beta");
   cleanup.push(() => alpha.close()); cleanup.push(() => beta.close());
@@ -143,6 +146,41 @@ test("workspace socket controls HTTP and HTTPS identity, policy and reconnection
   expect(received.at(-1)).toEqual({ key: "alpha-secret", authorization: "Bearer destination-authorization", proxyAuthorization: undefined, body: "" });
   // Hosts without selected secrets retain opaque CONNECT tunnelling.
   const withoutSecrets = createHttpHooks({ allowedInternalHosts: ["127.0.0.1"] });
+  contexts.set("beta", { workspaceId: "beta", env: {}, hooks: withoutSecrets.httpHooks, secrets: [] });
+  // A TLS connection established before the host gains a secret remains opaque.
+  // Exercise the real CONNECT/TLS transport, not just the request hooks.
+  async function connectTls() {
+    const connection = await tunnel(betaPort, "127.0.0.1:443");
+    expect(connection.response).toContain("200 Connection Established");
+    const socket = tls.connect({ socket: connection.socket, ca: caPem, rejectUnauthorized: true });
+    cleanup.push(() => { socket.destroy(); });
+    await new Promise<void>((resolve, reject) => { socket.once("secureConnect", resolve); socket.once("error", reject); });
+    return socket;
+  }
+  async function requestOnTls(socket: tls.TLSSocket) {
+    await new Promise<void>((resolve, reject) => {
+      let output = "";
+      const received = (data: Buffer) => {
+        output += data.toString();
+        if (output.includes("destination response")) { socket.off("data", received); socket.off("error", reject); resolve(); }
+      };
+      socket.on("data", received);
+      socket.once("error", reject);
+      socket.write("GET /reuse HTTP/1.1\r\nHost: 127.0.0.1\r\nConnection: keep-alive\r\nX-Api-Key: ATELIER_TEST_PLACEHOLDER\r\n\r\n");
+    });
+  }
+  const existingTls = await connectTls();
+  await requestOnTls(existingTls);
+  expect(received.at(-1)?.key).toBe("ATELIER_TEST_PLACEHOLDER");
+  const addedSecret = createHttpHooks({ allowedInternalHosts: ["127.0.0.1"], secrets: { API_KEY: { value: "new-secret", placeholder: "ATELIER_TEST_PLACEHOLDER", hosts: ["127.0.0.1"] } } });
+  contexts.set("beta", { workspaceId: "beta", env: addedSecret.env, hooks: addedSecret.httpHooks, secrets: addedSecret.secrets });
+  await requestOnTls(existingTls);
+  expect(received.at(-1)?.key).toBe("ATELIER_TEST_PLACEHOLDER");
+  existingTls.destroy();
+  const freshTls = await connectTls();
+  await requestOnTls(freshTls);
+  expect(received.at(-1)?.key).toBe("new-secret");
+  freshTls.destroy();
   contexts.set("beta", { workspaceId: "beta", env: {}, hooks: withoutSecrets.httpHooks, secrets: [] });
   const plain = await tunnel(betaPort, `127.0.0.1:${httpPort}`);
   expect(plain.response).toContain("200 Connection Established");

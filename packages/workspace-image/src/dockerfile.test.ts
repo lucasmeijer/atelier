@@ -17,6 +17,12 @@ test("project Dockerfile overrides repository without modifying it and keys imag
     expect(await readFile(repository, "utf8")).toBe(shared);
     expect(await workspaceDockerfile(dir)).toBe(repository);
     expect(await workspaceDockerfile(dir, "  ")).toBe(repository);
+    expect(await workspaceDockerfile(dir, "")).toBe(repository);
+    const baseline = "FROM atelier-workspace\n";
+    const baselinePath = await workspaceDockerfile(dir, baseline);
+    expect(baselinePath).not.toBe(repository);
+    expect(await readFile(baselinePath, "utf8")).toBe(baseline);
+    expect(await readFile(repository, "utf8")).toBe(shared);
     expect(repositoryWorkspaceImageTag("base", custom)).not.toBe(repositoryWorkspaceImageTag("base", shared));
     await rm(repository);
     expect(await readFile(await workspaceDockerfile(dir, custom), "utf8")).toBe(custom);

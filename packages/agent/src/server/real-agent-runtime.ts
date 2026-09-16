@@ -141,7 +141,7 @@ export class RealAgentRuntime extends BaseAgentRuntime {
   }
 
   protected modelContext(): AgentModelContextView {
-    return { systemPrompt: this.session.systemPrompt ?? "", tools: this.toolsForModel };
+    return { systemPrompt: this.session.systemPrompt ?? "", tools: this.toolsForModel.filter((tool) => this.session.getActiveToolNames().includes(tool.name)) };
   }
 
   currentModel(): { provider: string; id: string } | undefined {

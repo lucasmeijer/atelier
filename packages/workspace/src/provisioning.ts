@@ -12,11 +12,13 @@ export interface WorkspaceProvisionStep extends WorkspaceProvisionProgress {
   label: string;
   status: WorkspaceProvisionStepStatus;
   error?: string;
+  durationMs?: number;
 }
 export interface WorkspaceProvisionSnapshot {
   status: "running" | "waiting" | "done" | "failed" | "cancelled";
   steps: WorkspaceProvisionStep[];
   waiting?: { stepId: string; retryable: boolean };
+  totalMs?: number;
   error?: string;
 }
 
@@ -43,6 +45,8 @@ export interface WorkspaceProvisioning {
 interface ProvisioningState {
   status: "running" | "done" | "failed" | "cancelled";
   steps: WorkspaceProvisionStep[];
+  startedAt: number;
+  totalMs?: number;
   error?: string;
   pending?: { stepId: string; retryable: boolean; resolve(action: "retry" | "continue"): void };
 }
@@ -54,8 +58,8 @@ export function createWorkspaceProvisioning(options: { events?: AtelierEventBus;
     snapshot(id) {
       const run = runs.get(id);
       if (!run) return undefined;
-      const { pending, ...state } = run;
-      return structuredClone({ ...state, status: pending ? "waiting" : state.status, waiting: pending && { stepId: pending.stepId, retryable: pending.retryable } });
+      const { pending, startedAt, ...state } = run;
+      return structuredClone({ ...state, totalMs: state.totalMs ?? Math.round(performance.now() - startedAt), status: pending ? "waiting" : state.status, waiting: pending && { stepId: pending.stepId, retryable: pending.retryable } });
     },
     resume(id, action) {
       const run = runs.get(id);
@@ -78,7 +82,7 @@ export function createWorkspaceProvisioning(options: { events?: AtelierEventBus;
     },
     async run<T>(workspaceId: string, work: (run: WorkspaceProvisionRun) => Promise<T>): Promise<T> {
       if (runs.get(workspaceId)?.status === "running") throw new Error(`workspace ${workspaceId} already has an active provisioning run`);
-      const state: ProvisioningState = { status: "running", steps: [] };
+      const state: ProvisioningState = { status: "running", steps: [], startedAt: performance.now() };
       runs.set(workspaceId, state);
       let active: WorkspaceProvisionStep | undefined;
       const changed = () => options.onChange?.(workspaceId);
@@ -99,16 +103,19 @@ export function createWorkspaceProvisioning(options: { events?: AtelierEventBus;
             while (true) {
               checkCancelled();
               const step: WorkspaceProvisionStep = { id, label, status: "running" };
+              const startedAt = performance.now();
               state.steps[index] = active = step;
               changed();
               try {
                 const result = await operation();
                 checkCancelled();
+                step.durationMs = Math.round(performance.now() - startedAt);
                 step.status = "done";
                 changed();
                 return result;
               } catch (error) {
                 checkCancelled();
+                step.durationMs = Math.round(performance.now() - startedAt);
                 step.status = "failed";
                 step.error = error instanceof Error ? error.message : String(error);
                 if (!recovery) {
@@ -137,11 +144,13 @@ export function createWorkspaceProvisioning(options: { events?: AtelierEventBus;
       try {
         const result = await work(run);
         checkCancelled();
+        state.totalMs = Math.round(performance.now() - state.startedAt);
         state.status = "done";
         changed();
         return result;
       } catch (error) {
         if (state.status !== "cancelled") {
+          state.totalMs = Math.round(performance.now() - state.startedAt);
           state.status = "failed";
           state.error = error instanceof Error ? error.message : String(error);
           changed();

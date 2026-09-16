@@ -4,8 +4,12 @@ import { findProjectRecord, projectsFile, readProjectStore, updateProjectStore, 
 
 function normalizeName(value: string): string {
   const name = value.trim();
-  if (!/^[A-Za-z_][A-Za-z0-9_]*$/.test(name)) throw new AtelierCoreError("invalid_arguments", "NAME must be an environment variable name");
+  validateProjectEnvironmentName(name);
   return name;
+}
+
+export function validateProjectEnvironmentName(name: string): void {
+  if (!/^[A-Za-z_][A-Za-z0-9_]*$/.test(name)) throw new AtelierCoreError("invalid_arguments", "NAME must be an environment variable name");
 }
 
 function findVariable(project: ProjectRecord, variableId: string): ProjectEnvironmentVariable {
@@ -21,11 +25,6 @@ function assertNameAvailable(project: ProjectRecord, name: string, exceptVariabl
 export async function listProjectEnvironmentVariables(projectId: string, file = projectsFile()): Promise<ProjectEnvironmentVariable[]> {
   const project = findProjectRecord(await readProjectStore(file), projectId);
   return [...(project.environment ?? [])].sort((a, b) => a.name.localeCompare(b.name));
-}
-
-export async function projectEnvironment(projectId: string, file = projectsFile()): Promise<Record<string, string>> {
-  const project = (await readProjectStore(file)).projects.find((candidate) => candidate.id === projectId);
-  return Object.fromEntries((project?.environment ?? []).map((variable) => [variable.name, variable.value]));
 }
 
 export async function createProjectEnvironmentVariable(projectId: string, values: { name: string; value: string }, file = projectsFile()): Promise<ProjectEnvironmentVariable> {

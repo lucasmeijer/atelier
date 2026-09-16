@@ -33,6 +33,7 @@ import type { AgentServiceTier } from "./service-tier.ts";
 import type { WorkspaceAgentConversationInfo } from "./session-store.ts";
 import type { TreeFilterMode } from "./session-tree.ts";
 import {
+  isBashTool,
   findTranscriptItem,
   toolDetailsIndicateError,
   type SessionImageRef,
@@ -583,7 +584,7 @@ export abstract class BaseAgentRuntime implements WorkspaceAgentRuntime {
     item.tool.status = "running";
     item.tool.argsStream = undefined;
     item.tool.startedAt = Date.now();
-    if (name === "bash") item.tool.timeoutSeconds = bashTimeoutSeconds(args);
+    if (isBashTool(name)) item.tool.timeoutSeconds = bashTimeoutSeconds(args);
     live.toolIndexByCallId.set(callId, index);
     if (streamedIndex !== undefined) {
       // Replace the provisional argument row as soon as Pi supplies its call ID.

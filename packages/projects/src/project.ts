@@ -2,31 +2,12 @@ import { createHash, randomUUID } from "node:crypto";
 import { mkdir, readFile, rename, writeFile } from "node:fs/promises";
 import { basename, dirname, join } from "node:path";
 import { acquireFileLock, AtelierCoreError, getAtelierRuntimeContext } from "@atelier/core";
-import type { WorkspaceInitInstruction } from "@atelier/workspace";
 import { Type, type Static } from "typebox";
 import { Value } from "typebox/value";
 
-const gitProjectInitSchema = Type.Object({
-  type: Type.Literal("project.git"),
-  configurationFingerprint: Type.Optional(Type.String()),
-  projectId: Type.String(),
-  name: Type.String(),
-  gitUrl: Type.String(),
-  branch: Type.Union([Type.String(), Type.Null()]),
-  sessionShareKey: Type.String(),
-});
-
-export type GitProjectInitInstruction = Static<typeof gitProjectInitSchema>;
-
-declare module "@atelier/workspace" {
-  interface WorkspaceInitInstructionMap {
-    "project.git": GitProjectInitInstruction;
-  }
-}
-
 export type ProjectSummary = Omit<ProjectRecord, "secrets" | "sshKeys" | "environment"> & { configurationFingerprint?: string };
 export type StoredProjectSecret = Static<typeof storedProjectSecretSchema>;
-export type ProjectSecretSummary = Omit<StoredProjectSecret, "encryptedSecret" | "optional" | "annotation"> & { annotation: string; optional: boolean; configured: boolean };
+export type ProjectSecretSummary = Omit<StoredProjectSecret, "encryptedSecret" | "optional" | "annotation"> & { annotation: string; optional: boolean; configured: boolean; valueRevision?: string };
 export type StoredProjectSshKey = Static<typeof storedProjectSshKeySchema>;
 export type ProjectSshKeySummary = Omit<StoredProjectSshKey, "encryptedPrivateKey">;
 export type ProjectEnvironmentVariable = Static<typeof projectEnvironmentVariableSchema>;
@@ -94,6 +75,33 @@ const projectRecordSchema = Type.Object({
   preloadImages: Type.Optional(Type.Array(Type.String())),
 });
 
+/** The writable workspace configuration, derived from the stored project schema. */
+export const projectWorkspaceSettingsSchema = Type.Object({
+  ...Type.Required(Type.Pick(projectRecordSchema, ["dockerfile", "preloadImages"])).properties,
+  environment: Type.Array(Type.Pick(projectEnvironmentVariableSchema, ["name", "value"], { additionalProperties: false })),
+}, { additionalProperties: false });
+export type ProjectWorkspaceSettings = Static<typeof projectWorkspaceSettingsSchema>;
+
+const gitProjectInitSchema = Type.Object({
+  type: Type.Literal("project.git"),
+  configurationFingerprint: Type.Optional(Type.String()),
+  projectId: Type.String(),
+  name: Type.String(),
+  gitUrl: Type.String(),
+  branch: Type.Union([Type.String(), Type.Null()]),
+  sessionShareKey: Type.String(),
+  settings: Type.Optional(projectWorkspaceSettingsSchema),
+  createdBy: Type.Optional(Type.Object({ workspaceId: Type.String(), conversationId: Type.String() })),
+});
+
+export type GitProjectInitInstruction = Static<typeof gitProjectInitSchema>;
+
+declare module "@atelier/workspace" {
+  interface WorkspaceInitInstructionMap {
+    "project.git": GitProjectInitInstruction;
+  }
+}
+
 const projectStoreSchema = Type.Object({
   projects: Type.Array(projectRecordSchema),
 });
@@ -146,6 +154,13 @@ async function writeProjectStore(file: string, store: ProjectStore): Promise<voi
   await rename(tempFile, file);
 }
 
+const projectStoreListeners = new Set<() => void>();
+
+export function onProjectStoreChanged(listener: () => void): () => void {
+  projectStoreListeners.add(listener);
+  return () => { projectStoreListeners.delete(listener); };
+}
+
 /** Owns the complete read-modify-write operation so concurrent changes cannot overwrite one another. */
 export async function updateProjectStore<Result>(file: string, mutate: (store: ProjectStore) => Result | Promise<Result>): Promise<Result> {
   const release = await acquireFileLock(`${file}.lock`, "projects");
@@ -153,6 +168,7 @@ export async function updateProjectStore<Result>(file: string, mutate: (store: P
     const store = await readProjectStore(file);
     const result = await mutate(store);
     await writeProjectStore(file, store);
+    for (const listener of projectStoreListeners) listener();
     return result;
   } finally {
     await release();
@@ -165,7 +181,7 @@ export function findProjectRecord(store: ProjectStore, projectId: string): Proje
   return project;
 }
 
-function projectConfigurationFingerprint(project: ProjectRecord): string {
+export function projectConfigurationFingerprint(project: Pick<ProjectRecord, "gitUrl" | "branch" | "sessionShareKey" | "dockerfile" | "secrets" | "sshKeys"> & { environment?: Pick<ProjectEnvironmentVariable, "name" | "value">[] }): string {
   // Only settings consumed by workspace setup belong here; annotations and optionality are live metadata.
   const configuration = {
     gitUrl: project.gitUrl, branch: project.branch, sessionShareKey: project.sessionShareKey,
@@ -198,7 +214,7 @@ export type ProjectConfiguration = ProjectSummary & {
 
 export function projectSecretSummary(secret: StoredProjectSecret): ProjectSecretSummary {
   const { encryptedSecret, ...metadata } = secret;
-  return { ...metadata, annotation: secret.annotation ?? "", optional: secret.optional ?? false, configured: !!encryptedSecret };
+  return { ...metadata, annotation: secret.annotation ?? "", optional: secret.optional ?? false, configured: !!encryptedSecret, valueRevision: encryptedSecret ? createHash("sha256").update(encryptedSecret).digest("hex") : undefined };
 }
 
 export function projectSecretSummaries(project: ProjectRecord): ProjectSecretSummary[] {
@@ -270,7 +286,7 @@ export async function deleteProject(id: string, file = projectsFile()): Promise<
   });
 }
 
-export function projectWorkspaceInit(project: ProjectSummary): WorkspaceInitInstruction {
+export function projectWorkspaceInit(project: ProjectSummary): GitProjectInitInstruction {
   return { type: "project.git", configurationFingerprint: project.configurationFingerprint, projectId: project.id, name: project.name, gitUrl: project.gitUrl, branch: project.branch, sessionShareKey: project.sessionShareKey };
 }
 
@@ -278,10 +294,14 @@ export function isGitProjectInit(init: unknown): init is GitProjectInitInstructi
   return Value.Check(gitProjectInitSchema, init);
 }
 
-export async function setProjectDockerfile(id: string, dockerfile: string, file = projectsFile()): Promise<UpdateProjectResult> {
+export function validateProjectDockerfile(dockerfile: string): void {
   if (dockerfile.trim() && dockerfile.split("\n")[0]!.trim() !== "FROM atelier-workspace") {
     throw new AtelierCoreError("invalid_arguments", "Dockerfile must start with FROM atelier-workspace");
   }
+}
+
+export async function setProjectDockerfile(id: string, dockerfile: string, file = projectsFile()): Promise<UpdateProjectResult> {
+  validateProjectDockerfile(dockerfile);
   return await updateProjectStore(file, (store) => {
     const project = findProjectRecord(store, id);
     if (dockerfile.trim()) project.dockerfile = dockerfile;
@@ -290,14 +310,16 @@ export async function setProjectDockerfile(id: string, dockerfile: string, file 
   });
 }
 
+export function validateProjectPreloadImage(image: string): void {
+  if (!/^[a-zA-Z0-9][a-zA-Z0-9._:/@+-]*$/.test(image) || image.includes("://")) {
+    throw new AtelierCoreError("invalid_arguments", `Invalid image reference: ${image || "(empty)"}`);
+  }
+}
+
 /** Changes the preload set for future workspaces; existing workspace configuration is unchanged. */
 export async function setProjectPreloadImages(id: string, images: string[], file = projectsFile()): Promise<UpdateProjectResult> {
   const preloadImages = [...new Set(images.map((image) => image.trim()))];
-  for (const image of preloadImages) {
-    if (!/^[a-zA-Z0-9][a-zA-Z0-9._:/@+-]*$/.test(image) || image.includes("://")) {
-      throw new AtelierCoreError("invalid_arguments", `Invalid image reference: ${image || "(empty)"}`);
-    }
-  }
+  preloadImages.forEach(validateProjectPreloadImage);
   return await updateProjectStore(file, (store) => {
     const project = findProjectRecord(store, id);
     project.preloadImages = preloadImages;

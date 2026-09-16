@@ -1,5 +1,5 @@
 import { clearWorkspaceGitHubToken as clearStoredWorkspaceGitHubToken, discoverHostGitHubToken, hasWorkspaceGitHubToken as hasStoredWorkspaceGitHubToken, setWorkspaceGitHubToken as setStoredWorkspaceGitHubToken } from "@atelier/core";
-import { isGitProjectInit, revealProjectSecrets } from "@atelier/projects";
+import { isGitProjectInit, revealProjectSecrets, onProjectStoreChanged, projectSecretPlaceholder, projectSecretHosts } from "@atelier/projects";
 import { getWorkspaceInit, type WorkspaceInitInstruction } from "@atelier/workspace";
 import { createHttpHooks, type RequestTransformHttpHooks, type SecretDefinition } from "./placeholder-hooks.ts";
 
@@ -13,6 +13,13 @@ export type WorkspaceSecretContext = {
 };
 
 const contexts = new Map<string, WorkspaceSecretContext>();
+let configurationGeneration = 0;
+// New requests reload hooks; existing raw CONNECT tunnels still require client reconnection.
+function invalidateContexts(): void {
+  configurationGeneration++;
+  contexts.clear();
+}
+onProjectStoreChanged(invalidateContexts);
 
 export { discoverHostGitHubToken };
 
@@ -22,27 +29,29 @@ export function hasWorkspaceGitHubToken(): boolean {
 
 export function setWorkspaceGitHubToken(token: string): void {
   setStoredWorkspaceGitHubToken(token);
-  contexts.clear();
+  invalidateContexts();
 }
 
 export function clearWorkspaceGitHubToken(): void {
   clearStoredWorkspaceGitHubToken();
-  contexts.clear();
+  invalidateContexts();
 }
 
 export async function createWorkspaceSecretContext(workspaceId: string, init?: WorkspaceInitInstruction): Promise<WorkspaceSecretContext> {
   const existing = contexts.get(workspaceId);
   if (existing) return existing;
 
+  const generation = configurationGeneration;
   const token = discoverHostGitHubToken();
   const secrets: Record<string, SecretDefinition> = token
-    ? { [githubTokenEnvVar]: { value: token, hosts: githubAllowedHosts(), placeholder: secretPlaceholder(githubTokenEnvVar) } }
+    ? { [githubTokenEnvVar]: { value: token, hosts: githubAllowedHosts(), placeholder: projectSecretPlaceholder(githubTokenEnvVar) } }
     : {};
   if (isGitProjectInit(init)) {
     for (const secret of await revealProjectSecrets(init.projectId)) {
-      secrets[secret.envName] = { value: secret.secretValue, hosts: parseHostPatterns(secret.hostPattern), placeholder: secret.placeholder ?? secretPlaceholder(secret.envName) };
+      secrets[secret.envName] = { value: secret.secretValue, hosts: projectSecretHosts(secret.hostPattern), placeholder: secret.placeholder ?? projectSecretPlaceholder(secret.envName) };
     }
   }
+  if (generation !== configurationGeneration) return createWorkspaceSecretContext(workspaceId, init);
   const created = buildContext(workspaceId, secrets);
   contexts.set(workspaceId, created);
   return created;
@@ -75,14 +84,6 @@ function buildContext(workspaceId: string, secrets: Record<string, SecretDefinit
     hooks: hooks.httpHooks,
     secrets: hooks.secrets,
   };
-}
-
-function secretPlaceholder(name: string): string {
-  return `ATELIER_PROXY_READY_${name.replaceAll(/[^A-Za-z0-9_]/g, "_").toUpperCase()}`;
-}
-
-function parseHostPatterns(hostPattern: string): string[] {
-  return hostPattern.split(/[,;]/).map((part) => part.trim()).filter(Boolean);
 }
 
 function githubAllowedHosts(): string[] {

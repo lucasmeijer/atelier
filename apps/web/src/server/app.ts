@@ -2,6 +2,7 @@ import { renderModelSetupDialog } from "./settings/models.ts";
 import {
   hasAvailableConfiguredAgentModel,
   refreshConfiguredAgentRuntimes,
+  type OnboardingToolDependencies,
   prepareNewWorkspaceAgentParameters,
   renderLaunchComposer,
   renderLaunchComposerSettings,
@@ -59,9 +60,10 @@ import { Type } from "typebox";
 import { Value } from "typebox/value";
 import { agentTabsTurboStream, openWorkViewTurboStream, presentWorkViewTurboStream, removeWorkspaceResidentTurboStream, renderAgentBodyFrame, renderAtelierBar, renderMobileWorkspaceBar, renderWorkViewBodyFrame, renderWorkspaceDeletionPresentation, renderWorkspaceParkConfirmation, dismissWorkspaceParkConfirmationTurboStream, renderWorkspacePane, renderWorkspacePresentation, selectAgentTurboStream, workspacePaneCollectionsTurboStream, workspacePaneOnboardingState, workspacePreparationInvalidatedTurboStream, workspacePresentationDomId, workViewsTurboStream, type AgentPaneContribution, type WorkPaneContribution, type WorkspacePaneEntry, type WorkspacePanePresentation, type WorkspacePresentation as FixedWorkspacePresentation } from "./workspace-presentation.ts";
 import type { CableBroadcastOptions } from "./cable.ts";
-import { jsonResponse, problemJsonResponse, response, turboReplaceStream, turboUpdateStream, wantsTurboStream } from "./http-responses.ts";
+import { jsonResponse, problemJsonResponse, httpErrorStatus, response, turboReplaceStream, turboUpdateStream, wantsTurboStream } from "./http-responses.ts";
 import { createPageLayout } from "./page-layout.ts";
 import { createProjectRoutes } from "./project-routes.ts";
+import { setTimeout as delay } from "node:timers/promises";
 import { createWorkspaceDeletion } from "./workspace-deletion.ts";
 
 const jsonStringSchema = Type.String();
@@ -104,6 +106,7 @@ export interface WebApp {
   deleteCurrentWorkspaceFromAgent(workspaceId: string, force: boolean): Promise<DeleteCurrentWorkspaceResult>;
   resumeWorkspaceDeletions(): void;
   provisioning: WorkspaceProvisioning;
+  createWorkspaceFromAgent: OnboardingToolDependencies["createWorkspace"];
   createWorkView(workspaceId: string, reference: WorkspaceWorkViewReference): Promise<void>;
   presentWorkViewFromAgent(workspaceId: string, reference: WorkspaceWorkViewReference): Promise<void>;
   globalSidebarContributions: GlobalSidebarContributionRegistry;
@@ -564,6 +567,7 @@ export function createWebApp(deps: WebAppDeps): WebApp {
 
   type ShellSurface =
     | { kind: "module-modal"; dialogHtml: string }
+    | { kind: "secret-value"; projectId: string; secretId: string; purpose?: string }
     | { kind: "project-settings"; projectId: string; section: string | undefined }
     | { kind: "new-project" }
     | { kind: "new-workspace"; project?: ProjectSummary }
@@ -571,7 +575,9 @@ export function createWebApp(deps: WebAppDeps): WebApp {
 
   async function renderWorkspaceShell(selectedId?: string, surface?: ShellSurface): Promise<string> {
     const pane = await workspacePaneCollections(selectedId ?? "");
-    const projectEditor = surface?.kind === "project-settings"
+    const projectEditor = surface?.kind === "secret-value"
+      ? await projectRoutes.secretValueModal(surface.projectId, surface.secretId, surface.purpose)
+      : surface?.kind === "project-settings"
       ? await projectRoutes.editorModal({ kind: "settings", projectId: surface.projectId, section: surface.section })
       : surface?.kind === "new-project"
         ? await projectRoutes.editorModal({ kind: "new" })
@@ -1196,10 +1202,7 @@ export function createWebApp(deps: WebAppDeps): WebApp {
   // ---------------------------------------------------------------------------
 
   function errorPage(error: Error): Response {
-    const status = error instanceof AtelierCoreError && ["invalid_arguments", "invalid_git_url"].includes(error.code) ? 400
-      : error instanceof AtelierCoreError && ["workspace_not_found", "project_not_found", "repo_not_found", "terminal_not_found", "agent_conversation_not_found"].includes(error.code) ? 404
-        : error instanceof AtelierCoreError && ["last_agent_conversation", "workspace_not_ready"].includes(error.code) ? 409
-          : 500;
+    const status = httpErrorStatus(error);
     const message = error.message;
     const backLink = actionLinkHtml({ href: "/", variant: "secondary", content: { kind: "caption", caption: "Back home" } });
     return response(layout(`<div class="app no-sidebar"><div class="main"><header class="header"><h1>Error</h1></header><div class="body"><p>${escapeHtml(message)}</p><p>${backLink}</p></div></div></div>`), { status });
@@ -1218,6 +1221,15 @@ export function createWebApp(deps: WebAppDeps): WebApp {
     if (url.pathname === "/openapi.json" && request.method === "GET") return jsonResponse(atelierOpenApi(workspaceModuleCommands(), Object.assign({}, ...workspaceModules.map((module) => module.openApiPaths ?? {}))));
     if (url.pathname === "/launch-composer" && request.method === "GET") return response(await renderProjectlessLaunchComposerFrame());
     if (url.pathname === "/launch-composer/settings" && request.method === "GET") return response(await launchComposerSettingsFrame(url.searchParams.get("model") ?? undefined, url.searchParams.get("level") ?? undefined));
+    const secretValueMatch = url.pathname.match(/^\/projects\/([^/]+)\/secrets\/([^/]+)\/value$/);
+    if (secretValueMatch && request.method === "GET") {
+      const projectId = decodeURIComponent(secretValueMatch[1]!);
+      const secretId = decodeURIComponent(secretValueMatch[2]!);
+      const purpose = url.searchParams.get("purpose") ?? undefined;
+      return wantsTurboStream(request)
+        ? turboStreamResponse(turboReplaceStream("project-editor-modal", await projectRoutes.secretValueModal(projectId, secretId, purpose)))
+        : await surfacePage({ kind: "secret-value", projectId, secretId, purpose });
+    }
     const projectSettingsMatch = url.pathname.match(/^\/projects\/([^/]+)\/settings$/);
     if (projectSettingsMatch && request.method === "GET") {
       const projectId = decodeURIComponent(projectSettingsMatch[1]!);
@@ -1328,6 +1340,29 @@ export function createWebApp(deps: WebAppDeps): WebApp {
     deleteCurrentWorkspaceFromAgent,
     resumeWorkspaceDeletions: deletion.resume,
     provisioning,
+    async createWorkspaceFromAgent(init, title, signal, onUpdate) {
+      signal?.throwIfAborted();
+      const id = generateWorkspaceId();
+      registry.add(id, title, init);
+      startWorkspaceProvisioning(id, { init, title });
+      const identity = { workspaceId: id, url: `/workspaces/${id}` };
+      while (true) {
+        signal?.throwIfAborted();
+        const entry = registry.get(id);
+        const snapshot = provisioning.snapshot(id);
+        const progress = JSON.stringify({ ...identity, provisioning: snapshot });
+        onUpdate?.({ content: [{ type: "text", text: progress }], details: identity });
+        if (!entry || entry.phase === "ready" || entry.phase === "failed" || snapshot?.status === "waiting") {
+          return {
+            ...identity, status: !entry ? "deleted" : entry.phase === "ready" ? "ready" : snapshot?.status === "waiting" ? "awaiting_user" : "failed",
+            error: entry?.error ?? snapshot?.error,
+            settings: init.settings,
+            timings: { totalMs: snapshot?.totalMs, phases: snapshot?.steps.map(({ id, label, durationMs, status, error }) => ({ id, label, durationMs, status, error })) ?? [] },
+          };
+        }
+        await delay(250, undefined, { signal });
+      }
+    },
     createWorkView,
     presentWorkViewFromAgent,
     globalSidebarContributions,

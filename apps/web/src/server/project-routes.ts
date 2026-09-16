@@ -14,7 +14,7 @@ import {
   deleteProject, deleteProjectEnvironmentVariable, deleteProjectSecret, deleteProjectSshKey,
   formatProjectSpec, getProjectConfiguration, listProjectEnvironmentVariables, listProjectSecrets, secretNeedsValue,
   listProjectSshKeys, listProjects, parseProjectSpec, updateProject,
-  updateProjectEnvironmentVariable, updateProjectSecret, setProjectDockerfile, setProjectPreloadImages,
+  updateProjectEnvironmentVariable, updateProjectSecret, setProjectSecretValue, projectSecretRoutingRevision, projectSecretValueInputSchema, setProjectDockerfile, setProjectPreloadImages,
   type ProjectEnvironmentVariable, type ProjectSecretInput, type ProjectSecretSummary, type ProjectSshKeySummary, type ProjectSummary,
 } from "@atelier/projects";
 import { domId, escapeHtml, providerBrandColor, providerBrandIconHtml, turboStreamResponse } from "@atelier/shared";
@@ -32,6 +32,7 @@ export interface ProjectRoutes {
   handle(request: Request, url: URL): Promise<Response | undefined>;
   byReference(reference: string): Promise<ProjectSummary>;
   editorModal(options: ProjectEditorModalOptions): Promise<string>;
+  secretValueModal(projectId: string, secretId: string, purpose?: string): Promise<string>;
 }
 
 interface ProjectWorkspaceReference {
@@ -175,7 +176,7 @@ export function createProjectRoutes(deps: {
 
   function projectSecretEditor(project: ProjectSummary, secrets: ProjectSecretSummary[], section?: ProjectSettingsSection): string {
     return `<section class="project-configuration-list project-secrets" id="${domId("project_secrets", project.id)}"${revealSection(section, "secrets")}>
-      <div class="project-configuration-head"><h3>Secrets</h3><p>Atelier lets you use secrets without exposing them to agents. Your encrypted secret stays outside agent sandboxes. Agents receive a placeholder that Atelier replaces with the real secret in matching network requests. Updated secret configuration applies to new workspaces.</p></div>
+      <div class="project-configuration-head"><h3>Secrets</h3><p>Atelier lets you use secrets without exposing them to agents. Your encrypted secret stays outside agent sandboxes. Agents receive a placeholder that Atelier replaces with the real secret in matching network requests. Secret changes apply to new connections from running workspaces. Reconnect existing clients: open HTTPS tunnels are not reconfigured. New workspaces receive placeholder environment variables automatically; existing processes need those variables set when started.</p></div>
       ${collapsedSecretWarning(project, secrets)}
       ${projectConfigurationDisclosure("Configure secrets", projectSecretFields(project, secrets), section === "secrets" || secrets.some(secretNeedsValue))}
     </section>`;
@@ -445,6 +446,35 @@ export function createProjectRoutes(deps: {
     return projectSettingsResponse(projectId, request, { deleted: true, environmentVariable }, () => renderProjectEnvironmentStreams(projectId));
   }
 
+  async function secretValueModal(projectId: string, secretId: string, purpose?: string): Promise<string> {
+    const project = await projectById(projectId);
+    const secret = (await listProjectSecrets(projectId)).find((secret) => secret.id === secretId);
+    if (!secret) throw new AtelierCoreError("project_secret_not_found", "Project secret not found");
+    const formId = "project-secret-value-form";
+    return dialogHtml({
+      element: { id: "project-editor-modal", attributesHtml: 'data-dialog-auto-show data-secret-value-dialog' },
+      iconHtml: Icons.Agent,
+      titleCaption: "Provide a secret",
+      bodyHtml: `<div class="secret-value-request"><p>${escapeHtml(purpose ?? secret.annotation)}</p>
+        <p>Allowed destinations: <strong>${escapeHtml(secret.hostPattern)}</strong></p>
+        <form id="${formId}" method="post" action="/projects/${encodeURIComponent(projectId)}/secrets/${encodeURIComponent(secretId)}/value" data-turbo="true" data-action="turbo:submit-end->dialog#submitted">
+          <input type="hidden" name="expectedRoutingRevision" value="${projectSecretRoutingRevision(secret)}">
+          <label class="secret-value-request__field"><span>${escapeHtml(secret.envName)}</span><input class="text-field" name="secretValue" type="password" autocomplete="new-password" data-1p-ignore autofocus required placeholder="Paste secret value"></label>
+        </form>
+        <p class="secret-value-request__note">${secret.configured ? "Replaces the saved value in" : "Saved immediately to"} <strong>${escapeHtml(project.name)}</strong>. The agent receives a placeholder, never this value.</p>
+      </div>`,
+      footerHtml: buttonHtml({ type: "button", variant: "secondary", content: { kind: "caption", caption: "Not now" }, attributesHtml: 'data-action="dialog#close"' })
+        + buttonHtml({ type: "submit", variant: "primary", content: { kind: "caption", caption: "Save to project" }, attributesHtml: `form="${formId}" data-turbo-submits-with="Saving…"` }),
+    });
+  }
+
+  async function setProjectSecretValueEndpoint(projectId: string, secretId: string, request: Request): Promise<Response> {
+    const input = requestAcceptsJson(request) ? await readJsonObject(request) : Object.fromEntries(await request.formData());
+    if (!Value.Check(projectSecretValueInputSchema, input)) throw invalidArguments("Supply a secret value and the routing confirmation from the secret dialog");
+    const secret = await setProjectSecretValue(projectId, secretId, input);
+    return projectSettingsResponse(projectId, request, { secret }, async () => turboReplaceStream("project-editor-modal", '<div id="project-editor-modal"></div>'));
+  }
+
   async function renderProjectSecretStreams(projectId: string): Promise<string> {
     const project = await projectById(projectId);
     const secrets = await listProjectSecrets(projectId);
@@ -576,6 +606,7 @@ export function createProjectRoutes(deps: {
     if ((params = match(/^\/projects\/([^/]+)\/environment\/([^/]+)$/)) && request.method === "POST") return await updateProjectEnvironmentVariableEndpoint(params[0]!, params[1]!, request);
     if ((params = match(/^\/projects\/([^/]+)\/environment\/([^/]+)\/delete$/)) && request.method === "POST") return await deleteProjectEnvironmentVariableEndpoint(params[0]!, params[1]!, request);
     if ((params = match(/^\/projects\/([^/]+)\/secrets$/)) && request.method === "POST") return await createProjectSecretEndpoint(params[0]!, request);
+    if ((params = match(/^\/projects\/([^/]+)\/secrets\/([^/]+)\/value$/)) && request.method === "POST") return await setProjectSecretValueEndpoint(params[0]!, params[1]!, request);
     if ((params = match(/^\/projects\/([^/]+)\/secrets\/([^/]+)$/)) && request.method === "POST") return await updateProjectSecretEndpoint(params[0]!, params[1]!, request);
     if ((params = match(/^\/projects\/([^/]+)\/secrets\/([^/]+)\/delete$/)) && request.method === "POST") return await deleteProjectSecretEndpoint(params[0]!, params[1]!, request);
     if ((params = match(/^\/projects\/([^/]+)\/ssh-keys$/)) && request.method === "POST") return await createProjectSshKeyFromForm(params[0]!, request);
@@ -585,5 +616,5 @@ export function createProjectRoutes(deps: {
     return undefined;
   }
 
-  return { handle, byReference, editorModal: projectEditorModal };
+  return { handle, byReference, editorModal: projectEditorModal, secretValueModal };
 }
