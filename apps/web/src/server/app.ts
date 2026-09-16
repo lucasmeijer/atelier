@@ -602,7 +602,7 @@ export function createWebApp(deps: WebAppDeps): WebApp {
   }
 
   async function projectEditorResponse(request: Request, options: ProjectEditorModalOptions): Promise<Response> {
-    const dialogHtml = await projectRoutes.editorModal(options);
+    const dialogHtml = await projectRoutes.editorModal(options, request);
     return wantsTurboStream(request)
       ? turboStreamResponse(turboReplaceStream("project-editor-modal", dialogHtml))
       : surfacePage({ kind: "project-editor", dialogHtml });

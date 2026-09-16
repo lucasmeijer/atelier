@@ -2,6 +2,8 @@ import { AtelierCoreError, gitHubCredentialHelperCommand, invalidArguments, read
 import { actionItemHtml } from "@atelier/design-system/action-item";
 import { actionLinkHtml } from "@atelier/design-system/action-link";
 import { buttonHtml } from "@atelier/design-system/button";
+import { copyButtonHtml } from "@atelier/design-system/copy-button";
+import { publicWorkspaceAppOrigin } from "@atelier/proxy-ingress";
 import { dialogHtml } from "@atelier/design-system/dialog";
 import { destructiveConfirmationHtml } from "@atelier/design-system/destructive-confirmation";
 import { Icons } from "@atelier/design-system/icons";
@@ -35,7 +37,7 @@ export type ProjectEditorModalOptions =
 export interface ProjectRoutes {
   handle(request: Request, url: URL): Promise<Response | undefined>;
   byReference(reference: string): Promise<ProjectSummary>;
-  editorModal(options: ProjectEditorModalOptions): Promise<string>;
+  editorModal(options: ProjectEditorModalOptions, request: Request): Promise<string>;
 }
 
 interface ProjectWorkspaceReference {
@@ -234,7 +236,7 @@ export function createProjectRoutes(deps: {
     throw invalidArguments("section must be one of: repository, secrets, ssh-keys, environment, dockerfile, preload-images, danger");
   }
 
-  async function projectEditorBody(project: ProjectSummary, section?: ProjectSettingsSection): Promise<string> {
+  async function projectEditorBody(project: ProjectSummary, instanceUrl: string, section?: ProjectSettingsSection): Promise<string> {
     const [environment, secrets, sshKeys] = await Promise.all([listProjectEnvironmentVariables(project.id), listProjectSecrets(project.id), listProjectSshKeys(project.id)]);
     if (section === undefined && secrets.some(secretNeedsValue)) section = "secrets";
     return `<div id="project_editor_body" class="project-editor-body">
@@ -244,6 +246,10 @@ export function createProjectRoutes(deps: {
           <section class="project-configuration-list"><div class="project-configuration-head"><h3>Set up with an agent</h3><p>Let an agent configure dependencies, environment variables and secrets for your project. Starts from the default image, even if your custom Dockerfile is broken.</p></div>${actionLinkHtml({ href: `/projects/${encodeURIComponent(project.id)}/onboarding`, variant: "secondary", content: { kind: "caption", caption: "Set up with agent" }, attributesHtml: 'data-turbo-stream="true"' })}</section>
           <div class="project-edit-config">${projectSecretEditor(project, secrets, section)}${projectSshKeyEditor(project, sshKeys, section)}${projectEnvironmentEditor(project, environment, section)}${projectDockerfileEditor(project, section)}${projectPreloadImagesEditor(project, section)}</div>
           <section class="project-edit-danger-zone"${revealSection(section, "danger")}>${projectConfigurationDisclosure("Danger zone", `<div class="project-edit-danger">${projectDeleteControl(project.id)}</div>`, section === "danger")}</section>
+          <section class="project-configuration-list">
+            <div class="project-configuration-head"><h3>Atelier instance URL</h3><p>The external URL for this Atelier instance.</p></div>
+            <div class="project-instance-url"><a href="${escapeHtml(instanceUrl)}" target="_blank" rel="noopener noreferrer">${escapeHtml(instanceUrl)}</a>${copyButtonHtml({ label: "Copy Atelier instance URL", copyText: instanceUrl })}</div>
+          </section>
         </div>
       </div>
     </div>`;
@@ -255,13 +261,13 @@ export function createProjectRoutes(deps: {
     return `<div id="project_editor_body" class="project-editor-body"><div class="project-editor-page project-editor-detail-page"><form class="project-editor-new-form" aria-label="Add project" method="post" action="/projects" data-turbo="true" data-action="turbo:submit-end->dialog#submitted"><div><p>Save a remote URL, local path, or search for a GitHub repository.</p><div data-controller="project-github-search" data-project-github-search-url-value="/projects/github-search"><input class="text-field" name="gitUrl" placeholder="github.com/org/repo, or /path/to/repo#branch" required autofocus data-project-github-search-target="input" data-action="keydown->project-github-search#keydown input->project-github-search#input"><div class="floating-surface autocomplete-popover" popover="manual" data-project-github-search-target="menu" hidden></div></div></div><footer>${cancelButton}${addButton}</footer></form></div></div>`;
   }
 
-  async function projectEditorModal(options: ProjectEditorModalOptions): Promise<string> {
+  async function projectEditorModal(options: ProjectEditorModalOptions, request: Request): Promise<string> {
     if (options.kind === "onboarding") return onboardingModal(await projectById(options.projectId));
     if (options.kind === "secret-value") return secretValueModal(options.projectId, options.secretId, options.purpose);
     const title = options.kind === "new" ? "Add project" : "Project settings";
     const bodyHtml = options.kind === "new"
       ? newProjectEditorBody()
-      : await projectEditorBody(await projectById(options.projectId), parseProjectSettingsSection(options.section));
+      : await projectEditorBody(await projectById(options.projectId), process.env.ATELIER_PUBLIC_URL || publicWorkspaceAppOrigin(request), parseProjectSettingsSection(options.section));
     return dialogHtml({
       element: {
         id: "project-editor-modal",

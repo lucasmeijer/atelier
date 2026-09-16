@@ -164,6 +164,9 @@ a { color: inherit; text-decoration: none; }
 .project-ssh-key-configured > span { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .project-ssh-key-configured code { font-family: var(--font-mono); }
 .project-edit-danger-zone { margin-top: 24px; }
+.project-instance-url { display: flex; align-items: center; gap: 8px; }
+.project-instance-url a { min-width: 0; overflow-wrap: anywhere; }
+.project-instance-url .copy-button { flex-shrink: 0; }
 .project-edit-danger { display: flex; justify-content: flex-end; padding-top: 12px; }
 
 turbo-frame { display: contents; }
