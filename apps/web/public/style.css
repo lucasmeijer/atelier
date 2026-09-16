@@ -224,7 +224,8 @@ turbo-frame { display: contents; }
 .fixed-shell-projects-pane.is-collapsed [data-projects-pane-target="toggle"] svg { transform: rotate(180deg); }
 .fixed-shell-projects-list { padding: 8px; }
 .fixed-shell-projects-list[hidden] { display: none; }
-.fixed-shell-projects-empty { margin: 0; padding: 16px 8px; color: var(--text-muted); }
+.fixed-shell-projects-empty { position: relative; margin: 0; padding: 16px 56px 16px 8px; color: var(--text-muted); }
+.fixed-shell-projects-empty-arrow { position: absolute; top: 0; right: 10px; pointer-events: none; }
 @media (max-width: 700px), (pointer: coarse) {
   .fixed-shell-projects-pane { --project-row-height: 50px; }
 }

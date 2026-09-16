@@ -268,7 +268,7 @@ function renderProjectsPane(presentation: WorkspacePanePresentation): string {
     bodyOverflow: "scroll",
     bodyHtml: `<div id="workspace_projects_list" class="fixed-shell-projects-list action-list" data-projects-pane-target="list">${paneProjects.length
       ? paneProjects.map((project, index) => renderProjectHeading(project, "launcher", needsFirstWorkspace && index === 0 ? "first-workspace" : undefined)).join("")
-      : '<p class="fixed-shell-projects-empty">No projects yet, make one!</p>'}</div>`,
+      : '<p class="fixed-shell-projects-empty">No projects yet, make one!<svg class="fixed-shell-projects-empty-arrow" width="40" height="36" viewBox="0 0 40 36" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true" focusable="false"><path d="M2 30 Q30 30 30 3 M24 9 L30 3 L36 9" /></svg></p>'}</div>`,
   })}</div>`;
 }
 
