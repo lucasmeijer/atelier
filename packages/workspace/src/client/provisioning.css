@@ -14,7 +14,8 @@
 .provision-output { margin: 4px 0 0; }
 .provision-error, .provision-warning { margin-top: 8px; white-space: pre-wrap; }
 .provision-error { color: var(--danger); }
-.provision-continue { margin-top: 12px; }
+.provision-actions { margin: 12px 0 0; }
+.provision-actions > .button-group { flex-wrap: wrap; }
 
 .provision-step[data-status="warning"] > .status-list__marker { border-color: var(--warning); color: var(--warning); }
 .provision-warning { color: var(--warning); }

@@ -5,6 +5,7 @@ import { platform } from "node:os";
 import { join, resolve } from "node:path";
 import {
   atelierDataPath,
+  runCommand,
   createKeyedOperationQueue,
   AtelierCoreError,
   discoverHostGitHubToken,
@@ -88,26 +89,8 @@ function workspaceWorktreePath(workspaceId: string): string {
 }
 
 async function command(name: string, args: string[], options: { env?: Record<string, string | undefined> } = {}): Promise<CommandResult> {
-  let proc: Bun.Subprocess<"ignore", "pipe", "pipe">;
-  try {
-    proc = Bun.spawn([name, ...args], {
-      stdout: "pipe",
-      stderr: "pipe",
-      env: {
-        ...process.env,
-        GIT_TERMINAL_PROMPT: "0",
-        ...(options.env ?? {}),
-      },
-    });
-  } catch (error) {
-    return { exitCode: 127, stdout: "", stderr: error instanceof Error ? error.message : String(error) };
-  }
-  const [stdout, stderr, exitCode] = await Promise.all([
-    new Response(proc.stdout).text(),
-    new Response(proc.stderr).text(),
-    proc.exited,
-  ]);
-  return { exitCode, stdout, stderr };
+  const result = await runCommand([name, ...args], { env: { ...process.env, GIT_TERMINAL_PROMPT: "0", ...options.env } });
+  return { ...result, stdout: result.stdout.toString() };
 }
 
 async function requireCommand(name: string, args: string[], options: { env?: Record<string, string | undefined>; errorCode?: string } = {}): Promise<CommandResult> {

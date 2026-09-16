@@ -1,7 +1,7 @@
 import { mkdtemp, readFile, rm } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
-import { runDocker, workloadBuildArgs, type CommandResult } from "@atelier/core";
+import { runDocker, runCommand, workloadBuildArgs, type CommandResult } from "@atelier/core";
 import { reuseDefaultWorkspaceImage } from "./local-images.ts";
 import { parseWorkspaceImageMetadata, type WorkspaceImageMetadata } from "./metadata.ts";
 
@@ -31,8 +31,7 @@ export async function prepareDefaultWorkspaceImage(): Promise<DefaultWorkspaceIm
   const contextDir = await mkdtemp(join(tmpdir(), "atelier-workspace-image-"));
   const dispose = () => rm(contextDir, { recursive: true, force: true });
   try {
-    const process = Bun.spawn(["bun", join(root, "packages/workspace-image/scripts/build-context.mjs"), contextDir], { cwd: root, stdout: "pipe", stderr: "pipe" });
-    const [code, stdout, stderr] = await Promise.all([process.exited, new Response(process.stdout).text(), new Response(process.stderr).text()]);
+    const { exitCode: code, stdout, stderr } = await runCommand(["bun", join(root, "packages/workspace-image/scripts/build-context.mjs"), contextDir], { cwd: root });
     if (code !== 0) throw new Error(`Could not generate workspace image: ${stderr || stdout}`);
     const metadata = parseWorkspaceImageMetadata(JSON.parse(await readFile(join(contextDir, "metadata.json"), "utf8")));
     return { contextDir, dockerfile: join(contextDir, "Dockerfile"), metadata, dispose };

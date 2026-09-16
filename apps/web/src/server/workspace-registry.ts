@@ -51,7 +51,7 @@ export interface WorkspaceRegistryOptions {
 type WorkspacePhaseTransitions = { [Phase in WorkspacePhase]: WorkspacePhase[] };
 
 const allowedTransitions: WorkspacePhaseTransitions = {
-  starting: ["ready", "deleting", "failed"],
+  starting: ["ready", "checking_delete", "deleting", "failed"],
   ready: ["starting", "checking_delete", "deleting", "failed"],
   checking_delete: ["ready", "deleting", "failed"],
   deleting: ["failed"],

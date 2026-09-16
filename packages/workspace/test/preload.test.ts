@@ -265,3 +265,24 @@ test("ordinary preloads do not resolve or expose the default workspace", async (
   expect(await preloader.snapshot(["postgres:17"], path)).toBeUndefined();
   await expect(readFile(join(path, "atelier", "default-workspace-image"))).rejects.toThrow();
 });
+
+test("cancelling one cache waiter leaves shared preparation available to other workspaces", async () => {
+  const { withCommandSignal } = await import("@atelier/core");
+  const f = fixture();
+  const started = deferred();
+  const release = deferred();
+  f.before(async (args) => {
+    if (args.includes("build-erofs-cache")) { started.resolve(); await release.promise; }
+  });
+  const images = [{ requested: "postgres:17", reference: `${postgres}@${digestA}` }];
+  const controller = new AbortController();
+  const first = withCommandSignal(controller.signal, () => f.preloader.install(images, "one")).catch((error) => error);
+  await started.promise;
+  const second = f.preloader.install(images, "two");
+  controller.abort(new Error("cancelled"));
+  expect(await first).toMatchObject({ message: "cancelled" });
+  release.resolve();
+  await second;
+  expect(f.builds()).toHaveLength(1);
+  expect(f.imports.map((entry) => entry.container)).toEqual(["two"]);
+});

@@ -2,7 +2,7 @@ import { createHash } from "node:crypto";
 import { mkdir, readFile, writeFile } from "node:fs/promises";
 import { dirname, join } from "node:path";
 import { fileURLToPath } from "node:url";
-import { requireDocker, runDocker, workloadBuildArgs, shellQuote, type AtelierEventBus } from "@atelier/core";
+import { requireDocker, runDocker, waitForCommand, commandSignal, workloadBuildArgs, shellQuote, type AtelierEventBus } from "@atelier/core";
 import { runHostObservableCommand, tailTerminalText } from "@atelier/observable-terminal/server";
 import { type WorkspaceImageMetadata } from "./metadata.ts";
 import { ensureGeneratedDefaultWorkspaceImage, prepareDefaultWorkspaceImage } from "./default-image.ts";
@@ -13,6 +13,7 @@ import { dockerServerPlatform, nativeImageExists as imageExists, reuseDefaultWor
 
 interface WorkspaceImageBuildTask {
   tag: string;
+  owner?: string;
   modules: string[];
   output: string;
   session?: string;
@@ -80,7 +81,7 @@ function startBuildTask(tag: string, modules: string[], kind: WorkspaceImageKind
   const existing = buildTasks.get(tag);
   if (existing) return existing;
 
-  const task: WorkspaceImageBuildTask = { tag, modules, output: "", promise: Promise.resolve() };
+  const task: WorkspaceImageBuildTask = { tag, owner: options.workspaceId, modules, output: "", promise: Promise.resolve() };
   task.promise = dockerImageStoreQueue.run({
     label: `Building workspace image ${tag}`,
     onWait: workspaceImageStoreWaitReporter({ events: options.events, workspaceId: options.workspaceId }),
@@ -116,12 +117,13 @@ function startBuildTask(tag: string, modules: string[], kind: WorkspaceImageKind
 async function waitForBuildTask(task: WorkspaceImageBuildTask, options: ResolveWorkspaceImageOptions): Promise<void> {
   await reportImageProgress(options.events, options.workspaceId, task);
   try {
-    await task.promise;
+    if (task.owner === options.workspaceId) await task.promise;
+    else await waitForCommand(task.promise);
   } catch (error) {
     const message = error instanceof Error ? error.message : String(error);
     throw new Error(`${message}\n\n${task.output}`.trim());
   } finally {
-    await reportImageProgress(options.events, options.workspaceId, task);
+    if (!commandSignal()?.aborted) await reportImageProgress(options.events, options.workspaceId, task);
   }
 }
 

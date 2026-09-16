@@ -1,6 +1,9 @@
 import { afterEach, describe, expect, test } from "bun:test";
 import { $ } from "bun";
-import { shellQuote } from "@atelier/core";
+import { mkdtemp, rm } from "node:fs/promises";
+import { tmpdir } from "node:os";
+import { join } from "node:path";
+import { shellQuote, withCommandSignal } from "@atelier/core";
 import {
   attachHostObservableTerminal,
   buildCapturePaneCommand,
@@ -84,6 +87,29 @@ maybe("observable terminal integration", () => {
     } finally {
       if (originalTerm === undefined) delete process.env.TERM;
       else process.env.TERM = originalTerm;
+    }
+  });
+});
+
+maybe("observable command cancellation", () => {
+  test("cancellation stops the command group rather than just the terminal viewer", async () => {
+    const directory = await mkdtemp(join(tmpdir(), "observable-cancel-"));
+    const controller = new AbortController();
+    const session = `atelier-observable-cancel-${crypto.randomUUID().slice(0, 8)}`;
+    try {
+      const pending = withCommandSignal(controller.signal, () => runHostObservableCommand({
+        session, cwd: directory,
+        command: "touch started; (sleep 1; touch late) & wait",
+      })).catch((error: Error) => error);
+      while (!(await Bun.file(join(directory, "started")).exists())) await Bun.sleep(5);
+      controller.abort(new Error("cancelled"));
+      expect(await pending).toMatchObject({ message: "cancelled" });
+      await Bun.sleep(1200);
+      expect(await Bun.file(join(directory, "late")).exists()).toBe(false);
+    } finally {
+      controller.abort();
+      await sh(buildKillSessionCommand(session));
+      await rm(directory, { recursive: true, force: true });
     }
   });
 });

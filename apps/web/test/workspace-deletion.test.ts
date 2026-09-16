@@ -23,6 +23,7 @@ async function setup(options: {
   registry.setCallbacks({ removed: () => removed.resolve() });
   const deletion = createWorkspaceDeletion({
     registry,
+    cancelPreparation: async () => {},
     inspect: options.inspect ?? (async () => ({ status: "clear" })),
     destroy: options.destroy ?? (async (id) => { destroyed.push(id); }),
     changed: (_id, state) => {
@@ -52,7 +53,7 @@ describe("workspace deletion", () => {
   test("confirmation reinspects evidence and requires consent to its current fingerprint", async () => {
     let assessment = blocked("first");
     let inspections = 0;
-    const { registry, deletion, destroyed } = await setup({ inspect: async () => { inspections++; return assessment; } });
+    const { registry, deletion, destroyed, removed } = await setup({ inspect: async () => { inspections++; return assessment; } });
     expect(await deletion.request("workspace")).toEqual({ deleted: false, blocked: true, details: { file: "first" } });
     expect(registry.hasAttention("workspace")).toBe(true);
     await deletion.request("workspace");
@@ -65,6 +66,7 @@ describe("workspace deletion", () => {
     expect(destroyed).toEqual([]);
     expect(deletion.evidence("workspace")).toEqual({ file: "second" });
     expect(await deletion.request("workspace", { fingerprint: "second" })).toEqual({ deleted: true, blocked: false });
+    await removed;
     expect(destroyed).toEqual(["workspace"]);
     expect(registry.get("workspace")).toBeUndefined();
     expect(deletion.evidence("workspace")).toBeUndefined();
@@ -140,4 +142,50 @@ describe("workspace deletion", () => {
     expect(registry.get("workspace")?.deletion).toEqual({ status: "failed", operation: "deleting", forced: true, error: "busy" });
     expect(registry.get("second")).toBeUndefined();
   });
+});
+
+test("starting workspaces can be deleted, but inspection waits for preparation cancellation", async () => {
+  const registry = createWorkspaceRegistry();
+  registry.add("starting");
+  const stopped = Promise.withResolvers<void>();
+  const cancelled: string[] = [];
+  const inspected: string[] = [];
+  const removed = Promise.withResolvers<void>();
+  registry.setCallbacks({ removed: () => removed.resolve() });
+  const deletion = createWorkspaceDeletion({
+    registry,
+    cancelPreparation: async (id) => { cancelled.push(id); await stopped.promise; },
+    inspect: async (id) => { inspected.push(id); return { status: "clear" }; },
+    destroy: async () => {},
+    changed: () => {},
+  });
+  expect(deletion.canRequest("starting")).toBe(true);
+  const request = deletion.request("starting");
+  expect(registry.get("starting")?.phase).toBe("checking_delete");
+  await Bun.sleep(0);
+  expect(cancelled).toEqual(["starting"]);
+  expect(inspected).toEqual([]);
+  stopped.resolve();
+  await request;
+  await removed.promise;
+  expect(inspected).toEqual(["starting"]);
+  expect(registry.get("starting")).toBeUndefined();
+});
+
+test("force deletion is accepted during starting and still cancels preparation", async () => {
+  const registry = createWorkspaceRegistry();
+  registry.add("starting");
+  const order: string[] = [];
+  const removed = Promise.withResolvers<void>();
+  registry.setCallbacks({ removed: () => removed.resolve() });
+  const deletion = createWorkspaceDeletion({
+    registry,
+    cancelPreparation: async () => { order.push("cancel"); },
+    inspect: async () => { throw new Error("force must bypass review"); },
+    destroy: async () => { order.push("destroy"); },
+    changed: () => {},
+  });
+  await deletion.request("starting", { force: true });
+  await removed.promise;
+  expect(order).toEqual(["cancel", "destroy"]);
 });

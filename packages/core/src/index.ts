@@ -10,6 +10,7 @@ export {
   requireDocker,
   runDocker,
   runDockerBuffer,
+  withManagedDockerCommand,
   type CommandBufferResult,
   type CommandInput,
   type CommandResult,
@@ -64,3 +65,5 @@ export {
 
 export { createKeyedOperationQueue } from "./keyed-operation-queue.ts";
 export { workloadBuildArgs, workloadCommand } from "./workload-resources.ts";
+
+export { commandSignal, withCommandSignal, waitForCommand, runCommand, killCommandGroup } from "./command-scope.ts";

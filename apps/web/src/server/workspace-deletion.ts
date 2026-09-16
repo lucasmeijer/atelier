@@ -1,4 +1,4 @@
-import { AtelierCoreError, type JsonValue } from "@atelier/core";
+import { AtelierCoreError, withCommandSignal, type JsonValue } from "@atelier/core";
 import type { DeleteCurrentWorkspaceResult, WorkspaceDeletionAssessment } from "@atelier/shared";
 import type { WorkspaceDeletionState, WorkspaceRegistry } from "./workspace-registry.ts";
 
@@ -7,6 +7,7 @@ export function createWorkspaceDeletion(options: {
   registry: WorkspaceRegistry;
   inspect(id: string): Promise<WorkspaceDeletionAssessment>;
   destroy(id: string): Promise<void>;
+  cancelPreparation(id: string): Promise<void>;
   changed(id: string, state: WorkspaceDeletionState): void | Promise<void>;
 }) {
   const { registry } = options;
@@ -20,7 +21,7 @@ export function createWorkspaceDeletion(options: {
 
   function canRequest(id: string): boolean {
     const entry = requireWorkspace(id);
-    if (!entry.deletion) return entry.phase === "ready" || entry.phase === "failed";
+    if (!entry.deletion) return entry.phase === "starting" || entry.phase === "ready" || entry.phase === "failed";
     return entry.deletion.status === "blocked" || entry.deletion.status === "failed";
   }
 
@@ -34,7 +35,8 @@ export function createWorkspaceDeletion(options: {
   async function destroy(id: string, forced: boolean): Promise<string | undefined> {
     await setState(id, { status: "deleting", forced });
     try {
-      await options.destroy(id);
+      await options.cancelPreparation(id);
+      await withCommandSignal(AbortSignal.timeout(60_000), () => options.destroy(id));
       evidence.delete(id);
       registry.remove(id);
       return undefined;
@@ -54,7 +56,8 @@ export function createWorkspaceDeletion(options: {
   async function check(id: string, confirmedFingerprint?: string): Promise<DeleteCurrentWorkspaceResult> {
     await setState(id, { status: "checking" });
     try {
-      const assessment = await options.inspect(id);
+      await options.cancelPreparation(id);
+      const assessment = await withCommandSignal(AbortSignal.timeout(60_000), () => options.inspect(id));
       if (assessment.status === "blocked") {
         if (assessment.fingerprint === confirmedFingerprint) return schedule(id, true);
         evidence.set(id, assessment.details);

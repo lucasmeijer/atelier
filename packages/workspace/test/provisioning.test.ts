@@ -165,3 +165,45 @@ describe("workspace provisioning execution", () => {
     expect(workspaceSetupProvisioningHook.recovery).toBe("continue");
   });
 });
+
+test("a hung preparation command times out with its substep and can be retried", async () => {
+  const { runCommand } = await import("@atelier/core");
+  const waiting = Promise.withResolvers<void>();
+  const provisioning = createWorkspaceProvisioning({ stepTimeoutMs: 100, onChange(id) {
+    if (provisioning.snapshot(id)?.status === "waiting") waiting.resolve();
+  } });
+  let attempts = 0;
+  const completed = provisioning.run("hung", (run) => run.step("startup", "Prepare workspace", async () => {
+    run.report({ detail: "Importing image postgres:17 into workspace" });
+    if (++attempts === 1) await runCommand(["sh", "-c", "sleep 60"]);
+  }, "retry-or-continue"));
+  await waiting.promise;
+  expect(provisioning.snapshot("hung")).toMatchObject({ status: "waiting", waiting: { retryable: true }, steps: [{ status: "failed", error: "Prepare workspace: Importing image postgres:17 into workspace timed out. Retry preparation or delete this workspace." }] });
+  provisioning.resume("hung", "retry");
+  await completed;
+  expect(attempts).toBe(2);
+  expect(provisioning.snapshot("hung")?.status).toBe("done");
+});
+
+test("cancel waits for operation cleanup and prevents the next step", async () => {
+  const { runCommand } = await import("@atelier/core");
+  const provisioning = createWorkspaceProvisioning();
+  const cleanup = Promise.withResolvers<void>();
+  const stopped = Promise.withResolvers<void>();
+  let next = false;
+  const completed = provisioning.run("cancel", async (run) => {
+    await run.step("slow", "Slow", async () => {
+      try { await runCommand(["sh", "-c", "sleep 60"]); }
+      finally { stopped.resolve(); await cleanup.promise; }
+    });
+    next = true;
+  }).catch((error) => error);
+  let settled = false;
+  const cancel = provisioning.cancel("cancel").then(() => { settled = true; });
+  await stopped.promise;
+  expect(settled).toBe(false);
+  cleanup.resolve();
+  await cancel;
+  expect(next).toBe(false);
+  expect(await completed).toMatchObject({ message: "workspace cancel provisioning cancelled" });
+});

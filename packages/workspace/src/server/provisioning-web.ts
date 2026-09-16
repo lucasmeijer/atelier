@@ -1,5 +1,6 @@
 import { actionItemHtml } from "@atelier/design-system/action-item";
 import { Icons } from "@atelier/design-system/icons";
+import { buttonGroupHtml } from "@atelier/design-system/button-group";
 import { buttonHtml } from "@atelier/design-system/button";
 import { observableTerminalStaticFiles } from "@atelier/observable-terminal/server";
 import { escapeHtml } from "@atelier/shared";
@@ -34,13 +35,17 @@ function renderProvisionStep(workspaceId: string, step: WorkspaceProvisionStep, 
   const error = step.error && !(step.status === "failed" && step.error === step.output) ? `<div class="${step.status === "warning" ? "provision-warning" : "provision-error"}">${escapeHtml(step.error)}</div>` : "";
   const detailText = step.status === "warning" ? "Continued despite this failure" : step.detail;
   const detail = detailText ? `<span class="r-sub provision-step-detail">${escapeHtml(detailText)}</span>` : "";
-  const retryAction = awaitingContinue && waiting?.retryable
-    ? `<form method="post" action="/workspaces/${encodeURIComponent(workspaceId)}/provisioning/continue?action=retry">${buttonHtml({ type: "submit", variant: "primary", content: { kind: "caption", caption: "Retry" } })}</form>`
+  const continueUrl = `/workspaces/${encodeURIComponent(workspaceId)}/provisioning/continue`;
+  const actions = awaitingContinue
+    ? `<form class="provision-actions" method="post" action="${continueUrl}">${buttonGroupHtml({
+      orientation: "horizontal",
+      semantics: "group",
+      label: "Preparation recovery",
+      itemsHtml: (waiting.retryable ? buttonHtml({ type: "submit", variant: "primary", content: { kind: "caption", caption: "Retry" }, attributesHtml: `formaction="${continueUrl}?action=retry"` }) : "")
+        + buttonHtml({ type: "submit", variant: "secondary", content: { kind: "caption", caption: "Continue anyway" } }),
+    })}</form>`
     : "";
-  const continueAction = awaitingContinue
-    ? `<form class="provision-continue" method="post" action="/workspaces/${encodeURIComponent(workspaceId)}/provisioning/continue">${buttonHtml({ type: "submit", variant: "primary", content: { kind: "caption", caption: "Continue anyway" } })}</form>`
-    : "";
-  return `<li class="status-list__item provision-step"${stepStatusAttributes(step.status)}>${renderStatusMarker(step.status)}<div class="provision-step-content"><span class="provision-step-label">${escapeHtml(step.label)}</span>${detail}${activity}${output}${error}${retryAction}${continueAction}</div></li>`;
+  return `<li class="status-list__item provision-step"${stepStatusAttributes(step.status)}>${renderStatusMarker(step.status)}<div class="provision-step-content"><span class="provision-step-label">${escapeHtml(step.label)}</span>${detail}${activity}${output}${error}${actions}</div></li>`;
 }
 
 export function renderWorkspaceProvisioning(workspaceId: string, snapshot: WorkspaceProvisionSnapshot | undefined, options: { failed?: boolean; error?: string } = {}): string {

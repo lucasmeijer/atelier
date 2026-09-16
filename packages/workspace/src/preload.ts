@@ -1,6 +1,6 @@
 import { mkdir, readFile, writeFile, rename, stat } from "node:fs/promises";
 import { join } from "node:path";
-import { requireDocker, workloadCommand } from "@atelier/core";
+import { requireDocker, workloadCommand, runCommand, waitForCommand, withCommandSignal } from "@atelier/core";
 import { ensureDefaultWorkspaceImage } from "@atelier/workspace-image";
 
 export const defaultWorkspacePreload = "atelier:default-workspace";
@@ -8,10 +8,9 @@ export const defaultWorkspacePreload = "atelier:default-workspace";
 export interface PreparedImage { requested: string; reference?: string }
 type Command = (args: string[]) => Promise<{ stdout: Buffer; stderr: string }>;
 async function command(args: string[]) {
-  const proc = Bun.spawn(args, { stdout: "pipe", stderr: "pipe" });
-  const [stdout, stderr, code] = await Promise.all([new Response(proc.stdout).arrayBuffer(), new Response(proc.stderr).text(), proc.exited]);
-  if (code !== 0) throw new Error(`${args[0]} ${args[1]} failed: ${stderr.trim()}`);
-  return { stdout: Buffer.from(stdout), stderr };
+  const { stdout, stderr, exitCode } = await runCommand(args);
+  if (exitCode !== 0) throw new Error(`${args[0]} ${args[1]} failed: ${stderr.trim()}`);
+  return { stdout, stderr };
 }
 
 export function normalizeImageReference(input: string): string {
@@ -35,7 +34,7 @@ export function createImagePreloader(run: Command = command, docker: typeof requ
     const name = normalizeImageReference(requested);
     let task = resolving.get(name);
     if (!task) {
-      task = (async () => {
+      task = withCommandSignal(AbortSignal.timeout(5 * 60_000), async () => {
         let listing = await ctr("images", "ls", `name==${name}`);
         if (!listing.stdout.toString().split("\n").some((row) => row.split(/\s+/)[0] === name)) {
           await ctr("content", "fetch", name);
@@ -47,15 +46,15 @@ export function createImagePreloader(run: Command = command, docker: typeof requ
         const reference = `${name.split("@")[0]}@${digest}`;
         await ctr("images", "tag", "--force", name, reference);
         return reference;
-      })().finally(() => resolving.delete(name));
+      }).finally(() => resolving.delete(name));
       resolving.set(name, task);
     }
-    return task;
+    return waitForCommand(task);
   }
   function prepare(reference: string): Promise<void> {
     let task = preparing.get(reference);
     if (!task) {
-      task = cacheQueue.then(async () => {
+      task = cacheQueue.then(() => withCommandSignal(AbortSignal.timeout(5 * 60_000), async () => {
         const image = await docker(["image", "inspect", reference, "--format", "{{json .RootFS.Layers}}"]);
         const diffIDs: string[] = JSON.parse(image.stdout) ?? [];
         // ctr atomically publishes final cache files but rebuilds them even when
@@ -75,12 +74,12 @@ export function createImagePreloader(run: Command = command, docker: typeof requ
         }));
         if (present.every(Boolean)) return;
         await run(await workloadCommand(["ctr", "--namespace", "moby", "images", "build-erofs-cache", reference, cacheDirectory]));
-      });
+      }));
       cacheQueue = task.then(() => {}, () => {});
       preparing.set(reference, task);
       task.catch(() => preparing.delete(reference));
     }
-    return task;
+    return waitForCommand(task);
   }
   return {
     async snapshot(images: string[], directory: string): Promise<string | undefined> {
@@ -97,10 +96,11 @@ export function createImagePreloader(run: Command = command, docker: typeof requ
       await writeFile(join(directory, "preloads.json"), JSON.stringify(prepared));
       return referenceFile;
     },
-    async load(directory: string): Promise<PreparedImage[]> {
+    async load(directory: string, report: (detail: string) => void = () => {}): Promise<PreparedImage[]> {
       const images: PreparedImage[] = JSON.parse(await readFile(join(directory, "preloads.json"), "utf8"));
       for (const image of images) {
         if (image.reference) continue;
+        report(`Resolving image ${image.requested}`);
         image.reference = await resolve(image.requested);
         const temporary = join(directory, "preloads.json.tmp");
         await writeFile(temporary, JSON.stringify(images));
@@ -108,14 +108,18 @@ export function createImagePreloader(run: Command = command, docker: typeof requ
       }
       return images;
     },
-    async install(images: PreparedImage[], container: string): Promise<void> {
+    async install(images: PreparedImage[], container: string, report: (detail: string) => void = () => {}): Promise<void> {
       if (!images.length) return;
       // containerd is sufficient for importing snapshots; socket activation keeps Docker asleep.
+      report("Starting workspace containerd");
       await docker(["exec", "--user", "root", container, "systemctl", "start", "containerd.service"]);
       for (const image of images) {
         if (!image.reference) throw new Error(`Image has not been resolved: ${image.requested}`);
+        report(`Preparing image cache for ${image.requested} (including queue wait)`);
         await prepare(image.reference);
+        report(`Exporting image ${image.requested}`);
         const archive = await run(["atelier-image-transfer", "export", image.reference]);
+        report(`Importing image ${image.requested} into workspace`);
         const imported = await docker(["exec", "--user", "root", "-i", container, "atelier-image-transfer", "import"], { stdin: archive.stdout });
         if (image.requested === defaultWorkspacePreload) {
           // Transfer selects the native manifest from a multi-platform index.

@@ -1,4 +1,4 @@
-import type { AtelierEventBus } from "@atelier/core";
+import { commandSignal, waitForCommand, type AtelierEventBus } from "@atelier/core";
 
 export interface DockerImageStoreWaitState {
   elapsedMs: number;
@@ -37,32 +37,32 @@ export function createDockerImageStoreQueue(options: { updateIntervalMs?: number
   return {
     async run<T>(operation: DockerImageStoreOperation, work: () => Promise<T>): Promise<T> {
       const previous = tail;
-      let release!: () => void;
-      tail = new Promise<void>((resolve) => { release = resolve; });
+      const finished = Promise.withResolvers<void>();
+      // A cancelled waiter can return immediately without letting the next turn
+      // overtake its predecessor.
+      tail = previous.then(() => finished.promise);
       const waits = queued > 0;
       queued += 1;
       const waitingStartedAt = now();
       let ready = false;
-      let acquired = false;
       void previous.then(() => { ready = true; });
 
       try {
         if (waits && operation.onWait) {
           while (!ready) {
             await operation.onWait({ status: "waiting", owner: current?.label ?? "Another workspace image operation", elapsedMs: now() - waitingStartedAt });
-            await Promise.race([previous, new Promise<void>((resolve) => setTimeout(resolve, updateIntervalMs))]);
+            await waitForCommand(Promise.race([previous, new Promise<void>((resolve) => setTimeout(resolve, updateIntervalMs))]));
           }
         }
-        await previous;
-        acquired = true;
+        await waitForCommand(previous);
         current = operation;
         if (waits && operation.onWait) await operation.onWait({ status: "acquired", owner: operation.label, elapsedMs: now() - waitingStartedAt });
+        commandSignal()?.throwIfAborted();
         return await work();
       } finally {
-        if (!acquired) await previous;
         if (current === operation) current = undefined;
         queued -= 1;
-        release();
+        finished.resolve();
       }
     },
   };

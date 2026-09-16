@@ -299,3 +299,34 @@ describe("workspace lifecycle", () => {
   });
 
 });
+
+test("deleting a preparing workspace through JSON cancels its command before destruction", async () => {
+  const { runCommand } = await import("@atelier/core");
+  const stopped = deferred();
+  const destroyed = deferred();
+  let laterStep = false;
+  let commandStopped = false;
+  const { app, registry } = createTestApp({
+    provision: async (_id, { run }) => {
+      await run.step("slow", "Prepare workspace", async () => {
+        try { await runCommand(["sh", "-c", "sleep 60"]); }
+        finally { commandStopped = true; stopped.resolve(); }
+      });
+      laterStep = true;
+    },
+    destroy: async () => { expect(commandStopped).toBe(true); destroyed.resolve(); },
+  });
+  const create = await app.fetch(new Request("http://test.local/workspaces", {
+    method: "POST", headers: { accept: "application/json", "content-type": "application/json" }, body: JSON.stringify({ source: { type: "empty" } }),
+  }));
+  const id = (await create.json()).workspace.id;
+  expect(registry.get(id)?.phase).toBe("starting");
+  const response = await app.fetch(new Request(`http://test.local/workspaces/${id}/delete`, {
+    method: "POST", headers: { accept: "application/json", "content-type": "application/json" }, body: JSON.stringify({ force: true }),
+  }));
+  expect(response.status).toBe(200);
+  await stopped.promise;
+  await destroyed.promise;
+  while (registry.get(id)) await Bun.sleep(1);
+  expect(laterStep).toBe(false);
+});

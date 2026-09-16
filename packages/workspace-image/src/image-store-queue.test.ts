@@ -101,3 +101,24 @@ describe("Docker image store queue", () => {
     ]);
   });
 });
+
+test("a cancelled image-store waiter returns promptly without releasing its predecessor's lock", async () => {
+  const { withCommandSignal } = await import("@atelier/core");
+  const queue = createDockerImageStoreQueue();
+  const started = Promise.withResolvers<void>();
+  const release = Promise.withResolvers<void>();
+  const first = queue.run({ label: "first" }, async () => { started.resolve(); await release.promise; });
+  await started.promise;
+  const controller = new AbortController();
+  let cancelledRan = false;
+  let nextRan = false;
+  const cancelled = withCommandSignal(controller.signal, () => queue.run({ label: "cancelled" }, async () => { cancelledRan = true; })).catch((error) => error);
+  const next = queue.run({ label: "next" }, async () => { nextRan = true; });
+  controller.abort(new Error("cancelled"));
+  expect(await cancelled).toMatchObject({ message: "cancelled" });
+  expect(nextRan).toBe(false);
+  release.resolve();
+  await Promise.all([first, next]);
+  expect(cancelledRan).toBe(false);
+  expect(nextRan).toBe(true);
+});

@@ -131,6 +131,7 @@ export function createWebApp(deps: WebAppDeps): WebApp {
     registry,
     inspect: (id) => deletionReview.inspect(id),
     destroy: deps.destroyWorkspace,
+    cancelPreparation: (id) => provisioning.cancel(id),
     changed(id, state) {
       if (state.status === "blocked") return broadcastBlockedDeletion(id, state);
       broadcastDeletionPresentation(id);
@@ -520,7 +521,7 @@ export function createWebApp(deps: WebAppDeps): WebApp {
 
   function workspaceBootResidentHtml(entry: WorkspaceEntry, options: { visible?: boolean } = {}): string {
     const deleteButton = buttonHtml({ type: "submit", variant: "danger", content: { kind: "caption", caption: "Delete workspace" } });
-    const deleteAction = entry.phase === "failed" ? `<form class="fixed-shell-delete-workspace" data-action="turbo:submit-start->workspace-navigation#workspaceDeletionStarted" method="post" action="/workspaces/${encodeURIComponent(entry.id)}/delete">${deleteButton}</form>` : "";
+    const deleteAction = `<form class="workspace-boot-actions" data-action="turbo:submit-start->workspace-navigation#workspaceDeletionStarted" method="post" action="/workspaces/${encodeURIComponent(entry.id)}/delete">${deleteButton}</form>`;
     const inner = `${renderWorkspaceProvisioning(entry.id, provisioning.snapshot(entry.id), { failed: entry.phase === "failed", error: entry.error })}${deleteAction}`;
     const projectAttr = isGitProjectInit(entry.init) ? ` data-project-id="${escapeHtml(entry.init.projectId)}"` : "";
     return `<div class="workspace-detail-resident workspace-boot ${options.visible ? "visible" : ""}" id="${workspaceResidentId(entry.id)}" data-workspace-residency-target="resident" data-workspace-id="${escapeHtml(entry.id)}"${projectAttr}><div class="main"><div class="body"><div class="workspace-boot-content">${inner}</div></div></div>${renderMobileWorkspaceBar()}</div>`;
@@ -681,14 +682,16 @@ export function createWebApp(deps: WebAppDeps): WebApp {
     void (async () => {
       try {
         await provisioning.run(id, (run) => deps.provisionWorkspace(id, { init: options.init, context: options.context, run }));
-        if (!registry.get(id)) return;
+        const entry = registry.get(id);
+        if (!entry || entry.deletion) return;
         const warnings = provisioning.snapshot(id)!.steps.filter((step) => step.status === "warning");
         if (warnings.length) registry.setIssue(id, "readiness", warnings.map((step) => `${step.label}: ${step.error} Continued despite this failure.`).join("\n"));
         if (options.title) await setWorkspaceTitle(id, options.title);
         registry.setPhase(id, "ready");
         if (options.context?.agent && !options.context.agent.initialPrompt?.trim()) registry.markViewAttention(id, "workspace");
       } catch (error) {
-        if (!registry.get(id)) return;
+        const entry = registry.get(id);
+        if (!entry || entry.deletion) return;
         const message = error instanceof Error ? error.message : String(error);
         logError(`could not provision workspace ${id}: ${message}`);
         registry.setPhase(id, "failed", message);
@@ -911,6 +914,10 @@ export function createWebApp(deps: WebAppDeps): WebApp {
 
   async function cancelWorkspaceDeletionEndpoint(id: string, request: Request): Promise<Response> {
     if (!deletion.cancel(id)) return turboStreamResponse("", { status: 409 });
+    if (provisioning.snapshot(id)?.status === "cancelled") {
+      registry.setPhase(id, "failed", "Workspace preparation was cancelled. Delete this workspace or restart Atelier to retry startup.");
+      return requestAcceptsJson(request) ? jsonResponse({ cancelled: true }) : turboStreamResponse("");
+    }
     const stream = `${turboReplaceStream(workspacePresentationDomId(id), renderWorkspacePresentation(await fixedWorkspacePresentation(id)))}${workspacePreparationInvalidatedTurboStream(id)}`;
     broadcastShell(stream);
     if (requestAcceptsJson(request)) return jsonResponse({ cancelled: true });

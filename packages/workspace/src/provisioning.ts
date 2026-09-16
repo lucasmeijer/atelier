@@ -1,4 +1,4 @@
-import { AtelierCoreError, invalidArguments, type AtelierEventBus } from "@atelier/core";
+import { AtelierCoreError, invalidArguments, withCommandSignal, type AtelierEventBus } from "@atelier/core";
 import type { WorkspaceProvisionRecovery } from "@atelier/shared";
 
 export interface WorkspaceProvisionProgress {
@@ -30,6 +30,7 @@ declare module "@atelier/core" {
 }
 
 export interface WorkspaceProvisionRun {
+  readonly signal: AbortSignal;
   step<T>(id: string, label: string, work: () => Promise<T> | T): Promise<T>;
   step(id: string, label: string, work: () => Promise<void> | void, recovery: WorkspaceProvisionRecovery | undefined): Promise<void>;
   report(progress: WorkspaceProvisionProgress): void;
@@ -40,9 +41,12 @@ export interface WorkspaceProvisioning {
   snapshot(workspaceId: string): WorkspaceProvisionSnapshot | undefined;
   resume(workspaceId: string, action: "retry" | "continue"): string;
   delete(workspaceId: string): void;
+  cancel(workspaceId: string): Promise<void>;
 }
 
 interface ProvisioningState {
+  controller: AbortController;
+  settled: ReturnType<typeof Promise.withResolvers<void>>;
   status: "running" | "done" | "failed" | "cancelled";
   steps: WorkspaceProvisionStep[];
   startedAt: number;
@@ -52,13 +56,29 @@ interface ProvisioningState {
 }
 
 /** Owns execution order, progress, and recovery. Consumers render snapshots, not event patches. */
-export function createWorkspaceProvisioning(options: { events?: AtelierEventBus; onChange?: (workspaceId: string) => void } = {}): WorkspaceProvisioning {
+export function createWorkspaceProvisioning(options: { events?: AtelierEventBus; onChange?: (workspaceId: string) => void; stepTimeoutMs?: number } = {}): WorkspaceProvisioning {
   const runs = new Map<string, ProvisioningState>();
+  function cancel(id: string): Promise<void> {
+    const run = runs.get(id);
+    if (!run) return Promise.resolve();
+    if (run.status === "running") {
+      run.status = "cancelled";
+      run.totalMs = Math.round(performance.now() - run.startedAt);
+      for (const step of run.steps) {
+        if (step.status === "running") { step.status = "failed"; step.error = "Preparation cancelled"; }
+      }
+      run.controller.abort(new Error(`workspace ${id} provisioning cancelled`));
+      run.pending?.resolve("continue");
+      run.pending = undefined;
+    }
+    return run.settled.promise;
+  }
   return {
+    cancel,
     snapshot(id) {
       const run = runs.get(id);
       if (!run) return undefined;
-      const { pending, startedAt, ...state } = run;
+      const { pending, startedAt, controller: _controller, settled: _settled, ...state } = run;
       return structuredClone({ ...state, totalMs: state.totalMs ?? Math.round(performance.now() - startedAt), status: pending ? "waiting" : state.status, waiting: pending && { stepId: pending.stepId, retryable: pending.retryable } });
     },
     resume(id, action) {
@@ -72,22 +92,18 @@ export function createWorkspaceProvisioning(options: { events?: AtelierEventBus;
       return pending.stepId;
     },
     delete(id) {
-      const run = runs.get(id);
+      void cancel(id);
       runs.delete(id);
-      if (run?.status === "running") {
-        run.status = "cancelled";
-        run.pending?.resolve("continue");
-        run.pending = undefined;
-      }
     },
     async run<T>(workspaceId: string, work: (run: WorkspaceProvisionRun) => Promise<T>): Promise<T> {
       if (runs.get(workspaceId)?.status === "running") throw new Error(`workspace ${workspaceId} already has an active provisioning run`);
-      const state: ProvisioningState = { status: "running", steps: [], startedAt: performance.now() };
+      const state: ProvisioningState = { controller: new AbortController(), settled: Promise.withResolvers<void>(), status: "running", steps: [], startedAt: performance.now() };
       runs.set(workspaceId, state);
       let active: WorkspaceProvisionStep | undefined;
       const changed = () => options.onChange?.(workspaceId);
-      const checkCancelled = () => { if (state.status === "cancelled") throw new Error(`workspace ${workspaceId} provisioning cancelled`); };
+      const checkCancelled = () => state.controller.signal.throwIfAborted();
       const run: WorkspaceProvisionRun = {
+        signal: state.controller.signal,
         report(progress) {
           checkCancelled();
           if (!active || active.status !== "running") throw new Error("Provisioning progress requires a running step");
@@ -107,7 +123,13 @@ export function createWorkspaceProvisioning(options: { events?: AtelierEventBus;
               state.steps[index] = active = step;
               changed();
               try {
-                const result = await operation();
+                const deadline = new AbortController();
+                const timer = setTimeout(() => deadline.abort(new Error(`${label}${step.detail ? `: ${step.detail}` : ""} timed out. Retry preparation or delete this workspace.`)), options.stepTimeoutMs ?? 10 * 60_000);
+                let result: T;
+                try {
+                  result = await withCommandSignal(AbortSignal.any([state.controller.signal, deadline.signal]), operation);
+                  deadline.signal.throwIfAborted();
+                } finally { clearTimeout(timer); }
                 checkCancelled();
                 step.durationMs = Math.round(performance.now() - startedAt);
                 step.status = "done";
@@ -156,7 +178,7 @@ export function createWorkspaceProvisioning(options: { events?: AtelierEventBus;
           changed();
         }
         throw error;
-      } finally { unsubscribe?.(); }
+      } finally { unsubscribe?.(); state.settled.resolve(); }
     },
   };
 }
