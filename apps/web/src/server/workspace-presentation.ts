@@ -160,7 +160,7 @@ function renderWorkspaceRow(workspace: WorkspacePaneEntry, projectId?: string, o
   return actionItemHtml({
     kind: "single",
     label: { kind: "text", text: workspace.title },
-    trailingHtml: renderWorkspaceRowStatus(workspace),
+    trailingHtml: `${renderWorkspaceRowStatus(workspace)}<span class="workspace-preparation-status fixed-shell-workspace-status action-item__status" aria-label="Preparing workspace" title="Preparing workspace"><i class="status-dot running" aria-hidden="true"></i></span>`,
     element: {
       tag: "button",
 

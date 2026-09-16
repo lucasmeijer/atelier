@@ -355,7 +355,7 @@ class WorkspaceResidencyController extends Controller<HTMLElement> {
     const entry = document.querySelector<HTMLElement>(`[data-workspace-entry-id="${CSS.escape(workspaceId)}"]`);
     if (!entry) return;
     entry.toggleAttribute("data-workspace-preloading", preloading);
-    const attention = entry.querySelector<HTMLElement>(":scope > .workspace-attention-status");
+    const attention = entry.querySelector<HTMLElement>(".workspace-attention-status");
     if (!attention) return;
     attention.setAttribute("aria-label", preloading ? "Attention; preparing workspace" : "Attention");
     attention.toggleAttribute("title", preloading);

@@ -251,6 +251,9 @@ turbo-frame { display: contents; }
 }
 .fixed-shell-workspace-status { position: relative; display: inline-grid; width: 16px; height: 16px; place-items: center; overflow: visible; }
 .fixed-shell-workspace-warning { color: var(--warning); font-style: normal; line-height: 1; }
+.workspace-preparation-status { display: none; }
+[data-workspace-entry-id][data-workspace-preloading]:not(:has(.workspace-attention-status, .fixed-shell-workspace-busy)) .workspace-preparation-status { display: inline-grid; }
+[data-workspace-entry-id][data-workspace-preloading]:not(:has(.workspace-attention-status, .fixed-shell-workspace-busy)) .fixed-shell-workspace-status:not(.workspace-preparation-status) { display: none; }
 .workspace-attention-status { position: relative; }
 .workspace-attention-status > .status-dot.attention.at-edge { position: relative; margin-inline-start: 0; }
 [data-workspace-entry-id][data-workspace-preloading] .workspace-attention-status > .status-dot::after {
