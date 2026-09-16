@@ -9,6 +9,11 @@ describe("provider setup defaults", () => {
     expect(defaultProviderModels("openai-codex", models).map((entry) => entry.id)).toEqual(["gpt-6-astra", "gpt-5.6-luna"]);
     expect(models[0]!.id).toBe("gpt-5.6-luna");
   });
+  test("prioritizes Opus 5 over Fable for Anthropic", () => {
+    const models = [model("claude-fable-5"), model("claude-opus-4-8"), model("claude-opus-5")];
+    expect(defaultProviderModels("anthropic", models).map((entry) => entry.id)).toEqual(["claude-opus-5", "claude-fable-5", "claude-opus-4-8"]);
+    expect(defaultProviderModels("anthropic", models.filter((entry) => entry.id !== "claude-fable-5")).map((entry) => entry.id)).toEqual(["claude-opus-5", "claude-opus-4-8"]);
+  });
   test("selects the highest known input price for uncurated providers", () => {
     expect(defaultProviderModels("custom", [model("cheap", 1), model("unknown"), model("expensive", 8)]).map((entry) => entry.id)).toEqual(["expensive"]);
   });
