@@ -31,6 +31,7 @@
     "nano",
     "netcat-openbsd",
     "ninja-build",
+    "openssh-client",
     "patch",
     "pkg-config",
     "psmisc",
