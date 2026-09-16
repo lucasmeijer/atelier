@@ -13,6 +13,7 @@ export class ActionItemController extends Controller<HTMLElement> {
     this.element.addEventListener("mouseout", this.stopPointerLabelScroll);
     this.element.addEventListener("focusin", this.startLabelScroll);
     this.element.addEventListener("focusout", this.stopFocusLabelScroll);
+    this.element.addEventListener("turbo:before-morph-element", this.preserveLabelScroll);
   }
 
   disconnect(): void {
@@ -20,7 +21,23 @@ export class ActionItemController extends Controller<HTMLElement> {
     this.element.removeEventListener("mouseout", this.stopPointerLabelScroll);
     this.element.removeEventListener("focusin", this.startLabelScroll);
     this.element.removeEventListener("focusout", this.stopFocusLabelScroll);
+    this.element.removeEventListener("turbo:before-morph-element", this.preserveLabelScroll);
   }
+
+  private readonly preserveLabelScroll = (event: Event): void => {
+    const item = event.target;
+    if (!(item instanceof HTMLElement) || !item.matches(`${actionItemSelector}.${scrollingClass}`)) return;
+    // SAFETY: Turbo's before-morph-element event supplies newElement except for removals.
+    const { newElement } = (event as CustomEvent<{ newElement?: Element }>).detail;
+    if (!(newElement instanceof HTMLElement) || !newElement.matches(actionItemSelector)) return;
+    // Merge only browser-owned animation state into the incoming markup. Keeping
+    // the animation applied continuously preserves its progress, while allowing
+    // server-owned classes, styles, and contents to morph normally.
+    newElement.classList.add(scrollingClass);
+    for (const property of ["--action-item-label-scroll-distance", "--action-item-label-scroll-duration"]) {
+      newElement.style.setProperty(property, item.style.getPropertyValue(property));
+    }
+  };
 
   private transitionedItem(event: MouseEvent | FocusEvent): HTMLElement | null {
     const item = event.target instanceof Element ? event.target.closest<HTMLElement>(actionItemSelector) : null;
