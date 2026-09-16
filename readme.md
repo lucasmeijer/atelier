@@ -63,7 +63,7 @@ Click a video preview to watch on Tella, or [watch the embedded videos on the we
 2. **Install Atelier.** Run:
 
    ```sh
-   curl -fsSL https://lucasmeijer.com/get-atelier | sudo bash
+   curl -fsSL https://lucasmeijer.com/get-atelier | bash
    ```
 
 ## Frequently asked questions

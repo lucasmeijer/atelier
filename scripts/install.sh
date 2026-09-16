@@ -137,7 +137,7 @@ host_os="$(uname -s)"
 desktop=0
 if [ "$host_os" = Darwin ] || { [ "$host_os" = Linux ] && grep -qi microsoft /proc/sys/kernel/osrelease; }; then desktop=1; fi
 case "$host_os" in
-  Linux) [ "$(id -u)" -eq 0 ] || fail "run this installer as root" ;;
+  Linux) ;;
   Darwin)
     # Docker Desktop belongs to the logged-in user, including when the installer
     # was invoked with sudo. Keep that user's Docker context and credentials.
@@ -148,36 +148,58 @@ case "$host_os" in
   *) fail "Atelier System requires Linux or macOS with Docker Desktop" ;;
 esac
 
+root_required=0
+request_root() {
+  if [ "$(id -u)" -ne 0 ] && [ "$root_required" -eq 0 ]; then
+    command -v sudo >/dev/null || fail "sudo is required for Linux host setup; install sudo or run as root"
+    finish_line
+    printf '  Atelier needs administrator access to prepare this Linux host.\n'
+    sudo -v || fail "administrator access was not granted"
+    root_required=1
+  fi
+}
+
+run_root() {
+  if [ "$root_required" -eq 1 ]; then sudo "$@"; else "$@"; fi
+}
+
 log_file="$(mktemp /tmp/atelier-install.XXXXXX)"
 printf "\n  %sLet's get your Atelier setup!%s\n\n" "$violet" "$reset"
 status "Preparing your server"
 if ! command -v docker >/dev/null; then
   [ "$host_os" != Darwin ] || fail "install and start Docker Desktop first, then run this installer again"
+  request_root
   if command -v apt-get >/dev/null; then
-    run_quiet "Preparing your server · installing Docker" apt-get update
-    run_quiet "Preparing your server · installing Docker" apt-get install -y docker.io
+    run_quiet "Preparing your server · installing Docker" run_root apt-get update
+    run_quiet "Preparing your server · installing Docker" run_root apt-get install -y docker.io
   elif command -v dnf >/dev/null; then
-    run_quiet "Preparing your server · installing Docker" dnf install -y docker
+    run_quiet "Preparing your server · installing Docker" run_root dnf install -y docker
   else
     fail "install Docker first; automatic Docker installation supports apt-get and dnf"
   fi
-  run_quiet "Starting Docker" systemctl enable --now docker
+  run_quiet "Starting Docker" run_root systemctl enable --now docker
+fi
+if [ "$host_os" = Linux ] && [ "$(id -u)" -ne 0 ] && ! docker info >>"$log_file" 2>&1; then
+  request_root
+  docker_binary="$(command -v docker)"
+  docker() { sudo "$docker_binary" "$@"; }
 fi
 run_quiet "Checking Docker" docker info
 
 # Nested daemons share the host kernel; privileged containers cannot supply
 # filesystem drivers missing from that kernel.
 if [ "$host_os" = Linux ] && [ "$desktop" -eq 0 ]; then
+  request_root
   for filesystem in erofs overlay; do
     if ! grep -qw "$filesystem" /proc/filesystems; then
-      if ! command -v modprobe >/dev/null || ! modprobe "$filesystem"; then
+      if ! command -v modprobe >/dev/null || ! run_root modprobe "$filesystem"; then
         fail "$filesystem is unavailable; install the filesystem modules for $(uname -r), or use a kernel with $filesystem support"
       fi
       grep -qw "$filesystem" /proc/filesystems || fail "$filesystem is still unavailable after modprobe; use a kernel with $filesystem support"
     fi
   done
-  mkdir -p /etc/modules-load.d
-  printf 'erofs\noverlay\n' > /etc/modules-load.d/atelier-system.conf
+  run_root mkdir -p /etc/modules-load.d
+  printf 'erofs\noverlay\n' | run_root tee /etc/modules-load.d/atelier-system.conf >/dev/null
 fi
 
 installed=0
@@ -234,6 +256,15 @@ supervisor_connect() {
     if (!r.ok) throw new Error(`System connection request: ${r.status}`);
   '
 }
+check_system_running() {
+  local state
+  state="$(docker inspect --format '{{.State.Status}}' "$system_name" 2>>"$log_file")"
+  if [ "$state" != running ]; then
+    finish_line
+    docker logs --tail 40 "$system_name" 2>&1 | tee -a "$log_file" >&2
+    fail "Atelier services are $state. Container logs are shown above."
+  fi
+}
 wait_for_system() {
   local reply previous="" activity_start=$SECONDS start=$SECONDS description="Waiting for the supervisor" percent="" code pid status_file tick
   status_file="${log_file}.status"
@@ -241,7 +272,7 @@ wait_for_system() {
   local -a fields
   [ "$action" != connect ] || request_connect=1
   while true; do
-    [ "$(docker inspect --format '{{.State.Running}}' "$system_name" 2>>"$log_file")" = true ] || fail "Atelier services stopped during startup."
+    check_system_running
     if [ "$request_connect" -eq 1 ]; then
       if supervisor_connect >>"$log_file" 2>&1; then request_connect=0; fi
     fi
@@ -373,6 +404,7 @@ esac
 if [ "$action" = install ] || [ "$action" = update ]; then
   local_port="$(docker inspect --format '{{(index (index .NetworkSettings.Ports "3080/tcp") 0).HostPort}}' "$system_name")"
   for ((attempt=0; attempt<60; attempt++)); do
+    check_system_running
     if docker exec "$system_name" bun -e '
       const [localPort, mode] = process.argv.slice(1);
       const response = await fetch("http://127.0.0.1:3001/access", {

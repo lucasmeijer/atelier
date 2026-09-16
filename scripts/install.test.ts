@@ -2,13 +2,18 @@ import { expect, test } from "bun:test";
 
 const installer = await Bun.file(new URL("./install.sh", import.meta.url)).text();
 
-function run(options: { mac?: boolean; wsl?: boolean; vmKernelFails?: boolean; installed?: boolean; old?: boolean; pullFails?: boolean; running?: boolean; appFails?: boolean; pendingHealth?: boolean; missingFilesystem?: boolean; loadable?: boolean } = {}, args = ["--non-interactive"]) {
+function run(options: { systemState?: "restarting" | "exited"; nonRoot?: boolean; denySudo?: boolean; mac?: boolean; wsl?: boolean; vmKernelFails?: boolean; installed?: boolean; old?: boolean; pullFails?: boolean; running?: boolean; appFails?: boolean; pendingHealth?: boolean; missingFilesystem?: boolean; loadable?: boolean } = {}, args = ["--non-interactive"]) {
   const logPath = `/tmp/atelier-install-test-${crypto.randomUUID()}.log`;
   const mock = `
 mktemp() { echo "${logPath}"; }
 sleep() { command sleep 0.01; }
 uname() { echo ${options.mac ? "Darwin" : "Linux"}; }
-id() { echo ${options.mac ? 501 : 0}; }
+id() { echo ${options.mac || options.nonRoot ? 501 : 0}; }
+sudo() {
+  printf 'SUDO %s\\n' "$*" >&2
+  if [ "$1" = -v ]; then return ${options.denySudo ? 1 : 0}; fi
+  "$@"
+}
 module_loaded=0
 grep() { if [[ "$*" == *microsoft* ]]; then return ${options.wsl ? 0 : 1}; fi; [ "$module_loaded" -eq 1 ] || return ${options.missingFilesystem ? 1 : 0}; }
 modprobe() {
@@ -37,11 +42,12 @@ docker() {
         printf '${options.appFails ? 'failed\\nApp health failed\\n\\n\\nhttps://diagnostics.example/system\\n\\n\\nSystem logs\\nApp exited' : options.running === false ? 'starting\\nWaiting for your connection\\n\\n\\n\\nSign in to continue\\nhttps://auth.example/sign-in\\n' : 'ready\\nAtelier is ready\\n\\nhttps://app.example/custom-path\\nhttps://diagnostics.example/system\\n\\n\\n'}\\n'
         return
       fi ;;
-    'inspect --format') if [[ "$*" == *3080/tcp* ]]; then echo 55123; else echo true; fi ;;
+    'logs --tail') echo 'supervisor startup failed: io.weight unavailable';;
+    'inspect --format') if [[ "$*" == *State.Status* ]]; then echo ${options.systemState ?? 'running'}; elif [[ "$*" == *3080/tcp* ]]; then echo 55123; else echo true; fi ;;
   esac
 }
 `;
-  const result = Bun.spawnSync([process.platform === "darwin" ? "/bin/bash" : "bash", "-c", mock + installer.replace("> /etc/modules-load.d/atelier-system.conf", "> /dev/null"), "installer", ...args], { stdin: "ignore" });
+  const result = Bun.spawnSync([process.platform === "darwin" ? "/bin/bash" : "bash", "-c", mock + installer.replace("tee /etc/modules-load.d/atelier-system.conf", "tee /dev/null"), "installer", ...args], { stdin: "ignore" });
   const log = Bun.spawnSync(["cat", logPath]).stdout.toString();
   Bun.spawnSync(["rm", "-f", logPath, `${logPath}.checked`]);
   return { status: result.exitCode, output: result.stdout.toString() + result.stderr.toString() + log };
@@ -172,4 +178,36 @@ for (const action of ["open", "connect"]) {
     expect(result.output).not.toContain("3001/access");
     expect(result.output).not.toContain("DOCKER stop");
   });
+}
+
+
+test("Linux requests sudo itself while Mac and WSL with Docker access do not", () => {
+  const linux = run({ nonRoot: true });
+  expect(linux.status).toBe(0);
+  expect(linux.output).toContain("SUDO -v");
+  expect(linux.output).toContain("SUDO mkdir -p /etc/modules-load.d");
+  for (const options of [{ mac: true }, { wsl: true, nonRoot: true }, {}]) {
+    expect(run(options).output).not.toContain("SUDO");
+  }
+});
+
+test("denied sudo fails before changing the Linux host", () => {
+  const result = run({ nonRoot: true, denySudo: true });
+  expect(result.status).not.toBe(0);
+  expect(result.output).toContain("administrator access was not granted");
+  expect(result.output).not.toContain("DOCKER pull");
+  expect(result.output).not.toContain("MODPROBE");
+});
+
+for (const state of ["restarting", "exited"] as const) {
+  for (const action of ["update", "open"] as const) {
+    test(`${action} stops waiting and shows container logs when System is ${state}`, () => {
+      const result = run({ installed: true, systemState: state }, ["--non-interactive", "--action", action]);
+      expect(result.status).toBe(1);
+      expect(result.output).toContain(`Atelier services are ${state}`);
+      expect(result.output).toContain("supervisor startup failed: io.weight unavailable");
+      expect(result.output).not.toContain("Waiting for the supervisor");
+      expect(result.output).not.toContain("http://127.0.0.1:3001/status");
+    });
+  }
 }
