@@ -62,6 +62,7 @@
 .review-comment-count { color: var(--text-bright); font-family: var(--font-sans); font-weight: var(--weight-medium); }
 .review-git-stats { display: inline-flex; align-items: center; gap: 12px; }
 .review-stats-spinner { width: 14px; height: 14px; }
+.review-file-size { color: var(--text-muted); font-family: var(--font-mono); font-size: var(--text-code); white-space: nowrap; }
 .review-additions { color: var(--success); font-family: var(--font-mono); font-size: var(--text-code); font-weight: var(--weight-semibold); }
 .review-deletions { color: var(--danger); font-family: var(--font-mono); font-size: var(--text-code); font-weight: var(--weight-semibold); }
 

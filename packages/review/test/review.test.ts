@@ -56,6 +56,19 @@ describe("Review collection", () => {
     expect(files[1]!.kind).toBe("text");
   });
 
+  test("counts untracked text lines with or without a trailing newline", async () => {
+    const root = await repository();
+    for (const [path, text] of Object.entries({ "empty-new.txt": "", "newline.txt": "héllo\nworld\n", "no-newline.txt": "héllo\nworld" })) {
+      await writeFile(join(root, path), text);
+    }
+    const stats = await collectReviewStats(root, await collectReviewIndex(root));
+    expect(stats.map(({ path, additions }) => ({ path, additions }))).toEqual([
+      { path: "empty-new.txt", additions: 0 },
+      { path: "newline.txt", additions: 2 },
+      { path: "no-newline.txt", additions: 2 },
+    ]);
+  });
+
   test("collects stats before the repository has its first commit", async () => {
     const root = await mkdtemp(join(tmpdir(), "atelier-review-unborn-"));
     roots.push(root);
@@ -98,6 +111,30 @@ describe("Review collection", () => {
     await command(root, "git", "add", "transient.ts");
     await rm(transient);
     expect(await reviewFiles(root)).toEqual([]);
+  });
+
+  test("collects binary sizes for modified, removed, renamed, and new files", async () => {
+    const root = await repository();
+    for (const path of ["modified.bin", "removed.bin", "original.bin"]) {
+      await writeFile(join(root, path), Buffer.alloc(1024));
+    }
+    await command(root, "git", "add", ".");
+    await command(root, "git", "commit", "-m", "Binary fixtures");
+    await writeFile(join(root, "modified.bin"), Buffer.alloc(2048));
+    await rm(join(root, "removed.bin"));
+    await command(root, "git", "mv", "original.bin", "renamed.bin");
+    await writeFile(join(root, "new.bin"), Buffer.alloc(32));
+    await writeFile(join(root, "staged.bin"), Buffer.alloc(64));
+    await command(root, "git", "add", "staged.bin");
+    const stats = await collectReviewStats(root, await collectReviewIndex(root));
+    expect(Object.fromEntries(stats.map((file) => [file.path, file.binarySizes]))).toEqual({
+      "modified.bin": { before: 1024, after: 2048 },
+      "removed.bin": { before: 1024, after: undefined },
+      "renamed.bin": { before: 1024, after: 1024 },
+      "new.bin": { after: 32 },
+      "staged.bin": { before: undefined, after: 64 },
+    });
+    expect(stats.every((file) => file.additions === 0 && file.deletions === 0)).toBe(true);
   });
 
   test("classifies binary changes without rendering them as text", async () => {

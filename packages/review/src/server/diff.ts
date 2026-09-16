@@ -28,7 +28,7 @@ export type ReviewFileSummary = {
   untracked?: true;
 };
 
-export type ReviewFileStats = ReviewFileSummary & ChangeCounts;
+export type ReviewFileStats = ReviewFileSummary & ChangeCounts & { binarySizes?: { before?: number; after?: number } };
 
 export type ReviewIndex =
   | { phase: "not-git" }
@@ -203,9 +203,11 @@ export async function collectReviewFile(root: string, path: string): Promise<Rev
   return entry ? await reviewFile(root, entry) : undefined;
 }
 
-function parseNumstat(output: Buffer): Map<string, ChangeCounts> {
+type Numstat = ChangeCounts & { binary?: true };
+
+function parseNumstat(output: Buffer): Map<string, Numstat> {
   const fields = output.toString("utf8").split("\0");
-  const stats = new Map<string, ChangeCounts>();
+  const stats = new Map<string, Numstat>();
   for (let index = 0; index < fields.length;) {
     const field = fields[index++];
     if (!field) continue;
@@ -215,32 +217,43 @@ function parseNumstat(output: Buffer): Map<string, ChangeCounts> {
       index += 1;
       path = fields[index++]!;
     }
-    stats.set(path, {
+    const counts: Numstat = {
       additions: additionsValue === "-" ? 0 : Number(additionsValue),
       deletions: deletionsValue === "-" ? 0 : Number(deletionsValue),
-    });
+    };
+    if (additionsValue === "-") counts.binary = true;
+    stats.set(path, counts);
   }
   return stats;
 }
 
-function textFileLineCount(content: Buffer | undefined): number {
-  if (!content?.byteLength || decodeText(content) === undefined) return 0;
-  let lines = 0;
-  for (const byte of content) if (byte === 10) lines += 1;
-  return lines + (content.at(-1) === 10 ? 0 : 1);
-}
-
 export async function collectReviewStats(root: string, index: ReviewIndex): Promise<ReviewFileStats[]> {
   if (index.phase !== "ready") return [];
-  let tracked = new Map<string, ChangeCounts>();
+  let tracked = new Map<string, Numstat>();
   if (index.files.some((file) => !file.untracked)) {
     const head = await git(root, ["rev-parse", "--verify", "HEAD"], true);
     const base = head.byteLength ? "HEAD" : (await git(root, ["hash-object", "-t", "tree", "/dev/null"])).toString("utf8").trim();
     tracked = parseNumstat(await git(root, ["diff", "--numstat", "-z", base, "--"]));
   }
   return Promise.all(index.files.map(async (file) => {
-    if (file.untracked) return { ...file, additions: textFileLineCount(await workingFile(root, file.path)), deletions: 0 };
-    return { ...file, ...(tracked.get(file.path) ?? { additions: 0, deletions: 0 }) };
+    if (file.untracked) {
+      const content = await workingFile(root, file.path);
+      const text = decodeText(content);
+      if (content !== undefined && text === undefined) {
+        return { ...file, additions: 0, deletions: 0, binarySizes: { after: content.byteLength } };
+      }
+      const additions = text ? lineCount(text) - Number(text.endsWith("\n")) : 0;
+      return { ...file, additions, deletions: 0 };
+    }
+    const { binary, ...counts } = tracked.get(file.path) ?? { additions: 0, deletions: 0 };
+    if (binary) {
+      const [before, after] = await Promise.all([
+        gitObject(root, file.previousPath ?? file.path),
+        workingFile(root, file.path),
+      ]);
+      return { ...file, ...counts, binarySizes: { before: before?.byteLength, after: after?.byteLength } };
+    }
+    return { ...file, ...counts };
   }));
 }
 

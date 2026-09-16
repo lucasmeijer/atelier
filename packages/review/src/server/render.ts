@@ -103,12 +103,28 @@ function reviewStatsFrameId(workspaceId: string): string {
   return domId("review", workspaceId, "stats_frame");
 }
 
-export function renderChangeCounts(counts: Pick<ReviewFileStats, "additions" | "deletions">): string {
-  return `<span class="review-additions">+${counts.additions}</span><span class="review-deletions">−${counts.deletions}</span>`;
+function formatFileSize(bytes: number): string {
+  if (bytes < 1024) return `${bytes} B`;
+  const units = ["KiB", "MiB", "GiB", "TiB"];
+  let size = bytes / 1024;
+  let unit = 0;
+  while (size >= 1024 && unit < units.length - 1) {
+    size /= 1024;
+    unit += 1;
+  }
+  return `${Number(size.toFixed(1))} ${units[unit]}`;
 }
 
-function renderGitStats(workspaceId: string, file: ReviewFileSummary, counts?: Pick<ReviewFileStats, "additions" | "deletions">): string {
-  const content = counts ? renderChangeCounts(counts) : `<span class="status-spinner review-stats-spinner" role="status" aria-label="Loading change stats"></span>`;
+export function renderFileStats(counts: ReviewFileStats): string {
+  if (!counts.binarySizes) return `<span class="review-additions">+${counts.additions}</span><span class="review-deletions">−${counts.deletions}</span>`;
+  const { before, after } = counts.binarySizes;
+  const sizes = [before, after].filter((size): size is number => size !== undefined);
+  const title = `Binary file: ${sizes.map((size) => `${size} bytes`).join(" → ")}`;
+  return `<span class="review-file-size" title="${title}">${sizes.map(formatFileSize).join(" → ")}</span>`;
+}
+
+function renderGitStats(workspaceId: string, file: ReviewFileSummary, counts?: ReviewFileStats): string {
+  const content = counts ? renderFileStats(counts) : `<span class="status-spinner review-stats-spinner" role="status" aria-label="Loading change stats"></span>`;
   return `<span id="${reviewFileStatsId(workspaceId, file.path)}" class="review-git-stats">${content}</span>`;
 }
 

@@ -3,7 +3,7 @@ import { join } from "node:path";
 import { domId, escapeHtml, type WorkspaceDeletionAssessment, type WorkspaceDeletionReview } from "@atelier/shared";
 import { workspaceWorkHostPath } from "@atelier/workspace";
 import { collectReviewFile, collectReviewIndex, collectReviewStats, git, gitResult, type ReviewFileStats } from "./diff.ts";
-import { renderChangeCounts, renderFileSummary, renderReadOnlyReviewFile } from "./render.ts";
+import { renderFileStats, renderFileSummary, renderReadOnlyReviewFile } from "./render.ts";
 
 type DeletionRepository = {
   relativePath: string;
@@ -66,7 +66,7 @@ function fileSummary(workspaceId: string, fingerprint: string, repository: Delet
   const query = new URLSearchParams({ fingerprint, repository: repository.relativePath, path: file.path });
   const summary = renderFileSummary(
     { kind: "text", text: file.path },
-    `<span class="review-git-stats">${renderChangeCounts(file)}</span>`,
+    `<span class="review-git-stats">${renderFileStats(file)}</span>`,
     file.path,
   );
   return `<details class="review-file" data-action="pointerenter->deletion-review#requestFile pointerdown->deletion-review#requestFile focusin->deletion-review#requestFile toggle->deletion-review#requestFile">${summary}<turbo-frame id="${frameId}" data-src="/workspaces/${encodeURIComponent(workspaceId)}/review/deletion/file?${escapeHtml(query.toString())}"><div class="review-file-loading" role="status"><span class="status-spinner" aria-hidden="true"></span> Loading changes…</div></turbo-frame></details>`;
