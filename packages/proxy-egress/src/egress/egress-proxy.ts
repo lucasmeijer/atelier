@@ -129,6 +129,38 @@ export async function startWorkspaceEgressProxy({ socketPath, ca, getContext, up
 async function handleConnect(ca: MitmCa, context: ProxyContext, req: IncomingMessage, socket: Duplex, head: Buffer): Promise<void> {
   const { hostname, port } = parseConnectTarget(req.url || "");
   await assertDestinationAllowed(context, hostname, port, port === 443 ? "https" : "http");
+  // Zig std.http HTTPS proxy compatibility (verified with 0.15.2 and 0.16.0):
+  // CONNECT normally establishes a byte tunnel, after which the client must start
+  // TLS before sending HTTP. Zig's connectProxied() instead returns the plain
+  // connection to our HTTP proxy and sends a plaintext GET after our 200 response.
+  // Both a real upstream HTTPS server and our secret-injecting TLS listener close
+  // that connection; Zig reports HttpConnectionClosing before injection can run.
+  //
+  // Reject CONNECT *before* opening a tunnel. Zig treats a non-5xx CONNECT failure
+  // as TunnelNotSupported, disables CONNECT on that proxy, and retries with an
+  // absolute-form request such as GET https://api.github.com/user. Our existing
+  // handleProxyHttp path supports this: it applies secret hooks and performs the
+  // upstream HTTPS request with certificate verification. Use 405, not 5xx (which
+  // Zig treats as a potentially temporary failure), and explicitly close this
+  // connection with an empty response so the client can reconnect cleanly.
+  //
+  // Match the default std.http User-Agent independently of version, including
+  // development builds and future releases, rather than maintaining a version
+  // allowlist. This is a deliberate compatibility policy, not a claim that every
+  // future Zig release has the bug. Revisit if Zig changes its retry behavior.
+  // Applications overriding/omitting this signature cannot be identified here.
+  //
+  // User-Agent is spoofable and is NOT an authorization signal. Destination
+  // checks run above and again on the retried request; workspace identity and
+  // secret-host restrictions remain unchanged. The request is plaintext over
+  // the workspace-local relay/Unix-socket transport, not over the upstream link.
+  // Never accept plaintext inside a successful HTTPS tunnel or invent missing
+  // Authorization headers. Clients must still enable proxy use and send their
+  // placeholders. Other clients and non-443 tunnels keep their normal behavior.
+  if (port === 443 && /^zig\/\S+ \(std\.http\)$/.test(req.headers["user-agent"] ?? "")) {
+    socket.end("HTTP/1.1 405 Method Not Allowed\r\nConnection: close\r\nContent-Length: 0\r\n\r\n");
+    return;
+  }
   if (!(await shouldMitmConnectTarget(context, hostname))) return tunnelConnect(context.connect, hostname, port, socket, head);
   if (port !== 443) throw new HttpRequestBlockedError("MITM CONNECT only allowed to port 443");
   const targetServer = await ensureMitmTargetServer(ca, hostname);

@@ -131,6 +131,34 @@ test("workspace socket controls HTTP and HTTPS identity, policy and reconnection
     expect(response.body).toBe("destination response");
     expect(received.at(-1)).toEqual({ key: `${id}-secret`, authorization: "Bearer destination-authorization", proxyAuthorization: undefined, body: "streamed payload" });
   }
+  // Version-independent policy: real verified releases plus past/future/dev UAs.
+  // Model Zig's automatic retry after rejection as absolute-form HTTPS.
+  for (const version of ["0.14.1", "0.15.2", "0.16.0", "0.17.0-dev.123+abcdef", "1.0.0", "42.0.0"]) {
+    const userAgent = `User-Agent: zig/${version} (std.http)\r\n`;
+    const zigHeaders = { ...headers, "User-Agent": `zig/${version} (std.http)` };
+    const beforeConnect = received.length;
+    const rejected = await tunnel(alphaPort, "127.0.0.1:443", userAgent);
+    expect(rejected.response).toContain("405 Method Not Allowed");
+    expect(rejected.response).toContain("Connection: close\r\nContent-Length: 0\r\n\r\n");
+    expect(received.length).toBe(beforeConnect);
+    rejected.socket.destroy();
+    const forwarded = await proxyRequest(alphaPort, "https://127.0.0.1/zig", { headers: zigHeaders });
+    expect(forwarded.status).toBe(200);
+    expect(forwarded.body).toBe("destination response");
+    expect(received.at(-1)).toEqual({ key: "alpha-secret", authorization: "Bearer destination-authorization", proxyAuthorization: undefined, body: "" });
+    const beforeDenied = received.length;
+    const denied = await tunnel(alphaPort, "127.0.0.2:443", userAgent);
+    expect(denied.response).toContain("403");
+    denied.socket.destroy();
+    expect((await proxyRequest(alphaPort, "https://127.0.0.2/private", { headers: zigHeaders })).status).toBe(403);
+    expect(received.length).toBe(beforeDenied);
+  }
+  // Only the default Zig std.http signature selects the compatibility path.
+  for (const agent of ["curl/8.0.0", "zig/0.16.0", "zig/ (std.http)", "zig/0.16.0 (std.http) custom", "not-zig/0.16.0 (std.http)"]) {
+    const unaffected = await tunnel(alphaPort, "localhost:443", `User-Agent: ${agent}\r\n`);
+    expect(unaffected.response).toContain("200 Connection Established");
+    unaffected.socket.destroy();
+  }
   const connected = await tunnel(alphaPort, "localhost:443", `Proxy-Authorization: ${headers["Proxy-Authorization"]}\r\nX-Workspace-Id: beta\r\n`);
   expect(connected.response).toContain("200 Connection Established");
   const secure = tls.connect({ socket: connected.socket, servername: "localhost", ca: caPem, rejectUnauthorized: true });
@@ -182,7 +210,19 @@ test("workspace socket controls HTTP and HTTPS identity, policy and reconnection
   expect(received.at(-1)?.key).toBe("new-secret");
   freshTls.destroy();
   contexts.set("beta", { workspaceId: "beta", env: {}, hooks: withoutSecrets.httpHooks, secrets: [] });
-  const plain = await tunnel(betaPort, `127.0.0.1:${httpPort}`);
+  // Zig also needs the alternate path when there are no secrets: a normal
+  // upstream HTTPS server would reject its plaintext after CONNECT too.
+  const noSecretsZig = await tunnel(betaPort, "127.0.0.1:443", "User-Agent: zig/1.0.0 (std.http)\r\n");
+  expect(noSecretsZig.response).toContain("405 Method Not Allowed");
+  noSecretsZig.socket.destroy();
+  const noSecretsForwarded = await proxyRequest(betaPort, "https://127.0.0.1/zig-no-secrets", {
+    headers: { "User-Agent": "zig/1.0.0 (std.http)", "X-Api-Key": "ATELIER_TEST_PLACEHOLDER" },
+  });
+  expect(noSecretsForwarded.status).toBe(200);
+  expect(received.at(-1)?.key).toBe("ATELIER_TEST_PLACEHOLDER");
+  expect(received.at(-1)?.authorization).toBeUndefined();
+  // The Zig compatibility path must not change non-HTTPS CONNECT tunnels.
+  const plain = await tunnel(betaPort, `127.0.0.1:${httpPort}`, "User-Agent: zig/0.16.0 (std.http)\r\n");
   expect(plain.response).toContain("200 Connection Established");
   const tunneled = await new Promise<string>((resolve, reject) => {
     let body = "";
