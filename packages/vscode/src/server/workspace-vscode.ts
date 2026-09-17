@@ -89,7 +89,7 @@ export async function ensureWorkspaceVSCodeServer(workspaceId: string): Promise<
     done
 
     echo "VS Code server did not become ready at $ready_url" >&2
-    tail -n 80 /.atelier/vscode/server.log /.atelier/vscode-server.log 2>/dev/null || true
+    tail -n 80 /.atelier/vscode/server.log
     exit 1
   `, { user: "atelier" });
   if (result.exitCode !== 0) throw new Error(result.stderr.trim() || result.stdout.trim() || `could not start VS Code server for ${workspaceId}`);

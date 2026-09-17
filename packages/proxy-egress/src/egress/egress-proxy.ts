@@ -8,7 +8,7 @@ import { createServer as createHttpsServer } from "node:https";
 import net, { type AddressInfo } from "node:net";
 import { Readable, type Duplex } from "node:stream";
 import tls from "node:tls";
-import { atelierDataPath, dockerHostAtelierDataPath, getAtelierRuntimeContext, shellQuote } from "@atelier/core";
+import { atelierDataPath, dockerHostAtelierDataPath, getAtelierRuntimeContext } from "@atelier/core";
 import { HttpRequestBlockedError } from "../secrets/errors.ts";
 import { matchHostname } from "../secrets/patterns.ts";
 import { createWorkspaceSecretContext, forgetWorkspaceSecretContext, getWorkspaceSecretContext, type WorkspaceSecretContext } from "../secrets/workspace-secrets.ts";
@@ -66,7 +66,7 @@ export function registerWorkspaceProxyEvents(events: AtelierEventBus): void {
     plan.initScripts.unshift(
       workspaceLocalProxyInitScript(),
       `cat ${workspaceMitmCaPath} >> /etc/ssl/certs/ca-certificates.crt`,
-      `su atelier -c ${shellQuote('git config --global http.proxy "$HTTPS_PROXY"')}`,
+      'git config --system http.proxy "$HTTPS_PROXY"',
     );
     plan.cleanup.push(async () => cleanupWorkspaceProxy(workspaceId));
   });

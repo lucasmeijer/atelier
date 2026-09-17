@@ -38,3 +38,16 @@ test("one context supports local reuse, missing-image rebuild and publication id
     expect(builds).toBe(3);
   } finally { await context.dispose(); }
 });
+
+test("every default image build checks home against the original base skeleton", async () => {
+  const context = await prepareDefaultWorkspaceImage();
+  try {
+    const dockerfile = await Bun.file(context.dockerfile).text();
+    const snapshot = dockerfile.indexOf("cp -a /etc/skel/. /opt/atelier/home-defaults/");
+    const check = dockerfile.indexOf("RUN diff -r --no-dereference /opt/atelier/home-defaults /home/atelier");
+    expect(snapshot).toBeGreaterThan(0);
+    expect(snapshot).toBeLessThan(dockerfile.indexOf("# Module: base"));
+    expect(check).toBeGreaterThan(dockerfile.lastIndexOf("COPY "));
+    expect(check).toBeGreaterThan(dockerfile.lastIndexOf("# Module:"));
+  } finally { await context.dispose(); }
+});

@@ -1,3 +1,4 @@
+import { ensureSharedHome } from "../home.ts";
 import { mkdir, readdir, rename, rm, writeFile } from "node:fs/promises";
 import { dirname } from "node:path";
 import {
@@ -29,9 +30,10 @@ async function syncAtelierDocs(runtime?: AtelierRuntimeContext): Promise<{ hostD
   return { hostDocsDir: dockerHostAtelierDataPath(runtime, "docs") };
 }
 
-export const workspaceDocsModule: WorkspaceModule = {
-  id: "workspace-docs",
+export const atelierServerModule: WorkspaceModule = {
+  id: "workspace",
   async initialize({ events }) {
+    await ensureSharedHome();
     const docs = await syncAtelierDocs();
     events.on("workspace_plan_prepare", ({ plan }) => {
       if (plan.mounts.some((mount) => mount.target === docsMountPath)) return;
@@ -44,5 +46,3 @@ export const workspaceDocsModule: WorkspaceModule = {
     });
   },
 };
-
-export const atelierServerModule = workspaceDocsModule;

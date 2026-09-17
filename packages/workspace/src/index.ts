@@ -1,4 +1,5 @@
 import { createHash } from "node:crypto";
+import { workspaceHomeMounts } from "./home.ts";
 import { workspaceImagePreloader } from "./preload.ts";
 import type { WorkspaceImageConfigureEvent } from "./events.ts";
 import { mkdir, readFile, rename, rm, writeFile } from "node:fs/promises";
@@ -387,10 +388,8 @@ function workspaceGitCredentialInitScript(): string {
 #!/bin/sh
 ${gitHubCredentialHelperShellBody}
 EOF
-chmod 755 /usr/local/bin/atelier-git-credential; cat > /etc/profile.d/atelier-github-token.sh <<'EOF'
-# GH_TOKEN, when present, is an Atelier placeholder. It is not the real secret.
-EOF
-su atelier -c ${shellQuote("git config --global credential.helper '!/usr/local/bin/atelier-git-credential'")}`;
+chmod 755 /usr/local/bin/atelier-git-credential
+git config --system credential.helper '!/usr/local/bin/atelier-git-credential'`;
 }
 
 interface WorkspaceEnvironment {
@@ -415,23 +414,17 @@ work_gid="\${ATELIER_HOST_GID:?}"
 if [ "$work_uid" = 0 ] || [ "$work_gid" = 0 ]; then echo "Atelier must run as a non-root host user" >&2; exit 1; fi
 conflict_user="$(getent passwd "$work_uid" | cut -d: -f1 || true)"
 if [ -n "$conflict_user" ] && [ "$conflict_user" != atelier ]; then userdel "$conflict_user"; fi
-user_changed=0
 if [ "$(id -u atelier)" != "$work_uid" ] || [ "$(id -g atelier)" != "$work_gid" ]; then
   # Do not replace this with usermod/groupmod without profiling workspace startup.
-  # Keep ownership changes explicit below instead of letting usermod recursively
-  # rewrite large image-provided caches in /home/atelier.
+  # The shared home already belongs to the host user; never recursively chown it.
   sed -i -E "s/^(atelier:[^:]*:)[0-9]+:[0-9]+:/\\1\${work_uid}:\${work_gid}:/" /etc/passwd
   sed -i -E "s/^(atelier:[^:]*:)[0-9]+:/\\1\${work_gid}:/" /etc/group
-  user_changed=1
-fi
-chown atelier:atelier /home/atelier /.atelier
-if [ "$user_changed" = 1 ]; then
-  find /home/atelier -mindepth 1 -maxdepth 1 -exec chown -R atelier:atelier {} +
   if [ -d /.atelier/vscode ]; then chown -R atelier:atelier /.atelier/vscode; fi
   # VS Code writes its extensions manifest here, outside the home directory.
   # Keep installed extensions writable after aligning the image user to the host.
   if [ -d /opt/atelier/vscode-extensions ]; then chown -R atelier:atelier /opt/atelier/vscode-extensions; fi
-fi`;
+fi
+chown atelier:atelier /.atelier`;
 }
 
 function workspaceStartupPreambleScript(): string {
@@ -488,6 +481,7 @@ export async function createWorkspace(options: { id: string; events: AtelierEven
       await writeFile(gatewayTokenPath, crypto.randomUUID() + crypto.randomUUID(), { mode: 0o600 });
       activePlan.containerFiles.push({ source: gatewayTokenPath, target: "/etc/atelier-workspace-gateway-token" });
       activePlan.mounts.push({ type: "bind", source: source.dockerHostWorktreePath, target: workspaceRoot });
+      activePlan.mounts.push(...await workspaceHomeMounts(id));
       const sockets = atelierDataPath(getAtelierRuntimeContext(), "workspace-sockets", id);
       await mkdir(sockets, { recursive: true });
       activePlan.mounts.push({ type: "volume", target: "/data" });

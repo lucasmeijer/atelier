@@ -19,14 +19,13 @@ for (const [architecture, serverArchitecture] of [["amd64", "x64"], ["arm64", "a
       await writeFile(path, `#!/bin/sh\nset -eu\n${body}\n`);
       await chmod(path, 0o755);
     };
-    await executable(join(archiveRoot, "bin/code-server"), '[ "$*" = "--version" ]; echo server-version');
+    await executable(join(archiveRoot, "bin/code-server"), '[ "$*" = "--server-data-dir /.atelier/vscode/server-data --version" ]; echo server-version');
     const archive = join(directory, "server.tar.gz");
     expect(Bun.spawnSync(["tar", "-czf", archive, "-C", join(directory, "archive"), "server"]).exitCode).toBe(0);
     const commit = "a".repeat(40);
     await executable(join(bin, "code"), `[ "$1" = "--version" ]; printf '1.137.0\\n${commit}\\n${architecture}\\n'`);
     await executable(join(bin, "dpkg"), `echo ${architecture}`);
     await executable(join(bin, "curl"), `printf '%s\\n' "$2" > '${directory}/requested-url'; [ "$3" = "-o" ]; cp '${archive}' "$4"`);
-    await executable(join(bin, "chown"), ":");
     await executable(join(bin, "su"), '[ "$1" = atelier ]; [ "$2" = -c ]; exec sh -c "$3"');
     // Exercise the archive provisioning block, not an editor or browser UI.
     const run = manifest.run[0];

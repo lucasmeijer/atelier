@@ -90,7 +90,7 @@ for (const name of (await readdir(gatewaySource)).sort()) {
   hash.update(await readFile(join(gatewaySource, name)));
 }
 
-let dockerfile = `FROM golang:1.26.0 AS gateway-build\nWORKDIR /src\nCOPY gateway/ ./\nRUN go test ./... && CGO_ENABLED=0 go build -trimpath -ldflags="-s -w" -o /atelier-workspace-gateway .\n\nFROM oven/bun:1.4.0 AS bun-dist\n\nFROM ${runtimeImage}\n\nARG DEBIAN_FRONTEND=noninteractive\nLABEL com.atelier.workspace-image.modules=${quote(moduleNames.join(","))}\n\n`;
+let dockerfile = `FROM golang:1.26.0 AS gateway-build\nWORKDIR /src\nCOPY gateway/ ./\nRUN go test ./... && CGO_ENABLED=0 go build -trimpath -ldflags="-s -w" -o /atelier-workspace-gateway .\n\nFROM oven/bun:1.4.0 AS bun-dist\n\nFROM ${runtimeImage}\n\nARG DEBIAN_FRONTEND=noninteractive\nLABEL com.atelier.workspace-image.modules=${quote(moduleNames.join(","))}\n\nRUN mkdir -p /opt/atelier/home-defaults && cp -a /etc/skel/. /opt/atelier/home-defaults/\n\n`;
 dockerfile += `COPY --from=bun-dist /usr/local/bin/bun /usr/local/bin/bun\nCOPY --from=bun-dist /usr/local/bin/bunx /usr/local/bin/bunx\nRUN bun --version\n\n`;
 function appendCopies(copies) {
   for (const copy of copies) {
@@ -122,6 +122,7 @@ dockerfile += `RUN python3 -c 'import json; p="/etc/docker/daemon.json"; c=json.
 dockerfile += `RUN mkdir -p /.atelier && printf "true\\n" > /.atelier/init.sh\n`;
 // binfmt registrations belong to the host kernel; workspace shutdown must not unregister them.
 dockerfile += `RUN systemctl mask systemd-binfmt.service\n`;
+dockerfile += `RUN diff -r --no-dereference /opt/atelier/home-defaults /home/atelier\n`;
 dockerfile += `ENTRYPOINT ["/usr/local/bin/atelier-workspace-init"]\nCMD []\nWORKDIR /work\n`;
 await writeFile(join(outDir, "Dockerfile"), dockerfile);
 // Identity covers the Docker build context, including generated instructions,
