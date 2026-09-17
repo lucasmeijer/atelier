@@ -1,3 +1,4 @@
+import { existsSync } from "node:fs";
 import { createHash } from "node:crypto";
 import { mkdir, readFile, writeFile } from "node:fs/promises";
 import { dirname, join } from "node:path";
@@ -155,9 +156,14 @@ export async function ensureDefaultWorkspaceImage(options: ResolveWorkspaceImage
     await pullImage(baked, options);
     return baked;
   }
+  const innerAtelier = existsSync("/run/atelier-parent");
   return ensureGeneratedDefaultWorkspaceImage({
-    force: process.env.ATELIER_WORKSPACE_IMAGE_NO_CACHE === "1",
+    force: !innerAtelier && process.env.ATELIER_WORKSPACE_IMAGE_NO_CACHE === "1",
     build: async ({ contextDir, dockerfile, metadata }) => {
+      if (innerAtelier) {
+        const signature = metadata.tag.slice("atelier-workspace:".length);
+        throw new Error(`Inner Atelier needs a default workspace image with signature ${signature} but that has not been preloaded. Exiting instead of building this image, so we do not flood the outer atelier with many parallel image builds.`);
+      }
       await waitForBuildTask(startBuildTask(metadata.tag, metadata.modules, "default", dockerfile, contextDir, options), options);
     },
   });

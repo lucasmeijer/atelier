@@ -3,8 +3,8 @@ import { mkdtemp, rm, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 
-for (const scenario of ["cached", "missing", "different-signature", "no-cache"] as const) {
-  test(`default image resolution: ${scenario}`, async () => {
+for (const innerAtelier of [false, true]) for (const scenario of ["cached", "missing", "different-signature", "no-cache"] as const) {
+  test(`default image resolution: ${scenario}, inner=${innerAtelier}`, async () => {
     const directory = await mkdtemp(join(tmpdir(), "default-image-test-"));
     const namespace = directory.split("/").at(-1)!;
     try {
@@ -13,6 +13,8 @@ for (const scenario of ["cached", "missing", "different-signature", "no-cache"] 
       const client = join(directory, "client.ts");
       await writeFile(client, `
         import {mock} from 'bun:test';
+        const fs = await import('node:fs');
+        mock.module('node:fs', () => ({...fs, existsSync: path => path === '/run/atelier-parent' ? ${innerAtelier} : fs.existsSync(path)}));
         const localPath = ${JSON.stringify(join(import.meta.dir, "local-images.ts"))};
         const local = await import(localPath);
         const checks = [], builds = [];
@@ -28,9 +30,14 @@ for (const scenario of ["cached", "missing", "different-signature", "no-cache"] 
           return {exitCode:0,output:''};
         }}));
         const {ensureDefaultWorkspaceImage} = await import(${JSON.stringify(join(import.meta.dir, "index.ts"))});
-        const first = await ensureDefaultWorkspaceImage();
-        const second = await ensureDefaultWorkspaceImage();
-        console.log(JSON.stringify({first,second,checks,builds}));
+        try {
+          const first = await ensureDefaultWorkspaceImage();
+          const second = await ensureDefaultWorkspaceImage();
+          console.log(JSON.stringify({first,second,checks,builds}));
+        } catch (error) {
+          console.log(JSON.stringify({error: error.message,checks,builds}));
+          process.exitCode = 1;
+        }
       `);
       // Separate processes model the dev launcher and the server. A cache hit
       // must succeed in both, without starting an image build.
@@ -41,12 +48,21 @@ for (const scenario of ["cached", "missing", "different-signature", "no-cache"] 
         });
         const [code, stdout, stderr] = await Promise.all([child.exited, new Response(child.stdout).text(), new Response(child.stderr).text()]);
         expect(stderr).toBe("");
-        expect(code).toBe(0);
         const result = JSON.parse(stdout);
+        if (innerAtelier && (scenario === "missing" || scenario === "different-signature")) {
+          expect(code).toBe(1);
+          expect(result.checks).toHaveLength(1);
+          const signature = result.checks[0].slice("atelier-workspace:".length);
+          expect(signature).toMatch(/^[a-f0-9]{16}$/);
+          expect(result.error).toBe(`Inner Atelier needs a default workspace image with signature ${signature} but that has not been preloaded. Exiting instead of building this image, so we do not flood the outer atelier with many parallel image builds.`);
+          expect(result.builds).toEqual([]);
+          continue;
+        }
+        expect(code).toBe(0);
         expect(result.first).toMatch(/^atelier-workspace:[a-f0-9]{16}$/);
         expect(result.second).toBe(result.first);
-        expect(result.checks).toEqual(scenario === "no-cache" ? [] : [result.first, result.first]);
-        expect(result.builds).toHaveLength(scenario === "cached" ? 0 : 2);
+        expect(result.checks).toEqual(!innerAtelier && scenario === "no-cache" ? [] : [result.first, result.first]);
+        expect(result.builds).toHaveLength(innerAtelier || scenario === "cached" ? 0 : 2);
         for (const command of result.builds) {
           expect(command).toContain("docker");
           expect(command).toContain(result.first);
