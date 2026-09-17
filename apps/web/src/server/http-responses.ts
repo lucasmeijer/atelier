@@ -1,26 +1,7 @@
 import { AtelierCoreError } from "@atelier/core";
-import { turboStream } from "@atelier/shared";
+export { response, replace as turboReplaceStream, update as turboUpdateStream, wantsStream as wantsTurboStream } from "@atelier/shared/http";
 
 type HtmlResponseInit = Omit<ResponseInit, "headers"> & { headers?: Record<string, string> };
-
-export function response(body: string, init: HtmlResponseInit = {}): Response {
-  const headers = new Headers(init.headers);
-  if (!headers.has("content-type")) headers.set("content-type", "text/html; charset=utf-8");
-  if (!headers.has("cache-control")) headers.set("cache-control", "no-store");
-  return new Response(body, { ...init, headers });
-}
-
-export function wantsTurboStream(request: Request): boolean {
-  return request.headers.get("accept")?.includes("text/vnd.turbo-stream.html") ?? false;
-}
-
-export function turboReplaceStream(target: string, html: string): string {
-  return turboStream("replace", target, html);
-}
-
-export function turboUpdateStream(target: string, html: string, options: { method?: "morph" } = {}): string {
-  return turboStream("update", target, html, options);
-}
 
 export function jsonResponse<Body extends object>(body: Body, init: HtmlResponseInit = {}): Response {
   const headers = new Headers(init.headers);

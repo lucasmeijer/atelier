@@ -12,7 +12,6 @@
     "@wasm-fmt/biome_fmt": "0.2.9",
     "@wasm-fmt/ruff_fmt": "0.15.20",
     "@wasm-fmt/shfmt": "0.2.7",
-    "@atelier/proxy-egress": "workspace:*",
     "@atelier/core": "workspace:*",
     "@atelier/design-system": "workspace:*",
     "@atelier/markdown": "workspace:*",
@@ -27,7 +26,8 @@
     "@earendil-works/pi-coding-agent": "catalog:",
     "typebox": "^1.0.57",
     "@atelier/workspace": "workspace:*",
-    "web-push": "3.6.7"
+    "web-push": "3.6.7",
+    "@atelier/llm": "workspace:*"
   },
   "devDependencies": {
     "@types/web-push": "3.6.4"

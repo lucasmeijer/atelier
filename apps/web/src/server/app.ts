@@ -1,15 +1,11 @@
-import { renderModelSetupDialog } from "./settings/models.ts";
+import { parseModelRef } from "@atelier/llm/server";
+import { createAgentPaneHost } from "./agent-pane-host.ts";
+import { renderLaunchComposer } from "./launch-composer.ts";
 import {
-  hasAvailableConfiguredAgentModel,
   maybeNameWorkspaceFromPrompt,
-  parseModelRef,
-  refreshConfiguredAgentRuntimes,
   type OnboardingToolDependencies,
   projectOnboardingInitialPrompt,
-  prepareNewWorkspaceAgentParameters,
-  renderLaunchComposer,
-  renderLaunchComposerSettings,
-  rememberNewWorkspaceAgentSettings,
+  nativeAgentLaunch as defaultAgentLaunch,
 } from "@atelier/agent/server";
 import {
   AtelierCoreError,
@@ -39,7 +35,6 @@ import {
   domId,
   escapeHtml,
   turboStreamResponse,
-  type AgentWorkspaceParameters,
   type CableIdentifier,
   type DeleteCurrentWorkspaceResult,
   type GlobalSidebarContributionRegistry,
@@ -61,7 +56,9 @@ import { openWorkspaceFile } from "./file-navigation.ts";
 import { parseCloseWorkViewRequest, parseReorderWorkViewRequest } from "./work-view-api.ts";
 import { Type } from "typebox";
 import { Value } from "typebox/value";
-import { agentTabsTurboStream, openWorkViewTurboStream, presentWorkViewTurboStream, removeWorkspaceResidentTurboStream, renderAgentBodyFrame, renderAtelierBar, renderMobileWorkspaceBar, renderWorkViewBodyFrame, renderWorkspaceDeletionPresentation, renderWorkspaceParkConfirmation, dismissWorkspaceParkConfirmationTurboStream, renderWorkspacePane, renderWorkspacePresentation, selectAgentTurboStream, workspacePaneCollectionsTurboStream, workspacePaneOnboardingState, workspacePreparationInvalidatedTurboStream, workspacePresentationDomId, workViewsTurboStream, type AgentPaneContribution, type WorkPaneContribution, type WorkspacePaneEntry, type WorkspacePanePresentation, type WorkspacePresentation as FixedWorkspacePresentation } from "./workspace-presentation.ts";
+import { openWorkViewTurboStream, presentWorkViewTurboStream, removeWorkspaceResidentTurboStream, renderAtelierBar, renderMobileWorkspaceBar, renderWorkViewBodyFrame, renderWorkspaceDeletionPresentation, renderWorkspaceParkConfirmation, dismissWorkspaceParkConfirmationTurboStream, renderWorkspacePane, renderWorkspacePresentation, workspacePaneCollectionsTurboStream, workspacePaneOnboardingState, workspacePresentationDomId, workViewsTurboStream, type WorkPaneContribution, type WorkspacePaneEntry, type WorkspacePanePresentation, type WorkspacePresentation as FixedWorkspacePresentation } from "./workspace-presentation.ts";
+import { agentTabsTurboStream, renderAgentBodyFrame, selectAgentTurboStream, type AgentPaneContribution } from "./agent-pane.ts";
+import { workspacePreparationInvalidatedTurboStream } from "./workspace-view-markup.ts";
 import type { CableBroadcastOptions } from "./cable.ts";
 import { jsonResponse, problemJsonResponse, httpErrorStatus, response, turboReplaceStream, turboUpdateStream, wantsTurboStream } from "./http-responses.ts";
 import { createPageLayout } from "./page-layout.ts";
@@ -142,7 +139,7 @@ export function createWebApp(deps: WebAppDeps): WebApp {
   // SAFETY: Workspace modules expose this exact shared Agent-tab provider contract.
   const agentTabProviders = workspaceModules.flatMap((module) => module.agentTabs ? [module.agentTabs] : []) as WorkspaceAgentTabProvider[];
   if (agentTabProviders.length !== 1) throw new Error(`Expected exactly one Workspace Agent-tab provider, found ${agentTabProviders.length}`);
-  const agentTabs = agentTabProviders[0]!;
+  const agentTabs = createAgentPaneHost(agentTabProviders[0]!, (workspaceId) => defaultAgentLaunch.prepareWorkspace(workspaceId));
   const presentationStore = createWorkspacePresentationStore({
     workViewContributions: workViewAdapters,
   });
@@ -189,7 +186,7 @@ export function createWebApp(deps: WebAppDeps): WebApp {
   } });
   const workspaceCommandModalHostId = "workspace_command_modal_host";
   const launchComposerFrameId = "launch_composer";
-  // Every server-rendered LaunchComposer has one attachment draft ID. Retried POSTs
+  // Every agent launch supplies a stable submission identity. Retried POSTs
   // therefore join the original launch instead of provisioning another Workspace.
   const launchComposerSubmissions = new Map<string, Promise<CreatedWorkspace>>();
   const launchComposerSettingsFrameId = "launch_composer_settings";
@@ -280,36 +277,22 @@ export function createWebApp(deps: WebAppDeps): WebApp {
 
   const layout = createPageLayout({ devReload: deps.devReload, workspaceModules });
 
-  async function launchComposerSettingsFrame(selectedModel?: string, selectedThinkingLevel?: string): Promise<string> {
-    return await renderLaunchComposerSettings({
-      frameId: launchComposerSettingsFrameId,
-      formId: launchComposerFormId,
-      url: "/launch-composer/settings",
-      selectedModel,
-      selectedThinkingLevel,
-    });
+  function launchComposerFooterContext(query = new URLSearchParams()) {
+    return { frameId: launchComposerSettingsFrameId, formId: launchComposerFormId, url: "/launch-composer/settings", query };
   }
 
   async function renderLaunchComposerFrame(options: { titleCaption: string; action: string }): Promise<string> {
     const draftId = crypto.randomUUID();
+    const content = await defaultAgentLaunch.render({ ...launchComposerFooterContext(), draftId });
     return `<turbo-frame id="${launchComposerFrameId}">${dialogHtml({
       element: {
-        attributesHtml: `data-controller="dialog launch-composer-dialog submit-shortcut" data-launch-composer-dialog-discard-url-value="/agent-attachment-drafts/${encodeURIComponent(draftId)}/discard"`,
+        attributesHtml: `data-controller="dialog launch-composer-dialog submit-shortcut" data-launch-composer-dialog-discard-url-value="${escapeHtml(content.discardUrl)}"`,
       },
       iconHtml: Icons.Workspace,
       titleCaption: options.titleCaption,
       closeLabel: "Close launch composer",
       bodyLayout: "full-bleed",
-      bodyHtml: await renderLaunchComposer({
-        action: options.action,
-        draftId,
-        formId: launchComposerFormId,
-        placeholder: "Describe what you want the agent to do… (optional)",
-        rows: 8,
-        formActions: "keydown->submit-shortcut#keydown submit->submit-shortcut#submit submit->launch-composer-dialog#submit turbo:submit-end->submit-shortcut#submitted",
-        formTurbo: true,
-        launchComposerSettings: { frameId: launchComposerSettingsFrameId, url: "/launch-composer/settings" },
-      }),
+      bodyHtml: renderLaunchComposer({ action: options.action, formId: launchComposerFormId, content }),
     })}</turbo-frame>`;
   }
 
@@ -464,8 +447,9 @@ export function createWebApp(deps: WebAppDeps): WebApp {
     const warningState = await workspaceWarningState(entry);
     const presentation: FixedWorkspacePresentation = {
       workspace: { id: entry.id, title: workspaceTitle(entry) },
+      agentHeaderHtml: agentTabs.renderHeader?.({ workspaceId, conversations: agentConversations }),
       agentConversations: agentConversations.map((conversation) => {
-        const presented: AgentPaneContribution = { id: conversation.id, title: conversation.title, bodyUrl: `/workspaces/${encodeURIComponent(workspaceId)}/agents/${encodeURIComponent(conversation.id)}/body` };
+        const presented: AgentPaneContribution = { id: conversation.id, title: conversation.title, untitled: conversation.untitled, bodyUrl: `/workspaces/${encodeURIComponent(workspaceId)}/agents/${encodeURIComponent(conversation.id)}/body` };
         if (agentConversations.length > 1) presented.close = agentClose(workspaceId, conversation.id, conversation.title);
         return presented;
       }),
@@ -710,34 +694,19 @@ export function createWebApp(deps: WebAppDeps): WebApp {
     })();
   }
 
-  function agentContext(agent: AgentWorkspaceParameters | undefined): AgentWorkspaceParameters | undefined {
-    const initialPrompt = agent?.initialPrompt?.trim() ?? "";
-    const initialPromptMode = agent?.initialPromptMode;
-    const model = agent?.model ?? "";
-    const thinkingLevel = agent?.thinkingLevel ?? "";
-    const serviceTier = agent?.serviceTier ?? "";
-    const attachmentDraft = agent?.attachmentDraft ?? "";
-    if (!initialPrompt && !initialPromptMode && !model && !thinkingLevel && !serviceTier && !attachmentDraft) return undefined;
-    const parameters: AgentWorkspaceParameters = { initialPrompt, model, thinkingLevel, attachmentDraft };
-    if (initialPromptMode) parameters.initialPromptMode = initialPromptMode;
-    if (serviceTier) parameters.serviceTier = serviceTier;
-    return parameters;
-  }
-
   interface CreatedWorkspace {
     id: string;
     isFirstWorkspace: boolean;
   }
 
-  async function createWorkspaceFromCommand(command: { init?: WorkspaceInitInstruction; agent?: AgentWorkspaceParameters; title?: string; projectOnboarding?: true }): Promise<CreatedWorkspace> {
+  async function createWorkspaceFromCommand(command: { init?: WorkspaceInitInstruction; agent?: JsonObject; context?: WorkspaceCreationContext; title?: string; projectOnboarding?: true }): Promise<CreatedWorkspace> {
     const isFirstWorkspace = registry.list().length === 0;
     const id = generateWorkspaceId();
     const init = command.init;
     const title = command.title?.trim() ?? "";
-    const agent = agentContext(await prepareNewWorkspaceAgentParameters(command.agent));
-    let context: WorkspaceCreationContext | undefined = agent ? { agent } : undefined;
-    if (command.projectOnboarding) context = { agent, projectOnboarding: true };
-    if (agent?.initialPrompt) provisioningPrompts.set(id, agent.initialPrompt);
+    let context = command.context ?? await defaultAgentLaunch.prepare(command.agent);
+    if (command.projectOnboarding) context = { ...context, projectOnboarding: true };
+    if (context?.agent?.initialPrompt) provisioningPrompts.set(id, context.agent.initialPrompt);
     registry.add(id, title || null, init);
     const options: Parameters<typeof startWorkspaceProvisioning>[1] = {};
     if (init !== undefined) options.init = init;
@@ -778,19 +747,7 @@ export function createWebApp(deps: WebAppDeps): WebApp {
         if (!projectReference) throw invalidArguments("source.project is required for project workspaces");
         init = projectWorkspaceInit(await projectRoutes.byReference(projectReference));
       }
-      const agent = body.agent;
-      const serviceTier = stringField(agent?.serviceTier, "agent.serviceTier");
-      const { id } = await createWorkspaceFromCommand({
-        init,
-        title: stringField(body.title, "title"),
-        agent: {
-          initialPrompt: stringField(agent?.initialPrompt, "agent.initialPrompt") ?? "",
-          model: stringField(agent?.model, "agent.model") ?? "",
-          thinkingLevel: stringField(agent?.thinkingLevel, "agent.thinkingLevel") ?? "",
-          serviceTier: serviceTier ? (serviceTier === "priority" ? "priority" : "default") : undefined,
-          attachmentDraft: stringField(agent?.attachmentDraft, "agent.attachmentDraft") ?? "",
-        },
-      });
+      const { id } = await createWorkspaceFromCommand({ init, title: stringField(body.title, "title"), agent: body.agent });
       return workspaceCreatedJsonResponse(id);
     }
 
@@ -801,27 +758,16 @@ export function createWebApp(deps: WebAppDeps): WebApp {
   }
 
   async function createAgentWorkspaceFromForm(request: Request, options: { project?: ProjectSummary } = {}): Promise<Response> {
-    if (!await hasAvailableConfiguredAgentModel()) return turboStreamResponse(turboUpdateStream("settings_modal_host", await renderModelSetupDialog()));
     const form = await request.formData();
-    const attachmentDraft = String(form.get("attachmentDraft") ?? "");
-    if (!attachmentDraft) throw invalidArguments("attachmentDraft is required");
-    let launch = launchComposerSubmissions.get(attachmentDraft);
+    const submission = await defaultAgentLaunch.submit(form);
+    if ("response" in submission) return submission.response;
+    let launch = launchComposerSubmissions.get(submission.submissionId);
     if (!launch) {
-      launch = (async () => {
-        const model = String(form.get("model") ?? "");
-        const thinkingLevel = String(form.get("level") ?? "");
-        await rememberNewWorkspaceAgentSettings(model, thinkingLevel);
-        return await createWorkspaceFromCommand({
-          init: options.project ? projectWorkspaceInit(options.project) : undefined,
-          agent: {
-            initialPrompt: String(form.get("text") ?? ""),
-            model,
-            thinkingLevel,
-            attachmentDraft,
-          },
-        });
-      })();
-      launchComposerSubmissions.set(attachmentDraft, launch);
+      launch = (async () => createWorkspaceFromCommand({
+        init: options.project ? projectWorkspaceInit(options.project) : undefined,
+        context: await submission.prepare(),
+      }))();
+      launchComposerSubmissions.set(submission.submissionId, launch);
     }
     const { id, isFirstWorkspace } = await launch;
     return turboStreamResponse(`${workspacePaneCollectionsTurboStream(await workspacePaneCollections(""))}${turboUpdateStream(launchComposerFrameId, "")}${isFirstWorkspace ? selectWorkspaceTurboStream(id) : ""}`);
@@ -1184,7 +1130,7 @@ export function createWebApp(deps: WebAppDeps): WebApp {
   }
 
   async function renderModelPickerUpdates(request: Request): Promise<string> {
-    await refreshConfiguredAgentRuntimes();
+    const launchUpdates = await defaultAgentLaunch.refreshConfiguration(launchComposerSettingsFrameId);
     const invalidations: string[] = [];
     for (const entry of registry.list().filter((workspace) => workspace.phase === "ready")) {
       const presentation = await fixedWorkspacePresentation(entry.id);
@@ -1192,7 +1138,7 @@ export function createWebApp(deps: WebAppDeps): WebApp {
         invalidations.push(workspacePreparationInvalidatedTurboStream(entry.id, conversation.id));
       }
     }
-    const html = invalidations.join("") + `<turbo-stream action="append" target="${launchComposerSettingsFrameId}"><template><span hidden data-controller="launch-model-refresh"></span></template></turbo-stream>`;
+    const html = invalidations.join("") + launchUpdates;
     return deliverShellMutation(request, html);
   }
 
@@ -1253,7 +1199,7 @@ export function createWebApp(deps: WebAppDeps): WebApp {
     }
     if (url.pathname === "/openapi.json" && request.method === "GET") return jsonResponse(atelierOpenApi(workspaceModuleCommands(), Object.assign({}, ...workspaceModules.map((module) => module.openApiPaths ?? {}))));
     if (url.pathname === "/launch-composer" && request.method === "GET") return response(await renderProjectlessLaunchComposerFrame());
-    if (url.pathname === "/launch-composer/settings" && request.method === "GET") return response(await launchComposerSettingsFrame(url.searchParams.get("model") ?? undefined, url.searchParams.get("level") ?? undefined));
+    if (url.pathname === "/launch-composer/settings" && request.method === "GET") return response(await defaultAgentLaunch.renderFooter(launchComposerFooterContext(url.searchParams)));
     const projectOnboardingMatch = url.pathname.match(/^\/projects\/([^/]+)\/onboarding$/);
     if (projectOnboardingMatch && request.method === "GET") {
       const projectId = decodeURIComponent(projectOnboardingMatch[1]!);

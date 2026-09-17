@@ -1,22 +1,14 @@
+import { response } from "@atelier/shared/http";
 import { requestAcceptsJson } from "@atelier/core";
-import { getConfiguredAgentModels } from "./pi-config-models.ts";
-import { selectPacingWindow, type PacedUsageWindow } from "./usage-window.ts";
-import { connectedUsageProviders, getProviderUsageOverview, supportedUsageProviders, type ProviderUsageOverview, type UsageProvider } from "./provider-usage.ts";
+import { getConfiguredAgentModels } from "./model-preferences.ts";
+import { selectPacingWindow, type PacedUsageWindow, connectedUsageProviders, getProviderUsageOverview, supportedUsageProviders, type ProviderUsageOverview, type UsageProvider } from "@atelier/llm/server";
 import { actionLinkHtml } from "@atelier/design-system/action-link";
 import { dialogHtml } from "@atelier/design-system/dialog";
 import { Icons } from "@atelier/design-system/icons";
-import { escapeHtml, providerBrandColor, providerBrandIconHtml, turboStream, turboStreamResponse, workspaceModuleModalFrameId, workspaceAgentSelectionEvent, type WorkspaceModuleRouteContext } from "@atelier/shared";
-
-function response(body: string): Response {
-  return new Response(body, { headers: { "content-type": "text/html; charset=utf-8", "cache-control": "no-store" } });
-}
+import { escapeHtml, providerBadgeHtml, turboStream, turboStreamResponse, workspaceModuleModalFrameId, workspaceAgentSelectionEvent, type WorkspaceModuleRouteContext } from "@atelier/shared";
 
 function jsonResponse<Body extends object>(body: Body, status = 200): Response {
   return Response.json(body, { status, headers: { "cache-control": "no-store" } });
-}
-
-function providerIcon(provider: string, label: string): string {
-  return `<div class="usage-provider-icon" style="--provider-color:${providerBrandColor(provider)}">${providerBrandIconHtml(provider, label)}</div>`;
 }
 
 export function renderUsagePaneAction(): string {
@@ -86,7 +78,7 @@ function renderUsageLimits({ reported, error, windows }: ProviderUsageOverview):
 
 function renderUsageProvider(overview: ProviderUsageOverview): string {
   const { reported } = overview;
-  return `<section class="usage-provider" data-controller="usage-snapshot"><header class="usage-provider-heading"><h2>${providerIcon(overview.provider.id, overview.provider.label)}${escapeHtml(overview.provider.label)}</h2>${reported?.plan ? `<span class="usage-plan">${escapeHtml(reported.plan)}</span>` : ""}</header>
+  return `<section class="usage-provider" data-controller="usage-snapshot"><header class="usage-provider-heading"><h2>${providerBadgeHtml(overview.provider.id, overview.provider.label, "usage-provider-icon")}${escapeHtml(overview.provider.label)}</h2>${reported?.plan ? `<span class="usage-plan">${escapeHtml(reported.plan)}</span>` : ""}</header>
     <section class="usage-section">
       ${renderUsageLimits(overview)}
     </section>

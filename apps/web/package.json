@@ -31,6 +31,7 @@
     "@atelier/vscode": "workspace:*",
     "typebox": "^1.0.57",
     "@atelier/subagents": "workspace:*",
-    "@atelier/desktop": "workspace:*"
+    "@atelier/desktop": "workspace:*",
+    "@atelier/llm": "workspace:*"
   }
 }

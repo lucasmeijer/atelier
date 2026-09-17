@@ -170,3 +170,7 @@ export function providerBrandColor(provider: string): string {
   const normalized = provider.trim().toLowerCase();
   return providerBrandColors[normalized] ?? `hsl(${[...normalized].reduce((sum, char) => sum + char.charCodeAt(0), 0) % 360} 52% 54%)`;
 }
+
+export function providerBadgeHtml(provider: string, label: string, className: string): string {
+  return `<div class="${escapeHtml(className)}" style="--provider-color:${providerBrandColor(provider)}">${providerBrandIconHtml(provider, label)}</div>`;
+}

@@ -1,5 +1,5 @@
 import { escapeHtml } from "./html.ts";
-import type { ModelRef } from "./model-state.ts";
+import type { ModelRef } from "@atelier/llm/server";
 
 type ThinkingBlockRenderer = (input: { contentId: string; text: string }) => string;
 

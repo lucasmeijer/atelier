@@ -3,7 +3,7 @@ import { actionLinkHtml } from "@atelier/design-system/action-link";
 import { dialogHtml } from "@atelier/design-system/dialog";
 import { destructiveConfirmationHtml } from "@atelier/design-system/destructive-confirmation";
 import { Icons } from "@atelier/design-system/icons";
-import { createPiModelRuntime, setPickerAgentModels } from "@atelier/agent/server";
+import { createPiModelRuntime, setConfiguredModels } from "@atelier/llm/server";
 import { invalidArguments } from "@atelier/core";
 import { escapeHtml } from "@atelier/shared";
 import { clearWorkspaceGitHubToken } from "@atelier/proxy-egress";
@@ -11,7 +11,7 @@ import { clearGitIdentity, getGitIdentity, setGitIdentity } from "@atelier/proje
 import { resetOnboarding } from "../onboarding/state.ts";
 import { renderOnboardingDialog } from "../onboarding/routes.ts";
 import { workspaceModules } from "../workspace-modules.ts";
-import { remove, replace, response, stream, update, wantsStream } from "./http.ts";
+import { remove, replace, response, stream, update, wantsStream } from "@atelier/shared/http";
 import { listSettingsContributions, registerSettingsContribution } from "./registry.ts";
 
 function devSettingsEnabled(): boolean {
@@ -134,12 +134,12 @@ async function deleteAllStoredSettings(): Promise<void> {
   await resetOnboarding();
   clearWorkspaceGitHubToken();
   await clearGitIdentity();
-  await setPickerAgentModels([]);
+  await setConfiguredModels([]);
   const runtime = await createPiModelRuntime();
   for (const credential of await runtime.listCredentials()) await runtime.logout(credential.providerId);
 }
 
-export async function handleSettingsPageRequest(request: Request, url: URL, options: { forceDeleteAllWorkspaces?: () => Promise<WorkspaceCleanupResult> } = {}): Promise<Response | undefined> {
+export async function handleSettingsPageRequest(request: Request, url: URL, options: { forceDeleteAllWorkspaces?: () => Promise<WorkspaceCleanupResult>; renderModelPickerUpdates: () => Promise<string> }): Promise<Response | undefined> {
   if (url.pathname === "/settings" && request.method === "GET") {
     const html = await renderSettingsDialog();
     return wantsStream(request) ? stream(update("settings_modal_host", html)) : response(html);
@@ -150,7 +150,8 @@ export async function handleSettingsPageRequest(request: Request, url: URL, opti
   }
   if (url.pathname === "/settings/reset" && request.method === "POST") {
     await deleteAllStoredSettings();
-    return stream(`${replace("settings_dialog", await renderDevelopmentSettingsDialog())}${update("onboarding_modal_host", await renderOnboardingDialog())}${remove("model_setup_dialog")}`);
+    const pickerUpdates = await options.renderModelPickerUpdates();
+    return stream(`${pickerUpdates}${replace("settings_dialog", await renderDevelopmentSettingsDialog())}${update("onboarding_modal_host", await renderOnboardingDialog())}${remove("model_setup_dialog")}`);
   }
   if (url.pathname === "/settings/workspaces/force-delete" && request.method === "POST" && devSettingsEnabled()) {
     const result = options.forceDeleteAllWorkspaces

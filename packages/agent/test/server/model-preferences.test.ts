@@ -1,8 +1,10 @@
+import { updateJsonSettings } from "@atelier/core/json-settings";
 import { afterEach, beforeEach, describe, expect, test } from "bun:test";
 import { mkdtemp, readFile, rm } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
-import { createPiModelRuntime, disconnectModelProvider, seedProviderFavoriteModels, getConfiguredAgentModels, getCustomModelsJson, getLastProviderServiceTier, getModelThinkingLevel, setActiveAgentModel, setCustomModelsJson, setLastProviderServiceTier, setModelThinkingLevel, setPickerAgentModels } from "../../src/server/pi-config-models.ts";
+import { createPiModelRuntime, disconnectModelProvider, seedProviderFavoriteModels, getCustomModelsJson, setCustomModelsJson, setConfiguredModels } from "@atelier/llm/server";
+import { reconcileAgentModelPreferences, getConfiguredAgentModels, getLastProviderServiceTier, getModelThinkingLevel, setActiveAgentModel, setLastProviderServiceTier, setModelThinkingLevel } from "../../src/server/model-preferences.ts";
 
 let dataDir: string;
 
@@ -16,41 +18,10 @@ afterEach(async () => {
   await rm(dataDir, { recursive: true, force: true });
 });
 
-describe("custom Pi model configuration", () => {
-  test("rejects malformed JSON and invalid Pi model definitions without replacing saved configuration", async () => {
-    const valid = JSON.stringify({ providers: { "openai-codex": { models: [{ id: "future-model" }] } } });
-    await setCustomModelsJson(valid);
-
-    expect(setCustomModelsJson("{ broken")).rejects.toThrow("Invalid JSON");
-    expect(setCustomModelsJson(JSON.stringify({ providers: { "openai-codex": { models: [{ id: 42 }] } } }))).rejects.toThrow("must be string");
-    expect(JSON.parse(await getCustomModelsJson())).toEqual(JSON.parse(valid));
-  });
-
-  test("retains pasted definitions but omits models supplied by the official catalogue", async () => {
-    const source = JSON.stringify({
-      providers: {
-        "openai-codex": {
-          models: [
-            { id: "gpt-5.4", name: "Stale custom copy" },
-            { id: "future-model", name: "Future model" },
-          ],
-        },
-      },
-    });
-
-    const result = await setCustomModelsJson(source);
-    const effective = JSON.parse(await readFile(join(dataDir, "pi-config", "models.json"), "utf8"));
-
-    expect(result.skippedOfficialModels).toEqual([{ provider: "openai-codex", id: "gpt-5.4" }]);
-    expect(effective.providers["openai-codex"].models).toEqual([{ id: "future-model", name: "Future model" }]);
-    expect(JSON.parse(await getCustomModelsJson()).providers["openai-codex"].models).toHaveLength(2);
-  });
-});
-
 describe("Agent model settings transactions", () => {
   test("concurrent preference and picker updates preserve each other", async () => {
     await Promise.all([
-      setPickerAgentModels([{ provider: "openai-codex", id: "gpt-5.4", label: "My model" }]),
+      setConfiguredModels([{ provider: "openai-codex", id: "gpt-5.4", label: "My model" }]),
       setActiveAgentModel("openai-codex", "gpt-5.4", "high"),
       setModelThinkingLevel("anthropic", "claude", "medium"),
       setLastProviderServiceTier("openai-codex", "priority"),
@@ -83,7 +54,7 @@ test("connecting seeds defaults once, preserves other selections, and disconnect
   expect(first[0]!.active).toBe(true);
 
   const retained = { provider: "openai", id: "gpt-5.4", label: "My selection", active: true };
-  await setPickerAgentModels([retained]);
+  await setConfiguredModels([retained]);
   await seedProviderFavoriteModels("openai");
   expect(await getConfiguredAgentModels()).toEqual([retained]);
 
@@ -100,4 +71,45 @@ test("connecting seeds defaults once, preserves other selections, and disconnect
 
   await disconnectModelProvider("anthropic");
   expect(await getConfiguredAgentModels()).toEqual([]);
+});
+
+
+test("catalogue changes forget a removed native default without losing thinking preferences", async () => {
+  const first = { provider: "openai", id: "first", label: "First" };
+  const second = { provider: "openai", id: "second", label: "Second" };
+  await setConfiguredModels([first, second]);
+  await setActiveAgentModel(first.provider, first.id, "high");
+  await setConfiguredModels([second]);
+  await reconcileAgentModelPreferences();
+  await setConfiguredModels([first, second]);
+  expect((await getConfiguredAgentModels()).find((model) => model.active)?.id).toBe("second");
+  expect(await getModelThinkingLevel(first.provider, first.id)).toBe("high");
+  await setConfiguredModels([]);
+  await reconcileAgentModelPreferences();
+  expect(JSON.parse(await readFile(join(dataDir, "pi-config", "models.json"), "utf8")).activeModel).toBeUndefined();
+});
+
+
+test("reads individual legacy preferences and preserves unrelated persisted fields", async () => {
+  const path = join(dataDir, "pi-config", "models.json");
+  await updateJsonSettings(path, (stored) => {
+    stored.modelPreferences = {
+      "openai::valid": { thinkingLevel: "high", retained: true },
+      "openai::invalid": { thinkingLevel: 42 },
+    };
+    stored.providerPreferences = { valid: { serviceTier: "priority", retained: true }, legacy: { serviceTier: "unknown" }, invalid: 42 };
+    stored.otherOwner = { retained: true };
+  });
+  expect(await getModelThinkingLevel("openai", "valid")).toBe("high");
+  expect(await getModelThinkingLevel("openai", "invalid")).toBeUndefined();
+  expect(await getModelThinkingLevel("openai", "missing")).toBeUndefined();
+  expect(await getLastProviderServiceTier("valid")).toBe("priority");
+  expect(await getLastProviderServiceTier("legacy")).toBe("default");
+  expect(await getLastProviderServiceTier("invalid")).toBeUndefined();
+  await setModelThinkingLevel("openai", "valid", "medium");
+  await setLastProviderServiceTier("valid", "default");
+  const saved = JSON.parse(await readFile(path, "utf8"));
+  expect(saved.modelPreferences["openai::valid"]).toEqual({ thinkingLevel: "medium", retained: true });
+  expect(saved.providerPreferences.valid).toEqual({ serviceTier: "default", retained: true });
+  expect(saved.otherOwner).toEqual({ retained: true });
 });

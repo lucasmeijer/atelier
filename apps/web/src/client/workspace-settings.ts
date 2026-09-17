@@ -34,79 +34,6 @@ class ThemeSelectController extends Controller<HTMLSelectElement> {
   }
 }
 
-class OAuthFlowController extends Controller<HTMLElement> {
-  static values = { statusUrl: String, active: Boolean, pollMs: Number };
-  declare readonly statusUrlValue: string;
-  declare readonly activeValue: boolean;
-  declare readonly pollMsValue: number;
-  declare readonly hasPollMsValue: boolean;
-  private timer: number | undefined;
-  private polling = false;
-
-  connect(): void {
-    if (!this.activeValue || !this.statusUrlValue) return;
-    this.timer = window.setInterval(() => void this.poll(), this.hasPollMsValue ? this.pollMsValue : 3000);
-    window.addEventListener("focus", this.pollSoon);
-    document.addEventListener("visibilitychange", this.pollIfVisible);
-  }
-
-  disconnect(): void {
-    if (this.timer !== undefined) window.clearInterval(this.timer);
-    window.removeEventListener("focus", this.pollSoon);
-    document.removeEventListener("visibilitychange", this.pollIfVisible);
-  }
-
-  private pollSoon = (): void => {
-    window.setTimeout(() => void this.poll(), 100);
-  };
-
-  private pollIfVisible = (): void => {
-    if (document.visibilityState === "visible") void this.poll();
-  };
-
-  private async poll(): Promise<void> {
-    if (this.polling) return;
-    this.polling = true;
-    const response = await fetch(this.statusUrlValue, {
-      method: "POST",
-      cache: "no-store",
-      headers: { Accept: "text/vnd.turbo-stream.html" },
-    }).catch(() => undefined);
-    this.polling = false;
-    if (!response?.ok) return;
-    const codeCopied = this.element.dataset.oauthCodeCopied === "true";
-    const authenticationStarted = this.element.dataset.oauthAuthenticationStarted === "true";
-    const html = await response.text();
-    if (!html.trim()) return;
-    window.Turbo?.renderStreamMessage(html);
-    if (codeCopied || authenticationStarted) window.requestAnimationFrame(() => this.restoreDeviceCodeState(codeCopied, authenticationStarted));
-  }
-
-  showDeviceAuth(): void {
-    this.element.dataset.oauthCodeCopied = "true";
-    this.element.querySelector<HTMLElement>("[data-oauth-device-auth]")!.hidden = false;
-  }
-
-  showWaitingStatus(): void {
-    this.element.dataset.oauthAuthenticationStarted = "true";
-    this.element.querySelector<HTMLElement>("[data-oauth-waiting-status]")!.hidden = false;
-  }
-
-  private restoreDeviceCodeState(codeCopied: boolean, authenticationStarted: boolean): void {
-    const dialog = document.querySelector<HTMLElement>("#model_connection_step");
-    const deviceAuth = dialog?.querySelector<HTMLElement>("[data-oauth-device-auth]");
-    if (!dialog || !deviceAuth) return;
-    if (codeCopied) {
-      dialog.dataset.oauthCodeCopied = "true";
-      deviceAuth.hidden = false;
-    }
-    if (authenticationStarted) {
-      dialog.dataset.oauthAuthenticationStarted = "true";
-      dialog.querySelector<HTMLElement>("[data-oauth-waiting-status]")!.hidden = false;
-    }
-  }
-}
-
 class SettingsAutosaveController extends Controller<HTMLFormElement> {
   private savedValues = "";
   private pending?: Promise<boolean>;
@@ -282,50 +209,13 @@ class ServerFilterController extends Controller {
   }
 }
 
-class LaunchModelRefreshController extends Controller<HTMLElement> {
-  connect(): void {
-    const frame = this.element.closest<HTMLElement & { reload(): void }>("turbo-frame")!;
-    const model = frame.querySelector<HTMLInputElement>('input[name="model"]')!.value;
-    const level = frame.querySelector<HTMLSelectElement>('select[name="level"]')?.value;
-    const url = new URL("/launch-composer/settings", window.location.href);
-    if (model) url.searchParams.set("model", model);
-    if (level) url.searchParams.set("level", level);
-    const source = url.pathname + url.search;
-    if (frame.getAttribute("src") === source) frame.reload();
-    else frame.setAttribute("src", source);
-    this.element.remove();
-  }
-}
-
-class AgentModelSetupController extends Controller<HTMLElement> {
-  guard(event: Event): void {
-    if (this.element.querySelector('[data-model-ready="false"]')) {
-      event.preventDefault();
-      event.stopImmediatePropagation();
-      void this.open(event);
-    }
-  }
-
-  async open(event: Event): Promise<void> {
-    event.preventDefault();
-    const controlledMenuId = this.element.getAttribute("aria-controls");
-    const menu = this.element.closest<HTMLElement>(".popup-menu[popover]") ?? (controlledMenuId ? document.getElementById(controlledMenuId) : null);
-    if (menu?.matches(":popover-open")) menu.hidePopover();
-    const response = await fetch("/settings/models/dialog", { headers: { Accept: "text/vnd.turbo-stream.html" } });
-    window.Turbo!.renderStreamMessage(await response.text());
-  }
-}
-
 export function registerWorkspaceSettingsControllers(): void {
   registerWorkspaceControllers({
     "theme-select": ThemeSelectController,
-    "oauth-flow": OAuthFlowController,
     "git-identity": GitIdentityController,
     "settings-autosave": SettingsAutosaveController,
     "project-settings": ProjectSettingsController,
     "settings-prefetch": SettingsPrefetchController,
     "server-filter": ServerFilterController,
-    "agent-model-setup": AgentModelSetupController,
-    "launch-model-refresh": LaunchModelRefreshController,
   });
 }

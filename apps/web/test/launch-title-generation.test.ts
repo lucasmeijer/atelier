@@ -8,7 +8,7 @@ afterEach(data.tearDown);
 
 describe("launch title generation", () => {
   test("names from the launch prompt after provisioning without an Agent conversation", async () => {
-    const prepare = spyOn(agent, "prepareNewWorkspaceAgentParameters").mockImplementation(async (parameters) => parameters);
+    const prepare = spyOn(agent.nativeAgentLaunch, "prepare").mockImplementation(async (parameters) => ({ agent: { initialPrompt: String(parameters?.initialPrompt ?? ""), model: String(parameters?.model ?? "") } }));
     const name = spyOn(agent, "maybeNameWorkspaceFromPrompt").mockImplementation(() => {});
     try {
       const ready = deferred();
@@ -45,7 +45,7 @@ describe("launch title generation", () => {
   });
 
   test("failed provisioning does not request a title", async () => {
-    const prepare = spyOn(agent, "prepareNewWorkspaceAgentParameters").mockImplementation(async (parameters) => parameters);
+    const prepare = spyOn(agent.nativeAgentLaunch, "prepare").mockImplementation(async (parameters) => ({ agent: { initialPrompt: String(parameters?.initialPrompt ?? ""), model: String(parameters?.model ?? "") } }));
     const name = spyOn(agent, "maybeNameWorkspaceFromPrompt").mockImplementation(() => {});
     try {
       const { app } = createTestApp({ provision: async () => { throw new Error("provision failed"); } });

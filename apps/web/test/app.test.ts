@@ -9,15 +9,8 @@ import { atelierCableConnectionHeader, type CableIdentifier, type WorkspaceAgent
 import { workspaceWarnings } from "../src/server/workspace-warnings.ts";
 import { createWebApp, type WebApp } from "../src/server/app.ts";
 import type { CableBroadcastOptions } from "../src/server/cable.ts";
-import {
-  agentActionsDomId,
-  agentBodiesDomId,
-  agentBodyFrameId,
-  agentNavigationDomId,
-  agentPaneSlotDomId,
-  agentTabDomId,
-  workViewSelectorDomId,
-} from "../src/server/workspace-presentation.ts";
+import { workViewSelectorDomId } from "../src/server/workspace-presentation.ts";
+import { agentActionsDomId, agentBodiesDomId, agentBodyFrameId, agentNavigationDomId, agentPaneSlotDomId, agentTabDomId } from "../src/server/agent-pane.ts";
 import { createWorkspaceRegistry, type WorkspaceRegistry } from "../src/server/workspace-registry.ts";
 import { workspaceModules } from "../src/server/workspace-modules.ts";
 

@@ -1,11 +1,6 @@
-import type { AgentWorkspaceParameters } from "@atelier/shared";
 import { getSupportedThinkingLevels } from "@earendil-works/pi-ai";
-import { createPiModelRuntime, getConfiguredAgentModels, getModelThinkingLevel, setActiveAgentModel } from "./pi-config-models.ts";
-
-export interface ModelRef {
-  provider: string;
-  id: string;
-}
+import { getConfiguredAgentModels, getModelThinkingLevel } from "./model-preferences.ts";
+import { createPiModelRuntime, modelRefValue, parseModelRef, type ModelRef } from "@atelier/llm/server";
 
 export interface AgentModelOptionView {
   provider: string;
@@ -14,22 +9,6 @@ export interface AgentModelOptionView {
   selected: boolean;
   available: boolean;
   unavailableReason?: string;
-}
-
-export function parseModelRef(value: string): ModelRef | undefined {
-  const separator = value.indexOf("::");
-  if (separator <= 0 || separator === value.length - 2) return undefined;
-  return { provider: value.slice(0, separator), id: value.slice(separator + 2) };
-}
-
-export function modelRefValue(ref: ModelRef): string {
-  return `${ref.provider}::${ref.id}`;
-}
-
-export async function rememberNewWorkspaceAgentSettings(value: string, thinkingLevel?: string): Promise<void> {
-  const ref = parseModelRef(value);
-  if (!ref) return;
-  await setActiveAgentModel(ref.provider, ref.id, thinkingLevel);
 }
 
 export function selectAvailableConfiguredModel(models: readonly AgentModelOptionView[], requested?: ModelRef): ModelRef | undefined {
@@ -43,13 +22,6 @@ export function selectAvailableConfiguredModel(models: readonly AgentModelOption
 export async function resolveNewWorkspaceAgentModel(selectedModel?: string): Promise<ModelRef | undefined> {
   const requested = selectedModel ? parseModelRef(selectedModel) : undefined;
   return selectAvailableConfiguredModel(await configuredModelOptionViews(), requested);
-}
-
-export async function prepareNewWorkspaceAgentParameters(agent: AgentWorkspaceParameters | undefined): Promise<AgentWorkspaceParameters | undefined> {
-  if (!agent || agent.initialPromptMode || !(agent.initialPrompt?.trim() || agent.attachmentDraft)) return agent;
-  const model = await resolveNewWorkspaceAgentModel(agent.model);
-  if (!model) return { ...agent, initialPromptMode: "composer", model: undefined, thinkingLevel: undefined, serviceTier: undefined };
-  return agent.model ? { ...agent, model: modelRefValue(model) } : agent;
 }
 
 /** Omit current to select the saved default; null represents a session without a model. */

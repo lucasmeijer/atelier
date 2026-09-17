@@ -1,7 +1,7 @@
 import { createKeyedOperationQueue, type AtelierEventBus } from "@atelier/core";
 import { getWorkspaceTitle, listWorkspaces, setWorkspaceTitle } from "@atelier/workspace";
-import { resolveNewWorkspaceAgentModel, type ModelRef } from "./model-state.ts";
-import { createPiModelRuntime } from "./pi-config-models.ts";
+import { resolveNewWorkspaceAgentModel } from "./model-state.ts";
+import { createPiModelRuntime, type ModelRef } from "@atelier/llm/server";
 import { listWorkspaceAgentConversations, setWorkspaceAgentConversationTitle, untitledAgentConversationTitle, type WorkspaceAgentConversationInfo } from "./session-store.ts";
 
 const pendingRenames = new Set<string>();

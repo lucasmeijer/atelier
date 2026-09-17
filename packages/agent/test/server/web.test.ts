@@ -50,13 +50,19 @@ describe("Workspace Agent-tab provider", () => {
     });
 
     expect(await provider.list({ workspaceId: "workspace-1" })).toEqual([
-      { id: conversations[0]!.conversationId, title: "First" },
-      { id: conversations[1]!.conversationId, title: "Second" },
+      { id: conversations[0]!.conversationId, title: "First", untitled: false },
+      { id: conversations[1]!.conversationId, title: "Second", untitled: false },
     ]);
     expect(rendered).toEqual([]);
     expect(await provider.render({ workspaceId: "workspace-1", conversationId: conversations[1]!.conversationId })).toBe("<article>Second</article>");
     expect(rendered).toEqual([conversations[1]!.conversationId]);
     expect(provider.render({ workspaceId: "workspace-1", conversationId: conversations[1]!.label })).rejects.toMatchObject({ code: "agent_conversation_not_found" });
+  });
+
+  test("listing an unoccupied workspace does not create a native session", async () => {
+    await dataDir();
+    expect(await workspaceAgentTabProvider.list({ workspaceId: "workspace-1" })).toEqual([]);
+    expect(await listWorkspaceAgentConversations("workspace-1")).toEqual([]);
   });
 
   test("lists shell metadata without labels, paths, or bodies", async () => {
@@ -65,8 +71,8 @@ describe("Workspace Agent-tab provider", () => {
     const second = await createNextWorkspaceAgentConversation("workspace-1");
 
     expect(await workspaceAgentTabProvider.list({ workspaceId: "workspace-1" })).toEqual([
-      { id: first.conversationId, title: "Untitled" },
-      { id: second.conversationId, title: "Untitled" },
+      { id: first.conversationId, title: "Untitled", untitled: true },
+      { id: second.conversationId, title: "Untitled", untitled: true },
     ]);
   });
 
@@ -122,7 +128,7 @@ describe("Workspace Agent-tab provider", () => {
     expect(lifecycle).toEqual(["dispose:start", "dispose:end", "archive"]);
   });
 
-  test("serializes concurrent closes so one Agent always remains", async () => {
+  test("can dispose all native sessions without imposing the shell last-tab policy", async () => {
     await dataDir();
     const first = await ensureDefaultWorkspaceAgentConversation("workspace-1");
     const second = await createNextWorkspaceAgentConversation("workspace-1");
@@ -133,8 +139,8 @@ describe("Workspace Agent-tab provider", () => {
     ]);
 
     expect(results[0]).toMatchObject({ status: "fulfilled" });
-    expect(results[1]).toMatchObject({ status: "rejected", reason: { code: "last_agent_conversation" } });
-    expect((await listWorkspaceAgentConversations("workspace-1")).map(({ conversationId }) => conversationId)).toEqual([second.conversationId]);
+    expect(results[1]).toMatchObject({ status: "fulfilled" });
+    expect(await listWorkspaceAgentConversations("workspace-1")).toEqual([]);
   });
 
   test("Agent file completions reject a display label in place of the immutable conversation id", async () => {

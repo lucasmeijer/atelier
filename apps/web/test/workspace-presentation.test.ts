@@ -1,26 +1,6 @@
 import { describe, expect, test } from "bun:test";
-import {
-  agentActionsDomId,
-  agentBodiesDomId,
-  agentBodyFrameId,
-  agentNavigationDomId,
-  agentPaneSlotDomId,
-  agentTabDomId,
-  agentTabsTurboStream,
-  openWorkViewTurboStream,
-  removeWorkspaceResidentTurboStream,
-  renderAgentBodyFrame,
-  renderWorkspacePane,
-  renderWorkspacePresentation,
-  renderWorkViewBodyFrame,
-  workViewActionsDomId,
-  workViewAvailabilityDomId,
-  workViewBodyFrameId,
-  workViewPaneDomId,
-  workViewSelectorDomId,
-  workViewsTurboStream,
-  type WorkspacePresentation,
-} from "../src/server/workspace-presentation.ts";
+import { openWorkViewTurboStream, removeWorkspaceResidentTurboStream, renderWorkspacePane, renderWorkspacePresentation, renderWorkViewBodyFrame, workViewActionsDomId, workViewAvailabilityDomId, workViewBodyFrameId, workViewPaneDomId, workViewSelectorDomId, workViewsTurboStream, type WorkspacePresentation } from "../src/server/workspace-presentation.ts";
+import { agentActionsDomId, agentBodiesDomId, agentBodyFrameId, agentNavigationDomId, agentPaneSlotDomId, agentTabDomId, agentTabsTurboStream, renderAgentBodyFrame } from "../src/server/agent-pane.ts";
 
 const firstConversationId = "53fc77b7-dc19-42d5-b200-2e134ec67529";
 const secondConversationId = "268604ac-d16a-4a4a-ab1e-1ed3ca54687d";

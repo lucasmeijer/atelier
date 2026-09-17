@@ -1,4 +1,4 @@
-import { resolveNewWorkspaceAgentModel, launchComposerThinkingSettings } from "./model-state.ts";
+import { resolveNewWorkspaceAgentModel, launchComposerThinkingSettings, configuredModelOptionViews } from "./model-state.ts";
 import { applyTranscriptContributions } from "./transcript-contributions.ts";
 import { isJsonObject } from "@atelier/core";
 import { contentText, type UserMessage } from "@earendil-works/pi-ai";
@@ -8,8 +8,8 @@ import { collectCacheMisses, detectCacheMiss } from "./cache-miss.ts";
 import { turboStream } from "./html.ts";
 import { isFinalAssistantTextEvent } from "./live-presentation.ts";
 import { createPiSession, type AgentSessionDelegation } from "./pi-session.ts";
-import { configuredModelOptionViews } from "./model-state.ts";
-import { getModelThinkingLevel, hasConnectedModelProvider } from "./pi-config-models.ts";
+import { getModelThinkingLevel } from "./model-preferences.ts";
+import { hasConnectedModelProvider } from "@atelier/llm/server";
 import type { AgentStatsView } from "./render-composer.ts";
 import { ids } from "./render-context.ts";
 import {
@@ -36,7 +36,6 @@ import {
   type TranscriptItem,
   type TranscriptRecord,
 } from "./transcript.ts";
-
 import { TurnTiming, turnStartEntryType, turnTimingEntryType } from "./turn-timing.ts";
 
 interface AgentPromptPreflightOptions {

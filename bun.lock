@@ -24,6 +24,7 @@
         "@atelier/desktop": "workspace:*",
         "@atelier/files": "workspace:*",
         "@atelier/keypress-probe": "workspace:*",
+        "@atelier/llm": "workspace:*",
         "@atelier/projects": "workspace:*",
         "@atelier/proxy-egress": "workspace:*",
         "@atelier/proxy-ingress": "workspace:*",
@@ -45,10 +46,10 @@
       "dependencies": {
         "@atelier/core": "workspace:*",
         "@atelier/design-system": "workspace:*",
+        "@atelier/llm": "workspace:*",
         "@atelier/markdown": "workspace:*",
         "@atelier/observable-terminal": "workspace:*",
         "@atelier/projects": "workspace:*",
-        "@atelier/proxy-egress": "workspace:*",
         "@atelier/shared": "workspace:*",
         "@atelier/syntax": "workspace:*",
         "@atelier/transcription": "workspace:*",
@@ -145,6 +146,19 @@
         "@atelier/shared": "workspace:*",
       },
     },
+    "packages/llm": {
+      "name": "@atelier/llm",
+      "dependencies": {
+        "@atelier/core": "workspace:*",
+        "@atelier/design-system": "workspace:*",
+        "@atelier/proxy-egress": "workspace:*",
+        "@atelier/shared": "workspace:*",
+        "@atelier/workspace": "workspace:*",
+        "@earendil-works/pi-ai": "catalog:",
+        "@earendil-works/pi-coding-agent": "catalog:",
+        "typebox": "^1.0.57",
+      },
+    },
     "packages/markdown": {
       "name": "@atelier/markdown",
       "dependencies": {
@@ -191,6 +205,7 @@
       "name": "@atelier/proxy-ingress",
       "dependencies": {
         "@atelier/core": "workspace:*",
+        "@atelier/design-system": "workspace:*",
         "@atelier/shared": "workspace:*",
         "typebox": "^1.0.57",
       },
@@ -327,6 +342,8 @@
     "@atelier/files": ["@atelier/files@workspace:packages/files"],
 
     "@atelier/keypress-probe": ["@atelier/keypress-probe@workspace:packages/keypress-probe"],
+
+    "@atelier/llm": ["@atelier/llm@workspace:packages/llm"],
 
     "@atelier/markdown": ["@atelier/markdown@workspace:packages/markdown"],
 

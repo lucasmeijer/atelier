@@ -1,5 +1,6 @@
 import { describe, expect, test } from "bun:test";
-import { modelRefValue, parseModelRef, selectAvailableConfiguredModel, type AgentModelOptionView } from "../../src/server/model-state.ts";
+import { selectAvailableConfiguredModel, type AgentModelOptionView } from "../../src/server/model-state.ts";
+import { modelRefValue, parseModelRef } from "@atelier/llm/server";
 
 const model = (provider: string, id: string, options: { selected?: boolean; available?: boolean } = {}): AgentModelOptionView => ({
   provider,

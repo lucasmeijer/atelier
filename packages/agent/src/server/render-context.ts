@@ -1,4 +1,4 @@
-import type { ModelRef } from "./model-state.ts";
+import type { ModelRef } from "@atelier/llm/server";
 import type { SessionImageRef } from "./transcript.ts";
 import { domId } from "./html.ts";
 

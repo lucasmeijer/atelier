@@ -5,7 +5,7 @@ import type { TSchema } from "typebox";
 import { escapeHtml } from "./html.ts";
 import { focusLikelyOpensSoftwareKeyboard } from "./software-keyboard.ts";
 
-export { providerBrandColor, providerBrandIconHtml } from "./brand-icons.ts";
+export { providerBrandColor, providerBrandIconHtml, providerBadgeHtml } from "./brand-icons.ts";
 export { escapeHtml } from "./html.ts";
 export { hopByHopHeaderNames, isHopByHopHeader, stripHopByHopHeaders } from "./proxy-headers.ts";
 
@@ -77,10 +77,13 @@ export interface WorkspaceAttachContext {
 export interface WorkspaceAgentTabSummary {
   id: string;
   title: string;
+  /** Use the workspace title when this is the only tab. */
+  untitled?: boolean;
 }
 
 /** Durable Agent-tab seam: cheap shell metadata plus on-demand body rendering. */
 export interface WorkspaceAgentTabProvider {
+  renderHeader?(context: { workspaceId: string; conversations: readonly WorkspaceAgentTabSummary[] }): string;
   list(context: { workspaceId: string }): Promise<readonly WorkspaceAgentTabSummary[]>;
   render(context: { workspaceId: string; conversationId: string }): Promise<string>;
   close(context: { workspaceId: string; conversationId: string }): Promise<void>;
@@ -476,3 +479,27 @@ export function selectedWorkspaceAgent(element: Element): string | undefined {
   return element.closest<HTMLElement>("[data-workspace-selected-agent]")?.dataset.workspaceSelectedAgent || undefined;
 }
 export const workspaceAgentSelectionEvent = "atelier:workspace-agent-selected";
+
+/** Agent-owned launch content. The host owns the form, layout, and workspace creation. */
+export interface AgentLaunchPresentation {
+  attributesHtml: string;
+  formAttributesHtml: string;
+  bodyHtml: string;
+  footerHtml: string;
+  discardUrl: string;
+}
+export interface AgentLaunchFooterContext {
+  frameId: string;
+  formId: string;
+  url: string;
+  query: URLSearchParams;
+}
+export interface WorkspaceAgentLaunch {
+  render(context: AgentLaunchFooterContext & { draftId: string }): Promise<AgentLaunchPresentation>;
+  renderFooter(context: AgentLaunchFooterContext): Promise<string>;
+  prepare(parameters?: JsonObject): Promise<WorkspaceCreationContext | undefined>;
+  /** Validate first; prepare is called once when the host accepts this submission identity. */
+  submit(form: FormData): Promise<{ submissionId: string; prepare(): Promise<WorkspaceCreationContext> } | { response: Response }>;
+  prepareWorkspace(workspaceId: string, context?: WorkspaceCreationContext): Promise<void>;
+  refreshConfiguration(frameId: string): Promise<string>;
+}

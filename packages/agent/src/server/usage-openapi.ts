@@ -1,5 +1,5 @@
 import type { JsonObject } from "@atelier/core";
-import { supportedUsageProviders } from "./provider-usage.ts";
+import { supportedUsageProviders } from "@atelier/llm/server";
 
 const errorResponse = { description: "Request failed", content: { "application/json": { schema: { $ref: "#/components/schemas/Error" } } } };
 const htmlSurfaceResponses = (description: string) => ({ "200": { description, content: { "text/html": { schema: { type: "string" } } } }, "400": errorResponse, "404": errorResponse });

@@ -3,19 +3,18 @@ import { Value } from "typebox/value";
 import { shellQuote } from "@atelier/core";
 import { registerWorkspaceSubscriptionSecrets } from "@atelier/proxy-egress/server";
 import { execWorkspaceCommand, listWorkspaces } from "@atelier/workspace";
-import { createPiModelRuntime } from "./pi-config-models.ts";
+import type { ModelRuntime } from "@earendil-works/pi-coding-agent";
 
 const codexToken = "atelier-subscription-codex-access";
 const codexAccount = "atelier-subscription-codex-account";
 const anthropicToken = "atelier-subscription-anthropic-access";
 
-async function subscriptionToken(provider: string): Promise<string> {
-  const auth = await (await createPiModelRuntime()).getAuth(provider);
-  if (auth?.source !== "OAuth" || !auth.auth.apiKey) throw new Error(`Connect a ${provider} subscription in Atelier to use this CLI.`);
-  return auth.auth.apiKey;
-}
-
-export function registerSubscriptionCli(): void {
+export function registerSubscriptionCli(getRuntime: () => Promise<ModelRuntime>): void {
+  async function subscriptionToken(provider: string): Promise<string> {
+    const auth = await (await getRuntime()).getAuth(provider);
+    if (auth?.source !== "OAuth" || !auth.auth.apiKey) throw new Error(`Connect a ${provider} subscription in Atelier to use this CLI.`);
+    return auth.auth.apiKey;
+  }
   registerWorkspaceSubscriptionSecrets({
     codexSubscription: { placeholder: codexToken, hosts: ["chatgpt.com"], value: "", resolve: () => subscriptionToken("openai-codex") },
     codexAccount: { placeholder: codexAccount, hosts: ["chatgpt.com"], value: "", resolve: async () => {
@@ -47,8 +46,7 @@ export function subscriptionCliFiles(): Array<{ provider: string; path: string; 
   ];
 }
 
-export async function installSubscriptionCli(workspaceId: string): Promise<void> {
-  const runtime = await createPiModelRuntime();
+export async function installSubscriptionCli(workspaceId: string, runtime: ModelRuntime): Promise<void> {
   const credentials = await runtime.listCredentials();
   for (const file of subscriptionCliFiles()) {
     const connected = credentials.some((credential) => credential.providerId === file.provider && credential.type === "oauth");
@@ -65,8 +63,8 @@ fi` : `if [ -f ${path} ] && grep -qF ${shellQuote(file.marker)} ${path}; then rm
   }
 }
 
-export async function syncSubscriptionClis(): Promise<void> {
+export async function syncSubscriptionClis(runtime: ModelRuntime): Promise<void> {
   for (const workspace of (await listWorkspaces({ inspectImages: false })).workspaces) {
-    if (!workspace.parked) await installSubscriptionCli(workspace.id);
+    if (!workspace.parked) await installSubscriptionCli(workspace.id, runtime);
   }
 }

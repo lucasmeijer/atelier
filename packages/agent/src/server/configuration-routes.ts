@@ -1,7 +1,7 @@
 import { AtelierCoreError, readJsonObject, requestAcceptsJson } from "@atelier/core";
 import { turboStreamResponse } from "./html.ts";
-import { parseModelRef } from "./model-state.ts";
-import { setModelThinkingLevel } from "./pi-config-models.ts";
+import { parseModelRef } from "@atelier/llm/server";
+import { setModelThinkingLevel } from "./model-preferences.ts";
 import { invalidateAgentView, matchRoute, requireAgentRuntime, type AgentRouteHandler } from "./route-support.ts";
 import { parseAgentServiceTier } from "./service-tier.ts";
 

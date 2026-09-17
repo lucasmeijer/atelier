@@ -4,11 +4,12 @@ import { clearWorkspaceGitHubToken, hasWorkspaceGitHubToken, setWorkspaceGitHubT
 import { getStoredGitIdentity, setGitIdentity } from "@atelier/projects";
 import { validateGitHubToken } from "../github-auth.ts";
 import { renderOnboardingDialog } from "../onboarding/routes.ts";
-import { replace, stream, update } from "./http.ts";
+import { replace, stream, update } from "@atelier/shared/http";
 import { renderSettingsDialog } from "./page.ts";
-import { domId, escapeHtml } from "@atelier/shared";
+import { domId, escapeHtml, providerBadgeHtml } from "@atelier/shared";
 import { registerSettingsContribution } from "./registry.ts";
-import { providerIcon, type SettingsSurface } from "./views.ts";
+
+type SettingsSurface = "settings" | "onboarding";
 
 const githubDisconnectConfirmation = destructiveConfirmationHtml({
   trigger: { type: "button", variant: "danger", content: { kind: "caption", caption: "Disconnect" } },
@@ -45,7 +46,7 @@ export function renderGitHubSetup(surface: SettingsSurface = "settings", error =
   const disconnectAction = surface === "onboarding" ? "/settings/github/disconnect?surface=onboarding" : "/settings/github/disconnect";
   if (surface === "onboarding" && !connected) return `<div class="github-connection" id="${id}">${githubConnectionForm(surface, error)}</div>`;
   return `<div class="github-connection" id="${id}"><div class="managed-list"><div class="managed-list__item">
-    ${providerIcon("github", "GitHub", "settings-provider-icon managed-list__visual")}
+    ${providerBadgeHtml("github", "GitHub", "settings-provider-icon managed-list__visual")}
     <div class="managed-list__content"><div class="managed-list__label"><span class="managed-list__label-text">GitHub</span></div>${connected ? "" : githubConnectionForm(surface, error)}</div>
     ${connected ? `<div class="managed-list__actions"><form method="post" action="${disconnectAction}" data-turbo="true">${githubDisconnectConfirmation}</form></div>` : ""}
   </div></div></div>`;

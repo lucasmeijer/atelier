@@ -1,10 +1,9 @@
-import { configureOnboardingTools } from "@atelier/agent/server";
+import { nativeAgentLaunch as defaultAgentLaunch, configureOnboardingTools, configureAgentDelegation } from "@atelier/agent/server";
 import { createProjectSecretRequester } from "./project-secret-request.ts";
 import { ensureDefaultWorkspaceImage } from "@atelier/workspace-image";
 import { ensureHostInotifyLimit } from "@atelier/workspace";
 import { recoverWorkspaces, prepareWorkspaceForUse } from "./workspace-recovery.ts";
 import { designSystemCatalogueHtml } from "@atelier/design-system/catalogue";
-import { configureAgentDelegation } from "@atelier/agent/server";
 import { subagentsDelegation } from "@atelier/subagents/server";
 import { join } from "node:path";
 import { timingSafeEqual as timingSafeEqualBytes } from "node:crypto";
@@ -275,6 +274,8 @@ for (const module of workspaceModules) {
     onWorkspaceRemoved: (handler) => workspaceRemovedHandlers.push(handler),
   });
 }
+
+provisioningHooks.push({ id: "workspace.agent", label: "Prepare default agent", run: ({ workspaceId, creationContext }) => defaultAgentLaunch.prepareWorkspace(workspaceId, creationContext) });
 
 app.resumeWorkspaceDeletions();
 

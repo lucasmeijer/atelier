@@ -1,4 +1,5 @@
-import { registerSubscriptionCli, installSubscriptionCli } from "./subscription-cli.ts";
+import { renderNotificationHeader } from "./render-notification.ts";
+import { untitledAgentConversationTitle, archiveWorkspaceAgentConversation, createNextWorkspaceAgentConversation, listWorkspaceAgentConversations, sessionShareDir, sessionShareKeyForInit, sessionShareMountPath, type WorkspaceAgentConversationInfo } from "./session-store.ts";
 import { handleUsageRequest, renderUsagePaneAction } from "./usage-web.ts";
 import { usageOpenApiPaths } from "./usage-openapi.ts";
 import { resolveAgentConversation } from "./delegation.ts";
@@ -13,7 +14,6 @@ import { registerAgentEvents } from "./agent-events.ts";
 import { handleAgentRequest } from "./routes.ts";
 import { workspaceFileEndpoint } from "./workspace-files.ts";
 import { resolveWorkspacePortProxyBackend } from "./workspace-proxy.ts";
-import { archiveWorkspaceAgentConversation, createNextWorkspaceAgentConversation, ensureDefaultWorkspaceAgentConversation, listWorkspaceAgentConversations, sessionShareDir, sessionShareKeyForInit, sessionShareMountPath, type WorkspaceAgentConversationInfo } from "./session-store.ts";
 import { renderWorkspaceCompletionCatalog } from "./completion-catalog.ts";
 import { agentConversationKey } from "./render-context.ts";
 import { renderAgentCompletionCatalogTurboStream, renderAgentPane } from "./render-composer.ts";
@@ -23,16 +23,6 @@ import { agentStaticFiles } from "./static.ts";
 import { mkdir } from "node:fs/promises";
 import { removeWorkspaceInitialPromptDrafts } from "./initial-prompt-draft.ts";
 import type { WorkspaceDockerMount, WorkspaceInitInstruction } from "@atelier/workspace";
-
-async function listOrCreateWorkspaceAgentConversations(workspaceId: string): Promise<WorkspaceAgentConversationInfo[]> {
-  try {
-    const conversations = await listWorkspaceAgentConversations(workspaceId);
-    return conversations.length > 0 ? conversations : [await ensureDefaultWorkspaceAgentConversation(workspaceId)];
-  } catch (error) {
-    if (error instanceof AtelierCoreError && error.code === "workspace_not_found") return [];
-    throw error;
-  }
-}
 
 let agentEvents: AtelierEventBus | undefined;
 
@@ -46,8 +36,9 @@ export function createWorkspaceAgentTabProvider(dependencies: {
   const serializedClose = createKeyedOperationQueue();
 
   return {
+    renderHeader: ({ workspaceId, conversations }) => renderNotificationHeader(workspaceId, conversations),
     async list({ workspaceId }) {
-      return (await dependencies.list(workspaceId)).map(({ conversationId, title }) => ({ id: conversationId, title }));
+      return (await dependencies.list(workspaceId)).map(({ conversationId, title }) => ({ id: conversationId, title, untitled: title === untitledAgentConversationTitle }));
     },
 
     async render({ workspaceId, conversationId }) {
@@ -61,7 +52,6 @@ export function createWorkspaceAgentTabProvider(dependencies: {
         const conversations = await dependencies.list(workspaceId);
         const conversation = conversations.find((candidate) => candidate.conversationId === conversationId);
         if (!conversation) throw new AtelierCoreError("agent_conversation_not_found", `Agent conversation not found: ${conversationId}`);
-        if (conversations.length === 1) throw new AtelierCoreError("last_agent_conversation", "The last Agent conversation cannot be closed");
         try {
           await dependencies.dispose(workspaceId, conversationId);
           await dependencies.archive(conversation);
@@ -75,7 +65,7 @@ export function createWorkspaceAgentTabProvider(dependencies: {
 }
 
 export const workspaceAgentTabProvider = createWorkspaceAgentTabProvider({
-  list: listOrCreateWorkspaceAgentConversations,
+  list: listWorkspaceAgentConversations,
   async render(conversation) {
     const runtime = await getWorkspaceAgentRuntime(conversation, { events: agentEvents });
     const [state, completionCatalog] = await Promise.all([
@@ -212,24 +202,11 @@ export const agentWorkspaceModule: WorkspaceModule = {
     // SAFETY: The module boundary validates or constructs this value with the asserted domain shape.
     const events = context.events as AtelierEventBus;
     agentEvents = events;
-    registerSubscriptionCli();
-    context.registerProvisioningHook({
-      id: "workspace.subscription-cli",
-      label: "Connect subscription CLIs",
-      run: ({ workspaceId }) => installSubscriptionCli(workspaceId),
-    });
     registerAgentEvents(events);
     registerSessionShareMountEvents(events);
     events.on("workspace_agent_turn_finished", async ({ workspaceId, conversationId }) => {
       context.registry.markViewAttention(workspaceId, agentConversationKey(conversationId));
       context.broadcastWorkspace(workspaceId, await renderAgentCompletionCatalogTurboStream(workspaceId));
-    });
-    context.registerProvisioningHook({
-      id: "workspace.agent",
-      label: "Prepare default agent",
-      async run({ workspaceId, creationContext }) {
-        await ensureDefaultWorkspaceAgentConversation(workspaceId, { topic: creationContext?.agent?.initialPrompt, projectOnboarding: creationContext?.projectOnboarding });
-      },
     });
     context.registerSocketHandler(createAgentTermSocketSession);
     context.registerWorkspaceAppResolver(async (app, requestUrl) => {

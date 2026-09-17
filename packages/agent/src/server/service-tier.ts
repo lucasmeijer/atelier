@@ -1,7 +1,8 @@
 import { isJsonObject, type JsonObject, type JsonValue } from "@atelier/core";
 import type { AgentServiceTier } from "@atelier/shared";
 import type { ModelRuntime, SessionEntry, SessionManager } from "@earendil-works/pi-coding-agent";
-import { getLastProviderServiceTier, setLastProviderServiceTier } from "./pi-config-models.ts";
+import { getLastProviderServiceTier, setLastProviderServiceTier } from "./model-preferences.ts";
+
 
 export type { AgentServiceTier } from "@atelier/shared";
 

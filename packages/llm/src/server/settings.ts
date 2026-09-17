@@ -1,4 +1,5 @@
-import { finishOnboarding } from "../onboarding/state.ts";
+import { getPopularModelRank, getPopularProviderRank, getProviderApiKeyExample } from "./hardcoded-provider-knowledge.ts";
+import { modelRefValue as modelKey, parseModelRef } from "./model-reference.ts";
 import { actionItemHtml } from "@atelier/design-system/action-item";
 import { actionLinkHtml } from "@atelier/design-system/action-link";
 import { buttonHtml } from "@atelier/design-system/button";
@@ -11,24 +12,17 @@ import {
   ProviderCatalogueRefreshError,
   createPiModelRuntime,
   disconnectModelProvider,
-  getConfiguredAgentModels,
+  getConfiguredModels,
   getCustomModelsJson,
-  getPopularModelRank,
-  getPopularProviderRank,
-  getProviderApiKeyExample,
   seedProviderFavoriteModels,
-  modelRefValue as modelKey,
-  parseModelRef,
   loginPiOAuthProvider,
   setCustomModelsJson,
-  setPickerAgentModels,
-  type ConfiguredAgentModel,
+  setConfiguredModels,
+  type ConfiguredModel,
   type PiAuthPrompt,
-} from "@atelier/agent/server";
-import { domId, escapeHtml } from "@atelier/shared";
-import { append, remove, replace, replaceTargets, response, stream, update, wantsStream } from "./http.ts";
-import { registerSettingsContribution } from "./registry.ts";
-import { providerIcon } from "./views.ts";
+} from "./pi-config-models.ts";
+import { domId, escapeHtml, providerBadgeHtml } from "@atelier/shared";
+import { append, remove, replace, replaceTargets, response, stream, update, wantsStream } from "@atelier/shared/http";
 
 type ProviderSummary = { provider: string; label: string; connected: boolean; methods: string[] };
 
@@ -48,11 +42,11 @@ async function providerSummaries(): Promise<ProviderSummary[]> {
 type ModelSetupSurface = "settings" | "onboarding" | "dialog" | "settings-dialog";
 const modelSetupSurfaces: readonly ModelSetupSurface[] = ["settings", "onboarding", "dialog", "settings-dialog"];
 
-type ModelCatalogueEntry = ConfiguredAgentModel & { configured: boolean };
+type ModelCatalogueEntry = ConfiguredModel & { configured: boolean };
 
 async function providerCatalogue(provider: string): Promise<ModelCatalogueEntry[]> {
   const runtime = await createPiModelRuntime();
-  const favorites = (await getConfiguredAgentModels()).filter((model) => model.provider === provider);
+  const favorites = (await getConfiguredModels()).filter((model) => model.provider === provider);
   const favoriteById = new Map(favorites.map((model) => [model.id, model]));
   const models = new Map(runtime.getModels(provider).map((model): [string, ModelCatalogueEntry] => [model.id, {
     provider, id: model.id, label: favoriteById.get(model.id)?.label ?? model.name ?? model.id, configured: favoriteById.has(model.id),
@@ -80,7 +74,7 @@ function setupFrame(surface: ModelSetupSurface, body: string): string {
   return `<turbo-frame id="${setupId(surface)}" class="model-setup form-stack">${body}</turbo-frame>`;
 }
 function providerHeading(provider: Pick<ProviderSummary, "provider" | "label">): string {
-  return `<div class="model-setup-heading">${providerIcon(provider.provider, provider.label)}<span>${escapeHtml(provider.label)}</span></div>`;
+  return `<div class="model-setup-heading">${providerBadgeHtml(provider.provider, provider.label, "settings-provider-icon")}<span>${escapeHtml(provider.label)}</span></div>`;
 }
 /** Every connection state supplies content; this shell alone owns its placement. */
 function renderConnectionStep(provider: Pick<ProviderSummary, "provider" | "label">, surface: ModelSetupSurface, options: {
@@ -110,7 +104,7 @@ function groupModelProviders(providers: ProviderSummary[]) {
   return { popular, other: providers.filter((provider) => !popular.includes(provider)) };
 }
 function renderProvider(provider: ProviderSummary, surface: ModelSetupSurface): string {
-  return `<form method="post" action="${setupUrl(surface, provider.provider)}" data-turbo="true">${actionItemHtml({ kind: "single", element: { tag: "button", attributesHtml: 'type="submit"' }, label: { kind: "text", text: provider.label }, leadingHtml: `<span aria-hidden="true">${providerIcon(provider.provider, provider.label)}</span>` })}</form>`;
+  return `<form method="post" action="${setupUrl(surface, provider.provider)}" data-turbo="true">${actionItemHtml({ kind: "single", element: { tag: "button", attributesHtml: 'type="submit"' }, label: { kind: "text", text: provider.label }, leadingHtml: `<span aria-hidden="true">${providerBadgeHtml(provider.provider, provider.label, "settings-provider-icon")}</span>` })}</form>`;
 }
 function renderProviderList(providers: ProviderSummary[], surface: ModelSetupSurface, query = ""): string {
   const normalized = query.trim().toLowerCase();
@@ -118,7 +112,7 @@ function renderProviderList(providers: ProviderSummary[], surface: ModelSetupSur
   return `<turbo-frame id="${providerListFrameId(surface)}"><div class="model-providers" tabindex="0" role="region" aria-label="Other providers">${matching.map((provider) => renderProvider(provider, surface)).join("") || '<div class="managed-list__empty" role="status">No matching providers.</div>'}</div></turbo-frame>`;
 }
 function providerFrameId(surface: ModelSetupSurface, provider: string): string { return domId("model_provider_models", surface, provider); }
-function renderFavorites(favorites: ConfiguredAgentModel[], surface: ModelSetupSurface, provider: string): string {
+function renderFavorites(favorites: ConfiguredModel[], surface: ModelSetupSurface, provider: string): string {
   const rows = favorites.filter((model) => model.provider === provider).map((model) => `<div class="model-favorite-row"><span class="model-favorite-name">${escapeHtml(model.label)}</span>
     <form method="post" action="/settings/models/remove" data-turbo="true"><input type="hidden" name="model" value="${escapeHtml(modelKey(model))}">
       ${buttonHtml({ type: "submit", variant: "secondary", content: { kind: "icon-only", iconHtml: Icons.Close, label: `Remove ${model.label}` } })}
@@ -141,12 +135,12 @@ function continueButton(provider: string, working: boolean): string {
 }
 async function providerHasFavorite(provider: string): Promise<boolean> {
   const available = new Set((await (await createPiModelRuntime()).getAvailable()).filter((model) => model.provider === provider).map((model) => model.id));
-  return (await getConfiguredAgentModels()).some((model) => model.provider === provider && available.has(model.id));
+  return (await getConfiguredModels()).some((model) => model.provider === provider && available.has(model.id));
 }
 async function renderModelSelection(provider: ProviderSummary, surface: ModelSetupSurface, error = ""): Promise<string> {
   const frameId = providerFrameId(surface, provider.provider);
   return setupFrame(surface, `${error ? `<p class="settings-error" role="alert">${escapeHtml(error)}</p>` : ""}
-    ${renderFavorites(await getConfiguredAgentModels(), surface, provider.provider)}
+    ${renderFavorites(await getConfiguredModels(), surface, provider.provider)}
     <div class="model-all-models"><p>All models</p><div class="managed-list" data-managed-list-server-filter="true"><form class="managed-list__filter" method="get" action="/settings/models/catalogue" data-controller="server-filter" data-action="input->server-filter#submit" data-turbo-frame="${frameId}">
       <input type="hidden" name="surface" value="${surface}"><input type="hidden" name="provider" value="${escapeHtml(provider.provider)}">
       <input class="text-field" type="search" name="q" placeholder="Find a model…" aria-label="Find a model" autocomplete="off"><button type="submit" hidden>Search</button>
@@ -231,7 +225,7 @@ async function modelSelectionDialog(provider: ProviderSummary, surface: ModelSet
   })}</form>` : "";
   return dialogHtml({
     element: { id: surface === "onboarding" ? "onboarding_dialog" : "model_setup_dialog", attributesHtml: "data-dialog-auto-show" },
-    iconHtml: providerIcon(provider.provider, provider.label),
+    iconHtml: providerBadgeHtml(provider.provider, provider.label, "settings-provider-icon"),
     titleCaption: `${provider.label} Models`,
     headerActionsHtml: disconnect,
     bodyHtml: await renderModelSelection(provider, surface, error),
@@ -252,7 +246,7 @@ async function refreshConnectedProviders(): Promise<string> {
 async function renderModelSetupSettings(): Promise<string> {
   return `<section class="settings-sec settings-sec-models" id="settings-sec-models">${await renderModelSetup("settings")}</section>`;
 }
-registerSettingsContribution({ id: "models", label: "Models", order: 40, render: renderModelSetupSettings });
+export const modelSettingsContribution = { id: "models", label: "Models", order: 40, render: renderModelSetupSettings };
 function renderApiKeyConnectionStep(id: string, label: string, surface: ModelSetupSurface, error = ""): string {
   const inputId = domId("provider_api_key", id);
   const formId = domId("provider_api_key_form", id);
@@ -449,7 +443,7 @@ async function connectedStep(provider: string, surface: ModelSetupSurface, rende
   return stream(replace(surface === "onboarding" ? "onboarding_dialog" : "model_setup_dialog", await modelSelectionDialog(summary, surface, error)) + await refreshConnectedProviders() + await renderPickerUpdates());
 }
 
-export async function handleModelSettingsRequest(request: Request, url: URL, renderPickerUpdates: () => Promise<string>): Promise<Response | undefined> {
+export async function handleModelSettingsRequest(request: Request, url: URL, renderPickerUpdates: () => Promise<string>, finishOnboarding: () => Promise<Response>): Promise<Response | undefined> {
   if (!url.pathname.startsWith("/settings/models/") && !url.pathname.startsWith("/settings/providers/")) return undefined;
   const surface = modelSetupSurfaces.find((candidate) => candidate === (url.searchParams.get("surface") ?? "settings"));
   if (!surface) return response("Unknown model setup surface", { status: 400 });
@@ -595,11 +589,11 @@ async function handleModelPickerAction(request: Request, pathname: string, rende
   if (!option) return response("Unknown model", { status: 400 });
   const favorite = pathname === "/settings/models/add";
   if (favorite && !(await createPiModelRuntime()).getProviderAuthStatus(model.provider).configured) return response("Provider not connected", { status: 400 });
-  const current = await getConfiguredAgentModels();
+  const current = await getConfiguredModels();
   const index = current.findIndex((candidate) => modelKey(candidate) === modelKey(model));
   if (favorite && index < 0) current.push({ provider: option.provider, id: option.id, label: option.label });
   if (!favorite && index >= 0) current.splice(index, 1);
-  await setPickerAgentModels(current, current.find((candidate) => candidate.active));
+  await setConfiguredModels(current);
   const actions = modelSetupSurfaces.map((surface) =>
     replaceTargets(`.${domId("model_catalogue_row", surface, model.provider, model.id)}`, catalogueModelRow({ ...option, configured: favorite }, surface))
     + replaceTargets(`.${domId("model_favorites", surface, model.provider)}`, renderFavorites(current, surface, model.provider)),

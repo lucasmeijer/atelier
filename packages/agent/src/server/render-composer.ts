@@ -1,4 +1,4 @@
-import { createPiModelRuntime, hasConnectedModelProvider } from "./pi-config-models.ts";
+import { createPiModelRuntime, hasConnectedModelProvider, modelRefValue, parseModelRef } from "@atelier/llm/server";
 import { activityButtonHtml } from "@atelier/design-system/activity-button";
 import { actionItemHtml } from "@atelier/design-system/action-item";
 import { buttonHtml } from "@atelier/design-system/button";
@@ -6,7 +6,7 @@ import { popupHtml } from "@atelier/design-system/popup";
 import { renderTranscriptionComposerControl, transcriptionComposerController } from "@atelier/transcription/server";
 import { providerBrandIconHtml } from "@atelier/shared";
 import { domId, escapeHtml, turboStream } from "./html.ts";
-import { launchComposerThinkingSettings, configuredModelOptionViews, modelRefValue, parseModelRef, selectAvailableConfiguredModel } from "./model-state.ts";
+import { launchComposerThinkingSettings, configuredModelOptionViews, selectAvailableConfiguredModel } from "./model-state.ts";
 import type { WorkspaceAgentConversationInfo } from "./session-store.ts";
 import { agentAttachmentDraftId, listStagedAttachments, type StagedAttachment } from "./attachment-drafts.ts";
 import { readInitialPromptDraft } from "./initial-prompt-draft.ts";
@@ -52,10 +52,6 @@ function agentAttachmentDropAttrs(uploadUrl: string): string {
 }
 
 export async function renderAgentPane(ctx: AgentRenderContext, agent: WorkspaceAgentConversationInfo, state: AgentPaneState, completionCatalogHtml = ""): Promise<string> {
-  return await renderAgentPaneFrame(ctx, agent, state, completionCatalogHtml);
-}
-
-async function renderAgentPaneFrame(ctx: AgentRenderContext, agent: WorkspaceAgentConversationInfo, state: AgentPaneState, completionCatalogHtml: string): Promise<string> {
   const key = agentConversationKey(agent.conversationId);
   const draftId = agentAttachmentDraftId(ctx.workspaceId, ctx.conversationId);
   const attachments = await listStagedAttachments(draftId);
@@ -72,19 +68,15 @@ async function renderAgentPaneFrame(ctx: AgentRenderContext, agent: WorkspaceAge
       <div class="agent-transcript" tabindex="0" role="region" aria-label="Agent transcript" data-agent-pane-target="transcript">
         <div class="agent-transcript-surface"><div class="agent-transcript-content" id="${ids.transcript(ctx)}" data-agent-pane-target="transcriptContent">${state.transcriptHtml}</div></div>
       </div>
-      ${await renderAgentPaneComposer({
+      ${renderAgentPaneComposer({
         ctx,
         action: agentPath(ctx, "/messages"),
         draftId,
         attachments,
-        placeholder: "Write your prompt here",
         initialText,
-        formTarget: true,
-        includePaneActions: true,
         busy: state.busy,
         stats: state.stats,
         completionCatalogHtml,
-        dropTarget: false,
       })}
     </div>
   </section>`;
@@ -95,30 +87,15 @@ export function renderAgentPanePromptInput(ctx: AgentRenderContext, initialText 
   return `<textarea id="${ids.input(ctx)}" class="composer-input" name="text" rows="2" enterkeyhint="send" placeholder="${escapeHtml(placeholder)}" aria-label="${escapeHtml(placeholder)}" data-agent-pane-target="input" data-agent-completions-target="input" data-action="paste->agent-attachments#paste input->agent-completions#input input->agent-pane#promptChanged">${escapeHtml(initialText)}</textarea>`;
 }
 
-interface SharedComposerRenderOptions {
-  kind: "agent-pane" | "launch";
-  ctx?: AgentRenderContext;
+interface AgentComposerRenderOptions {
+  ctx: AgentRenderContext;
   action: string;
   draftId: string;
-  attachments?: readonly StagedAttachment[];
-  placeholder: string;
+  attachments: readonly StagedAttachment[];
   initialText?: string;
-  inputId?: string;
-  formTarget?: boolean;
-  includePaneActions?: boolean;
-  busy?: boolean;
-  stats?: AgentStatsView;
-  formId?: string;
-  rows?: number;
-  formActions?: string;
-  formTurbo?: boolean;
-  launchComposerSettings?: { frameId: string; url: string };
-  completionCatalogHtml?: string;
-  dropTarget?: boolean;
-}
-
-export async function renderAgentPaneComposer(options: Omit<SharedComposerRenderOptions, "kind">): Promise<string> {
-  return await renderSharedComposer({ ...options, kind: "agent-pane" });
+  busy: boolean;
+  stats: AgentStatsView;
+  completionCatalogHtml: string;
 }
 
 function completionCatalogClass(workspaceId: string): string {
@@ -134,73 +111,26 @@ export async function renderAgentCompletionCatalogTurboStream(workspaceId: strin
   return turboStream("update", `.${completionCatalogClass(workspaceId)}`, catalog, { targets: true });
 }
 
-export async function renderLaunchComposer(options: Omit<SharedComposerRenderOptions, "kind">): Promise<string> {
-  return await renderSharedComposer({ ...options, kind: "launch" });
-}
-
-async function renderSharedComposer(options: SharedComposerRenderOptions): Promise<string> {
-  const draftId = options.draftId;
-  const attachRowId = options.ctx ? ids.attachRow(options.ctx) : ids.draftAttachRow(draftId);
-  const uploadUrl = `/agent-attachment-drafts/${encodeURIComponent(draftId)}/attachments?row=${encodeURIComponent(attachRowId)}`;
-  const actionAttrs = ["submit->transcription-composer#submit", "turbo:submit-end->agent-pane#submitted", "click->agent-pane#focusInput"];
-  const targetAttrs = options.formTarget ? ` data-agent-pane-target="form"` : "";
-  const completionsEnabled = Boolean(options.ctx);
-  const inputTarget = [
-    options.formTarget ? `data-agent-pane-target="input"` : "",
-    completionsEnabled ? `data-agent-completions-target="input"` : "",
-  ].filter(Boolean).join(" ");
-  const inputActionsList = [
-    "paste->agent-attachments#paste",
-    ...(completionsEnabled ? ["input->agent-completions#input"] : []),
-    ...(options.formTarget ? ["input->agent-pane#promptChanged"] : []),
-  ];
-  const inputActions = inputActionsList.length ? ` data-action="${inputActionsList.join(" ")}"` : "";
-  const formActions = "submit->agent-model-setup#guard " + (options.formTarget
-    ? ["keydown->agent-completions#keydown", "keydown->agent-pane#inputKeydown", ...actionAttrs].join(" ")
-    : ["submit->transcription-composer#submit", options.formActions].filter(Boolean).join(" "));
-  const actions = options.includePaneActions && options.ctx
-    ? `<span class="composer-primary-action" id="${ids.actions(options.ctx)}">${renderPromptActions(options.ctx, Boolean(options.busy))}</span>`
-    : renderPromptActionButton(false);
-  const formId = options.formId ?? `agent_pane_composer_${draftId}`;
-  const footer = options.stats && options.ctx
-    ? `<div class="composer-footer" id="${ids.stats(options.ctx)}">${renderAgentPaneComposerFooter(options.ctx, options.stats)}</div>`
-    : `<div class="composer-footer">${await renderLaunchComposerSettings({ ...options.launchComposerSettings!, formId })}</div>`;
-  const turboAttr = options.formTurbo === undefined ? "" : ` data-turbo="${options.formTurbo ? "true" : "false"}"`;
-  const dropTarget = options.dropTarget ?? true;
-  const promptControllers = ["composer-focus", "agent-model-setup", dropTarget ? "agent-attachments" : "", completionsEnabled ? "agent-completions" : "", transcriptionComposerController].filter(Boolean).join(" ");
-  const promptAttrs = [
-    `data-controller="${promptControllers}"`,
-    `data-action="mousedown->composer-focus#preserveInputFocus${dropTarget ? ` ${agentAttachmentDropAction}` : ""}"`,
-    dropTarget ? `data-agent-attachments-upload-url-value="${escapeHtml(uploadUrl)}"` : "",
-    options.ctx ? `data-agent-completions-url-value="${escapeHtml(agentPath(options.ctx, "/completions"))}"` : "",
-  ].filter(Boolean).join(" ");
-  const composerOverlays = options.includePaneActions && options.ctx ? renderTranscriptEndNavigation() : "";
-  const completionMenu = completionsEnabled ? `<div class="agent-completion-menu-host" data-agent-completions-target="menu" hidden></div>` : "";
-  const completionCatalog = options.ctx ? renderAgentCompletionCatalog(options.ctx, options.completionCatalogHtml ?? "") : "";
-  const textarea = options.ctx && options.formTarget
-    ? renderAgentPanePromptInput(options.ctx, options.initialText ?? "")
-    : `<textarea${options.inputId ? ` id="${escapeHtml(options.inputId)}"` : ""} class="composer-input" name="text" rows="${options.rows ?? 2}" enterkeyhint="send" placeholder="${escapeHtml(options.placeholder)}" aria-label="${escapeHtml(options.placeholder)}"${inputTarget ? ` ${inputTarget}` : ""}${inputActions}>${escapeHtml(options.initialText ?? "")}</textarea>`;
-  return `<div class="composer ${options.kind === "agent-pane" ? "agent-pane-composer" : "launch-composer"}"${promptAttrs ? ` ${promptAttrs}` : ""}>
-        ${composerOverlays ? `<div class="agent-pane-composer-overlays">${composerOverlays}</div>` : ""}
+function renderAgentPaneComposer(options: AgentComposerRenderOptions): string {
+  const { ctx, draftId, stats } = options;
+  const formId = `agent_pane_composer_${draftId}`;
+  const actions = `<span class="composer-primary-action" id="${ids.actions(ctx)}">${renderPromptActions(ctx, options.busy)}</span>`;
+  return `<div class="composer agent-pane-composer" data-controller="composer-focus agent-model-setup agent-completions ${transcriptionComposerController}" data-action="mousedown->composer-focus#preserveInputFocus" data-agent-completions-url-value="${escapeHtml(agentPath(ctx, "/completions"))}">
+        <div class="agent-pane-composer-overlays">${renderTranscriptEndNavigation()}</div>
         <div class="composer-surface">
-          <form id="${escapeHtml(formId)}" method="post" action="${escapeHtml(options.action)}"${turboAttr}${targetAttrs} data-action="${escapeHtml(formActions)}">
+          <form id="${escapeHtml(formId)}" method="post" action="${escapeHtml(options.action)}" data-agent-pane-target="form" data-action="submit->agent-model-setup#guard keydown->agent-completions#keydown keydown->agent-pane#inputKeydown submit->transcription-composer#submit turbo:submit-end->agent-pane#submitted click->agent-pane#focusInput">
             <input type="hidden" name="attachmentDraft" value="${escapeHtml(draftId)}">
-            <div class="agent-attach-row" id="${attachRowId}" data-agent-attachments-target="row">${(options.attachments ?? []).map((attachment) => renderAttachmentChip(attachment, draftId)).join("")}</div>
+            <div class="agent-attach-row" id="${ids.attachRow(ctx)}" data-agent-attachments-target="row">${options.attachments.map((attachment) => renderAttachmentChip(attachment, draftId)).join("")}</div>
             <div class="composer-input-area">
-              ${textarea}
+              ${renderAgentPanePromptInput(ctx, options.initialText ?? "")}
               ${renderTranscriptionComposerControl()}
             </div>
-            <div class="composer-actions">
-              <span class="spacer"></span>
-              <span class="composer-send-action">${actions}</span>
-              <span class="composer-connect-action">${buttonHtml({ type: "button", variant: "primary", content: { kind: "caption", caption: "Connect to send" }, attributesHtml: 'data-action="agent-model-setup#open"' })}</span>
-            </div>
-            <p role="status" data-agent-attachments-target="status" hidden></p>
+            ${renderComposerActions(actions)}
           </form>
-          ${completionMenu}
-          ${completionCatalog}
-          ${options.includePaneActions && options.ctx ? `<form id="${ids.abortForm(options.ctx)}" method="post" action="${escapeHtml(agentPath(options.ctx, "/abort"))}" hidden></form>` : ""}
-          ${footer}
+          <div class="agent-completion-menu-host" data-agent-completions-target="menu" hidden></div>
+          ${renderAgentCompletionCatalog(ctx, options.completionCatalogHtml)}
+          <form id="${ids.abortForm(ctx)}" method="post" action="${escapeHtml(agentPath(ctx, "/abort"))}" hidden></form>
+          <div class="composer-footer" id="${ids.stats(ctx)}">${renderAgentPaneComposerFooter(ctx, stats)}</div>
         </div>
       </div>`;
 }
@@ -283,7 +213,7 @@ function renderTranscriptEndNavigation(): string {
   return `<div class="agent-transcript-navigation" data-agent-pane-target="transcriptEnd" hidden>${button}</div>`;
 }
 
-function renderPromptActionButton(busy: boolean, ctx?: AgentRenderContext): string {
+export function renderPromptActions(ctx: AgentRenderContext | undefined, busy: boolean): string {
   const initialLabel = busy ? "Deliver a steering note while the agent keeps working" : "Send prompt";
   const activeLabel = "Agent is working — click to stop";
   const state = busy ? "active" : "initial";
@@ -304,8 +234,12 @@ function renderPromptActionButton(busy: boolean, ctx?: AgentRenderContext): stri
   });
 }
 
-export function renderPromptActions(ctx: AgentRenderContext, busy: boolean): string {
-  return renderPromptActionButton(busy, ctx);
+export function renderComposerActions(sendHtml: string): string {
+  return `<div class="composer-actions">
+    <span class="spacer"></span>
+    <span class="composer-send-action">${sendHtml}</span>
+    <span class="composer-connect-action">${buttonHtml({ type: "button", variant: "primary", content: { kind: "caption", caption: "Connect to send" }, attributesHtml: 'data-action="agent-model-setup#open"' })}</span>
+  </div><p role="status" data-agent-attachments-target="status" hidden></p>`;
 }
 
 export function renderAgentPaneComposerFooter(ctx: AgentRenderContext, stats: AgentStatsView): string {

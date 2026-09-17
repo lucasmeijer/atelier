@@ -9,7 +9,7 @@ import { createAgentSession, SessionManager, SettingsManager, type AgentSession 
 import { Type } from "typebox";
 import { Value } from "typebox/value";
 import { resolveNewWorkspaceAgentModel } from "./model-state.ts";
-import { createPiModelRuntime } from "./pi-config-models.ts";
+import { createPiModelRuntime } from "@atelier/llm/server";
 import type { WorkspaceAgentRuntimeOptions } from "./runtime-types.ts";
 import { compactionKeepRecentTokens } from "./runtime-status.ts";
 import { AgentServiceTierState, modelRuntimeWithServiceTiers, supportsFastMode, type AgentServiceTier } from "./service-tier.ts";

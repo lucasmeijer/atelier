@@ -5,15 +5,14 @@ import { dialogHtml } from "@atelier/design-system/dialog";
 import { Icons } from "@atelier/design-system/icons";
 import { turboStreamResponse } from "@atelier/shared";
 import { hasWorkspaceGitHubToken } from "@atelier/proxy-egress";
-import { hasAvailableConfiguredAgentModel } from "@atelier/agent/server";
+import { hasAvailableConfiguredModel, renderModelSetupDialog } from "@atelier/llm/server";
 import { renderGitHubConnectButton, renderGitHubSetup } from "../settings/github.ts";
-import { renderModelSetupDialog } from "../settings/models.ts";
 import { turboUpdateStream as update } from "../http-responses.ts";
 
 export async function renderOnboardingDialog(options: { includeCompleted?: boolean; resumeAfter?: "github" } = {}): Promise<string> {
   if (!options.includeCompleted && !options.resumeAfter && await onboardingCompleted()) return "";
   const githubConnected = hasWorkspaceGitHubToken();
-  const modelsReady = await hasAvailableConfiguredAgentModel();
+  const modelsReady = await hasAvailableConfiguredModel();
   if (options.resumeAfter) return renderModelSetupDialog("onboarding");
   if (!options.includeCompleted && githubConnected) return modelsReady ? "" : renderModelSetupDialog("onboarding");
 

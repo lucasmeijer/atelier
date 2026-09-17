@@ -1,4 +1,4 @@
-import { createPiModelRuntime, setPickerAgentModels } from "@atelier/agent/server";
+import { createPiModelRuntime, setConfiguredModels } from "@atelier/llm/server";
 import { afterEach, beforeEach, describe, expect, test } from "bun:test";
 import { addProject, isGitProjectInit } from "@atelier/projects";
 import {
@@ -22,7 +22,7 @@ afterEach(async () => {
 async function configureLaunchModel(): Promise<void> {
   await (await createPiModelRuntime()).setRuntimeApiKey("openai", "test-only-key");
   configuredRuntime = true;
-  await setPickerAgentModels([{ provider: "openai", id: "gpt-5.4", label: "Test model" }]);
+  await setConfiguredModels([{ provider: "openai", id: "gpt-5.4", label: "Test model" }]);
 }
 
 describe("workspace lifecycle", () => {
