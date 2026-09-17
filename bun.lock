@@ -19,6 +19,7 @@
       "dependencies": {
         "@atelier/agent": "workspace:*",
         "@atelier/browser": "workspace:*",
+        "@atelier/codex-agent": "workspace:*",
         "@atelier/core": "workspace:*",
         "@atelier/design-system": "workspace:*",
         "@atelier/desktop": "workspace:*",
@@ -26,6 +27,7 @@
         "@atelier/keypress-probe": "workspace:*",
         "@atelier/llm": "workspace:*",
         "@atelier/projects": "workspace:*",
+        "@atelier/prompt": "workspace:*",
         "@atelier/proxy-egress": "workspace:*",
         "@atelier/proxy-ingress": "workspace:*",
         "@atelier/shared": "workspace:*",
@@ -50,6 +52,7 @@
         "@atelier/markdown": "workspace:*",
         "@atelier/observable-terminal": "workspace:*",
         "@atelier/projects": "workspace:*",
+        "@atelier/prompt": "workspace:*",
         "@atelier/shared": "workspace:*",
         "@atelier/syntax": "workspace:*",
         "@atelier/transcription": "workspace:*",
@@ -75,6 +78,17 @@
         "@atelier/core": "workspace:*",
         "@atelier/design-system": "workspace:*",
         "@atelier/proxy-ingress": "workspace:*",
+        "@atelier/shared": "workspace:*",
+        "@atelier/workspace": "workspace:*",
+        "typebox": "^1.0.57",
+      },
+    },
+    "packages/codex-agent": {
+      "name": "@atelier/codex-agent",
+      "dependencies": {
+        "@atelier/core": "workspace:*",
+        "@atelier/design-system": "workspace:*",
+        "@atelier/observable-terminal": "workspace:*",
         "@atelier/shared": "workspace:*",
         "@atelier/workspace": "workspace:*",
         "typebox": "^1.0.57",
@@ -184,6 +198,16 @@
         "@atelier/observable-terminal": "workspace:*",
         "@atelier/workspace": "workspace:*",
         "typebox": "^1.0.57",
+      },
+    },
+    "packages/prompt": {
+      "name": "@atelier/prompt",
+      "dependencies": {
+        "@atelier/core": "workspace:*",
+        "@atelier/design-system": "workspace:*",
+        "@atelier/shared": "workspace:*",
+        "@atelier/workspace": "workspace:*",
+        "@hotwired/turbo": "8.0.13",
       },
     },
     "packages/proxy-egress": {
@@ -331,6 +355,8 @@
 
     "@atelier/browser": ["@atelier/browser@workspace:packages/browser"],
 
+    "@atelier/codex-agent": ["@atelier/codex-agent@workspace:packages/codex-agent"],
+
     "@atelier/core": ["@atelier/core@workspace:packages/core"],
 
     "@atelier/design-system": ["@atelier/design-system@workspace:packages/design-system"],
@@ -348,6 +374,8 @@
     "@atelier/observable-terminal": ["@atelier/observable-terminal@workspace:packages/observable-terminal"],
 
     "@atelier/projects": ["@atelier/projects@workspace:packages/projects"],
+
+    "@atelier/prompt": ["@atelier/prompt@workspace:packages/prompt"],
 
     "@atelier/proxy-egress": ["@atelier/proxy-egress@workspace:packages/proxy-egress"],
 

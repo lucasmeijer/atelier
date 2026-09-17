@@ -1,6 +1,6 @@
 import type { AtelierEventBus } from "@atelier/core";
 import type { AgentWorkspaceParameters } from "@atelier/shared";
-import { agentAttachmentDraftId, deliverAttachmentDraft, moveAttachmentDraft, removeAttachmentDraft, validDraftId } from "./attachment-drafts.ts";
+import { agentAttachmentDraftId, moveAttachmentDraft, validDraftId } from "./attachment-drafts.ts";
 import { stageInitialPrompt } from "./initial-prompt-draft.ts";
 import { parseModelRef } from "@atelier/llm/server";
 import { getModelThinkingLevel } from "./model-preferences.ts";
@@ -18,7 +18,7 @@ export function registerAgentEvents(events: AtelierEventBus): void {
   });
   events.on("workspace_created", async ({ workspaceId, context }) => {
     const agentContext = context?.agent;
-    if (!agentContext) return;
+    if (!agentContext || (agentContext.provider && agentContext.provider !== "builtin")) return;
     const hasPrompt = !agentContext.initialPromptMode && Boolean(agentContext.initialPrompt?.trim());
     if (hasPrompt) await events.emit("workspace_provision_progress", { workspaceId, detail: "Start initial agent task" });
     await initializeWorkspaceAgent(workspaceId, agentContext, events);
@@ -34,22 +34,19 @@ async function initializeWorkspaceAgent(workspaceId: string, context: AgentWorks
   if (thinkingLevel) await runtime.setThinkingLevel(thinkingLevel);
   if (context.serviceTier) await runtime.setServiceTier(context.serviceTier);
 
+  const input = context.input!;
   if (context.initialPromptMode === "composer") {
-    const prompt = context.initialPrompt ?? "";
+    const prompt = input.text;
     if (prompt) await stageInitialPrompt(workspaceId, agent.conversationId, prompt);
     const attachmentDraft = context.attachmentDraft ?? "";
     if (validDraftId(attachmentDraft)) await moveAttachmentDraft(attachmentDraft, agentAttachmentDraftId(workspaceId, agent.conversationId));
     return;
   }
 
-  const prompt = await expandPromptTemplate(workspaceId, context.initialPrompt ?? "");
-  const draftId = context.attachmentDraft ?? "";
-  const { images, attachmentNotes } = validDraftId(draftId)
-    ? await deliverAttachmentDraft(workspaceId, draftId)
-    : { images: [], attachmentNotes: [] };
+  const prompt = await expandPromptTemplate(workspaceId, input.text);
+  const { images, attachmentNotes } = input;
   if (!prompt.trim() && images.length === 0 && attachmentNotes.length === 0) return;
 
   await events.emit("workspace_user_activity", { workspaceId });
   await runtime.submit(prompt, { images, attachmentNotes });
-  if (validDraftId(draftId)) await removeAttachmentDraft(draftId);
 }

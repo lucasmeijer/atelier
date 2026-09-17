@@ -1,0 +1,1 @@
+{"name":"@atelier/prompt","private":true,"type":"module","exports":{"./server":"./src/server/index.ts","./client":"./src/client/index.ts"},"dependencies":{"@atelier/core":"workspace:*","@atelier/shared":"workspace:*","@atelier/design-system":"workspace:*","@atelier/workspace":"workspace:*","@hotwired/turbo":"8.0.13"}}

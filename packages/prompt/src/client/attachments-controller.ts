@@ -41,6 +41,13 @@ export function createAgentAttachmentsController(Controller: StimulusControllerC
       installDropGuard();
     }
 
+    choose(event: Event): void {
+      // SAFETY: This action is attached to the host-rendered file input.
+      const input = event.currentTarget as HTMLInputElement;
+      for (const file of Array.from(input.files ?? [])) this.upload(file);
+      input.value = "";
+    }
+
     paste(event: ClipboardEvent): void {
       const images = Array.from(event.clipboardData?.files ?? []).filter((file) => file.type.startsWith("image/"));
       if (images.length === 0) return;

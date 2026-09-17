@@ -1,11 +1,12 @@
+import { validDraftId } from "@atelier/prompt/server";
 import { parseModelRef } from "@atelier/llm/server";
 import { createAgentPaneHost } from "./agent-pane-host.ts";
-import { renderLaunchComposer } from "./launch-composer.ts";
+import { renderLaunchComposer, launchComposerContent, renderLaunchProvider } from "./launch-composer.ts";
+import { registeredAgentProviders, agentProvider, defaultAgentProvider, orderedAgentProviders, rememberAgentProvider } from "./agent-providers.ts";
 import {
   maybeNameWorkspaceFromPrompt,
   type OnboardingToolDependencies,
   projectOnboardingInitialPrompt,
-  nativeAgentLaunch as defaultAgentLaunch,
 } from "@atelier/agent/server";
 import {
   AtelierCoreError,
@@ -45,7 +46,6 @@ import {
   type WorkspaceModuleRouteHandler,
   type WorkspaceModuleWorkViewAdapter,
   type WorkspaceDeletionReview,
-  type WorkspaceAgentTabProvider,
   type WorkspaceWorkViewPresentation,
 } from "@atelier/shared";
 import type { WorkspaceDeletionState, WorkspaceEntry, WorkspaceRegistry } from "./workspace-registry.ts";
@@ -58,7 +58,7 @@ import { parseCloseWorkViewRequest, parseReorderWorkViewRequest } from "./work-v
 import { Type } from "typebox";
 import { Value } from "typebox/value";
 import { openWorkViewTurboStream, presentWorkViewTurboStream, removeWorkspaceResidentTurboStream, renderAtelierBar, renderMobileWorkspaceBar, renderWorkViewBodyFrame, renderWorkspaceDeletionPresentation, renderWorkspaceParkConfirmation, dismissWorkspaceParkConfirmationTurboStream, renderWorkspacePane, renderWorkspacePresentation, workspacePaneCollectionsTurboStream, workspacePaneOnboardingState, workspacePresentationDomId, workViewsTurboStream, type WorkPaneContribution, type WorkspacePaneEntry, type WorkspacePanePresentation, type WorkspacePresentation as FixedWorkspacePresentation } from "./workspace-presentation.ts";
-import { agentTabsTurboStream, renderAgentBodyFrame, selectAgentTurboStream, type AgentPaneContribution } from "./agent-pane.ts";
+import { agentProviderChoicesTurboStream, agentTabsTurboStream, renderAgentBodyFrame, selectAgentTurboStream, type AgentPaneContribution } from "./agent-pane.ts";
 import { workspacePreparationInvalidatedTurboStream } from "./workspace-view-markup.ts";
 import type { CableBroadcastOptions } from "./cable.ts";
 import { jsonResponse, problemJsonResponse, httpErrorStatus, response, turboReplaceStream, turboUpdateStream, wantsTurboStream } from "./http-responses.ts";
@@ -137,10 +137,8 @@ export function createWebApp(deps: WebAppDeps): WebApp {
       broadcastDeletionPresentation(id);
     },
   });
-  // SAFETY: Workspace modules expose this exact shared Agent-tab provider contract.
-  const agentTabProviders = workspaceModules.flatMap((module) => module.agentTabs ? [module.agentTabs] : []) as WorkspaceAgentTabProvider[];
-  if (agentTabProviders.length !== 1) throw new Error(`Expected exactly one Workspace Agent-tab provider, found ${agentTabProviders.length}`);
-  const agentTabs = createAgentPaneHost(agentTabProviders[0]!, (workspaceId) => defaultAgentLaunch.prepareWorkspace(workspaceId));
+  const agentProviders = registeredAgentProviders();
+  const agentTabs = createAgentPaneHost(agentProviders);
   const presentationStore = createWorkspacePresentationStore({
     workViewContributions: workViewAdapters,
   });
@@ -170,6 +168,11 @@ export function createWebApp(deps: WebAppDeps): WebApp {
     return "";
   }
 
+  deps.events?.on("agent_provider_default_changed", async () => {
+    for (const entry of registry.list().filter((entry) => entry.phase === "ready" && !entry.deletion)) {
+      broadcastShell(agentProviderChoicesTurboStream(await fixedWorkspacePresentation(entry.id)));
+    }
+  });
   deps.events?.on("workspace_agent_view_invalidated", ({ workspaceId, conversationId, exceptConnectionId, html }) => {
     broadcastShell(`${html ?? ""}${workspacePreparationInvalidatedTurboStream(workspaceId, conversationId)}`, exceptConnectionId ? { exceptConnectionId } : undefined);
   });
@@ -187,7 +190,7 @@ export function createWebApp(deps: WebAppDeps): WebApp {
   } });
   const workspaceCommandModalHostId = "workspace_command_modal_host";
   const launchComposerFrameId = "launch_composer";
-  // Every agent launch supplies a stable submission identity. Retried POSTs
+  // The host prompt draft supplies a stable submission identity. Retried POSTs
   // therefore join the original launch instead of provisioning another Workspace.
   const launchComposerSubmissions = new Map<string, Promise<CreatedWorkspace>>();
   const launchComposerSettingsFrameId = "launch_composer_settings";
@@ -284,7 +287,7 @@ export function createWebApp(deps: WebAppDeps): WebApp {
 
   async function renderLaunchComposerFrame(options: { titleCaption: string; action: string }): Promise<string> {
     const draftId = crypto.randomUUID();
-    const content = await defaultAgentLaunch.render({ ...launchComposerFooterContext(), draftId });
+    const content = await launchComposerContent({ context: launchComposerFooterContext(), draftId, provider: await defaultAgentProvider(), providers: await orderedAgentProviders() });
     return `<turbo-frame id="${launchComposerFrameId}">${dialogHtml({
       element: {
         attributesHtml: `data-controller="dialog launch-composer-dialog submit-shortcut" data-launch-composer-dialog-discard-url-value="${escapeHtml(content.discardUrl)}"`,
@@ -442,16 +445,20 @@ export function createWebApp(deps: WebAppDeps): WebApp {
     const currentWorkViews = attachments.flatMap((attachment) => attachment.workViews ?? []);
     await presentationStore.initialize(workspaceId, currentWorkViews.filter((view) => view.initiallyOpen !== false).map((view) => view.reference));
     const storedWorkViews = await presentationStore.listWorkViews(workspaceId);
-    const commands = attachments.flatMap((attachment) => attachment.commands ?? []).map((command) => ({
+    const commandContributions: import("@atelier/shared").WorkspaceCommandContribution[] = [...attachments.flatMap((attachment) => attachment.commands ?? []).filter((command) => command.id !== "agent.create"),
+      { id: "agent.create", label: "New Agent", scope: "workspace" },
+      ...agentProviders.map((provider) => ({ id: `agent.create.${provider.id}`, label: `New ${provider.label} agent`, scope: "workspace" as const })),
+    ];
+    const commands = commandContributions.map((command) => ({
       id: command.id, label: command.surfaces?.ui?.label ?? command.label, description: command.description, scope: command.scope, placement: command.surfaces?.ui?.placement, iconHtml: command.surfaces?.ui?.iconHtml, binding: command.surfaces?.shortcut?.defaultBinding,
     }));
     const warningState = await workspaceWarningState(entry);
     const presentation: FixedWorkspacePresentation = {
       workspace: { id: entry.id, title: workspaceTitle(entry) },
-      agentHeaderHtml: agentTabs.renderHeader?.({ workspaceId, conversations: agentConversations }),
+      agentProviders: await orderedAgentProviders(),
       agentConversations: agentConversations.map((conversation) => {
-        const presented: AgentPaneContribution = { id: conversation.id, title: conversation.title, untitled: conversation.untitled, bodyUrl: `/workspaces/${encodeURIComponent(workspaceId)}/agents/${encodeURIComponent(conversation.id)}/body` };
-        if (agentConversations.length > 1) presented.close = agentClose(workspaceId, conversation.id, conversation.title);
+        const presented: AgentPaneContribution = { id: conversation.id, providerId: conversation.providerId, iconHtml: conversation.iconHtml, title: conversation.title, untitled: conversation.untitled, bodyUrl: `/workspaces/${encodeURIComponent(workspaceId)}/agents/${encodeURIComponent(conversation.id)}/body` };
+        presented.close = agentClose(workspaceId, conversation.id, conversation.title);
         return presented;
       }),
       workViews: workViewPresentations(workspaceId, currentWorkViews, storedWorkViews),
@@ -624,19 +631,19 @@ export function createWebApp(deps: WebAppDeps): WebApp {
     if (entry.issues?.length) workspace.issues = entry.issues;
     if (entry.deletion || entry.parked || entry.phase !== "ready") return jsonResponse({ workspace });
 
-    const { presentation, storedWorkViews, attachments, warningState } = await workspacePresentationBundle(id);
+    const { presentation, storedWorkViews, warningState } = await workspacePresentationBundle(id);
     const handlers = new Map(workspaceModuleCommands().map((handler) => [handler.id, handler]));
     return jsonResponse({ workspace: {
       ...workspace,
       ...warningState,
-      agentConversations: presentation.agentConversations.map(({ id, title }) => ({ id, title })),
+      agentConversations: presentation.agentConversations.map(({ id, title, providerId }) => ({ id, title, providerId })),
       workViews: storedWorkViews.map((workView) => ({ key: workViewKey(workView.reference), ...workView })),
-      commands: attachments.flatMap((attachment) => attachment.commands ?? []).filter((command) => handlers.has(command.id)).map((command) => ({
+      commands: (presentation.commands ?? []).filter((command) => handlers.has(command.id)).map((command) => ({
         id: command.id,
         label: command.label,
         description: command.description,
         scope: command.scope,
-        inputSchema: handlers.get(command.id)?.inputSchema ?? command.inputSchema ?? emptyWorkspaceCommandInputSchema,
+        inputSchema: handlers.get(command.id)?.inputSchema ?? emptyWorkspaceCommandInputSchema,
       })),
     } });
   }
@@ -680,10 +687,10 @@ export function createWebApp(deps: WebAppDeps): WebApp {
         if (options.title) await setWorkspaceTitle(id, options.title);
         registry.setPhase(id, "ready");
         const launchPrompt = options.context?.agent?.initialPrompt?.trim();
-        if (!options.title && launchPrompt && !options.context?.agent?.initialPromptMode) {
+        if (!options.title && launchPrompt && options.context?.agent?.provider === "builtin" && !options.context?.agent?.initialPromptMode) {
           maybeNameWorkspaceFromPrompt(id, launchPrompt, { events: deps.events, agentModel: options.context?.agent?.model ? parseModelRef(options.context.agent.model) : undefined });
         }
-        if (options.context?.agent && !options.context.agent.initialPrompt?.trim()) registry.markViewAttention(id, "workspace");
+        if (options.context?.agent?.initialPrompt !== undefined && !options.context.agent.initialPrompt.trim()) registry.markViewAttention(id, "workspace");
       } catch (error) {
         const entry = registry.get(id);
         if (!entry || entry.deletion) return;
@@ -705,7 +712,16 @@ export function createWebApp(deps: WebAppDeps): WebApp {
     const id = generateWorkspaceId();
     const init = command.init;
     const title = command.title?.trim() ?? "";
-    let context = command.context ?? await defaultAgentLaunch.prepare(command.agent);
+    let context = command.context;
+    if (!context) {
+      const providerId = stringField(command.agent?.provider, "agent.provider");
+      const provider = command.projectOnboarding ? agentProvider("builtin") : providerId ? agentProvider(providerId) : await defaultAgentProvider();
+      const initialPrompt = stringField(command.agent?.initialPrompt, "agent.initialPrompt");
+      const attachmentDraft = stringField(command.agent?.attachmentDraft, "agent.attachmentDraft");
+      if (attachmentDraft && !validDraftId(attachmentDraft)) throw invalidArguments("Invalid attachment draft");
+      const prepared = await provider.launch.prepare(command.agent);
+      context = { ...prepared, agent: { ...prepared?.agent, initialPrompt, attachmentDraft, provider: provider.id } };
+    }
     if (command.projectOnboarding) context = { ...context, projectOnboarding: true };
     if (context?.agent?.initialPrompt) provisioningPrompts.set(id, context.agent.initialPrompt);
     registry.add(id, title || null, init);
@@ -760,15 +776,21 @@ export function createWebApp(deps: WebAppDeps): WebApp {
 
   async function createAgentWorkspaceFromForm(request: Request, options: { project?: ProjectSummary } = {}): Promise<Response> {
     const form = await request.formData();
-    const submission = await defaultAgentLaunch.submit(form);
+    const submissionId = String(form.get("attachmentDraft") ?? "");
+    if (!validDraftId(submissionId)) throw invalidArguments("Invalid attachment draft");
+    const provider = agentProvider(String(form.get("provider") ?? "builtin"));
+    const submission = await provider.launch.submit(form);
     if ("response" in submission) return submission.response;
-    let launch = launchComposerSubmissions.get(submission.submissionId);
+    let launch = launchComposerSubmissions.get(submissionId);
     if (!launch) {
-      launch = (async () => createWorkspaceFromCommand({
-        init: options.project ? projectWorkspaceInit(options.project) : undefined,
-        context: await submission.prepare(),
-      }))();
-      launchComposerSubmissions.set(submission.submissionId, launch);
+      launch = (async () => {
+        const prepared = await submission.prepare();
+        return createWorkspaceFromCommand({
+          init: options.project ? projectWorkspaceInit(options.project) : undefined,
+          context: { ...prepared, agent: { ...prepared.agent, provider: provider.id, initialPrompt: String(form.get("text") ?? ""), attachmentDraft: submissionId } },
+        });
+      })();
+      launchComposerSubmissions.set(submissionId, launch);
     }
     const { id, isFirstWorkspace } = await launch;
     return turboStreamResponse(`${workspacePaneCollectionsTurboStream(await workspacePaneCollections(""))}${turboUpdateStream(launchComposerFrameId, "")}${isFirstWorkspace ? selectWorkspaceTurboStream(id) : ""}`);
@@ -953,7 +975,17 @@ export function createWebApp(deps: WebAppDeps): WebApp {
   }
 
   function workspaceModuleCommands(): WorkspaceModuleCommandHandler[] {
-    return workspaceModules.flatMap((module) => module.commands ?? []);
+    const create = async (workspaceId: string, providerId?: string) => {
+      const provider = providerId ? agentProvider(providerId) : await defaultAgentProvider();
+      const createdAgentConversationId = await provider.create({ workspaceId, events: deps.events });
+      await rememberAgentProvider(provider.id, deps.events);
+      return { createdAgentConversationId };
+    };
+    return [
+      ...workspaceModules.flatMap((module) => module.commands ?? []).filter((command) => command.id !== "agent.create"),
+      { id: "agent.create", execute: ({ workspaceId }) => create(workspaceId) },
+      ...agentProviders.map((provider): WorkspaceModuleCommandHandler => ({ id: `agent.create.${provider.id}`, execute: ({ workspaceId }) => create(workspaceId, provider.id) })),
+    ];
   }
 
   function workspaceModuleRoutes(): WorkspaceModuleRouteHandler[] {
@@ -1123,15 +1155,15 @@ export function createWebApp(deps: WebAppDeps): WebApp {
     await agentTabs.close({ workspaceId, conversationId });
     registry.clearViewAttention(workspaceId, `agent:${conversationId}`);
     const presentation = await fixedWorkspacePresentation(workspaceId);
-    const successorConversationId = presentation.agentConversations[Math.min(closedIndex, presentation.agentConversations.length - 1)]!.id;
+    const successorConversationId = presentation.agentConversations[Math.min(closedIndex, presentation.agentConversations.length - 1)]?.id;
     const structural = agentTabsTurboStream(presentation, { removedConversationId: conversationId, successorConversationId });
     const responseStream = deliverShellMutation(request, structural);
-    if (requestAcceptsJson(request) && !wantsTurboStream(request)) return jsonResponse({ archivedConversationId: conversationId, agentConversations: presentation.agentConversations.map(({ id, title }) => ({ id, title })) });
+    if (requestAcceptsJson(request) && !wantsTurboStream(request)) return jsonResponse({ archivedConversationId: conversationId, agentConversations: presentation.agentConversations.map(({ id, title, providerId }) => ({ id, title, providerId })) });
     return turboStreamResponse(responseStream);
   }
 
   async function renderModelPickerUpdates(request: Request): Promise<string> {
-    const launchUpdates = await defaultAgentLaunch.refreshConfiguration(launchComposerSettingsFrameId);
+    const launchUpdates = (await Promise.all(agentProviders.map((provider) => provider.launch.refreshConfiguration(launchComposerSettingsFrameId)))).join("");
     const invalidations: string[] = [];
     for (const entry of registry.list().filter((workspace) => workspace.phase === "ready")) {
       const presentation = await fixedWorkspacePresentation(entry.id);
@@ -1198,9 +1230,11 @@ export function createWebApp(deps: WebAppDeps): WebApp {
       const page = await homePage();
       return request.method === "HEAD" ? new Response(null, { status: page.status, statusText: page.statusText, headers: page.headers }) : page;
     }
+    if (url.pathname === "/agent-providers" && request.method === "GET") return jsonResponse({ defaultProviderId: (await defaultAgentProvider()).id, providers: (await orderedAgentProviders()).map(({ id, label }) => ({ id, label })) });
     if (url.pathname === "/openapi.json" && request.method === "GET") return jsonResponse(atelierOpenApi(workspaceModuleCommands(), Object.assign({}, ...workspaceModules.map((module) => module.openApiPaths ?? {}))));
     if (url.pathname === "/launch-composer" && request.method === "GET") return response(await renderProjectlessLaunchComposerFrame());
-    if (url.pathname === "/launch-composer/settings" && request.method === "GET") return response(await defaultAgentLaunch.renderFooter(launchComposerFooterContext(url.searchParams)));
+    if (url.pathname === "/launch-composer/provider" && request.method === "GET") return response(await renderLaunchProvider(agentProvider(url.searchParams.get("provider") ?? "builtin"), await orderedAgentProviders(), launchComposerFooterContext()));
+    if (url.pathname === "/launch-composer/settings" && request.method === "GET") return response(await agentProvider(url.searchParams.get("provider") ?? "builtin").launch.renderFooter(launchComposerFooterContext(url.searchParams)));
     const projectOnboardingMatch = url.pathname.match(/^\/projects\/([^/]+)\/onboarding$/);
     if (projectOnboardingMatch && request.method === "GET") {
       const projectId = decodeURIComponent(projectOnboardingMatch[1]!);

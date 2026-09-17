@@ -220,7 +220,7 @@ export function createWorkspacePresentationController(
     async prepareIntendedSurfaces(): Promise<void> {
       this.normalizeState();
       this.applyState({ emit: false });
-      const agentFrame = this.element.querySelector<HTMLElement>(`[data-workspace-pane-role="agent"][data-workspace-pane-id="${CSS.escape(this.state.activeAgentId!)}"] turbo-frame[data-agent-body-hydration][src]`);
+      const agentFrame = this.element.querySelector<HTMLElement>(`[data-workspace-pane-role="agent"][data-workspace-pane-id="${CSS.escape(this.state.activeAgentId ?? "")}"] turbo-frame[data-agent-body-hydration][src]`);
       if (agentFrame) await frameFreshness(agentFrame).ensureFresh();
       if (!this.state.workPaneVisible || !this.state.activeWorkViewKey) return;
       const workFrame = this.element.querySelector<HTMLElement>(`[data-workspace-pane-role="work"][data-workspace-pane-id="${CSS.escape(this.state.activeWorkViewKey)}"] turbo-frame[data-work-view-hydration][src]`);
@@ -228,8 +228,8 @@ export function createWorkspacePresentationController(
       await this.initializeEmbeddedWorkSurface();
     }
 
-    selectedAgentId(): string {
-      return this.state.activeAgentId!;
+    selectedAgentId(): string | undefined {
+      return this.state.activeAgentId;
     }
 
     bodyMissing(event: Event): void {

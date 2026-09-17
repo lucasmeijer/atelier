@@ -3,6 +3,7 @@ import { buttonHtml } from "@atelier/design-system/button";
 import { buttonGroupHtml } from "@atelier/design-system/button-group";
 import { destructiveConfirmationHtml } from "@atelier/design-system/destructive-confirmation";
 import { Icons } from "@atelier/design-system/icons";
+import { popupHtml } from "@atelier/design-system/popup";
 import { panelHtml } from "@atelier/design-system/panel";
 import { domId, escapeHtml, turboStream } from "@atelier/shared";
 import { barButton, fullscreenViewAttributes, selectorCloseForm, behaviorTurboStream, workspacePreparationInvalidatedTurboStream, type ViewCloseAction } from "./workspace-view-markup.ts";
@@ -11,6 +12,8 @@ import type { WorkspacePresentation } from "./workspace-presentation.ts";
 export interface AgentPaneContribution {
   untitled?: boolean;
   id: string;
+  providerId: string;
+  iconHtml: string;
   title: string;
   bodyUrl: string;
   close?: ViewCloseAction;
@@ -52,27 +55,41 @@ function renderAgentTab(workspaceId: string, agent: AgentPaneContribution): stri
   return actionItemHtml({
     kind: "compound",
     label: { kind: "text", text: agent.title },
-    leadingHtml: `<span class="fixed-shell-agent-icon">${Icons.Agent}</span>`,
+    leadingHtml: `<span class="fixed-shell-agent-icon">${agent.iconHtml}</span>`,
     container: {  attributesHtml: `id="${agentTabDomId(workspaceId, agent.id)}"` },
     primary: { tag: "button", attributesHtml: `type="button" role="tab" aria-selected="false" tabindex="-1" data-agent-conversation-id="${escapeHtml(agent.id)}" ${fullscreenViewAttributes(agent.id, agent.title)} data-action="click->workspace-presentation#selectAgent"` },
     engagedActionsHtml: agent.close ? selectorCloseForm(agent.close) : "",
   });
 }
 
-function renderAgentNavigation(presentation: WorkspacePresentation): string {
-  let conversations: string;
-  if (presentation.agentConversations.length > 1) {
-    conversations = `<div id="${agentTabListDomId(presentation.workspace.id)}" class="fixed-shell-agent-conversations" role="tablist" aria-label="Agent conversations">${presentation.agentConversations.map((agent) => renderAgentTab(presentation.workspace.id, agent)).join("")}</div>`;
-  } else {
-    const agent = presentation.agentConversations[0];
-    const title = agent && !agent.untitled ? agent.title : presentation.workspace.title;
-    conversations = `<div class="fixed-shell-workspace-title" ${fullscreenViewAttributes(agent!.id, title)} data-atelier-fullscreen-pane-header-value="true"><span class="fixed-shell-agent-icon">${Icons.Agent}</span><strong>${escapeHtml(title)}</strong></div>`;
-  }
-  const agentActions = (presentation.commands ?? []).filter((command) => command.placement === "agent-action").map((command) => {
-    const button = buttonHtml({ type: "submit", variant: "secondary", content: { kind: "icon-only", iconHtml: Icons.Plus, label: command.label } });
-    return `<form class="fixed-shell-new-agent" data-turbo="true" method="post" action="/workspaces/${encodeURIComponent(presentation.workspace.id)}/commands/${encodeURIComponent(command.id)}">${button}</form>`;
+function providerOptions(presentation: WorkspacePresentation, menu: boolean): string {
+  return presentation.agentProviders.map((provider, index) => {
+    const action = `/workspaces/${encodeURIComponent(presentation.workspace.id)}/commands/agent.create.${encodeURIComponent(provider.id)}`;
+    const item = actionItemHtml({
+      kind: "single", label: { kind: "text", text: provider.label }, leadingHtml: provider.iconHtml,
+      description: index === 0 ? "Default for new agents" : undefined,
+      element: { tag: "button", attributesHtml: `type="submit"${menu ? ' role="menuitem"' : ""}` },
+    });
+    return `<form method="post" action="${action}" data-turbo="true">${item}</form>`;
   }).join("");
-  return `${conversations}${agentActions}`;
+}
+
+export function renderAgentNavigation(presentation: WorkspacePresentation): string {
+  const conversations = presentation.agentConversations.length
+    ? `<div id="${agentTabListDomId(presentation.workspace.id)}" class="fixed-shell-agent-conversations" role="tablist" aria-label="Agent conversations">${presentation.agentConversations.map((agent) => renderAgentTab(presentation.workspace.id, { ...agent, title: presentation.agentConversations.length === 1 && agent.untitled ? presentation.workspace.title : agent.title })).join("")}</div>`
+    : `<div class="fixed-shell-workspace-title"><strong>${escapeHtml(presentation.workspace.title)}</strong></div>`;
+  const menu = popupHtml({
+    id: domId("agent_providers", presentation.workspace.id), label: "New agent", 
+    trigger: { variant: "secondary", content: { kind: "icon-only", iconHtml: Icons.Plus, label: "New agent" } },
+    contentHtml: providerOptions(presentation, true),
+  });
+  return `${conversations}${menu}`;
+}
+
+function agentEmptyId(workspaceId: string): string { return domId("agent_empty", workspaceId); }
+
+function renderAgentEmpty(presentation: WorkspacePresentation): string {
+  return `<div id="${agentEmptyId(presentation.workspace.id)}" class="agent-empty-canvas"><div class="agent-empty-choices"><h2>Choose your first agent</h2><p>Start a conversation with an agent provider.</p><div class="action-list">${providerOptions(presentation, false)}</div></div></div>`;
 }
 
 function renderAgentPaneSlot(workspaceId: string, agent: AgentPaneContribution): string {
@@ -90,8 +107,7 @@ function renderAgentActions(presentation: WorkspacePresentation): string {
     cancelCaption: "Oops",
   });
   const deleteWorkspace = `<form class="fixed-shell-delete-workspace" data-action="turbo:submit-start->workspace-navigation#workspaceDeletionStarted" data-turbo="true" method="post" action="/workspaces/${encodeURIComponent(presentation.workspace.id)}/delete">${deleteConfirmation}</form>`;
-  const notification = presentation.agentHeaderHtml ?? "";
-  const itemsHtml = `${notification}${parkWorkspace}${deleteWorkspace}${barButton("Show Work pane", "click->workspace-presentation#toggleWorkPane", Icons.Panel, "data-show-work-pane")}`;
+  const itemsHtml = `${parkWorkspace}${deleteWorkspace}${barButton("Show Work pane", "click->workspace-presentation#toggleWorkPane", Icons.Panel, "data-show-work-pane")}`;
   return buttonGroupHtml({ orientation: "horizontal", semantics: "layout", itemsHtml });
 }
 
@@ -100,7 +116,7 @@ export function renderAgentPane(presentation: WorkspacePresentation): string {
   return `<div class="fixed-shell-agent-pane"><div class="workspace-warning-stack" id="${domId("workspace_warnings", presentation.workspace.id)}">${presentation.warningsHtml ?? ""}</div>${panelHtml({
     element: { tag: "section",  attributesHtml: 'data-workspace-role-region="agent" data-workspace-presentation-target="agentPane" aria-label="Agent"' },
     headerHtml: `${barButton("Show Workspace pane", "click->workspace-navigation#toggleWorkspacePaneCollapsed", Icons.Panel, "data-show-workspace-pane")}<div id="${agentNavigationDomId(presentation.workspace.id)}" class="fixed-shell-agent-navigation">${renderAgentNavigation(presentation)}</div><div id="${agentActionsDomId(presentation.workspace.id)}" class="fixed-shell-agent-actions">${renderAgentActions(presentation)}</div>`,
-    bodyHtml: `<div id="${agentBodiesDomId(presentation.workspace.id)}" class="fixed-shell-agent-bodies">${panes}</div>`,
+    bodyHtml: `<div id="${agentBodiesDomId(presentation.workspace.id)}" class="fixed-shell-agent-bodies">${panes || renderAgentEmpty(presentation)}</div>`,
   })}</div>`;
 }
 
@@ -130,6 +146,7 @@ export function agentTabsTurboStream(presentation: WorkspacePresentation, option
     // Replace only the navigation region so overlapping Agent creations converge
     // even when one response observes a later creation before it renders.
     streams.push(turboStream("update", agentNavigationDomId(workspace.id), renderAgentNavigation(presentation)));
+    streams.push(turboStream("remove", agentEmptyId(workspace.id)));
     streams.push(turboStream("append", agentBodiesDomId(workspace.id), renderAgentPaneSlot(workspace.id, added)));
   } else if (!options.removedConversationId) {
     streams.push(turboStream("update", agentNavigationDomId(workspace.id), renderAgentNavigation(presentation)));
@@ -138,6 +155,7 @@ export function agentTabsTurboStream(presentation: WorkspacePresentation, option
     streams.push(turboStream("update", agentNavigationDomId(workspace.id), renderAgentNavigation(presentation)));
     streams.push(turboStream("remove", agentPaneSlotDomId(workspace.id, options.removedConversationId)));
   }
+  if (presentation.agentConversations.length === 0) streams.push(turboStream("update", agentBodiesDomId(workspace.id), renderAgentEmpty(presentation)));
   if (options.selectConversationId) streams.push(selectAgentTurboStream(workspace.id, options.selectConversationId));
   if (options.removedConversationId && options.successorConversationId) {
     streams.push(selectAgentSuccessorTurboStream(workspace.id, options.removedConversationId, options.successorConversationId));
@@ -146,3 +164,9 @@ export function agentTabsTurboStream(presentation: WorkspacePresentation, option
   return streams.join("");
 }
 
+
+/** Refresh creation choices without remounting any running agent body. */
+export function agentProviderChoicesTurboStream(presentation: WorkspacePresentation): string {
+  const navigation = turboStream("update", agentNavigationDomId(presentation.workspace.id), renderAgentNavigation(presentation));
+  return navigation + (presentation.agentConversations.length ? "" : turboStream("update", agentBodiesDomId(presentation.workspace.id), renderAgentEmpty(presentation)));
+}

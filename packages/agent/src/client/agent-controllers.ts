@@ -3,10 +3,7 @@ import { createAgentNotificationsController } from "./notifications-controller.t
 import { createUsageControllers } from "./usage-controllers.ts";
 import type { WorkspaceClientModule } from "@atelier/shared";
 import { createAgentPaneController, registerAgentPaneVisibilityHooks } from "./agent-pane.ts";
-import { createAgentAttachmentsController } from "./attachments-controller.ts";
 import { createAgentCompletionsController } from "./completions-controller.ts";
-import { createComposerFocusController } from "./composer-focus-controller.ts";
-import { createComposerSelectionAutosubmitController } from "./composer-selection-controller.ts";
 import { createAgentEditDiffController } from "./edit-diff-controller.ts";
 import { createAgentTurnController } from "./turn-controller.ts";
 import { createAgentElapsedController } from "./elapsed-controller.ts";
@@ -36,9 +33,6 @@ export const agentClientModule: WorkspaceClientModule = {
     application.register("agent-notifications", createAgentNotificationsController(Controller));
     for (const [name, controller] of Object.entries(createUsageControllers(Controller))) application.register(name, controller);
     application.register("agent-pane", createAgentPaneController(Controller));
-    application.register("agent-attachments", createAgentAttachmentsController(Controller));
-    application.register("composer-focus", createComposerFocusController(Controller));
-    application.register("composer-selection-autosubmit", createComposerSelectionAutosubmitController(Controller));
     application.register("agent-turn", createAgentTurnController(Controller));
     application.register("agent-elapsed", createAgentElapsedController(Controller));
     application.register("agent-edit-diff", createAgentEditDiffController(Controller));

@@ -177,7 +177,7 @@ describe("workspace lifecycle", () => {
       attachmentDraft,
     })));
 
-    expect(response.status).toBe(200);
+    expect(response.status).toBe(422);
     expect(captured).toBeUndefined();
     expect(registry.list().map((entry) => entry.id)).toEqual(["existing"]);
   });

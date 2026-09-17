@@ -6,19 +6,19 @@ import { currentNotificationTurn } from "./turn-notifications.ts";
 
 export function notificationControlId(ctx: AgentRenderContext): string { return domId("agent_notification", ctx.workspaceId, ctx.conversationId); }
 export function notificationFrameId(ctx: AgentRenderContext): string { return `${notificationControlId(ctx)}_frame`; }
-export function notificationFeedbackId(workspaceId: string): string { return domId("agent_notification_feedback", workspaceId); }
+export function notificationFeedbackId(workspaceId: string, conversationId: string): string { return domId("agent_notification_feedback", workspaceId, conversationId); }
 
-export function renderNotificationHeader(workspaceId: string, conversations: readonly { id: string }[]): string {
+export function renderAgentNotifications(workspaceId: string, conversations: readonly { id: string }[]): string {
   const frames = conversations.map(({ id: conversationId }) => {
     const ctx = { workspaceId, conversationId };
     return `<span hidden data-notification-conversation="${escapeHtml(conversationId)}"><turbo-frame id="${notificationFrameId(ctx)}" src="${escapeHtml(agentPath(ctx, "/notification"))}"></turbo-frame></span>`;
   }).join("");
-  return `<span data-controller="agent-notifications" data-action="atelier:workspace-agent-selected@window->agent-notifications#select">${renderNotificationFeedback(workspaceId)}${frames}</span>`;
+  return `<span data-controller="agent-notifications" data-action="atelier:workspace-agent-selected@window->agent-notifications#select">${renderNotificationFeedback(workspaceId, conversations[0]!.id)}${frames}</span>`;
 }
 
 /** One dismissible surface for browser errors and server acknowledgements. */
-export function renderNotificationFeedback(workspaceId: string, message = "", error = false): string {
-  return `<span id="${notificationFeedbackId(workspaceId)}" class="agent-noticeline agent-notification-feedback"${message ? "" : " hidden"} data-agent-notifications-target="feedback"><span role="${error ? "alert" : "status"}" data-agent-notifications-target="message">${escapeHtml(message)}</span>${buttonHtml({
+export function renderNotificationFeedback(workspaceId: string, conversationId: string, message = "", error = false): string {
+  return `<span id="${notificationFeedbackId(workspaceId, conversationId)}" class="agent-noticeline agent-notification-feedback"${message ? "" : " hidden"} data-agent-notifications-target="feedback"><span role="${error ? "alert" : "status"}" data-agent-notifications-target="message">${escapeHtml(message)}</span>${buttonHtml({
     type: "button", variant: "secondary", content: { kind: "icon-only", iconHtml: Icons.Close, label: "Dismiss notification message" },
     attributesHtml: 'data-action="click->agent-notifications#dismiss"',
   })}</span>`;

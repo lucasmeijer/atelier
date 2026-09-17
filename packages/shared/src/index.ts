@@ -83,7 +83,6 @@ export interface WorkspaceAgentTabSummary {
 
 /** Durable Agent-tab seam: cheap shell metadata plus on-demand body rendering. */
 export interface WorkspaceAgentTabProvider {
-  renderHeader?(context: { workspaceId: string; conversations: readonly WorkspaceAgentTabSummary[] }): string;
   list(context: { workspaceId: string }): Promise<readonly WorkspaceAgentTabSummary[]>;
   render(context: { workspaceId: string; conversationId: string }): Promise<string>;
   close(context: { workspaceId: string; conversationId: string }): Promise<void>;
@@ -290,7 +289,17 @@ export interface DeleteCurrentWorkspaceResult {
 
 export type AgentServiceTier = "default" | "priority";
 
+/** Host-generated input; every provider must accept text, images and file notes. */
+export interface WorkspaceAgentInput {
+  text: string;
+  images: { mimeType: string; data: string }[];
+  attachmentNotes: string[];
+}
+
 export interface AgentWorkspaceParameters {
+  provider?: string;
+  /** Filled by Atelier before prepareWorkspace and workspace_created. */
+  input?: WorkspaceAgentInput;
   initialPrompt?: string;
   initialPromptMode?: "composer";
   model?: string;
@@ -337,7 +346,7 @@ export interface WorkspaceModule {
   routes?: WorkspaceModuleRouteHandler[];
   workViews?: WorkspaceModuleWorkViewAdapter[];
   deletionReview?: WorkspaceDeletionReview;
-  agentTabs?: WorkspaceAgentTabProvider;
+  agentProvider?: WorkspaceAgentProvider;
   initialize?(context: WorkspaceServerModuleContext): Promise<void> | void;
   attachToWorkspace?(context: WorkspaceAttachContext): Promise<WorkspaceAttachment> | WorkspaceAttachment;
 }
@@ -480,7 +489,7 @@ export function selectedWorkspaceAgent(element: Element): string | undefined {
 }
 export const workspaceAgentSelectionEvent = "atelier:workspace-agent-selected";
 
-/** Agent-owned launch content. The host owns the form, layout, and workspace creation. */
+/** Host-owned launch composer content. */
 export interface AgentLaunchPresentation {
   attributesHtml: string;
   formAttributesHtml: string;
@@ -495,11 +504,24 @@ export interface AgentLaunchFooterContext {
   query: URLSearchParams;
 }
 export interface WorkspaceAgentLaunch {
-  render(context: AgentLaunchFooterContext & { draftId: string }): Promise<AgentLaunchPresentation>;
   renderFooter(context: AgentLaunchFooterContext): Promise<string>;
   prepare(parameters?: JsonObject): Promise<WorkspaceCreationContext | undefined>;
-  /** Validate first; prepare is called once when the host accepts this submission identity. */
-  submit(form: FormData): Promise<{ submissionId: string; prepare(): Promise<WorkspaceCreationContext> } | { response: Response }>;
+  /** Validate provider settings; the host owns prompt, attachments and submission identity. */
+  submit(form: FormData): Promise<{ prepare(): Promise<WorkspaceCreationContext> } | { response: Response }>;
+  /** New-workspace provisioning only; never invoked to fill an empty pane. Input is host-prepared. */
   prepareWorkspace(workspaceId: string, context?: WorkspaceCreationContext): Promise<void>;
   refreshConfiguration(frameId: string): Promise<string>;
+}
+
+/** Providers own contents and lifecycle; Atelier owns tabs, chrome and creation UI.
+ * Conversation IDs must be globally unique within a workspace (UUIDs are recommended).
+ * Metadata listing must not create an agent or boot a runtime.
+ */
+export interface WorkspaceAgentProvider {
+  id: string;
+  label: string;
+  iconHtml: string;
+  tabs: WorkspaceAgentTabProvider;
+  create(context: { workspaceId: string; events?: AtelierEventBus }): Promise<string>;
+  launch: WorkspaceAgentLaunch;
 }

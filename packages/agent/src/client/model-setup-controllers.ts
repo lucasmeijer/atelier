@@ -5,7 +5,9 @@ export function createLaunchModelRefreshController(Controller: WorkspaceClientCo
     declare readonly element: HTMLElement;
     connect(): void {
       const frame = this.element.closest<HTMLElement & { reload(): void }>("turbo-frame")!;
-      const model = frame.querySelector<HTMLInputElement>('input[name="model"]')!.value;
+      const modelInput = frame.querySelector<HTMLInputElement>('input[name="model"]');
+      if (!modelInput) { this.element.remove(); return; }
+      const model = modelInput.value;
       const level = frame.querySelector<HTMLSelectElement>('select[name="level"]')?.value;
       const url = new URL("/launch-composer/settings", window.location.href);
       if (model) url.searchParams.set("model", model);

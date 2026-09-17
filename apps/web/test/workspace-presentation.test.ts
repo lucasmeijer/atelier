@@ -9,9 +9,10 @@ const agentBodyUrl = (conversationId: string): string => `/workspaces/workspace-
 function fixture(overrides: Partial<WorkspacePresentation> = {}): WorkspacePresentation {
   return {
     workspace: { id: "workspace-1", title: "Typed shell" },
+    agentProviders: [],
     agentConversations: [
-      { id: firstConversationId, title: "First", bodyUrl: agentBodyUrl(firstConversationId) },
-      { id: secondConversationId, title: "Second", bodyUrl: agentBodyUrl(secondConversationId) },
+      { id: firstConversationId, providerId: "builtin", iconHtml: "", title: "First", bodyUrl: agentBodyUrl(firstConversationId) },
+      { id: secondConversationId, providerId: "builtin", iconHtml: "", title: "Second", bodyUrl: agentBodyUrl(secondConversationId) },
     ],
     workViews: [
       { key: "terminal:one", label: "Terminal", kind: "resource", availability: { phase: "live" }, bodyHtml: '<div data-probe="terminal">Terminal</div>' },
@@ -229,7 +230,4 @@ describe("role-fixed Workspace presentation", () => {
     );
   });
 
-  test("requires the Workspace invariant of at least one Agent conversation", () => {
-    expect(() => renderWorkspacePresentation(fixture({ agentConversations: [] }))).toThrow("requires an Agent conversation");
-  });
 });

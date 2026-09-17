@@ -90,14 +90,24 @@ function createTestAgentModule(initial: TestConversation[], created: TestConvers
     async close(context) {
       const index = conversations.findIndex((candidate) => candidate.id === context.conversationId);
       if (index < 0) throw new AtelierCoreError("agent_conversation_not_found", `Agent conversation not found: ${context.conversationId}`);
-      if (conversations.length === 1) throw new AtelierCoreError("last_agent_conversation", "The last Agent conversation cannot be closed");
       conversations.splice(index, 1);
       closed.push(context);
     },
   };
   const module: WorkspaceModule = {
     id: "test-agent",
-    agentTabs: provider,
+    agentProvider: {
+      id: "builtin", label: "Builtin", iconHtml: "", tabs: provider,
+      async create() {
+        const conversation = creations.shift()!;
+        conversations.push(conversation);
+        return conversation.id;
+      },
+      launch: {
+        async renderFooter() { return ""; }, async prepare() { return undefined; },
+        async submit() { throw new Error("not used"); }, async prepareWorkspace() {}, async refreshConfiguration() { return ""; },
+      },
+    },
     commands: [{
       id: "agent.create",
       execute() {
@@ -406,21 +416,21 @@ describe("Agent provider app integration", () => {
       const jsonResponse = await app.fetch(jsonPost(`/workspaces/${workspaceId}/agents/conversation-c/close`));
       expect(await jsonResponse.json()).toEqual({
         archivedConversationId: "conversation-c",
-        agentConversations: [{ id: "conversation-a", title: "Alpha" }],
+        agentConversations: [{ id: "conversation-a", title: "Alpha", providerId: "builtin" }],
       });
       expect(registry.attentionTokens(workspaceId)["agent:conversation-c"] !== undefined).toBe(false);
       expect(broadcasts.some((broadcast) => broadcast.html.includes(`target="${agentPaneSlotDomId(workspaceId, "conversation-c")}"`))).toBe(true);
 
       const lastAgent = await app.fetch(jsonPost(`/workspaces/${workspaceId}/agents/conversation-a/close`));
-      expect(lastAgent.status).toBe(409);
-      expect(await lastAgent.json()).toMatchObject({ error: { code: "last_agent_conversation" } });
-      expect(agent.conversations).toEqual([{ id: "conversation-a", title: "Alpha" }]);
+      expect(lastAgent.status).toBe(200);
+      expect(await lastAgent.json()).toMatchObject({ agentConversations: [] });
+      expect(agent.conversations).toEqual([]);
       const lastAgentTurbo = await app.fetch(turboPost(`/workspaces/${workspaceId}/agents/conversation-a/close`));
-      expect(lastAgentTurbo.status).toBe(409);
+      expect(lastAgentTurbo.status).toBe(404);
 
       const closeMissingWorkspace = await app.fetch(jsonPost("/workspaces/missing/agents/conversation-a/close"));
       expect(closeMissingWorkspace.status).toBe(404);
-      expect(agent.closed).toHaveLength(2);
+      expect(agent.closed).toHaveLength(3);
     });
   });
 
