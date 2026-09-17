@@ -1,4 +1,4 @@
-ARG RUNTIME_IMAGE=ghcr.io/lucasmeijer/atelier-docker@sha256:a2b687b9a4ae57f54adf497b36d304d9f2710c1f4f35d897a6ac2804bc53e73e
+ARG RUNTIME_IMAGE=ghcr.io/lucasmeijer/atelier-docker@sha256:7508a6c8e8b54632da8d2ca4a561fb2ee2dd48b223d29254b45a8a1ea5b067b0
 FROM oven/bun:1.3.14@sha256:e10577f0db68676a7024391c6e5cb4b879ebd17188ab750cf10024a6d700e5c4 AS bun
 FROM ghcr.io/tailscale/tailscale:v1.102.3@sha256:8c42c4574ab066384fcb72f69e086a2ff1dd3652eb6f56856cee34bcf0d2f680 AS tailscale
 FROM ${RUNTIME_IMAGE}

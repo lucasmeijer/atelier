@@ -1,4 +1,4 @@
-ARG ATELIER_RUNTIME_IMAGE=ghcr.io/lucasmeijer/atelier-docker@sha256:a2b687b9a4ae57f54adf497b36d304d9f2710c1f4f35d897a6ac2804bc53e73e
+ARG ATELIER_RUNTIME_IMAGE=ghcr.io/lucasmeijer/atelier-docker@sha256:7508a6c8e8b54632da8d2ca4a561fb2ee2dd48b223d29254b45a8a1ea5b067b0
 FROM oven/bun:1.4.0 AS bun-dist
 
 FROM ubuntu:26.04 AS transcription-runtime
