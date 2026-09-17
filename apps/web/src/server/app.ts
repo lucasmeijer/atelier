@@ -1396,6 +1396,11 @@ export function createWebApp(deps: WebAppDeps): WebApp {
         return await route(request);
       } catch (thrown) {
         const error = thrown instanceof Error ? thrown : new Error(String(thrown));
+        if (error instanceof AtelierCoreError && error.code === "agent_setup_required" && !requestAcceptsJson(request)) {
+          const setup = await route(new Request(new URL(String(error.details!.setupUrl), request.url), { headers: { accept: "text/vnd.turbo-stream.html" } }));
+          // A rejected launch must keep its prompt and attachment draft intact.
+          return new Response(setup.body, { status: 422, headers: setup.headers });
+        }
         return requestAcceptsJson(request) ? problemJsonResponse(error) : errorPage(error);
       }
     },

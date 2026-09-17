@@ -89,6 +89,8 @@
       "dependencies": {
         "@atelier/core": "workspace:*",
         "@atelier/design-system": "workspace:*",
+        "@atelier/llm": "workspace:*",
+        "@atelier/prompt": "workspace:*",
         "@atelier/observable-terminal": "workspace:*",
         "@atelier/shared": "workspace:*",
         "@atelier/workspace": "workspace:*",

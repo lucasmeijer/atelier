@@ -13,20 +13,23 @@ export const atelierClientModule: WorkspaceClientModule = {
       declare readonly hasTerminalTarget: boolean;
       private viewer?: ObservableTerminalViewer;
       private generation = 0;
+      private statusTimer?: ReturnType<typeof setInterval>;
       private resize = new ResizeObserver(() => this.refresh());
 
       connect(): void { if (this.hasTerminalTarget) { this.resize.observe(this.terminalTarget); void this.start(); } }
-      disconnect(): void { this.generation++; this.resize.disconnect(); this.viewer?.dispose(); }
+      disconnect(): void { this.generation++; clearInterval(this.statusTimer); this.resize.disconnect(); this.viewer?.dispose(); }
       private async start(): Promise<void> {
         const generation = ++this.generation;
-        const viewer = await createObservableTerminalViewer({ host: this.terminalTarget, mode: "interactive", websocketUrl: observableWebSocketUrl(`${this.urlValue}/ws`), theme: atelierObservableTerminalTheme(), onDisconnect: () => { void this.connectionClosed(); } });
+        const viewer = await createObservableTerminalViewer({ host: this.terminalTarget, mode: "interactive", websocketUrl: observableWebSocketUrl(`${this.urlValue}/ws`), theme: atelierObservableTerminalTheme(), onDisconnect: () => { void this.updateStatus(true); } });
         if (generation !== this.generation) { viewer.dispose(); return; }
         this.viewer = viewer;
+        this.statusTimer = setInterval(() => { void this.updateStatus(); }, 5000);
       }
-      private async connectionClosed(): Promise<void> {
-        const response = await fetch(`${this.urlValue}/status`, { headers: { Accept: "text/vnd.turbo-stream.html" } });
+      private async updateStatus(disconnected = false): Promise<void> {
+        const response = await fetch(`${this.urlValue}/status${disconnected ? "?disconnected" : ""}`, { headers: { Accept: "text/vnd.turbo-stream.html" } });
         if (!response.ok) throw new Error(`Could not inspect Codex session (${response.status})`);
-        window.Turbo!.renderStreamMessage(await response.text());
+        if (response.headers.get("X-Codex-Ended") === "true" || disconnected) clearInterval(this.statusTimer);
+        if (this.element.isConnected) window.Turbo!.renderStreamMessage(await response.text());
       }
       retry(): void {
         const frame = this.element.closest<HTMLElement & { reload(): void }>("turbo-frame")!;

@@ -26,6 +26,7 @@ export const Icons = {
   Next: iconHtml('<path d="M4 12h14M13 7l5 5-5 5"/><circle cx="5" cy="6" r="1.5" fill="currentColor" stroke="none"/>'),
   Panel: iconHtml('<path d="M4 4h16v16H4zM15 4v16"/>'),
   Park: iconHtml('<path d="M17.5 15.5A7 7 0 0 1 8.5 6.5a7 7 0 1 0 9 9z"/><path d="M16 5h4M18 3v4"/>'),
+  Paperclip: iconHtml('<path d="m21 11-8.5 8.5a6 6 0 0 1-8.5-8.5l9-9a4 4 0 0 1 5.7 5.7l-9 9a2 2 0 0 1-2.8-2.8l8.5-8.5"/>'),
   Plus: iconHtml('<path d="M12 5v14M5 12h14"/>'),
   Projects: iconHtml('<path d="M5 18V5a2 2 0 0 1 2-2h12v18H7a2 2 0 0 1 0-4h12M9 3v14M12 7h4"/>'),
   Refresh: iconHtml('<path d="M20 11a8 8 0 1 0-2.34 5.66M20 4v7h-7"/>'),

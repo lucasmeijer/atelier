@@ -688,6 +688,6 @@ button.settings-link:disabled { opacity: .45; cursor: default; filter: none; }
 .agent-empty-choices > p { color:var(--text); margin:0 0 24px; }
 .agent-empty-choices .action-list { display:grid; gap:12px; }
 .agent-empty-choices .action-item { padding:18px; border:1px solid var(--line-strong); border-radius:var(--radius-surface); background:var(--panel); }
-#launch_composer_provider { display:flex; align-items:center; gap:8px; flex-wrap:wrap; }
-.launch-attach { position:relative; overflow:hidden; color:var(--text); cursor:pointer; font-size:var(--text-code); }
-.launch-attach input { position:absolute; inset:0; opacity:0; cursor:pointer; width:100%; }
+#launch_composer_provider { display:flex; align-items:center; gap:8px; flex-wrap:wrap; width:100%; min-width:0; }
+#launch_composer_provider > .popup-menu-anchor { flex:0 0 auto; }
+#launch_composer_provider > .launch-model-settings { display:flex; flex:1; min-width:0; margin-left:auto; justify-content:flex-end; }

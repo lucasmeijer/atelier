@@ -1,11 +1,4 @@
 .codex-agent-body { display:flex; flex-direction:column; height:100%; min-height:0; background:var(--bg); color:var(--text-bright); }
-.codex-agent-intro { padding:16px 20px; flex:none; max-height:40%; overflow:auto; border-bottom:1px solid var(--line); }
-.codex-agent-intro p, .codex-launch-note { color:var(--text); font-size:var(--text-code); }
-.codex-agent-intro p { margin:4px 0; }
-.codex-agent-intro pre { white-space:pre-wrap; overflow-wrap:anywhere; font:var(--text-code)/var(--leading-copy) var(--font-mono); }
-.codex-agent-intro summary { cursor:pointer; margin-top:12px; color:var(--warning); }
 .codex-agent-body .observable-terminal-host { flex:1; min-height:100px; overflow:hidden; }
 .codex-terminal-status:empty { display:none; }
 .codex-terminal-status { padding:12px 20px; display:flex; align-items:center; gap:12px; color:var(--text); }
-.codex-prompt-images { display:flex; gap:8px; flex-wrap:wrap; }
-.codex-prompt-images img { max-width:160px; max-height:100px; object-fit:contain; }

@@ -1,3 +1,4 @@
+import { createLaunchModelRefreshController, createAgentModelSetupController } from "./model-setup-controllers.ts";
 import type { WorkspaceClientModule, WorkspaceClientControllerConstructor } from "@atelier/shared";
 
 function createOAuthFlowController(Controller: WorkspaceClientControllerConstructor) {
@@ -76,4 +77,4 @@ function createOAuthFlowController(Controller: WorkspaceClientControllerConstruc
   };
 }
 
-export const atelierClientModule: WorkspaceClientModule = { id: "llm", install({ application, Controller }) { application.register("oauth-flow", createOAuthFlowController(Controller)); } };
+export const atelierClientModule: WorkspaceClientModule = { id: "llm", install({ application, Controller }) { application.register("launch-model-refresh", createLaunchModelRefreshController(Controller)); application.register("agent-model-setup", createAgentModelSetupController(Controller)); application.register("oauth-flow", createOAuthFlowController(Controller)); } };

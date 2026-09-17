@@ -31,15 +31,18 @@ function installDropGuard(): void {
 export function createAgentAttachmentsController(Controller: StimulusControllerConstructor) {
   return class AgentAttachmentsController extends Controller {
     static values = { uploadUrl: String };
-    static targets = ["row", "status"];
+    static targets = ["row", "status", "file"];
     declare readonly element: HTMLElement;
     declare readonly uploadUrlValue: string;
     declare readonly rowTarget: HTMLElement;
     declare readonly statusTarget: HTMLElement;
+    declare readonly fileTarget: HTMLInputElement;
 
     connect(): void {
       installDropGuard();
     }
+
+    openPicker(): void { this.fileTarget.click(); }
 
     choose(event: Event): void {
       // SAFETY: This action is attached to the host-rendered file input.

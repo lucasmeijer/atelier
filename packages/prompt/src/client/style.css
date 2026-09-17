@@ -48,7 +48,6 @@
 @media (max-width: 700px) { .composer-input { font-size: 16px; } }
 /* Host launch settings can wrap without hiding provider-specific controls. */
 .launch-composer .composer-footer { position:relative; height:auto; min-height:var(--composer-footer-height); overflow:visible; padding:8px 12px; }
-.launch-composer .composer-actions { position:static; padding:8px 12px; }
 
 .agent-dropping .composer-surface::after {
   content: "Drop files to attach";

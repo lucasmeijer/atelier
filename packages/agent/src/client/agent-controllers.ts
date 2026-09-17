@@ -1,4 +1,3 @@
-import { createLaunchModelRefreshController, createAgentModelSetupController } from "./model-setup-controllers.ts";
 import { createAgentNotificationsController } from "./notifications-controller.ts";
 import { createUsageControllers } from "./usage-controllers.ts";
 import type { WorkspaceClientModule } from "@atelier/shared";
@@ -28,8 +27,6 @@ export { forwardAgentTerminalWheel, terminalOutputHasPrintableText } from "./ter
 export const agentClientModule: WorkspaceClientModule = {
   id: "agent",
   install({ application, Controller, hooks }) {
-    application.register("launch-model-refresh", createLaunchModelRefreshController(Controller));
-    application.register("agent-model-setup", createAgentModelSetupController(Controller));
     application.register("agent-notifications", createAgentNotificationsController(Controller));
     for (const [name, controller] of Object.entries(createUsageControllers(Controller))) application.register(name, controller);
     application.register("agent-pane", createAgentPaneController(Controller));

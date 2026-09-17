@@ -4,3 +4,6 @@ export { renderModelSetupDialog, handleModelSettingsRequest } from "./settings.t
 export { llmWorkspaceModule as atelierServerModule } from "./web.ts";
 export { selectPacingWindow, type PacedUsageWindow } from "./usage-window.ts";
 export { connectedUsageProviders, getProviderUsageOverview, supportedUsageProviders, type ProviderUsageOverview, type UsageProvider } from "./provider-usage.ts";
+
+export { installSubscriptionCli } from "./subscription-cli.ts";
+export { renderSharedComposerSelections, renderLaunchModelSettings, modelThinkingLevels, type ComposerModelOption } from "./model-picker.ts";

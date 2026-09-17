@@ -1,11 +1,9 @@
+import { renderSharedComposerSelections, renderLaunchModelSettings, type ComposerModelOption } from "@atelier/llm/server";
 import { renderAgentNotifications } from "./render-notification.ts";
 import { createPiModelRuntime, hasConnectedModelProvider, modelRefValue, parseModelRef } from "@atelier/llm/server";
 import { activityButtonHtml } from "@atelier/design-system/activity-button";
-import { actionItemHtml } from "@atelier/design-system/action-item";
 import { buttonHtml } from "@atelier/design-system/button";
-import { popupHtml } from "@atelier/design-system/popup";
 import { renderTranscriptionComposerControl, transcriptionComposerController } from "@atelier/transcription/server";
-import { providerBrandIconHtml } from "@atelier/shared";
 import { domId, escapeHtml, turboStream } from "./html.ts";
 import { launchComposerThinkingSettings, configuredModelOptionViews, selectAvailableConfiguredModel } from "./model-state.ts";
 import type { WorkspaceAgentConversationInfo } from "./session-store.ts";
@@ -14,15 +12,6 @@ import { readInitialPromptDraft } from "./initial-prompt-draft.ts";
 import { formatCost, formatTokens } from "./transcript.ts";
 import { renderWorkspaceCompletionCatalog } from "./completion-catalog.ts";
 import { agentConversationKey, agentPath, ids, type AgentRenderContext } from "./render-context.ts";
-
-interface AgentModelOption {
-  provider: string;
-  id: string;
-  name: string;
-  selected: boolean;
-  available?: boolean;
-  unavailableReason?: string;
-}
 
 export interface AgentStatsView {
   contextPercent: number | null;
@@ -35,7 +24,7 @@ export interface AgentStatsView {
   modelName: string | undefined;
   thinkingLevel: string;
   thinkingLevels: string[];
-  models: AgentModelOption[];
+  models: ComposerModelOption[];
   connectedProvider?: boolean;
 }
 
@@ -136,68 +125,18 @@ function renderAgentPaneComposer(options: AgentComposerRenderOptions): string {
       </div>`;
 }
 
-interface SharedComposerSelectionsOptions {
-  modelFormId: string;
-  thinkingFormId: string;
-  models: AgentModelOption[];
-  thinkingLevels: string[];
-  selectedThinkingLevel: string;
-  autosubmitThinking?: boolean;
-  connectedProvider?: boolean;
-}
-
-function renderModelSelection(formId: string, models: AgentModelOption[], connectedProvider = false): string {
-  const selected = models.find((model) => model.selected) ?? models[0];
-  const hasAvailableModel = models.some((model) => model.available !== false);
-  const menuId = `${formId}_popup`;
-  const setupAction = 'data-controller="agent-model-setup" data-action="click->agent-model-setup#open"';
-  const configure = actionItemHtml({ kind: "single", label: { kind: "text", text: "Configure models" }, element: { tag: "button", attributesHtml: `type="button" role="menuitem" ${setupAction}` } });
-  const modelItems = models.map((model) => {
-    return actionItemHtml({
-      kind: "single",
-      label: { kind: "text", text: model.name },
-      description: model.unavailableReason,
-      leadingHtml: providerBrandIconHtml(model.provider, model.name),
-      element: { tag: "button", attributesHtml: `type="submit" name="model" value="${escapeHtml(`${model.provider}::${model.id}`)}" form="${escapeHtml(formId)}" role="menuitemradio" aria-checked="${model.selected}"${model.available === false ? " disabled" : ""}` },
-    });
-  }).join("");
-  if (!hasAvailableModel) return buttonHtml({ type: "button", variant: "secondary", content: { kind: "caption", caption: connectedProvider ? "Choose models" : "Connect a model" }, attributesHtml: setupAction });
-  return popupHtml({ id: menuId, label: "Model", placement: "above",
-    trigger: { variant: "secondary", content: { kind: "caption", caption: selected?.name ?? "Model" } },
-    contentHtml: `${configure}<hr class="popup-menu__separator">${modelItems}`,
-  });
-}
-
-function renderSharedComposerSelections(options: SharedComposerSelectionsOptions): string {
-  const autosubmit = options.autosubmitThinking
-    ? ` data-controller="composer-selection-autosubmit" data-composer-selection-autosubmit-form-id-value="${escapeHtml(options.thinkingFormId)}" data-action="change->composer-selection-autosubmit#submit"`
-    : "";
-  const thinkingSelection = options.thinkingLevels.length > 0
-    ? `<span class="composer-selection-field"${autosubmit}><select class="composer-selection popup-select" data-popup-placement="above" name="level" form="${escapeHtml(options.thinkingFormId)}" title="Thinking level">${options.thinkingLevels.map((level) => `<option value="${escapeHtml(level)}"${level === options.selectedThinkingLevel ? " selected" : ""}>${escapeHtml(level)}</option>`).join("")}</select></span>`
-    : "";
-  const ready = options.models.some((model) => model.selected && model.available !== false);
-  return `<span class="composer-selections" data-model-ready="${ready}">
-${renderModelSelection(options.modelFormId, options.models, options.connectedProvider)}
-${ready ? thinkingSelection : ""}
-</span>`;
-}
-
 export async function renderLaunchComposerSettings(options: { frameId: string; formId: string; url: string; selectedModel?: string; selectedThinkingLevel?: string }): Promise<string> {
   const models = await configuredModelOptionViews();
   const selected = selectAvailableConfiguredModel(models, options.selectedModel ? parseModelRef(options.selectedModel) : undefined);
   const selectedValue = selected ? modelRefValue(selected) : "";
   const { selected: selectedThinkingLevel, levels: thinkingLevels } = await launchComposerThinkingSettings(selected);
-  const modelFormId = `${options.frameId}_model_form`;
-  return `<turbo-frame id="${escapeHtml(options.frameId)}"><form id="${escapeHtml(modelFormId)}" method="get" action="${escapeHtml(options.url)}" data-turbo-frame="${escapeHtml(options.frameId)}" hidden></form>
-<input type="hidden" name="model" value="${escapeHtml(selectedValue)}" form="${escapeHtml(options.formId)}">
-${renderSharedComposerSelections({
-    modelFormId,
-    thinkingFormId: options.formId,
+  return renderLaunchModelSettings({
+    ...options, agentProvider: "builtin", selectedValue,
     models: models.map((model) => ({ ...model, selected: modelRefValue(model) === selectedValue })),
     thinkingLevels,
     selectedThinkingLevel: options.selectedThinkingLevel && thinkingLevels.includes(options.selectedThinkingLevel) ? options.selectedThinkingLevel : selectedThinkingLevel ?? "",
     connectedProvider: hasConnectedModelProvider(await createPiModelRuntime()),
-  })}</turbo-frame>`;
+  });
 }
 
 function renderTranscriptEndNavigation(): string {

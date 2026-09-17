@@ -281,6 +281,15 @@ type PendingOAuthFlow = {
 const pendingOAuthFlows = new Map<string, PendingOAuthFlow>();
 
 async function startOAuthFlow(provider: string, label: string, surface: ModelSetupSurface, refreshComposers: () => Promise<string>): Promise<PendingOAuthFlow> {
+  // The credential runtime serializes logins per provider. An abandoned dialog must
+  // not leave the next attempt queued behind a device code nobody will approve.
+  for (const previous of pendingOAuthFlows.values()) {
+    if (previous.provider !== provider || previous.status !== "pending") continue;
+    previous.status = "error";
+    previous.error = "This sign-in was replaced by a newer attempt. Start again to connect.";
+    previous.prompt = undefined;
+    previous.abort.abort();
+  }
   const flow: PendingOAuthFlow = { id: crypto.randomUUID(), provider, label, surface, revision: 0, status: "pending", abort: new AbortController() };
   pendingOAuthFlows.set(flow.id, flow);
   void loginPiOAuthProvider(provider, {
