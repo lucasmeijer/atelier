@@ -1,6 +1,7 @@
 // bun packages/workspace-image/scripts/test-tmux-resources.ts <local-workspace-image>
 // Tests current source in a disposable, memory-limited Linux container.
 import assert from "node:assert/strict";
+import { fileURLToPath } from "node:url";
 import { runDocker, shellQuote } from "@atelier/core";
 import { buildObservableSessionCommand } from "@atelier/observable-terminal/server";
 import { workspaceRuntimeUnits } from "../src/workspace-systemd-units.ts";
@@ -15,7 +16,12 @@ async function docker(args: string[], input?: string, check = true) {
 }
 async function exec(...args: string[]) { return (await docker(["exec", name, ...args])).stdout.trim(); }
 try {
-  await docker(["run", "-d", "--name", name, "--privileged", "--cgroupns=private", "--memory=512m", "--memory-swap=512m", "--tmpfs", "/run", "--entrypoint", "/sbin/init", image]);
+  await docker(["create", "--name", name, "--privileged", "--cgroupns=private", "--memory=512m", "--memory-swap=512m", "--tmpfs", "/run",
+    "--env", "HOME=/root", "--env", "USER=root", "--env", "LOGNAME=root", "--env", "SHELL=/bin/sh", "--env", "LANG=C.UTF-8",
+    "--entrypoint", "/bin/bash", image, "-ec", "rm -f /etc/systemd/system/atelier-gateway.service; exec /usr/local/bin/atelier-workspace-init"]);
+  const bootstrap = fileURLToPath(new URL("../rootfs/usr/local/bin/atelier-workspace-init", import.meta.url));
+  await docker(["cp", bootstrap, `${name}:/usr/local/bin/atelier-workspace-init`]);
+  await docker(["start", name]);
   for (let attempt = 0; ; attempt++) {
     const ready = await docker(["exec", name, "systemctl", "show", "--property=Version"], undefined, false);
     if (ready.exitCode === 0) break;
@@ -25,8 +31,9 @@ try {
   for (const [unit, content] of Object.entries(workspaceRuntimeUnits())) {
     await docker(["exec", "-i", name, "tee", `/etc/systemd/system/${unit}`], content);
   }
-  await exec("mkdir", "-p", "/.atelier");
-  await docker(["exec", "-i", name, "tee", "/.atelier/environment"], "PATH=/usr/local/bin:/usr/bin:/bin\n");
+  const environment = await exec("cat", "/.atelier/environment");
+  assert.doesNotMatch(environment, /^(HOME|USER|LOGNAME|SHELL)=/m);
+  assert.match(environment, /^LANG="C.UTF-8"$/m);
   // Like production, align identity before starting tmux, then run project hooks.
   await exec("sh", "-ec", "sed -i -E 's/^(atelier:[^:]*:)[0-9]+:[0-9]+:/\\12345:2345:/' /etc/passwd; sed -i -E 's/^(atelier:[^:]*:)[0-9]+:/\\12345:/' /etc/group; chown atelier:atelier /work /home/atelier");
   await docker(["exec", "-i", name, "tee", "/.atelier/init.sh"], 'set -e\nsystemctl start atelier-tmux.service\nsu atelier -c "tmux -N show-options -g" > /tmp/init-tmux-options\n');
@@ -39,6 +46,8 @@ try {
   const uid = await exec("id", "-u", "atelier");
   const probe = `
     test "$(id -u)" = ${uid} && test "$HOME" = /home/atelier && test "$PWD" = /work || exit 90
+    test "$USER" = atelier && test "$LOGNAME" = atelier && test "$SHELL" = /bin/bash || exit 91
+    test "$LANG" = C.UTF-8 || exit 94
     test "$(cat /proc/self/oom_score_adj)" = 500 || exit 92
     test "$(ps -o ni= -p $$ | tr -d ' ')" = 10 || exit 93
     group=$(sed -n 's/^0:://p' /proc/self/cgroup)

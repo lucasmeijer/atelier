@@ -10,6 +10,9 @@ python3 - <<'PY'
 import os
 with open('/.atelier/environment', 'w', opener=lambda path, flags: os.open(path, flags, 0o600)) as file:
     for key, value in os.environ.items():
+        # Each service gets its identity from systemd, not the root bootstrap.
+        if key in {"HOME", "USER", "LOGNAME", "SHELL"}:
+            continue
         if key.isascii() and key.replace('_', 'a').isalnum() and not key[0].isdigit():
             escaped = value.replace('\\', '\\\\').replace('"', '\\"').replace('`', '\\`').replace('$', '\\$')
             file.write(f'{key}="{escaped}"\n')
