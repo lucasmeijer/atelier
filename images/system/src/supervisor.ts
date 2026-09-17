@@ -109,8 +109,8 @@ function log(text: string) {
   if (logs.length > 1000) logs.splice(0, logs.length - 1000);
   emit();
 }
-function reportFailure(error: unknown) {
-  failure = error instanceof Error ? error.message : String(error);
+function reportFailure(message: string) {
+  failure = message;
   stage("Atelier needs attention");
   log(failure);
 }
@@ -290,7 +290,7 @@ async function replace(reference: string, pull: boolean) {
     stage("Atelier is ready");
     emit("ready", "ready");
   } catch (error) {
-    reportFailure(error);
+    reportFailure(error instanceof Error ? error.message : String(error));
   } finally {
     busy = false;
     emit();
@@ -647,6 +647,6 @@ async function initialize() {
 }
 startup = initialize().catch((error) => {
   if (!stopping) {
-    reportFailure(error);
+    reportFailure(error instanceof Error ? error.message : String(error));
   }
 });
