@@ -1,10 +1,28 @@
 /** Installed in the workspace image; provisioning and standalone tests share these. */
 export function workspaceRuntimeUnits() {
   return {
-    "atelierbash.slice": `[Unit]
-Description=Expendable agent Bash commands
-[Slice]
+    "atelier-tmux.service": `[Unit]
+Description=Atelier workspace terminal workloads
+[Service]
+Type=exec
+User=atelier
+EnvironmentFile=/.atelier/environment
+WorkingDirectory=/work
+# -D keeps the server in the foreground and disables exit-empty. Use the
+# default socket so ordinary tmux commands share this managed server.
+ExecStart=/usr/bin/tmux -D
+# Do not release initialization until the server accepts commands. -N forbids
+# a readiness probe from accidentally starting another server.
+ExecStartPost=/bin/sh -ec 'until /usr/bin/tmux -N show-options -g >/dev/null 2>&1; do sleep 0.05; done'
+TimeoutStartSec=10s
 CPUWeight=10
+Nice=10
+OOMScoreAdjust=500
+# An individual workload OOM must not cause systemd to kill every terminal.
+OOMPolicy=continue
+Restart=always
+RestartSec=1s
+TimeoutStopSec=10s
 `,
     "atelier-init.service": `[Unit]
 Description=Atelier workspace initialization

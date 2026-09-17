@@ -3,6 +3,8 @@ import { observableTerminalCols, observableTerminalEnvironment, observableTermin
 
 export interface ObservableTerminalSessionOptions {
   session: string;
+  /** Workspaces use a supervised server; never auto-start an unmanaged one. */
+  requireExistingServer?: boolean;
   cwd: string;
   command: string;
   cols?: number;
@@ -48,7 +50,7 @@ export function buildObservableSessionCommand(options: ObservableTerminalSession
   }
   commands.push(`set-option -t ${target} status ${options.status === true ? "on" : "off"}`);
   if (options.historyLimit) commands.push(`set-option -t ${target} history-limit ${options.historyLimit}`);
-  return `${observableTerminalEnvPrefix()} tmux ${commands.join(" \\; ")}`;
+  return `${observableTerminalEnvPrefix()} tmux ${options.requireExistingServer ? "-N " : ""}${commands.join(" \\; ")}`;
 }
 
 /** Configure tmux-owned history to behave like natural terminal scrollback. */

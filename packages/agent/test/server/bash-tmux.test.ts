@@ -35,6 +35,15 @@ describe("tmux bash tool", () => {
     execWorkspaceShell.mockImplementation(defaultExecWorkspaceShell);
   });
 
+  test("reports a lost tmux session without waiting for the command timeout", async () => {
+    execWorkspaceShell.mockImplementation(async (_workspaceId: string, command: string) => {
+      if (command.includes("has-session")) return { ...success, stdout: "session-lost\n" };
+      return success;
+    });
+    await expect(executeBash({ command: "sleep 60" })).rejects.toThrow("Command session disappeared before reporting an exit status");
+    expect(execWorkspaceShell.mock.calls.filter(([, command]) => command.includes("has-session"))).toHaveLength(1);
+  });
+
   test("forces a stable tty size for carriage-return progress UIs", async () => {
     await executeBash({ command: "git clone https://example.com/repo.git" });
 

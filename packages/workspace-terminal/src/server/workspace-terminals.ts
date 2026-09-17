@@ -109,6 +109,7 @@ export async function createWorkspaceTerminal(workspaceId: string, options: Work
   const sessions = await listTmuxSessions(workspaceId);
   const tmuxSession = availableTitle(sessions.map((session) => session.name), options.title);
   const result = await execWorkspaceShell(workspaceId, buildObservableSessionCommand({
+    requireExistingServer: true,
     session: tmuxSession,
     cwd: normalizeCwd(options.cwd),
     command: sessionCommand(options.command),

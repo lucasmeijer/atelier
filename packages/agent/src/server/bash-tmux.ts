@@ -139,13 +139,16 @@ export function createTmuxBashTool(
       // Capture the complete PTY stream before the command starts. The retained
       // file is only advertised when the model-facing result is truncated.
       const captureFullOutput = `tmux pipe-pane -o -t "$TMUX_PANE" ${shellQuote(`umask 077; cat > ${shellQuote(fullOutputPath)}`)}`;
-      const runCommand = `/usr/local/bin/atelier-bash-command /bin/bash -c ${shellQuote(`${forceTtySize}\n${params.command}`)}
+      const runCommand = `(
+${forceTtySize}
+${params.command}
+)
 status=$?
 printf '%s\\n' "$status" > ${shellQuote(exitFile)}`;
       const inner = `${buildSetRemainOnExitCommand()}; ${captureFullOutput}; ${forceTtySize}; ${ninjaStatus}; ${colorEnv}; ${guards}; ${runCommand}`;
       const create = await runWorkspaceShell(
         workspaceId,
-        buildObservableSessionCommand({ session: sessionName, cwd: workspaceRoot, command: shellQuote(inner), cols: agentTermCols, rows: agentTermRows, fixedSize: true, remainOnExit: true, historyLimit: tmuxHistoryLimit }),
+        buildObservableSessionCommand({ requireExistingServer: true, session: sessionName, cwd: workspaceRoot, command: shellQuote(inner), cols: agentTermCols, rows: agentTermRows, fixedSize: true, remainOnExit: true, historyLimit: tmuxHistoryLimit }),
       );
       if (create.exitCode !== 0) throw new Error(create.stderr.trim() || `could not start command session`);
 
@@ -158,8 +161,11 @@ printf '%s\\n' "$status" > ${shellQuote(exitFile)}`;
           await runWorkspaceShell(workspaceId, buildSendInterruptCommand(sessionName));
           break;
         }
-        const probe = await runWorkspaceShell(workspaceId, `cat ${shellQuote(exitFile)} 2>/dev/null`);
+        const probe = await runWorkspaceShell(workspaceId, `if test -f ${shellQuote(exitFile)}; then cat ${shellQuote(exitFile)}; elif ! tmux -N has-session -t ${shellQuote(sessionName)} 2>/dev/null; then printf 'session-lost\\n'; fi`);
         const text = probe.stdout.trim();
+        if (text === "session-lost") {
+          throw new Error(`Command session disappeared before reporting an exit status (the workspace tmux server may have restarted). Full output: ${fullOutputPath}`);
+        }
         if (text !== "") {
           exitCode = Number(text);
           break;

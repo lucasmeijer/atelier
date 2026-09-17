@@ -104,7 +104,7 @@ async function ensureWorkspaceFilesystem(id: string): Promise<void> {
 
 async function waitForWorkspaceStartup(id: string): Promise<string> {
   const timeoutSeconds = Math.ceil(workspaceStartupTimeoutMs / 1000);
-  const result = await runDocker(["exec", "--user", "root", workspaceContainerName(id), "sh", "-lc", `deadline=$(( $(date +%s) + ${timeoutSeconds} )); while [ "$(date +%s)" -le "$deadline" ]; do if test -f /.atelier/ready; then cat /.atelier/startup.log; exit 0; fi; if test -S /run/systemd/private && systemctl is-failed --quiet atelier-init.service atelier-gateway.service; then break; fi; sleep 0.05; done; tail -n 120 /.atelier/startup.log; journalctl --no-pager -n 120 -u atelier-init.service -u atelier-gateway.service; exit 1`]);
+  const result = await runDocker(["exec", "--user", "root", workspaceContainerName(id), "sh", "-lc", `deadline=$(( $(date +%s) + ${timeoutSeconds} )); while [ "$(date +%s)" -le "$deadline" ]; do if test -f /.atelier/ready; then cat /.atelier/startup.log; exit 0; fi; if test -S /run/systemd/private && systemctl is-failed --quiet atelier-tmux.service atelier-init.service atelier-gateway.service; then break; fi; sleep 0.05; done; tail -n 120 /.atelier/startup.log; journalctl --no-pager -n 120 -u atelier-tmux.service -u atelier-init.service -u atelier-gateway.service; exit 1`]);
   const log = result.stdout.trim();
   if (result.exitCode === 0) return log;
   const output = result.stderr.trim();
@@ -455,6 +455,8 @@ function workspaceInitScript(plan: WorkspaceDockerPlan): string {
     workspaceInitStepScript("gateway-credential", "chown root:root /etc/atelier-workspace-gateway-token; chmod 600 /etc/atelier-workspace-gateway-token"),
     workspaceInitStepScript("align-user", alignWorkspaceUserScript()),
     workspaceInitStepScript("atelier-dir", `install -d -o atelier -g atelier /.atelier`),
+    // Start after UID/GID alignment, before project hooks can create sessions.
+    workspaceInitStepScript("tmux", "systemctl start atelier-tmux.service"),
     ...plan.initScripts.map((script, index) => workspaceInitStepScript(`init-${index + 1}`, script)),
     "startup_log_step gateway.start",
     "trap - EXIT",

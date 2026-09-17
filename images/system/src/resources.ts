@@ -110,7 +110,7 @@ export async function initializeResources() {
   await writeFile(join(management, "memory.low"), String(policy.reserve));
   await writeFile(join(workloads, "memory.max"), String(policy.memory));
   // Throttling this ancestor stalls gateways and workspace initialization too.
-  // Keep the hard bound; expendable Bash processes carry a higher OOM score.
+  // Keep the hard bound; terminal workloads carry a higher OOM score.
   await writeFile(join(workloads, "memory.high"), "max");
   await writeFile(join(workloads, "memory.swap.max"), "0");
   await writeFile(join(workloads, "pids.max"), String(policy.pids));

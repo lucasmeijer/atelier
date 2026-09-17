@@ -119,7 +119,7 @@ for (const [name, content] of Object.entries(workspaceRuntimeUnits())) {
 }
 dockerfile += `COPY runtime-units/ /etc/systemd/system/\n`;
 dockerfile += `RUN python3 -c 'import json; p="/etc/docker/daemon.json"; c=json.load(open(p)); c["hosts"]=["fd://"]; json.dump(c,open(p,"w"))'\n`;
-dockerfile += `RUN mkdir -p /.atelier && printf "true\\n" > /.atelier/init.sh\n`;
+dockerfile += `RUN mkdir -p /.atelier && printf "systemctl start atelier-tmux.service\\n" > /.atelier/init.sh\n`;
 // binfmt registrations belong to the host kernel; workspace shutdown must not unregister them.
 dockerfile += `RUN systemctl mask systemd-binfmt.service\n`;
 dockerfile += `RUN diff -r --no-dereference /opt/atelier/home-defaults /home/atelier\n`;
