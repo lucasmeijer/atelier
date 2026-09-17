@@ -1,5 +1,5 @@
 import { afterAll, expect, test } from "bun:test";
-import { chmod, mkdir, mkdtemp, readFile, rm, writeFile } from "node:fs/promises";
+import { chmod, mkdir, mkdtemp, readFile, readdir, rm, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import manifest from "./workspace-image.json";
@@ -31,12 +31,49 @@ for (const [architecture, serverArchitecture] of [["amd64", "x64"], ["arm64", "a
     // Exercise the archive provisioning block, not an editor or browser UI.
     const run = manifest.run[0];
     const script = run.slice(run.indexOf("code_commit="), run.indexOf("chmod -R a+rX"))
-      .replaceAll("/home/atelier/", `${directory}/home/atelier/`)
+      .replaceAll("/opt/atelier/", `${directory}/opt/atelier/`)
       .replaceAll("/tmp/vscode-server.tar.gz", `${directory}/download.tar.gz`);
     const result = Bun.spawnSync(["sh", "-eu", "-c", script], { env: { ...process.env, PATH: `${bin}:${process.env.PATH}` } });
     expect(result.exitCode).toBe(0);
     expect(result.stdout.toString()).toContain("server-version");
     expect(await readFile(join(directory, "requested-url"), "utf8")).toBe(`https://update.code.visualstudio.com/commit:${commit}/server-linux-${serverArchitecture}-web/stable\n`);
-    expect(await readFile(join(directory, `home/atelier/.vscode/cli/serve-web/Stable-${commit}/server/bin/code-server`), "utf8")).toContain("server-version");
+    expect(await readFile(join(directory, "opt/atelier/vscode-server/bin/code-server"), "utf8")).toContain("server-version");
   });
 }
+
+test("VS Code startup keeps server state outside home and preserves existing settings", async () => {
+  const directory = await mkdtemp(join(tmpdir(), "atelier-vscode-startup-"));
+  directories.push(directory);
+  const imageRoot = join(directory, "opt/atelier");
+  const stateRoot = join(directory, ".atelier");
+  const home = join(directory, "home/atelier");
+  const server = join(imageRoot, "vscode-server/bin/code-server");
+  await mkdir(join(imageRoot, "vscode-server/bin"), { recursive: true });
+  await mkdir(join(imageRoot, "vscode-defaults/Machine"), { recursive: true });
+  await mkdir(home, { recursive: true });
+  await writeFile(server, '#!/bin/sh\nprintf "%s\\n" "$@"\n');
+  await chmod(server, 0o755);
+  await writeFile(join(imageRoot, "vscode-defaults/Machine/settings.json"), '{"default":true}');
+  await writeFile(join(imageRoot, "vscode-defaults/Machine/mcp.json"), '{"servers":{}}');
+  const startup = (await readFile(new URL("./workspace-image/rootfs/usr/local/bin/atelier-start-vscode", import.meta.url), "utf8"))
+    .replaceAll("/opt/atelier", imageRoot)
+    .replaceAll("/.atelier", stateRoot);
+  const env = Object.fromEntries(Object.entries(process.env).filter(([key]) => !key.startsWith("ATELIER_VSCODE_")));
+  const run = (options: Record<string, string> = {}) => Bun.spawnSync(["sh", "-c", startup], { env: { ...env, HOME: home, ...options } });
+  const result = run();
+  expect(result.exitCode).toBe(0);
+  const args = result.stdout.toString().trim().split("\n");
+  expect(args).toContain("--server-data-dir");
+  expect(args[args.indexOf("--server-data-dir") + 1]).toBe(join(stateRoot, "vscode/server-data"));
+  expect(args[args.indexOf("--extensions-dir") + 1]).toBe(join(imageRoot, "vscode-extensions"));
+  expect(args[args.indexOf("--default-folder") + 1]).toBe("/work");
+  const settings = join(stateRoot, "vscode/server-data/data/Machine/settings.json");
+  expect(await readFile(settings, "utf8")).toBe('{"default":true}');
+  expect(await readFile(join(stateRoot, "vscode/server-data/data/Machine/mcp.json"), "utf8")).toBe('{"servers":{}}');
+  await writeFile(settings, '{"user":true}');
+  const restarted = run({ ATELIER_VSCODE_DEFAULT_WORKSPACE: "/work/project.code-workspace" });
+  expect(restarted.exitCode).toBe(0);
+  expect(restarted.stdout.toString()).toContain("--default-workspace\n/work/project.code-workspace\n");
+  expect(await readFile(settings, "utf8")).toBe('{"user":true}');
+  expect(await readdir(home)).toEqual([]);
+});

@@ -1,7 +1,7 @@
 #!/bin/sh
 set -eu
 
-server_data_dir="${ATELIER_VSCODE_SERVER_DATA_DIR:-/home/atelier/.vscode-server}"
+server_data_dir="${ATELIER_VSCODE_SERVER_DATA_DIR:-/.atelier/vscode/server-data}"
 defaults_dir="${ATELIER_VSCODE_DEFAULTS_DIR:-/opt/atelier/vscode-defaults}"
 extensions_dir="${ATELIER_VSCODE_EXTENSIONS_DIR:-/opt/atelier/vscode-extensions}"
 
@@ -19,11 +19,6 @@ seed_file() {
 seed_file "$defaults_dir/Machine/settings.json" "$server_data_dir/data/Machine/settings.json"
 seed_file "$defaults_dir/Machine/mcp.json" "$server_data_dir/data/Machine/mcp.json"
 
-server_bin=""
-if [ -d /home/atelier/.vscode/cli/serve-web ]; then
-  server_bin="$(find /home/atelier/.vscode/cli/serve-web -path '*/bin/code-server' -type f | sort | tail -n 1)"
-fi
-
 set -- \
   --accept-server-license-terms \
   --host "${ATELIER_VSCODE_HOST:-0.0.0.0}" \
@@ -37,9 +32,4 @@ else
   set -- "$@" --default-folder "${ATELIER_VSCODE_DEFAULT_FOLDER:-/work}"
 fi
 
-if [ -n "$server_bin" ]; then
-  exec "$server_bin" "$@" --extensions-dir "$extensions_dir"
-fi
-
-export VSCODE_EXTENSIONS="$extensions_dir"
-exec code serve-web "$@"
+exec /opt/atelier/vscode-server/bin/code-server "$@" --extensions-dir "$extensions_dir"

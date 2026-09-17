@@ -418,16 +418,16 @@ if [ -n "$conflict_user" ] && [ "$conflict_user" != atelier ]; then userdel "$co
 user_changed=0
 if [ "$(id -u atelier)" != "$work_uid" ] || [ "$(id -g atelier)" != "$work_gid" ]; then
   # Do not replace this with usermod/groupmod without profiling workspace startup.
-  # usermod recursively rewrote ownership in /home/atelier, including the large
-  # prewarmed VS Code tree, and made container startup ~2.5s slower.
+  # Keep ownership changes explicit below instead of letting usermod recursively
+  # rewrite large image-provided caches in /home/atelier.
   sed -i -E "s/^(atelier:[^:]*:)[0-9]+:[0-9]+:/\\1\${work_uid}:\${work_gid}:/" /etc/passwd
   sed -i -E "s/^(atelier:[^:]*:)[0-9]+:/\\1\${work_gid}:/" /etc/group
   user_changed=1
 fi
 chown atelier:atelier /home/atelier /.atelier
 if [ "$user_changed" = 1 ]; then
-  find /home/atelier -mindepth 1 -maxdepth 1 ! -name .vscode -exec chown -R atelier:atelier {} +
-  if [ -d /home/atelier/.vscode ]; then chown atelier:atelier /home/atelier/.vscode; fi
+  find /home/atelier -mindepth 1 -maxdepth 1 -exec chown -R atelier:atelier {} +
+  if [ -d /.atelier/vscode ]; then chown -R atelier:atelier /.atelier/vscode; fi
   # VS Code writes its extensions manifest here, outside the home directory.
   # Keep installed extensions writable after aligning the image user to the host.
   if [ -d /opt/atelier/vscode-extensions ]; then chown -R atelier:atelier /opt/atelier/vscode-extensions; fi

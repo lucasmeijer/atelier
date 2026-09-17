@@ -53,7 +53,7 @@ export async function ensureWorkspaceVSCodeServer(workspaceId: string): Promise<
   const quotedWorkspaceFile = shellQuote(workspaceFile);
   const result = await execWorkspaceShell(workspaceId, `
     set -eu
-    server_pattern='[/]bin/code-server .*--port 8000|out[/]server-main\.js .*--port 8000|[c]ode serve-web .*--port 8000'
+    server_pattern='[/]bin/code-server .*--port 8000|out[/]server-main\.js .*--port 8000'
     ready_url='http://127.0.0.1:8000/'
 
     is_ready() {
@@ -67,12 +67,7 @@ export async function ensureWorkspaceVSCodeServer(workspaceId: string): Promise<
     start_server() {
       mkdir -p /.atelier/vscode/workspaces
       printf '%s\n' '{"folders":[{"path":"${workspaceRoot}"}]}' > ${quotedWorkspaceFile}
-      if command -v atelier-start-vscode >/dev/null 2>&1; then
-        ATELIER_VSCODE_DEFAULT_WORKSPACE=${quotedWorkspaceFile} nohup atelier-start-vscode > /.atelier/vscode/server.log 2>&1 &
-      else
-        code_bin=code
-        nohup "$code_bin" serve-web --accept-server-license-terms --host 0.0.0.0 --port 8000 --without-connection-token --default-workspace ${quotedWorkspaceFile} > /.atelier/vscode/server.log 2>&1 &
-      fi
+      ATELIER_VSCODE_DEFAULT_WORKSPACE=${quotedWorkspaceFile} nohup atelier-start-vscode > /.atelier/vscode/server.log 2>&1 &
     }
 
     if is_ready; then

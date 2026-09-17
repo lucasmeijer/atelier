@@ -16,7 +16,8 @@ Install extensions during the image build with the bundled VS Code server CLI an
 FROM atelier-workspace
 # Atelier image version: 1
 
-RUN su atelier -c '/home/atelier/.vscode/cli/serve-web/*/bin/code-server \
+RUN su atelier -c '/opt/atelier/vscode-server/bin/code-server \
+  --server-data-dir /.atelier/vscode/server-data \
   --extensions-dir /opt/atelier/vscode-extensions \
   --install-extension rust-lang.rust-analyzer \
   --force'
@@ -28,11 +29,13 @@ You can install multiple extensions in one Dockerfile:
 FROM atelier-workspace
 # Atelier image version: 1
 
-RUN su atelier -c '/home/atelier/.vscode/cli/serve-web/*/bin/code-server \
+RUN su atelier -c '/opt/atelier/vscode-server/bin/code-server \
+  --server-data-dir /.atelier/vscode/server-data \
   --extensions-dir /opt/atelier/vscode-extensions \
   --install-extension rust-lang.rust-analyzer \
   --force' \
- && su atelier -c '/home/atelier/.vscode/cli/serve-web/*/bin/code-server \
+ && su atelier -c '/opt/atelier/vscode-server/bin/code-server \
+  --server-data-dir /.atelier/vscode/server-data \
   --extensions-dir /opt/atelier/vscode-extensions \
   --install-extension dbaeumer.vscode-eslint \
   --force'
