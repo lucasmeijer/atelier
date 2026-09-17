@@ -13,7 +13,6 @@
     "@atelier/design-system": "workspace:*",
     "@atelier/shared": "workspace:*",
     "@atelier/proxy-ingress": "workspace:*",
-    "@earendil-works/pi-coding-agent": "catalog:",
     "typebox": "^1.0.57",
     "@atelier/workspace": "workspace:*"
   }

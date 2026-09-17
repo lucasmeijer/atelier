@@ -14,7 +14,6 @@
     "@atelier/observable-terminal": "workspace:*",
     "@atelier/shared": "workspace:*",
     "@atelier/workspace": "workspace:*",
-    "@earendil-works/pi-coding-agent": "catalog:",
     "typebox": "^1.0.57"
   }
 }
