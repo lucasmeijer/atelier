@@ -29,6 +29,7 @@ export type CreateHttpHooksResult<Hooks extends HttpHooks = HttpHooks> = { httpH
 type SecretEntry = { name: string; placeholder: string; value: string; resolve?: () => Promise<string>; hosts: string[] };
 
 export function createHttpHooks(options?: CreateHttpHooksOptions & { onRequest?: undefined }): CreateHttpHooksResult<RequestTransformHttpHooks>;
+export function createHttpHooks(options: CreateHttpHooksOptions & { onRequest: (request: Request) => Promise<Request> }): CreateHttpHooksResult<RequestTransformHttpHooks>;
 export function createHttpHooks(options: CreateHttpHooksOptions): CreateHttpHooksResult;
 export function createHttpHooks(options: CreateHttpHooksOptions = {}): CreateHttpHooksResult {
   const env: Record<string, string> = {};

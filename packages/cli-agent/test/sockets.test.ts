@@ -18,7 +18,7 @@ test("each adapter exposes its own interactive terminal protocol", async () => {
         return { write: text => writes.push(text), resize: (...size) => sizes.push(size), close: () => { closed++; } };
       } }));
       const { createCliAgentModule } = await import(${JSON.stringify(join(import.meta.dir, "../src/server/index.ts"))});
-      for (const providerId of ["codex", "claude"]) {
+      for (const providerId of ["codex", "claude", "pi"]) {
         const module = createCliAgentModule({
           id: providerId, label: providerId, iconHtml: "", requireSetup: async () => {},
           settings: { renderFooter: async () => "", prepare: async () => ({}) },
@@ -47,7 +47,7 @@ test("each adapter exposes its own interactive terminal protocol", async () => {
         expect(socketClosed).toBe(true);
         connection.close();
       }
-      expect(closed).toBe(2);
+      expect(closed).toBe(3);
     `], { cwd: join(import.meta.dir, ".."), env: { ...process.env, ATELIER_DATA_DIR: directory }, stdout: "pipe", stderr: "pipe" });
     const [code, stdout, stderr] = await Promise.all([child.exited, new Response(child.stdout).text(), new Response(child.stderr).text()]);
     expect({ code, stdout, stderr }).toEqual({ code: 0, stdout: "", stderr: "" });

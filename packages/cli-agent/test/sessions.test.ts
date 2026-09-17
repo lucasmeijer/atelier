@@ -127,9 +127,9 @@ test("providers and workspaces have independent session stores", () => scenario(
   expect((await saved("two")).sessions.map(s => s.id)).toEqual([third]);
 `));
 
-test("existing Codex placeholders and Claude sessions retain paths, IDs and tmux names", () => scenario(`
-  for (const id of ["codex", "claude"]) {
-    const session = { id: "old-" + id, title: "Existing tab", tmuxSession: id + "-existing", input: { text: "Never submit", images: [], attachmentNotes: [] }, model: "saved-model", thinkingLevel: "high", ...(id === "claude" ? { kind: id } : {}) };
+test("existing Codex placeholders, Claude and Pi sessions retain paths, IDs and tmux names", () => scenario(`
+  for (const id of ["codex", "claude", "pi"]) {
+    const session = { id: "old-" + id, title: "Existing tab", tmuxSession: id + "-existing", input: { text: "Never submit", images: [], attachmentNotes: [] }, model: "saved-model", thinkingLevel: "high", ...(id !== "codex" ? { kind: id } : {}) };
     const path = process.env.ATELIER_DATA_DIR + "/workspaces/legacy/metadata/" + id + "-agents.json";
     await Bun.write(path, JSON.stringify({ sessions: [session] }));
     const legacy = createCliAgentModule({ ...adapter, id }).agentProvider;

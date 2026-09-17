@@ -3,7 +3,7 @@ import { mkdtemp, rm } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { addProject, createProjectSecret, updateProjectSecret, deleteProjectSecret, type GitProjectInitInstruction } from "@atelier/projects";
-import { createWorkspaceSecretContext, clearWorkspaceGitHubToken, forgetWorkspaceSecretContext, getWorkspaceSecretContext, setWorkspaceGitHubToken } from "../../src/secrets/workspace-secrets.ts";
+import { createWorkspaceSecretContext, registerWorkspaceRequestTransform, clearWorkspaceGitHubToken, forgetWorkspaceSecretContext, getWorkspaceSecretContext, setWorkspaceGitHubToken } from "../../src/secrets/workspace-secrets.ts";
 
 function projectInit(projectId: string): GitProjectInitInstruction {
   return { type: "project.git", projectId, name: "Project", gitUrl: "https://github.com/org/repo.git", branch: null, sessionShareKey: "Project" };
@@ -130,4 +130,25 @@ describe("workspace secrets", () => {
 
     expect(result.headers.get("authorization")).toBe(`Basic ${basic}`);
   });
+});
+
+test("host credential transforms precede secret replacement and are replaceable without leaking into env", async () => {
+  const workspaceId = "request-transform-test";
+  try {
+    const before = await createWorkspaceSecretContext(workspaceId);
+    registerWorkspaceRequestTransform("test-bridge", async (request) => {
+      if (request.headers.has("x-bridge")) request.headers.set("x-bridge", "resolved");
+      return request;
+    });
+    const context = await getWorkspaceSecretContext(workspaceId, async () => undefined);
+    expect(context).not.toBe(before);
+    expect(Object.values(context.env)).not.toContain("resolved");
+    const request = new Request("https://model.example/", { headers: { "x-bridge": "placeholder" } });
+    expect((await context.hooks.onRequest(request)).headers.get("x-bridge")).toBe("resolved");
+    registerWorkspaceRequestTransform("test-bridge", async () => { throw new Error("Provider disconnected"); });
+    await expect(context.hooks.onRequest(new Request("https://model.example/"))).rejects.toThrow("Provider disconnected");
+  } finally {
+    registerWorkspaceRequestTransform("test-bridge", async (request) => request);
+    forgetWorkspaceSecretContext(workspaceId);
+  }
 });

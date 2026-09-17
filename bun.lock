@@ -29,6 +29,7 @@
         "@atelier/host": "workspace:*",
         "@atelier/keypress-probe": "workspace:*",
         "@atelier/llm": "workspace:*",
+        "@atelier/pi-agent": "workspace:*",
         "@atelier/projects": "workspace:*",
         "@atelier/prompt": "workspace:*",
         "@atelier/proxy-egress": "workspace:*",
@@ -230,6 +231,20 @@
         "@gespenst/core": "catalog:",
       },
     },
+    "packages/pi-agent": {
+      "name": "@atelier/pi-agent",
+      "dependencies": {
+        "@atelier/cli-agent": "workspace:*",
+        "@atelier/core": "workspace:*",
+        "@atelier/llm": "workspace:*",
+        "@atelier/proxy-egress": "workspace:*",
+        "@atelier/shared": "workspace:*",
+        "@atelier/workspace": "workspace:*",
+        "@earendil-works/pi-ai": "catalog:",
+        "@earendil-works/pi-coding-agent": "catalog:",
+        "typebox": "^1.0.57",
+      },
+    },
     "packages/projects": {
       "name": "@atelier/projects",
       "dependencies": {
@@ -416,6 +431,8 @@
     "@atelier/markdown": ["@atelier/markdown@workspace:packages/markdown"],
 
     "@atelier/observable-terminal": ["@atelier/observable-terminal@workspace:packages/observable-terminal"],
+
+    "@atelier/pi-agent": ["@atelier/pi-agent@workspace:packages/pi-agent"],
 
     "@atelier/projects": ["@atelier/projects@workspace:packages/projects"],
 

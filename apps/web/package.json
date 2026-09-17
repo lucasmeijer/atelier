@@ -37,6 +37,7 @@
     "@atelier/prompt": "workspace:*",
     "@atelier/codex-agent": "workspace:*",
     "@atelier/claude-agent": "workspace:*",
-    "@atelier/cli-agent": "workspace:*"
+    "@atelier/cli-agent": "workspace:*",
+    "@atelier/pi-agent": "workspace:*"
   }
 }

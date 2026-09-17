@@ -1,0 +1,19 @@
+{
+  "name": "@atelier/pi-agent",
+  "private": true,
+  "type": "module",
+  "exports": {
+    "./server": "./src/server/index.ts"
+  },
+  "dependencies": {
+    "@atelier/core": "workspace:*",
+    "@atelier/llm": "workspace:*",
+    "@atelier/shared": "workspace:*",
+    "@atelier/workspace": "workspace:*",
+    "@earendil-works/pi-coding-agent": "catalog:",
+    "@atelier/cli-agent": "workspace:*",
+    "@atelier/proxy-egress": "workspace:*",
+    "@earendil-works/pi-ai": "catalog:",
+    "typebox": "^1.0.57"
+  }
+}

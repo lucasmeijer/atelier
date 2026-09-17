@@ -3,11 +3,13 @@ import { mkdtemp, rm } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 
-for (const id of ["codex", "claude"]) {
+for (const id of ["codex", "claude", "pi"]) {
   test(`${id} adapter validates settings, installs credentials and builds its CLI launch`, async () => {
     const directory = await mkdtemp(join(tmpdir(), `${id}-adapter-`));
     const source = join(import.meta.dir, `../../../packages/${id}-agent/src/server`);
-    const name = id === "codex" ? "Codex" : "Claude";
+    const authExport = id === "pi" ? "requirePiModels" : id === "codex" ? "requireCodexSubscription" : "requireClaudeSubscription";
+    const model = id === "pi" ? "custom::model" : id === "codex" ? "openai-codex::gpt-5.4" : "anthropic::claude-opus-4-6";
+    const npmPackage = id === "pi" ? "@earendil-works/pi-coding-agent@" : id === "codex" ? "@openai/codex@latest" : "@anthropic-ai/claude-code@latest";
     try {
       const child = Bun.spawn([process.execPath, "-e", `
         import { expect, mock } from "bun:test";
@@ -21,13 +23,14 @@ for (const id of ["codex", "claude"]) {
         let authChecks = 0;
         mock.module("@atelier/workspace", () => ({ ...workspace, execWorkspaceShell: async (...args) => { calls.push(args); return { exitCode: 0, stdout: "", stderr: "", durationMs: 0 }; } }));
         mock.module("@atelier/llm/server", () => ({ ...llm, installSubscriptionCli: async (workspaceId) => credentials.push(workspaceId) }));
-        mock.module(${JSON.stringify(join(source, "auth.ts"))}, () => ({ require${name}Subscription: async () => { authChecks++; } }));
+        if (${JSON.stringify(id)} === "pi") mock.module(${JSON.stringify(join(source, "pi-cli.ts"))}, () => ({ installPiCliConfiguration: async (workspaceId) => credentials.push(workspaceId) }));
+        mock.module(${JSON.stringify(join(source, "auth.ts"))}, () => ({ ${authExport}: async () => { authChecks++; } }));
         mock.module(${JSON.stringify(join(source, "model-settings.ts"))}, () => ({ ${id}ModelSettings: { prepare: async (settings = {}) => settings, renderFooter: async () => "" } }));
         const { atelierServerModule } = await import(${JSON.stringify(join(source, "index.ts"))});
         const provider = atelierServerModule.agentProvider;
         expect(provider.id).toBe(${JSON.stringify(id)});
         const form = new FormData();
-        form.set("model", "${id === "codex" ? "openai-codex::gpt-5.4" : "anthropic::claude-opus-4-6"}");
+        form.set("model", "${model}");
         form.set("level", "high");
         const submitted = await provider.launch.submit(form);
         const context = await submitted.prepare();
@@ -36,7 +39,7 @@ for (const id of ["codex", "claude"]) {
         expect(authChecks).toBe(2);
         expect(credentials).toEqual(["adapter"]);
         expect(calls).toHaveLength(${id === "codex" ? 2 : 1});
-        expect(calls.at(-1)[1]).toContain(${JSON.stringify(id === "codex" ? "@openai/codex@latest" : "@anthropic-ai/claude-code@latest")});
+        expect(calls.at(-1)[1]).toContain(${JSON.stringify(npmPackage)});
         expect(calls.at(-1)[1]).toContain("${id}-");
         expect(calls.at(-1)[1]).toContain("HOME=/home/atelier");
         expect(calls.at(-1)[1]).not.toContain("test-credential");
