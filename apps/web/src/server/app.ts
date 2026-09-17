@@ -34,6 +34,7 @@ import {
   emptyWorkspaceCommandInputSchema,
   domId,
   escapeHtml,
+  turboStream,
   turboStreamResponse,
   type CableIdentifier,
   type DeleteCurrentWorkspaceResult,
@@ -1314,7 +1315,16 @@ export function createWebApp(deps: WebAppDeps): WebApp {
   }
 
   return {
-    shellSnapshot: async () => workspacePaneCollectionsTurboStream(await workspacePaneCollections("")),
+    shellSnapshot: async () => {
+      const pane = workspacePaneCollectionsTurboStream(await workspacePaneCollections(""));
+      // Readiness can change between the initial page and its Cable subscription,
+      // or while disconnected. Reconcile startup views without replacing live
+      // workspace panes (and their unsent drafts).
+      const residents = await Promise.all(registry.list().map(async (entry) =>
+        turboStream("replace", `.workspace-boot[id="${workspaceResidentId(entry.id)}"]`, await workspaceResidentFor(entry), { targets: true }),
+      ));
+      return pane + residents.join("");
+    },
     deleteCurrentWorkspaceFromAgent,
     resumeWorkspaceDeletions: deletion.resume,
     provisioning,
