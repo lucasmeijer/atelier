@@ -1,5 +1,5 @@
 import { readJsonObject, requestAcceptsJson } from "@atelier/core";
-import { agentAttachmentDraftId, deliverAttachmentDraft, removeStagedAttachments } from "./attachment-drafts.ts";
+import { agentAttachmentDraftId, deliverAttachmentDraft, removeStagedAttachments } from "@atelier/prompt/server";
 import { maybeNameAgentFromPrompt, renameAgentFromContext, setAgentSessionTitle } from "./agent-title-suggestion.ts";
 import { turboStreamResponse } from "./html.ts";
 import { removeInitialPromptDraft } from "./initial-prompt-draft.ts";

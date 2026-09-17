@@ -9,13 +9,6 @@
   height: 100%; min-height: 0; display: grid; grid-template-rows: auto minmax(0, 1fr) auto;
   background: var(--bg); position: relative; container-type: inline-size;
 }
-.agent-pane.agent-dropping .composer-surface::after, .composer.agent-dropping .composer-surface::after {
-  content: "Drop files to attach";
-  position: absolute; inset: 0; border: 2px dashed var(--accent); border-radius: inherit;
-  background: rgba(37, 99, 235, .08); color: var(--accent); font-weight: var(--weight-semibold);
-  display: flex; align-items: center; justify-content: center; pointer-events: none; z-index: 10;
-}
-
 .agent-transcript {
   min-height: 0; overflow-y: auto; scroll-behavior: auto;
   padding-block: 1.875rem;
@@ -136,7 +129,6 @@
 .agent-tool-ansi, .agent-tool-code, .agent-tool-term { background: color-mix(in srgb, var(--bg) 45%, #000 14%); color: var(--text-bright); }
 
 /* The AgentPaneComposer is the pane's bottom edge rather than a nested card. */
-.agent-pane > .composer { padding: 0; }
 .agent-pane > .composer > .composer-surface {
   overflow: visible;
   border: 0;

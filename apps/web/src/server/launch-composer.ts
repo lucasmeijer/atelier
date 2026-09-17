@@ -1,8 +1,16 @@
 import { buttonHtml } from "@atelier/design-system/button";
 import { renderTranscriptionComposerControl, transcriptionComposerController } from "@atelier/transcription/server";
-import { domId, escapeHtml, type AgentLaunchPresentation, type AgentLaunchFooterContext, type WorkspaceAgentProvider } from "@atelier/shared";
+import { domId, escapeHtml, type AgentLaunchFooterContext, type WorkspaceAgentProvider } from "@atelier/shared";
 
-export const launchProviderFrameId = "launch_composer_provider";
+/** Host-owned launch composer content. */
+export interface AgentLaunchPresentation {
+  attributesHtml: string;
+  formAttributesHtml: string;
+  bodyHtml: string;
+  footerHtml: string;
+  discardUrl: string;
+}
+const launchProviderFrameId = "launch_composer_provider";
 
 export async function renderLaunchProvider(provider: WorkspaceAgentProvider, providers: readonly WorkspaceAgentProvider[], context: AgentLaunchFooterContext): Promise<string> {
   const selectionFormId = `${launchProviderFrameId}_selection`;

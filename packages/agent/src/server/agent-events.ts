@@ -1,6 +1,6 @@
 import type { AtelierEventBus } from "@atelier/core";
 import type { AgentWorkspaceParameters } from "@atelier/shared";
-import { agentAttachmentDraftId, moveAttachmentDraft, validDraftId } from "./attachment-drafts.ts";
+import { agentAttachmentDraftId, moveAttachmentDraft, validDraftId } from "@atelier/prompt/server";
 import { stageInitialPrompt } from "./initial-prompt-draft.ts";
 import { parseModelRef } from "@atelier/llm/server";
 import { getModelThinkingLevel } from "./model-preferences.ts";

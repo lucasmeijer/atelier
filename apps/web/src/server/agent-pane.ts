@@ -63,11 +63,10 @@ function renderAgentTab(workspaceId: string, agent: AgentPaneContribution): stri
 }
 
 function providerOptions(presentation: WorkspacePresentation, menu: boolean): string {
-  return presentation.agentProviders.map((provider, index) => {
+  return presentation.agentProviders.map((provider) => {
     const action = `/workspaces/${encodeURIComponent(presentation.workspace.id)}/commands/agent.create.${encodeURIComponent(provider.id)}`;
     const item = actionItemHtml({
       kind: "single", label: { kind: "text", text: provider.label }, leadingHtml: provider.iconHtml,
-      description: index === 0 ? "Default for new agents" : undefined,
       element: { tag: "button", attributesHtml: `type="submit"${menu ? ' role="menuitem"' : ""}` },
     });
     return `<form method="post" action="${action}" data-turbo="true">${item}</form>`;
@@ -115,7 +114,7 @@ export function renderAgentPane(presentation: WorkspacePresentation): string {
   const panes = presentation.agentConversations.map((agent) => renderAgentPaneSlot(presentation.workspace.id, agent)).join("");
   return `<div class="fixed-shell-agent-pane"><div class="workspace-warning-stack" id="${domId("workspace_warnings", presentation.workspace.id)}">${presentation.warningsHtml ?? ""}</div>${panelHtml({
     element: { tag: "section",  attributesHtml: 'data-workspace-role-region="agent" data-workspace-presentation-target="agentPane" aria-label="Agent"' },
-    headerHtml: `${barButton("Show Workspace pane", "click->workspace-navigation#toggleWorkspacePaneCollapsed", Icons.Panel, "data-show-workspace-pane")}<div id="${agentNavigationDomId(presentation.workspace.id)}" class="fixed-shell-agent-navigation">${renderAgentNavigation(presentation)}</div><div id="${agentActionsDomId(presentation.workspace.id)}" class="fixed-shell-agent-actions">${renderAgentActions(presentation)}</div>`,
+    headerHtml: `${barButton("Show Workspace pane", "click->workspace-navigation#toggleWorkspacePaneCollapsed", Icons.Panel, "data-show-workspace-pane")}<span class="fixed-shell-agent-pane-icon" aria-hidden="true">${Icons.Agent}</span><div id="${agentNavigationDomId(presentation.workspace.id)}" class="fixed-shell-agent-navigation">${renderAgentNavigation(presentation)}</div><div id="${agentActionsDomId(presentation.workspace.id)}" class="fixed-shell-agent-actions">${renderAgentActions(presentation)}</div>`,
     bodyHtml: `<div id="${agentBodiesDomId(presentation.workspace.id)}" class="fixed-shell-agent-bodies">${panes || renderAgentEmpty(presentation)}</div>`,
   })}</div>`;
 }
@@ -141,21 +140,15 @@ export function agentTabsTurboStream(presentation: WorkspacePresentation, option
     ? undefined
     : presentation.agentConversations.find((agent) => agent.id === options.addedConversationId);
   if (options.addedConversationId !== undefined && !added) throw new Error(`Added Agent is missing from the presentation: ${options.addedConversationId}`);
-  const streams = [turboStream("update", agentActionsDomId(workspace.id), renderAgentActions(presentation))];
+  // Refresh choices and tabs once, without remounting existing agent bodies.
+  const streams = [agentProviderChoicesTurboStream(presentation)];
   if (added) {
-    // Replace only the navigation region so overlapping Agent creations converge
-    // even when one response observes a later creation before it renders.
-    streams.push(turboStream("update", agentNavigationDomId(workspace.id), renderAgentNavigation(presentation)));
     streams.push(turboStream("remove", agentEmptyId(workspace.id)));
     streams.push(turboStream("append", agentBodiesDomId(workspace.id), renderAgentPaneSlot(workspace.id, added)));
-  } else if (!options.removedConversationId) {
-    streams.push(turboStream("update", agentNavigationDomId(workspace.id), renderAgentNavigation(presentation)));
   }
   if (options.removedConversationId) {
-    streams.push(turboStream("update", agentNavigationDomId(workspace.id), renderAgentNavigation(presentation)));
     streams.push(turboStream("remove", agentPaneSlotDomId(workspace.id, options.removedConversationId)));
   }
-  if (presentation.agentConversations.length === 0) streams.push(turboStream("update", agentBodiesDomId(workspace.id), renderAgentEmpty(presentation)));
   if (options.selectConversationId) streams.push(selectAgentTurboStream(workspace.id, options.selectConversationId));
   if (options.removedConversationId && options.successorConversationId) {
     streams.push(selectAgentSuccessorTurboStream(workspace.id, options.removedConversationId, options.successorConversationId));

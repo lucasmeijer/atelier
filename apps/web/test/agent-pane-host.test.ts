@@ -18,7 +18,7 @@ function occupant(id: string, initial: WorkspaceAgentTabSummary[]) {
     async create() { throw new Error("Listing must not create an agent"); },
     launch: {
       async renderFooter() { return ""; }, async prepare() { return undefined; },
-      async submit() { throw new Error("not used"); }, async prepareWorkspace() { throw new Error("Listing must not prepare a workspace"); }, async refreshConfiguration() { return ""; },
+      async submit() { throw new Error("not used"); }, async prepareWorkspace() { throw new Error("Listing must not prepare a workspace"); },
     },
   };
   return { provider, closed };

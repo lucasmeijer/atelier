@@ -39,7 +39,6 @@ export const atelierServerModule: WorkspaceModule = {
       async prepare() { return { agent: {} }; },
       async submit() { return { async prepare() { return { agent: {} }; } }; },
       async prepareWorkspace(workspaceId, context) { await createCodexSession(workspaceId, context?.agent?.input); },
-      async refreshConfiguration() { return ""; },
     },
   },
   routes: [{ async handle(request, url) {

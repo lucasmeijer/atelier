@@ -12,20 +12,9 @@ export function createAgentNotificationsController(Controller: WorkspaceClientCo
     declare readonly messageTarget: HTMLElement;
     private pending = false;
 
-    connect(): void { this.select(); }
-
-    select(): void {
-      const workspace = this.element.closest<HTMLElement>("[data-workspace-id]")!;
-      const selected = workspace.dataset.workspaceSelectedAgent;
-      for (const control of this.element.querySelectorAll<HTMLElement>("[data-notification-conversation]")) {
-        control.hidden = control.dataset.notificationConversation !== selected;
-      }
-      this.feedbackTarget.hidden = true;
-    }
-
     dismiss(): void {
       this.feedbackTarget.hidden = true;
-      this.element.querySelector<HTMLButtonElement>('[data-notification-conversation]:not([hidden]) [data-notification-url]')?.focus();
+      this.element.querySelector<HTMLButtonElement>('[data-notification-url]')?.focus();
     }
 
     private async subscribe(): Promise<PushSubscription> {

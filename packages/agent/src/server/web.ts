@@ -176,7 +176,7 @@ export const agentWorkspaceModule: WorkspaceModule = {
     },
   }],
   agentProvider: {
-    id: "builtin", label: "Builtin", iconHtml: Icons.Agent,
+    id: "builtin", label: "Builtin", iconHtml: Icons.Atelier,
     tabs: workspaceAgentTabProvider,
     create: createBuiltinAgent,
     launch: nativeAgentLaunch,

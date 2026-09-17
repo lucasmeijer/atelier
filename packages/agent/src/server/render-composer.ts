@@ -9,12 +9,11 @@ import { providerBrandIconHtml } from "@atelier/shared";
 import { domId, escapeHtml, turboStream } from "./html.ts";
 import { launchComposerThinkingSettings, configuredModelOptionViews, selectAvailableConfiguredModel } from "./model-state.ts";
 import type { WorkspaceAgentConversationInfo } from "./session-store.ts";
-import { agentAttachmentDraftId, listStagedAttachments, type StagedAttachment } from "./attachment-drafts.ts";
+import { agentAttachmentDraftId, listStagedAttachments, renderAttachmentChip, type StagedAttachment } from "@atelier/prompt/server";
 import { readInitialPromptDraft } from "./initial-prompt-draft.ts";
 import { formatCost, formatTokens } from "./transcript.ts";
 import { renderWorkspaceCompletionCatalog } from "./completion-catalog.ts";
 import { agentConversationKey, agentPath, ids, type AgentRenderContext } from "./render-context.ts";
-import { renderAttachmentChip } from "./render-attachments.ts";
 
 interface AgentModelOption {
   provider: string;
@@ -66,7 +65,7 @@ export async function renderAgentPane(ctx: AgentRenderContext, agent: WorkspaceA
       data-agent-pane-workspace-id-value="${escapeHtml(ctx.workspaceId)}"
       data-agent-pane-conversation-id-value="${escapeHtml(ctx.conversationId)}"
       ${agentAttachmentDropAttrs(uploadUrl)}>
-      <div class="agent-body-controls">${renderAgentNotifications(ctx.workspaceId, [{ id: ctx.conversationId }])}</div>
+      <div class="agent-body-controls">${renderAgentNotifications(ctx)}</div>
       <div class="agent-transcript" tabindex="0" role="region" aria-label="Agent transcript" data-agent-pane-target="transcript">
         <div class="agent-transcript-surface"><div class="agent-transcript-content" id="${ids.transcript(ctx)}" data-agent-pane-target="transcriptContent">${state.transcriptHtml}</div></div>
       </div>
