@@ -1,3 +1,4 @@
+import { markProjectOnboardingWorkspace } from "../../src/server/workspace-capabilities.ts";
 import { afterEach, beforeEach, describe, expect, mock, test } from "bun:test";
 import { mkdtemp, rm } from "node:fs/promises";
 import { tmpdir } from "node:os";
@@ -20,7 +21,7 @@ describe("onboarding tool capabilities", () => {
   let source: GitProjectInitInstruction;
   let destination: GitProjectInitInstruction;
   let deps: OnboardingToolDependencies;
-  const shell = mock(async (_workspaceId: string, command: string) => ({ stdout: command.includes(".exit") && command.startsWith("cat ") ? "0\n" : command.includes("capture-pane") ? "hello\n" : "", stderr: "", exitCode: 0, durationMs: 0 }));
+  const shell = mock(async (_workspaceId: string, command: string) => ({ stdout: command.includes(".exit") && command.startsWith("if test -f ") ? "0\n" : command.includes("capture-pane") ? "hello\n" : "", stderr: "", exitCode: 0, durationMs: 0 }));
   const create = mock<OnboardingToolDependencies["createWorkspace"]>(async () => ({ workspaceId: "child", url: "/workspaces/child", status: "ready", timings: { totalMs: 10, phases: [] } }));
   const remove = mock<OnboardingToolDependencies["deleteWorkspace"]>(async () => ({ deleted: true, blocked: false }));
   const secret = mock<OnboardingToolDependencies["requestSecretValue"]>(async (_projectId, request) => ({ status: "cancelled", envName: request.envName }));
@@ -47,13 +48,17 @@ describe("onboarding tool capabilities", () => {
     return createOnboardingTools("parent", conversationId, deps).find((tool) => tool.name === name)!;
   }
 
-  test("all six tools are registered but absent from the default active set", () => {
+  test("onboarding tools are exposed only in host-marked workspaces, for every agent", () => {
     const createBashTool = mock(deps.createBashTool!);
     configureOnboardingTools({ ...deps, createBashTool });
     try {
+      expect(createRegisteredOnboardingTools("parent", "conversation")).toEqual([]);
+      markProjectOnboardingWorkspace("parent");
       const group = createRegisteredOnboardingTools("parent", "conversation");
       expect(group.map((tool) => tool.name)).toEqual(["read_project_settings", "write_project_settings", "request_secret_value", "bash_in_other_workspace", "delete_workspace", "create_workspace"]);
       expect(createBashTool).toHaveBeenCalledTimes(1);
+      expect(createRegisteredOnboardingTools("parent", "sibling").map((tool) => tool.name)).toEqual(group.map((tool) => tool.name));
+      expect(createRegisteredOnboardingTools("ordinary", "conversation")).toEqual([]);
       const defaults = createWorkspaceAgentTools("parent").map((tool) => tool.name);
       for (const tool of group) expect(defaults).not.toContain(tool.name);
       expect(defaults).toContain("bash");

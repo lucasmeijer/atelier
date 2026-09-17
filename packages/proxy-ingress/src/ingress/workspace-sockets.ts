@@ -11,7 +11,7 @@ const publicationSchema = Type.Object({
 }, { additionalProperties: false });
 
 /** Each socket is a capability for exactly one workspace; bodies cannot choose it. */
-export function createWorkspaceIngressSockets(ingress: WorkspaceIngress, directory: string) {
+export function createWorkspaceIngressSockets(ingress: WorkspaceIngress, directory: string, handleRequest?: (request: Request, workspaceId: string) => Promise<Response | undefined> | Response | undefined) {
   const servers = new Map<string, ReturnType<typeof Bun.serve>>();
   const pending = new Map<string, Promise<void>>();
   return {
@@ -23,7 +23,11 @@ export function createWorkspaceIngressSockets(ingress: WorkspaceIngress, directo
         const path = join(directory, workspaceId, "ingress.sock");
         await mkdir(join(directory, workspaceId), { recursive: true });
         try { await unlink(path); } catch (error) { if (!(error instanceof Error && "code" in error && error.code === "ENOENT")) throw error; }
-        const server = Bun.serve({ unix: path, maxRequestBodySize: 1024, async fetch(request) {
+        const server = Bun.serve({ unix: path, maxRequestBodySize: 4 * 1024 * 1024, async fetch(request, server) {
+          // Host-owned protocols such as MCP can stream for longer than Bun's idle timeout.
+          server.timeout(request, 0);
+          const handled = await handleRequest?.(request, workspaceId);
+          if (handled) return handled;
           if (new URL(request.url).pathname === "/health" && request.method === "GET") return new Response("ok");
           if (new URL(request.url).pathname !== "/origins" || request.method !== "POST") return new Response("Not found", { status: 404 });
           let input: unknown;

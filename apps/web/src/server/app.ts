@@ -717,7 +717,7 @@ export function createWebApp(deps: WebAppDeps): WebApp {
     let context = command.context;
     if (!context) {
       const providerId = stringField(command.agent?.provider, "agent.provider");
-      const provider = command.projectOnboarding ? agentProvider("builtin") : providerId ? agentProvider(providerId) : await defaultAgentProvider();
+      const provider = providerId ? agentProvider(providerId) : await defaultAgentProvider();
       const initialPrompt = stringField(command.agent?.initialPrompt, "agent.initialPrompt");
       const attachmentDraft = stringField(command.agent?.attachmentDraft, "agent.attachmentDraft");
       if (attachmentDraft && !validDraftId(attachmentDraft)) throw invalidArguments("Invalid attachment draft");

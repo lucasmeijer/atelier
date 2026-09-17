@@ -1,3 +1,4 @@
+import { prepareAgentMcp, revokeAgentMcp } from "@atelier/agent/server";
 import { AtelierCoreError, createKeyedOperationQueue, shellQuote } from "@atelier/core";
 import { createPiModelRuntime, installSubscriptionCli } from "@atelier/llm/server";
 import { buildObservableSessionCommand } from "@atelier/observable-terminal/server";
@@ -54,10 +55,14 @@ export function createCodexSession(workspaceId: string, input: WorkspaceAgentInp
         await checkedShell(workspaceId, `mkdir -p ${shellQuote(directory)} && base64 -d > ${shellQuote(path)}`, image.data);
         imagePaths.push(path);
       }
+      const mcp = await prepareAgentMcp(workspaceId, id);
+      const codexHome = `/home/atelier/.local/share/atelier-agents/${id}/codex`;
+      await checkedShell(workspaceId, `umask 077; mkdir -p ${shellQuote(codexHome)} && ln -s /home/atelier/.codex/auth.json ${shellQuote(codexHome + "/auth.json")} && cat > ${shellQuote(codexHome + "/config.toml")}`, `[mcp_servers.atelier]\nurl = ${JSON.stringify(mcp.url)}\nrequired = true\ntool_timeout_sec = 3600\n[mcp_servers.atelier.http_headers]\nAuthorization = ${JSON.stringify("Bearer " + mcp.token)}\n`);
       // Keep prompt text out of shell syntax, and keep even immediate startup errors in tmux history.
-      const command = `/bin/bash -lc ${shellQuote(codexLaunchScript(input, imagePaths, settings))}`;
-      await checkedShell(workspaceId, buildObservableSessionCommand({ requireExistingServer: true, session: session.tmuxSession, cwd: workspaceRoot, command, remainOnExit: true, passthrough: true, historyLimit: 10000 }));
+      const command = `/bin/bash -c ${shellQuote(codexLaunchScript(input, imagePaths, settings))}`;
+      await checkedShell(workspaceId, buildObservableSessionCommand({ requireExistingServer: true, session: session.tmuxSession, cwd: workspaceRoot, command, env: { HOME: "/home/atelier", CODEX_HOME: codexHome }, remainOnExit: true, passthrough: true, historyLimit: 10000 }));
     } catch (error) {
+      await revokeAgentMcp(workspaceId, id);
       session.error = error instanceof Error ? error.message : String(error);
       store().write(workspaceId, { sessions: listCodexSessions(workspaceId) });
     }
@@ -76,6 +81,7 @@ export async function codexTerminalState(workspaceId: string, session: CodexSess
 export function closeCodexSession(workspaceId: string, id: string): Promise<void> {
   return serialize(workspaceId, async () => {
     const session = codexSession(workspaceId, id);
+    await revokeAgentMcp(workspaceId, id);
     if ((await codexTerminalState(workspaceId, session)).exists) await checkedShell(workspaceId, `tmux kill-session -t ${shellQuote(session.tmuxSession)}`);
     store().write(workspaceId, { sessions: listCodexSessions(workspaceId).filter((session) => session.id !== id) });
   });

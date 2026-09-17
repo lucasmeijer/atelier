@@ -11,6 +11,8 @@ async function scenario(script: string): Promise<void> {
       import { expect, mock } from "bun:test";
       const workspace = await import("@atelier/workspace");
       const llm = await import("@atelier/llm/server");
+      const agent = await import("@atelier/agent/server");
+      mock.module("@atelier/agent/server", () => ({ ...agent, prepareAgentMcp: async () => ({ url: "http://127.0.0.1:2988/mcp", token: "test-credential" }), revokeAgentMcp: async () => {} }));
       const calls = [];
       let result = { stdout: "", stderr: "", exitCode: 0, durationMs: 0 };
       mock.module("@atelier/workspace", () => ({ ...workspace, execWorkspaceShell: async (...args) => { calls.push(args); return result; } }));
@@ -27,14 +29,19 @@ async function scenario(script: string): Promise<void> {
 test("creation materializes images and launches once; reads do not rerun prompts", () => scenario(`
   const input = { text: "Inspect this image", images: [{ mimeType: "image/png", data: "aW1hZ2U=" }], attachmentNotes: ["File: /work/.atelier-attachments/notes.txt"] };
   const id = await createCodexSession("initial", input);
-  expect(calls).toHaveLength(2);
+  expect(calls).toHaveLength(3);
   expect(calls[0][1]).toContain("/work/.atelier-attachments/codex-" + id + "/0.png");
   expect(calls[0][2]).toEqual({ stdin: "aW1hZ2U=" });
-  expect(calls[1][1]).toContain("tmux -N new-session");
+  expect(calls[1][1]).toContain("config.toml");
+  expect(calls[1][2].stdin).toContain('Authorization = "Bearer test-credential"');
+  expect(calls[2][1]).toContain("tmux -N new-session");
+  expect(calls[2][1]).not.toContain("test-credential");
+  expect(calls[2][1]).toContain("HOME=/home/atelier");
+  expect(calls[2][1]).toContain("CODEX_HOME=/home/atelier/.local/share/atelier-agents/" + id + "/codex");
   expect(codexSession("initial", id).input).toEqual(input);
   expect(codexSession("initial", id).kind).toBe("codex");
   expect(listCodexSessions("initial")).toHaveLength(1);
-  expect(calls).toHaveLength(2);
+  expect(calls).toHaveLength(3);
 `));
 
 test("startup failure leaves a durable tab with its actual error", () => scenario(`
@@ -70,6 +77,6 @@ test("provisioning recovery reuses its claimed session without submitting again"
   await atelierServerModule.agentProvider.launch.prepareWorkspace("recovery", context);
   const first = listCodexSessions("recovery")[0].id;
   await atelierServerModule.agentProvider.launch.prepareWorkspace("recovery", context);
-  expect(calls).toHaveLength(1);
+  expect(calls).toHaveLength(2);
   expect(listCodexSessions("recovery").map(session => session.id)).toEqual([first]);
 `));

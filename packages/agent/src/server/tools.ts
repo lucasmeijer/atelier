@@ -162,7 +162,11 @@ export function createWorkspaceAgentTools(workspaceId: string, options: Workspac
     },
   });
   const bash = createTmuxBashTool(workspaceId);
+  return [read, write, edit, bash, ...createAtelierControlTools(workspaceId, options)];
+}
+
+export function createAtelierControlTools(workspaceId: string, options: WorkspaceAgentToolOptions = {}): ToolDefinition<any, any>[] {
   const present = createPresentTool(workspaceId, options);
   const external = [...registeredWorkspaceAgentTools.values()].map((factory) => factory(workspaceId, options));
-  return [read, write, edit, bash, ...(present ? [present] : []), ...external];
+  return [...(present ? [present] : []), ...external];
 }

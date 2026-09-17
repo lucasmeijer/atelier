@@ -1,6 +1,6 @@
 import { agentProvider, rememberAgentProvider } from "./agent-providers.ts";
 import { deliverAttachmentDraft, removeAttachmentDraft, validDraftId } from "@atelier/prompt/server";
-import { configureOnboardingTools, configureAgentDelegation } from "@atelier/agent/server";
+import { configureOnboardingTools, configureAgentDelegation, configureAgentMcp, handleAgentMcpRequest, markProjectOnboardingWorkspace } from "@atelier/agent/server";
 import { createProjectSecretRequester } from "./project-secret-request.ts";
 import { ensureDefaultWorkspaceImage } from "@atelier/workspace-image";
 import { ensureHostInotifyLimit } from "@atelier/workspace";
@@ -201,6 +201,7 @@ async function authResponse(request: Request): Promise<Response | undefined> {
 }
 
 const atelierEvents = createAtelierEventBus();
+configureAgentMcp(atelierEvents);
 const socketHandlers: WorkspaceServerSocketHandler[] = [];
 const workspaceAppResolvers: WorkspaceServerAppResolver[] = [];
 const provisioningHooks: WorkspaceServerProvisioningHook[] = [workspaceSetupProvisioningHook];
@@ -281,6 +282,7 @@ for (const module of workspaceModules) {
 }
 
 provisioningHooks.push({ id: "workspace.agent", label: "Prepare agent", async run({ workspaceId, creationContext }) {
+  if (creationContext?.projectOnboarding) markProjectOnboardingWorkspace(workspaceId);
   const parameters = creationContext?.agent;
   const provider = agentProvider(parameters?.provider ?? "builtin");
   if (parameters) {
@@ -393,7 +395,7 @@ const workspaceIngress = createWorkspaceIngress({
   originIdentityStore: createFileOriginIdentityStore(),
 });
 
-const ingressSockets = createWorkspaceIngressSockets(workspaceIngress, join(runtimeContext.atelierDataDir, "workspace-sockets"));
+const ingressSockets = createWorkspaceIngressSockets(workspaceIngress, join(runtimeContext.atelierDataDir, "workspace-sockets"), handleAgentMcpRequest);
 atelierEvents.on("workspace_plan_prepare", ({ workspaceId }) => ingressSockets.ensure(workspaceId));
 atelierEvents.on("workspace_deleted", ({ workspaceId }) => ingressSockets.remove(workspaceId));
 
@@ -487,6 +489,9 @@ for (let attempt = 0; attempt < maxPortAttempts; attempt++) {
         const url = new URL(request.url);
         const canonical = await handleCanonicalProxyRequest(url);
         if (canonical) return canonical;
+
+        const mcpResponse = await handleAgentMcpRequest(request);
+        if (mcpResponse) return mcpResponse;
 
         const auth = await authResponse(request);
         if (auth) return auth;

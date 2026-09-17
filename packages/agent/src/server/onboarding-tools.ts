@@ -1,3 +1,4 @@
+import { isProjectOnboardingWorkspace } from "./workspace-capabilities.ts";
 import type { DeleteCurrentWorkspaceResult } from "@atelier/shared";
 import { AtelierCoreError } from "@atelier/core";
 import { isGitProjectInit, projectWorkspaceInitWithSettings, projectWorkspaceSettingsSchema, readProjectWorkspaceSettings, writeProjectWorkspaceSettings, type GitProjectInitInstruction, type ProjectWorkspaceSettings } from "@atelier/projects";
@@ -118,5 +119,5 @@ export function configureOnboardingTools(deps: OnboardingToolDependencies | unde
 }
 
 export function createRegisteredOnboardingTools(workspaceId: string, conversationId: string): ToolDefinition<any, any>[] {
-  return onboardingDependencies ? createOnboardingTools(workspaceId, conversationId, onboardingDependencies) : [];
+  return onboardingDependencies && isProjectOnboardingWorkspace(workspaceId) ? createOnboardingTools(workspaceId, conversationId, onboardingDependencies) : [];
 }

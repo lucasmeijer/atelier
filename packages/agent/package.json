@@ -28,7 +28,8 @@
     "@atelier/workspace": "workspace:*",
     "web-push": "3.6.7",
     "@atelier/llm": "workspace:*",
-    "@atelier/prompt": "workspace:*"
+    "@atelier/prompt": "workspace:*",
+    "@modelcontextprotocol/sdk": "1.30.0"
   },
   "devDependencies": {
     "@types/web-push": "3.6.4"

@@ -14,6 +14,7 @@
     "@atelier/prompt": "workspace:*",
     "@atelier/shared": "workspace:*",
     "@atelier/workspace": "workspace:*",
-    "typebox": "^1.0.57"
+    "typebox": "^1.0.57",
+    "@atelier/agent": "workspace:*"
   }
 }

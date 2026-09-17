@@ -1,3 +1,4 @@
+import { isProjectOnboardingWorkspace } from "./workspace-capabilities.ts";
 import { projectOnboardingInstructions } from "./project-onboarding.ts";
 import { agentDelegation, type AgentSessionAttachment, type AgentDelegationTranscript } from "./delegation.ts";
 import { attachModelRequestPipeline } from "./model-request-pipeline.ts";
@@ -13,7 +14,7 @@ import { createPiModelRuntime } from "@atelier/llm/server";
 import type { WorkspaceAgentRuntimeOptions } from "./runtime-types.ts";
 import { compactionKeepRecentTokens } from "./runtime-status.ts";
 import { AgentServiceTierState, modelRuntimeWithServiceTiers, supportsFastMode, type AgentServiceTier } from "./service-tier.ts";
-import { isProjectOnboardingConversation, type WorkspaceAgentConversationInfo } from "./session-store.ts";
+import type { WorkspaceAgentConversationInfo } from "./session-store.ts";
 import { loadWorkspaceSkills } from "./skills.ts";
 import { createAtelierResourceLoader } from "./system-prompt.ts";
 import { createWorkspaceAgentTools } from "./tools.ts";
@@ -68,7 +69,7 @@ export async function createPiSession(agent: WorkspaceAgentConversationInfo, opt
     loadWorkspaceSkills(agent.workspaceId),
   ]);
   const preparation = await agentDelegation?.prepare({ agent, events: options.events });
-  const projectOnboarding = isProjectOnboardingConversation(agent);
+  const projectOnboarding = isProjectOnboardingWorkspace(agent.workspaceId);
   const appendSystemPrompt = [...preparation?.prompt ?? [], ...(projectOnboarding ? [projectOnboardingInstructions] : [])];
   await options.events?.emit("agent_system_prompt_prepare", { workspaceId: agent.workspaceId, conversationId: agent.conversationId, lines: appendSystemPrompt });
   const sessionSettings = { compaction: { enabled: true, keepRecentTokens: compactionKeepRecentTokens } };
@@ -76,8 +77,11 @@ export async function createPiSession(agent: WorkspaceAgentConversationInfo, opt
   const sessionManager = SessionManager.open(agent.path, dirname(agent.path), workspaceRoot);
   preparation?.seedHistory?.(sessionManager);
   const serviceTiers = new AgentServiceTierState(sessionManager);
-  const defaultTools = [...createWorkspaceAgentTools(agent.workspaceId, { events: options.events }), ...(preparation?.tools ?? [])];
-  const customTools = [...defaultTools, ...createRegisteredOnboardingTools(agent.workspaceId, agent.conversationId)];
+  const customTools = [
+    ...createWorkspaceAgentTools(agent.workspaceId, { events: options.events }),
+    ...(preparation?.tools ?? []),
+    ...createRegisteredOnboardingTools(agent.workspaceId, agent.conversationId),
+  ];
   const inheritedModel = preparation?.model;
   let promptSession: AgentSession | undefined;
   const { session } = await createAgentSession({
@@ -96,9 +100,6 @@ export async function createPiSession(agent: WorkspaceAgentConversationInfo, opt
     settingsManager: SettingsManager.inMemory(sessionSettings),
   });
   promptSession = session;
-  // Pi's `tools` option above is a registration allowlist. Keep onboarding tools registered
-  // but only host-marked onboarding conversations may activate them, including on resume.
-  session.setActiveToolsByName((projectOnboarding ? customTools : defaultTools).map((tool) => tool.name));
   let attachment: AgentSessionAttachment | undefined;
   let detachPipeline: (() => void) | undefined;
   const disposeDelegation = async () => {
