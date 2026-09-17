@@ -9,7 +9,7 @@ diff --git a/vendor/github.com/moby/buildkit/snapshot/mountmanager.go b/vendor/g
 new file mode 100644
 --- /dev/null
 +++ b/vendor/github.com/moby/buildkit/snapshot/mountmanager.go
-@@ -0,0 +1,98 @@
+@@ -0,0 +1,118 @@
 +package snapshot
 +
 +import (
@@ -19,23 +19,26 @@ new file mode 100644
 +	"sync"
 +	"time"
 +
++	"github.com/containerd/containerd/v2/core/leases"
 +	"github.com/containerd/containerd/v2/core/mount"
 +	"github.com/containerd/containerd/v2/core/snapshots"
 +	"github.com/containerd/containerd/v2/pkg/namespaces"
 +	"github.com/containerd/errdefs"
 +	"github.com/moby/buildkit/identity"
++	"github.com/moby/buildkit/util/leaseutil"
 +	"github.com/moby/sys/user"
 +)
 +
 +// WithMountManager resolves containerd mount instructions at the Mountable
 +// boundary, so executors, local mounters, and exporters receive system mounts.
-+func WithMountManager(s Snapshotter, manager mount.Manager, namespace string) Snapshotter {
-+	return &managedSnapshotter{Snapshotter: s, manager: manager, namespace: namespace}
++func WithMountManager(s Snapshotter, manager mount.Manager, lm leases.Manager, namespace string) Snapshotter {
++	return &managedSnapshotter{Snapshotter: s, manager: manager, leases: lm, namespace: namespace}
 +}
 +
 +type managedSnapshotter struct {
 +	Snapshotter
 +	manager   mount.Manager
++	leases    leases.Manager
 +	namespace string
 +}
 +
@@ -56,14 +59,15 @@ new file mode 100644
 +}
 +
 +func (s *managedSnapshotter) wrap(ctx context.Context, key string, m Mountable) Mountable {
-+	return &managedMountable{Mountable: m, ctx: namespaces.WithNamespace(context.WithoutCancel(ctx), s.namespace), manager: s.manager, snapshotter: s.Name(), key: key}
++	return &managedMountable{Mountable: m, ctx: namespaces.WithNamespace(context.WithoutCancel(ctx), s.namespace), manager: s.manager, leases: s.leases, key: key}
 +}
 +
 +type managedMountable struct {
 +	Mountable
-+	ctx              context.Context
-+	manager          mount.Manager
-+	snapshotter, key string
++	ctx     context.Context
++	manager mount.Manager
++	leases  leases.Manager
++	key     string
 +}
 +
 +func (m *managedMountable) IdentityMapping() *user.IdentityMapping {
@@ -75,35 +79,51 @@ new file mode 100644
 +	if err != nil {
 +		return nil, nil, err
 +	}
-+	name := "buildkit-" + identity.NewID()
++	releaseRaw := func() error {
++		if release != nil {
++			return release()
++		}
++		return nil
++	}
 +	ctx, cancel := context.WithTimeout(context.WithoutCancel(m.ctx), 10*time.Second)
 +	defer cancel()
-+	active, err := m.manager.Activate(ctx, name, raw, mount.WithLabels(map[string]string{
-+		// If the client disappears before release, snapshot deletion permits GC
-+		// to clean up the orphan activation and its EROFS mounts.
-+		"containerd.io/gc.bref.snapshot." + m.snapshotter: m.key,
-+	}))
++	// Mountables are cached across operations. Never reuse their lookup lease:
++	// it may have expired or been deleted. No expiration can bound actual use;
++	// release deletes this lease, and worker startup reaps temporary orphans.
++	// Do not use leaseutil.WithLease (reuses the context's lease) or NewLease
++	// (adds a one-hour expiration).
++	lease, err := m.leases.Create(ctx, leases.WithRandomID(), leaseutil.MakeTemporary)
++	if err != nil {
++		return nil, nil, errors.Join(fmt.Errorf("lease buildkit snapshot %s: %w", m.key, err), releaseRaw())
++	}
++	deleteLease := func() error {
++		ctx, cancel := context.WithTimeout(context.WithoutCancel(m.ctx), 10*time.Second)
++		defer cancel()
++		return m.leases.Delete(ctx, lease)
++	}
++	name := "buildkit-" + identity.NewID()
++	// The activation lease is the owner. A snapshot back-reference would keep
++	// orphan activations alive after worker startup removes temporary leases.
++	active, err := m.manager.Activate(leases.WithLease(ctx, lease.ID), name, raw)
 +	if errdefs.IsNotImplemented(err) {
-+		// The manager uses this response when every mount is already a system mount.
++		// Every mount is already a system mount; no activation needs protection.
++		if err := deleteLease(); err != nil {
++			return nil, nil, errors.Join(err, releaseRaw())
++		}
 +		return raw, release, nil
 +	}
 +	if err != nil {
-+		if release != nil {
-+			err = errors.Join(err, release())
-+		}
-+		return nil, nil, fmt.Errorf("activate buildkit snapshot %s: %w", m.key, err)
++		return nil, nil, errors.Join(fmt.Errorf("activate buildkit snapshot %s: %w", m.key, err), deleteLease(), releaseRaw())
 +	}
 +	var once sync.Once
 +	var releaseErr error
 +	return setRedirectDir(active.System, getRedirectDirOption()), func() error {
 +		once.Do(func() {
-+			// Build cancellation must not cancel mount cleanup.
++			// Keep the lease through deactivation, even after build cancellation.
 +			ctx, cancel := context.WithTimeout(context.WithoutCancel(m.ctx), 10*time.Second)
 +			defer cancel()
 +			releaseErr = m.manager.Deactivate(ctx, name)
-+			if release != nil {
-+				releaseErr = errors.Join(releaseErr, release())
-+			}
++			releaseErr = errors.Join(releaseErr, deleteLease(), releaseRaw())
 +		})
 +		return releaseErr
 +	}, nil
@@ -112,7 +132,7 @@ diff --git a/vendor/github.com/moby/buildkit/snapshot/mountmanager_test.go b/ven
 new file mode 100644
 --- /dev/null
 +++ b/vendor/github.com/moby/buildkit/snapshot/mountmanager_test.go
-@@ -0,0 +1,144 @@
+@@ -0,0 +1,254 @@
 +package snapshot
 +
 +import (
@@ -120,6 +140,7 @@ new file mode 100644
 +	"errors"
 +	"testing"
 +
++	"github.com/containerd/containerd/v2/core/leases"
 +	"github.com/containerd/containerd/v2/core/mount"
 +	"github.com/containerd/containerd/v2/pkg/namespaces"
 +	"github.com/containerd/errdefs"
@@ -133,30 +154,81 @@ new file mode 100644
 +}
 +func (*testMountable) IdentityMapping() *user.IdentityMapping { return nil }
 +
++type testMountLeases struct {
++	leases.Manager
++	t                    *testing.T
++	live                 map[string]bool
++	creates, deletes     int
++	createErr, deleteErr error
++}
++
++func (l *testMountLeases) checkContext(ctx context.Context) {
++	l.t.Helper()
++	ns, _ := namespaces.Namespace(ctx)
++	if ctx.Err() != nil || ns != "moby" {
++		l.t.Fatalf("invalid lease context: namespace=%q error=%v", ns, ctx.Err())
++	}
++}
++func (l *testMountLeases) Create(ctx context.Context, opts ...leases.Opt) (leases.Lease, error) {
++	l.checkContext(ctx)
++	if l.createErr != nil {
++		return leases.Lease{}, l.createErr
++	}
++	var lease leases.Lease
++	for _, opt := range opts {
++		if err := opt(&lease); err != nil {
++			return leases.Lease{}, err
++		}
++	}
++	if lease.ID == "" || lease.ID == "old-lookup-lease" || l.live[lease.ID] {
++		l.t.Fatal("activation requires a fresh lease")
++	}
++	if _, ok := lease.Labels["containerd.io/gc.expire"]; ok {
++		l.t.Fatal("activation lease must not expire while in use")
++	}
++	if _, ok := lease.Labels["buildkit/lease.temporary"]; !ok {
++		l.t.Fatal("worker restart must reclaim orphan leases")
++	}
++	l.live[lease.ID] = true
++	l.creates++
++	return lease, nil
++}
++func (l *testMountLeases) Delete(ctx context.Context, lease leases.Lease, _ ...leases.DeleteOpt) error {
++	l.checkContext(ctx)
++	if !l.live[lease.ID] {
++		l.t.Fatal("deleted lease more than once")
++	}
++	l.deletes++
++	if l.deleteErr != nil {
++		return l.deleteErr
++	}
++	delete(l.live, lease.ID)
++	return nil
++}
++
 +type testMountManager struct {
 +	mount.Manager
 +	t                      *testing.T
++	leases                 *testMountLeases
 +	activates, deactivates int
-+	fail                   error
-+	keys                   map[string]bool
++	fail, deactivateErr    error
++	keys                   map[string]string
 +}
 +
 +func (m *testMountManager) Activate(ctx context.Context, key string, raw []mount.Mount, opts ...mount.ActivateOpt) (mount.ActivationInfo, error) {
++	m.leases.checkContext(ctx)
 +	m.activates++
-+	if ctx.Err() != nil {
-+		m.t.Fatal("activation reused expired lookup context")
-+	}
-+	ns, _ := namespaces.Namespace(ctx)
-+	if ns != "moby" {
-+		m.t.Fatalf("namespace = %q", ns)
++	lid, _ := leases.FromContext(ctx)
++	if !m.leases.live[lid] {
++		m.t.Fatal("activation is not protected by a live lease")
 +	}
 +	if raw[0].Type != "format/mkdir/overlay" {
 +		m.t.Fatal("missing raw mount")
 +	}
-+	if m.keys[key] {
++	if _, ok := m.keys[key]; ok {
 +		m.t.Fatal("activation names must be distinct")
 +	}
-+	m.keys[key] = true
++	m.keys[key] = lid
 +	var cfg mount.ActivateOptions
 +	for _, opt := range opts {
 +		opt(&cfg)
@@ -164,30 +236,32 @@ new file mode 100644
 +	if cfg.Temporary {
 +		m.t.Fatal("must not request temporary activation")
 +	}
-+	if cfg.Labels["containerd.io/gc.bref.snapshot.erofs"] != "snapshot-key" {
-+		m.t.Fatal("missing GC back-reference")
++	if len(cfg.Labels) != 0 {
++		m.t.Fatal("activation lifetime must not be tied to cached snapshots")
 +	}
 +	return mount.ActivationInfo{System: []mount.Mount{{Type: "bind", Source: "/resolved", Options: []string{"rbind"}}}}, m.fail
 +}
 +func (m *testMountManager) Deactivate(ctx context.Context, key string) error {
++	m.leases.checkContext(ctx)
 +	m.deactivates++
-+	if ctx.Err() != nil {
-+		m.t.Fatal("cleanup context is canceled")
++	if !m.leases.live[m.keys[key]] {
++		m.t.Fatal("lease released before deactivation")
 +	}
-+	ns, _ := namespaces.Namespace(ctx)
-+	if ns != "moby" {
-+		m.t.Fatal("cleanup lost namespace")
-+	}
-+	if !m.keys[key] {
-+		m.t.Fatal("wrong activation key")
-+	}
-+	return nil
++	return m.deactivateErr
 +}
-+func TestManagedMountLifetime(t *testing.T) {
-+	ctx, cancel := context.WithCancel(namespaces.WithNamespace(context.Background(), "moby"))
-+	mm := &testMountManager{t: t, keys: map[string]bool{}}
++
++func newManagedMountTest(t *testing.T) (*managedMountable, *testMountable, *testMountManager, *testMountLeases, context.CancelFunc) {
++	ctx, cancel := context.WithCancel(leases.WithLease(namespaces.WithNamespace(context.Background(), "moby"), "old-lookup-lease"))
++	lm := &testMountLeases{t: t, live: map[string]bool{}}
++	mm := &testMountManager{t: t, leases: lm, keys: map[string]string{}}
 +	raw := &testMountable{}
-+	m := &managedMountable{Mountable: raw, ctx: ctx, manager: mm, snapshotter: "erofs", key: "snapshot-key"}
++	m := &managedMountable{Mountable: raw, ctx: ctx, manager: mm, leases: lm, key: "snapshot-key"}
++	t.Cleanup(cancel)
++	return m, raw, mm, lm, cancel
++}
++
++func TestManagedMountLifetime(t *testing.T) {
++	m, raw, mm, lm, cancel := newManagedMountTest(t)
 +	mounts, release, err := m.Mount()
 +	if err != nil {
 +		t.Fatal(err)
@@ -199,6 +273,9 @@ new file mode 100644
 +	if err != nil {
 +		t.Fatal(err)
 +	}
++	if len(lm.live) != 2 {
++		t.Fatal("overlapping consumers need separate leases")
++	}
 +	cancel()
 +	if err := release(); err != nil {
 +		t.Fatal(err)
@@ -206,34 +283,39 @@ new file mode 100644
 +	if err := release(); err != nil {
 +		t.Fatal(err)
 +	}
++	if len(lm.live) != 1 {
++		t.Fatal("release affected another consumer")
++	}
 +	if err := release2(); err != nil {
 +		t.Fatal(err)
 +	}
-+	if mm.activates != 2 || mm.deactivates != 2 || raw.releases != 2 {
-+		t.Fatalf("lifetime counts %d %d %d", mm.activates, mm.deactivates, raw.releases)
++	if mm.activates != 2 || mm.deactivates != 2 || raw.releases != 2 || lm.creates != 2 || lm.deletes != 2 || len(lm.live) != 0 {
++		t.Fatal("incorrect activation/lease lifetime counts")
 +	}
 +}
++
 +func TestManagedMountActivationFailure(t *testing.T) {
++	m, raw, mm, lm, _ := newManagedMountTest(t)
 +	fail := errors.New("activation failed")
-+	mm := &testMountManager{t: t, fail: fail, keys: map[string]bool{}}
-+	raw := &testMountable{}
-+	m := &managedMountable{Mountable: raw, ctx: namespaces.WithNamespace(context.Background(), "moby"), manager: mm, snapshotter: "erofs", key: "snapshot-key"}
++	mm.fail = fail
 +	mounts, release, err := m.Mount()
 +	if !errors.Is(err, fail) || mounts != nil || release != nil {
 +		t.Fatalf("unexpected result: %v %v", mounts, err)
 +	}
-+	if raw.releases != 1 || mm.deactivates != 0 {
++	if raw.releases != 1 || mm.deactivates != 0 || lm.deletes != 1 || len(lm.live) != 0 {
 +		t.Fatal("incorrect failed activation cleanup")
 +	}
 +}
 +
 +func TestManagedMountSystemMounts(t *testing.T) {
-+	mm := &testMountManager{t: t, fail: errdefs.ErrNotImplemented, keys: map[string]bool{}}
-+	raw := &testMountable{}
-+	m := &managedMountable{Mountable: raw, ctx: namespaces.WithNamespace(context.Background(), "moby"), manager: mm, snapshotter: "erofs", key: "snapshot-key"}
++	m, raw, mm, lm, _ := newManagedMountTest(t)
++	mm.fail = errdefs.ErrNotImplemented
 +	mounts, release, err := m.Mount()
 +	if err != nil || len(mounts) != 1 {
 +		t.Fatalf("%v %v", mounts, err)
++	}
++	if len(lm.live) != 0 || lm.deletes != 1 {
++		t.Fatal("system-only mounts leaked a lease")
 +	}
 +	if err := release(); err != nil {
 +		t.Fatal(err)
@@ -244,11 +326,8 @@ new file mode 100644
 +}
 +
 +func TestManagedMountAfterLookupCancellation(t *testing.T) {
-+	ctx, cancel := context.WithCancel(namespaces.WithNamespace(context.Background(), "moby"))
++	m, _, _, _, cancel := newManagedMountTest(t)
 +	cancel()
-+	mm := &testMountManager{t: t, keys: map[string]bool{}}
-+	raw := &testMountable{}
-+	m := &managedMountable{Mountable: raw, ctx: ctx, manager: mm, snapshotter: "erofs", key: "snapshot-key"}
 +	_, release, err := m.Mount()
 +	if err != nil {
 +		t.Fatal(err)
@@ -256,6 +335,57 @@ new file mode 100644
 +	if err := release(); err != nil {
 +		t.Fatal(err)
 +	}
++}
++
++func TestManagedMountLeaseCreationFailure(t *testing.T) {
++	m, raw, mm, lm, _ := newManagedMountTest(t)
++	lm.createErr = errors.New("lease creation failed")
++	mounts, release, err := m.Mount()
++	if !errors.Is(err, lm.createErr) || mounts != nil || release != nil {
++		t.Fatalf("unexpected result: %v %v", mounts, err)
++	}
++	if raw.releases != 1 || mm.activates != 0 || lm.deletes != 0 {
++		t.Fatal("incorrect failed lease cleanup")
++	}
++}
++
++func TestManagedMountCleanupErrors(t *testing.T) {
++	for _, activationErr := range []error{nil, errors.New("activation failed"), errdefs.ErrNotImplemented} {
++		t.Run(fmtError(activationErr), func(t *testing.T) {
++			m, raw, mm, lm, _ := newManagedMountTest(t)
++			mm.fail = activationErr
++			lm.deleteErr = errors.New("delete lease failed")
++			_, release, err := m.Mount()
++			if activationErr == nil {
++				if err != nil {
++					t.Fatal(err)
++				}
++				mm.deactivateErr = errors.New("deactivate failed")
++				err = release()
++				if !errors.Is(err, mm.deactivateErr) {
++					t.Fatal("lost deactivation error")
++				}
++				if err2 := release(); err2 != err {
++					t.Fatal("cleanup must be idempotent")
++				}
++			} else if !errors.Is(activationErr, errdefs.ErrNotImplemented) && !errors.Is(err, activationErr) {
++				t.Fatal("lost activation error")
++			}
++			if !errors.Is(err, lm.deleteErr) {
++				t.Fatal("lost lease deletion error")
++			}
++			if raw.releases != 1 || lm.deletes != 1 {
++				t.Fatal("cleanup must attempt all resources exactly once")
++			}
++		})
++	}
++}
++
++func fmtError(err error) string {
++	if err == nil {
++		return "release"
++	}
++	return err.Error()
 +}
 diff --git a/vendor/github.com/moby/buildkit/worker/containerd/containerd.go b/vendor/github.com/moby/buildkit/worker/containerd/containerd.go
 --- a/vendor/github.com/moby/buildkit/worker/containerd/containerd.go
@@ -273,7 +403,7 @@ diff --git a/vendor/github.com/moby/buildkit/worker/containerd/containerd.go b/v
  		ProxyProvider:    proxyProvider,
  		Executor:         containerdexecutor.New(executorOpts),
 -		Snapshotter:      containerdsnapshot.NewSnapshotter(workerOpts.SnapshotterName, client.SnapshotService(workerOpts.SnapshotterName), workerOpts.Namespace, nil),
-+		Snapshotter:      snapshot.WithMountManager(containerdsnapshot.NewSnapshotter(workerOpts.SnapshotterName, client.SnapshotService(workerOpts.SnapshotterName), workerOpts.Namespace, nil), client.MountManager(), workerOpts.Namespace),
++		Snapshotter:      snapshot.WithMountManager(containerdsnapshot.NewSnapshotter(workerOpts.SnapshotterName, client.SnapshotService(workerOpts.SnapshotterName), workerOpts.Namespace, nil), client.MountManager(), lm, workerOpts.Namespace),
  		ContentStore:     cs,
  		Applier:          winlayers.NewFileSystemApplierWithWindows(cs, df),
  		Differ:           winlayers.NewWalkingDiffWithWindows(cs, df),
