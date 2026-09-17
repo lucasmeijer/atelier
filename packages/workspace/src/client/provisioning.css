@@ -19,3 +19,7 @@
 
 .provision-step[data-status="warning"] > .status-list__marker { border-color: var(--warning); color: var(--warning); }
 .provision-warning { color: var(--warning); }
+
+.provision-launch-prompt { width: min(720px, 100%); align-self: center; flex: 0 0 auto; display: flex; max-height: 35%; }
+.provision-launch-prompt > .panel { width: 100%; }
+.provision-launch-prompt .panel__body > p { margin: 0; white-space: pre-wrap; overflow-wrap: anywhere; }

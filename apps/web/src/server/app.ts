@@ -29,7 +29,7 @@ import { warningBannerHtml } from "@atelier/design-system/warning-banner";
 import { workspaceWarnings, type WorkspaceWarning } from "./workspace-warnings.ts";
 import { getProjectConfiguration, type ProjectConfiguration, isGitProjectInit, listProjects, projectWorkspaceInit, projectWorkspaceInitWithSettings, readProjectWorkspaceSettings, type ProjectSummary } from "@atelier/projects";
 import { createWorkspaceProvisioning, type WorkspaceProvisioning, type WorkspaceProvisionRun, createWorkspacePresentationStore, generateWorkspaceId, listWorkspaces, setWorkspaceParked, setWorkspaceTitle, type WorkspaceCreationContext, type WorkspaceInitInstruction, type WorkspaceWorkViewReference, type WorkspaceWorkViewState } from "@atelier/workspace";
-import { renderWorkspaceProvisioning } from "@atelier/workspace/server/provisioning";
+import { renderWorkspaceLaunchPrompt, renderWorkspaceProvisioning } from "@atelier/workspace/server/provisioning";
 import {
   workspaceModuleModalFrameId,
   parseWorkspaceFileTarget,
@@ -182,6 +182,7 @@ export function createWebApp(deps: WebAppDeps): WebApp {
     broadcastShell(agentTabsTurboStream(await fixedWorkspacePresentation(workspaceId)));
   });
 
+  const provisioningPrompts = new Map<string, string>();
   const provisioning = createWorkspaceProvisioning({ events: deps.events, onChange: (workspaceId) => {
     broadcastWorkspaceBoot(workspaceId);
     broadcastWorkspacePaneCollections();
@@ -249,8 +250,10 @@ export function createWebApp(deps: WebAppDeps): WebApp {
         if (entry.phase === "starting") {
           provisioning.delete(entry.id);
           broadcastWorkspaceBoot(entry.id);
-        } else if (entry.phase === "ready") void broadcastWorkspaceReady(entry.id);
-        else if (entry.phase === "failed") broadcastWorkspaceBoot(entry.id);
+        } else if (entry.phase === "ready") {
+          provisioningPrompts.delete(entry.id);
+          void broadcastWorkspaceReady(entry.id);
+        } else if (entry.phase === "failed") broadcastWorkspaceBoot(entry.id);
       }
       if (context.issuesChanged && entry.phase === "ready") void workspaceWarningStream(entry).then(broadcastShell);
       if (context.viewKey) broadcastShell(workspacePreparationInvalidatedTurboStream(entry.id));
@@ -264,6 +267,7 @@ export function createWebApp(deps: WebAppDeps): WebApp {
       void persistWorkspaceParked(entry.id, entry.parked).catch((error) => logError(`could not persist parked state for workspace ${entry.id}: ${error instanceof Error ? error.message : String(error)}`));
     },
     removed(id) {
+      provisioningPrompts.delete(id);
       provisioning.delete(id);
       broadcastShell(removeWorkspaceResidentTurboStream(id));
       for (const handler of deps.workspaceRemovedHandlers ?? []) void handler(id);
@@ -526,7 +530,7 @@ export function createWebApp(deps: WebAppDeps): WebApp {
     const deleteAction = `<form class="workspace-boot-actions" data-action="turbo:submit-start->workspace-navigation#workspaceDeletionStarted" method="post" action="/workspaces/${encodeURIComponent(entry.id)}/delete">${deleteButton}</form>`;
     const inner = `${renderWorkspaceProvisioning(entry.id, provisioning.snapshot(entry.id), { failed: entry.phase === "failed", error: entry.error })}${deleteAction}`;
     const projectAttr = isGitProjectInit(entry.init) ? ` data-project-id="${escapeHtml(entry.init.projectId)}"` : "";
-    return `<div class="workspace-detail-resident workspace-boot ${options.visible ? "visible" : ""}" id="${workspaceResidentId(entry.id)}" data-workspace-residency-target="resident" data-workspace-id="${escapeHtml(entry.id)}"${projectAttr}><div class="main"><div class="body"><div class="workspace-boot-content">${inner}</div></div></div>${renderMobileWorkspaceBar()}</div>`;
+    return `<div class="workspace-detail-resident workspace-boot ${options.visible ? "visible" : ""}" id="${workspaceResidentId(entry.id)}" data-workspace-residency-target="resident" data-workspace-id="${escapeHtml(entry.id)}"${projectAttr}><div class="main"><div class="body"><div class="workspace-boot-progress"><div class="workspace-boot-content">${inner}</div></div>${renderWorkspaceLaunchPrompt(provisioningPrompts.get(entry.id))}</div></div>${renderMobileWorkspaceBar()}</div>`;
   }
 
   function broadcastWorkspaceBoot(id: string): void {
@@ -733,6 +737,7 @@ export function createWebApp(deps: WebAppDeps): WebApp {
     const agent = agentContext(await prepareNewWorkspaceAgentParameters(command.agent));
     let context: WorkspaceCreationContext | undefined = agent ? { agent } : undefined;
     if (command.projectOnboarding) context = { agent, projectOnboarding: true };
+    if (agent?.initialPrompt) provisioningPrompts.set(id, agent.initialPrompt);
     registry.add(id, title || null, init);
     const options: Parameters<typeof startWorkspaceProvisioning>[1] = {};
     if (init !== undefined) options.init = init;

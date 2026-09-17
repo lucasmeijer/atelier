@@ -1,4 +1,6 @@
 import { actionItemHtml } from "@atelier/design-system/action-item";
+import { panelHtml } from "@atelier/design-system/panel";
+import { copyButtonHtml } from "@atelier/design-system/copy-button";
 import { Icons } from "@atelier/design-system/icons";
 import { buttonGroupHtml } from "@atelier/design-system/button-group";
 import { buttonHtml } from "@atelier/design-system/button";
@@ -46,6 +48,18 @@ function renderProvisionStep(workspaceId: string, step: WorkspaceProvisionStep, 
     })}</form>`
     : "";
   return `<li class="status-list__item provision-step"${stepStatusAttributes(step.status)}>${renderStatusMarker(step.status)}<div class="provision-step-content"><span class="provision-step-label">${escapeHtml(step.label)}</span>${detail}${activity}${output}${error}${actions}</div></li>`;
+}
+
+export function renderWorkspaceLaunchPrompt(launchPrompt: string | undefined): string {
+  const prompt = launchPrompt?.trim();
+  if (!prompt) return "";
+  return `<div class="provision-launch-prompt">${panelHtml({
+    element: { tag: "section", attributesHtml: 'aria-label="Launch prompt"' },
+    headerHtml: `<h2 class="panel__title">Launch prompt</h2>${copyButtonHtml({ label: "Copy launch prompt", copyText: prompt })}`,
+    bodyHtml: `<p>${escapeHtml(prompt)}</p>`,
+    bodyLayout: "padded",
+    bodyOverflow: "scroll",
+  })}</div>`;
 }
 
 export function renderWorkspaceProvisioning(workspaceId: string, snapshot: WorkspaceProvisionSnapshot | undefined, options: { failed?: boolean; error?: string } = {}): string {
