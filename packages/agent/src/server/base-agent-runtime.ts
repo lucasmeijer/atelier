@@ -8,7 +8,7 @@ import { Value } from "typebox/value";
 import { significantCacheMissNotice, type CacheMiss } from "./cache-miss.ts";
 import { escapeHtml, turboStream } from "./html.ts";
 import { createSnapshotFirstLivePresentation } from "./live-presentation.ts";
-import { renderNotice } from "./render-attachments.ts";
+import { renderNotice } from "./render-notice.ts";
 import { renderAgentPaneComposerFooter, renderPromptActions, type AgentPaneState, type AgentStatsView } from "./render-composer.ts";
 import { commentaryContext, ids, type AgentRenderContext } from "./render-context.ts";
 import { renderActiveToolContent, toolPresentation } from "./render-tool.ts";

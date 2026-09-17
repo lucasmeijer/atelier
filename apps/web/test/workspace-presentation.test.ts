@@ -178,7 +178,6 @@ describe("role-fixed Workspace presentation", () => {
     const added = agentTabsTurboStream(fixture(), { addedConversationId: secondConversationId, selectConversationId: secondConversationId });
 
     expect(added).toContain(`action="update" target="${agentNavigationDomId("workspace-1")}"`);
-    expect(added).toContain(`action="update" target="${agentActionsDomId("workspace-1")}"`);
     expect(added).toContain(`action="append" target="${agentBodiesDomId("workspace-1")}"`);
     expect(added).toContain(`id="${agentPaneSlotDomId("workspace-1", secondConversationId)}"`);
     expect(added).toContain('action="select-agent"');

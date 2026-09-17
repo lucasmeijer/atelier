@@ -1,5 +1,5 @@
 import { workspaceContainerName } from "@atelier/workspace";
-import { extensionOf, imageMimeByExtension } from "./attachment-drafts.ts";
+import { extensionOf, imageMimeByExtension } from "@atelier/prompt/server";
 
 interface WorkspaceFileMimeRegistry {
   [extension: string]: string;

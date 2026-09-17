@@ -1,4 +1,4 @@
-import { AtelierCoreError, createKeyedOperationQueue } from "@atelier/core";
+import { AtelierCoreError } from "@atelier/core";
 import type { WorkspaceAgentProvider, WorkspaceAgentTabSummary } from "@atelier/shared";
 
 export interface HostedAgentTab extends WorkspaceAgentTabSummary {
@@ -8,7 +8,6 @@ export interface HostedAgentTab extends WorkspaceAgentTabSummary {
 
 /** The host routes globally unique conversation identities without interpreting provider storage. */
 export function createAgentPaneHost(providers: readonly WorkspaceAgentProvider[]) {
-  const serialize = createKeyedOperationQueue();
   const byId = new Map(providers.map((provider) => [provider.id, provider]));
   if (byId.size !== providers.length) throw new Error("Duplicate agent provider identity");
 
@@ -31,8 +30,8 @@ export function createAgentPaneHost(providers: readonly WorkspaceAgentProvider[]
     async render(context: { workspaceId: string; conversationId: string }) {
       return (await owner(context)).tabs.render(context);
     },
-    close(context: { workspaceId: string; conversationId: string }) {
-      return serialize(context.workspaceId, async () => (await owner(context)).tabs.close(context));
+    async close(context: { workspaceId: string; conversationId: string }) {
+      return (await owner(context)).tabs.close(context);
     },
   };
 }

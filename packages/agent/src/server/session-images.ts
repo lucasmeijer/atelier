@@ -1,7 +1,7 @@
 import { readFile } from "node:fs/promises";
 import { Type } from "typebox";
 import { Value } from "typebox/value";
-import { imageMimeByExtension } from "./attachment-drafts.ts";
+import { imageMimeByExtension } from "@atelier/prompt/server";
 
 const allowedMimeTypes = new Set(Object.values(imageMimeByExtension));
 const entrySchema = Type.Object({

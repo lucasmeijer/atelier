@@ -220,7 +220,6 @@
         "@atelier/design-system": "workspace:*",
         "@atelier/shared": "workspace:*",
         "@atelier/workspace": "workspace:*",
-        "@hotwired/turbo": "8.0.13",
       },
     },
     "packages/proxy-egress": {

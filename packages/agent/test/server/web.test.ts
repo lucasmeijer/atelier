@@ -6,7 +6,7 @@ import { createAtelierEventBus } from "@atelier/core";
 import { createNextWorkspaceAgentConversation, ensureDefaultWorkspaceAgentConversation, listWorkspaceAgentConversations } from "../../src/server/session-store.ts";
 import { createWorkspaceAgentTabProvider, workspaceAgentTabProvider } from "../../src/server/web.ts";
 import { handleAgentRequest } from "../../src/server/routes.ts";
-import { agentAttachmentDraftId, findStagedAttachment, stageAttachment } from "../../src/server/attachment-drafts.ts";
+import { agentAttachmentDraftId, findStagedAttachment, stageAttachment } from "@atelier/prompt/server";
 import { readInitialPromptDraft, stageInitialPrompt } from "../../src/server/initial-prompt-draft.ts";
 import { getWorkspaceAgentRuntime } from "../../src/server/runtime.ts";
 

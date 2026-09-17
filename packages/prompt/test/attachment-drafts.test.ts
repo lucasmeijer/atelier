@@ -10,8 +10,7 @@ import {
   removeStagedAttachments,
   stageAttachment,
   validDraftId,
-} from "../../src/server/attachment-drafts.ts";
-import { renderAgentPane } from "../../src/server/render-composer.ts";
+} from "@atelier/prompt/server";
 
 let dir: string | undefined;
 
@@ -45,15 +44,6 @@ describe("Agent attachment drafts", () => {
     expect(delivered.images).toHaveLength(1);
     expect((await listStagedAttachments(draftId)).map(({ id }) => id)).toEqual([staged.id]);
 
-    const conversationId = "53fc77b7-dc19-42d5-b200-2e134ec67529";
-    const html = await renderAgentPane(
-      { workspaceId: "workspace-1", conversationId },
-      { workspaceId: "workspace-1", conversationId, label: "Agent 1", title: "Untitled", path: "/tmp/session.jsonl" },
-      { transcriptHtml: "", busy: false, stats: { contextPercent: null, compactAvailable: false, inputTokens: 0, outputTokens: 0, cost: 0, modelName: undefined, thinkingLevel: "off", thinkingLevels: [], models: [] } },
-    );
-    expect(html).toContain(`name="attachmentDraft" value="${draftId}"`);
-    expect(html).toContain(`name="attachment" value="${staged.id}"`);
-    expect(html).toContain("screen.png");
   });
 
   test("moves launch attachments into the new Agent composer", async () => {

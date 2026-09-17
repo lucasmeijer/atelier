@@ -8,12 +8,8 @@ export function notificationControlId(ctx: AgentRenderContext): string { return 
 export function notificationFrameId(ctx: AgentRenderContext): string { return `${notificationControlId(ctx)}_frame`; }
 export function notificationFeedbackId(workspaceId: string, conversationId: string): string { return domId("agent_notification_feedback", workspaceId, conversationId); }
 
-export function renderAgentNotifications(workspaceId: string, conversations: readonly { id: string }[]): string {
-  const frames = conversations.map(({ id: conversationId }) => {
-    const ctx = { workspaceId, conversationId };
-    return `<span hidden data-notification-conversation="${escapeHtml(conversationId)}"><turbo-frame id="${notificationFrameId(ctx)}" src="${escapeHtml(agentPath(ctx, "/notification"))}"></turbo-frame></span>`;
-  }).join("");
-  return `<span data-controller="agent-notifications" data-action="atelier:workspace-agent-selected@window->agent-notifications#select">${renderNotificationFeedback(workspaceId, conversations[0]!.id)}${frames}</span>`;
+export function renderAgentNotifications(ctx: AgentRenderContext): string {
+  return `<span data-controller="agent-notifications">${renderNotificationFeedback(ctx.workspaceId, ctx.conversationId)}<turbo-frame id="${notificationFrameId(ctx)}" src="${escapeHtml(agentPath(ctx, "/notification"))}"></turbo-frame></span>`;
 }
 
 /** One dismissible surface for browser errors and server acknowledgements. */

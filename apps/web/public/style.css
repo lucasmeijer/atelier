@@ -301,8 +301,9 @@ turbo-frame { display: contents; }
 .fixed-shell-agent-pane { min-width: 380px; flex: 0 0 var(--fixed-agent-width); }
 .fixed-workspace-presentation:not(.is-work-pane-open) .fixed-shell-agent-pane { flex: 1; }
 .fixed-shell-agent-navigation { min-width: 0; flex: 1; align-self: stretch; display: flex; align-items: center; gap: 8px; }
+.fixed-shell-agent-navigation > .popup-menu-anchor { flex: 0 0 auto; }
 .fixed-shell-agent-actions { flex: 0 0 auto; }
-.fixed-shell-new-agent, .fixed-shell-park-workspace, .fixed-shell-delete-workspace { display: flex; flex: 0 0 auto; margin: 0; }
+.fixed-shell-park-workspace, .fixed-shell-delete-workspace { display: flex; flex: 0 0 auto; margin: 0; }
 .fixed-shell-workspace-title { min-width: 0; flex: 0 1 auto; display: flex; align-items: center; gap: 8px; }
 .fixed-shell-workspace-title strong { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font: 400 var(--text-body)/var(--leading-standard) var(--font-sans); }
 .fixed-shell-workspace-title small { color: var(--text); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
@@ -310,8 +311,9 @@ turbo-frame { display: contents; }
 .fixed-shell-agent-conversations { flex: 0 1 auto; }
 .fixed-shell-work-pane .tab-strip { flex: 1; align-self: stretch; }
 .fixed-shell-agent-conversations::-webkit-scrollbar { display: none; }
-.fixed-shell-agent-icon { width: 16px; height: 16px; flex: 0 0 auto; display: grid; place-items: center; color: var(--text); }
-.fixed-shell-agent-icon svg { width: 16px; height: 16px; }
+.fixed-shell-agent-pane-icon, .fixed-shell-agent-icon { width: 16px; height: 16px; flex: 0 0 auto; display: grid; place-items: center; color: var(--text); }
+.fixed-shell-agent-pane-icon { color: var(--text-bright); }
+.fixed-shell-agent-pane-icon svg, .fixed-shell-agent-icon svg { width: 16px; height: 16px; }
 .fixed-shell-agent-bodies, .fixed-shell-work-bodies { position: relative; height: 100%; min-height: 0; overflow: hidden; }
 .fixed-shell-surface { position: absolute; inset: 0; display: none; min-width: 0; min-height: 0; overflow: auto; }
 .fixed-shell-surface:focus { outline: none; }

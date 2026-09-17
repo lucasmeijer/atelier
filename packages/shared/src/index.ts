@@ -490,14 +490,6 @@ export function selectedWorkspaceAgent(element: Element): string | undefined {
 }
 export const workspaceAgentSelectionEvent = "atelier:workspace-agent-selected";
 
-/** Host-owned launch composer content. */
-export interface AgentLaunchPresentation {
-  attributesHtml: string;
-  formAttributesHtml: string;
-  bodyHtml: string;
-  footerHtml: string;
-  discardUrl: string;
-}
 export interface AgentLaunchFooterContext {
   frameId: string;
   formId: string;
@@ -511,7 +503,7 @@ export interface WorkspaceAgentLaunch {
   submit(form: FormData): Promise<{ prepare(): Promise<WorkspaceCreationContext> } | { response: Response }>;
   /** New-workspace provisioning only; never invoked to fill an empty pane. Input is host-prepared. */
   prepareWorkspace(workspaceId: string, context?: WorkspaceCreationContext): Promise<void>;
-  refreshConfiguration(frameId: string): Promise<string>;
+  refreshConfiguration?(frameId: string): Promise<string>;
 }
 
 /** Providers own contents and lifecycle; Atelier owns tabs, chrome and creation UI.

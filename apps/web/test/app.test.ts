@@ -10,7 +10,7 @@ import { workspaceWarnings } from "../src/server/workspace-warnings.ts";
 import { createWebApp, type WebApp } from "../src/server/app.ts";
 import type { CableBroadcastOptions } from "../src/server/cable.ts";
 import { workViewSelectorDomId } from "../src/server/workspace-presentation.ts";
-import { agentActionsDomId, agentBodiesDomId, agentBodyFrameId, agentNavigationDomId, agentPaneSlotDomId, agentTabDomId } from "../src/server/agent-pane.ts";
+import { agentBodiesDomId, agentBodyFrameId, agentNavigationDomId, agentPaneSlotDomId, agentTabDomId } from "../src/server/agent-pane.ts";
 import { createWorkspaceRegistry, type WorkspaceRegistry } from "../src/server/workspace-registry.ts";
 import { workspaceModules } from "../src/server/workspace-modules.ts";
 
@@ -105,27 +105,8 @@ function createTestAgentModule(initial: TestConversation[], created: TestConvers
       },
       launch: {
         async renderFooter() { return ""; }, async prepare() { return undefined; },
-        async submit() { throw new Error("not used"); }, async prepareWorkspace() {}, async refreshConfiguration() { return ""; },
+        async submit() { throw new Error("not used"); }, async prepareWorkspace() {},
       },
-    },
-    commands: [{
-      id: "agent.create",
-      execute() {
-        const conversation = creations.shift();
-        if (!conversation) throw new Error("No test Agent conversation remains to create");
-        conversations.push(conversation);
-        return { createdAgentConversationId: conversation.id };
-      },
-    }],
-    attachToWorkspace() {
-      return {
-        commands: [{
-          id: "agent.create",
-          label: "New Agent",
-          scope: "workspace",
-          surfaces: { ui: { placement: "agent-action" } },
-        }],
-      };
     },
   };
   return { module, conversations, listedWorkspaceIds, rendered, closed };
@@ -197,6 +178,20 @@ function jsonPost(path: string): Request {
 }
 
 describe("Agent provider app integration", () => {
+  test("automation retains command schemas and lists host agent commands once", async () => {
+    const inputSchema = Type.Object({ value: Type.String() });
+    await withTestApp([], async ({ app, workspaceId }) => {
+      const response = await app.fetch(new Request(`http://test.local/workspaces/${workspaceId}`, { headers: { accept: "application/json" } }));
+      const { workspace } = await response.json();
+      expect(workspace.commands.find((command: { id: string }) => command.id === "test.command").inputSchema).toEqual(JSON.parse(JSON.stringify(inputSchema)));
+      expect(workspace.commands.map((command: { id: string }) => command.id)).toEqual(["test.command", "agent.create", "agent.create.builtin"]);
+    }, undefined, [{
+      id: "test-command",
+      commands: [{ id: "test.command", execute() { return {}; } }],
+      attachToWorkspace() { return { commands: [{ id: "test.command", label: "Test command", scope: "workspace", inputSchema }] }; },
+    }]);
+  });
+
   test("warning dismissal does not attach modules or list Agent conversations", async () => {
     await withTestApp([{ id: "conversation-a", title: "Alpha" }], async ({ app, agent, registry, workspaceId }) => {
       registry.setIssue(workspaceId, "readiness", "Gateway unavailable");
@@ -292,7 +287,6 @@ describe("Agent provider app integration", () => {
         expect(structural.identifier).toEqual({ channel: "shell" });
         expect(structural.options).toBeUndefined();
         expect(structural.html).toContain(`<turbo-stream action="update" target="${agentNavigationDomId(workspaceId)}"`);
-        expect(structural.html).toContain(`<turbo-stream action="update" target="${agentActionsDomId(workspaceId)}"`);
         expect(structural.html).toContain(`<turbo-stream action="append" target="${agentBodiesDomId(workspaceId)}"`);
         expect(structural.html).toContain(`src="/workspaces/${workspaceId}/agents/conversation-b/body"`);
         expect(structural.html).toContain('action="invalidate-workspace-preparation"');
@@ -398,7 +392,6 @@ describe("Agent provider app integration", () => {
       expect(registry.attentionTokens(workspaceId)["agent:conversation-b"] !== undefined).toBe(false);
       expect(html).toContain(`<turbo-stream action="update" target="${agentNavigationDomId(workspaceId)}"`);
       expect(html).not.toContain(`id="${agentTabDomId(workspaceId, "conversation-b")}"`);
-      expect(html).toContain(`<turbo-stream action="update" target="${agentActionsDomId(workspaceId)}"`);
       expect(html).toContain(`<turbo-stream action="remove" target="${agentPaneSlotDomId(workspaceId, "conversation-b")}"`);
       expect(html).toContain('action="select-agent-successor"');
       expect(html).toContain('data-closed-conversation-id="conversation-b"');
