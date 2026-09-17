@@ -2,7 +2,7 @@ import { expect, test } from "bun:test";
 
 const installer = await Bun.file(new URL("./install.sh", import.meta.url)).text();
 
-function run(options: { systemState?: "restarting" | "exited"; nonRoot?: boolean; denySudo?: boolean; mac?: boolean; wsl?: boolean; vmKernelFails?: boolean; installed?: boolean; old?: boolean; pullFails?: boolean; running?: boolean; appFails?: boolean; pendingHealth?: boolean; missingFilesystem?: boolean; loadable?: boolean } = {}, args = ["--non-interactive"]) {
+function run(options: { systemState?: "restarting" | "exited"; nonRoot?: boolean; denySudo?: boolean; mac?: boolean; wsl?: boolean; installed?: boolean; old?: boolean; pullFails?: boolean; running?: boolean; appFails?: boolean; pendingHealth?: boolean; missingFilesystem?: boolean; loadable?: boolean } = {}, args = ["--non-interactive"]) {
   const logPath = `/tmp/atelier-install-test-${crypto.randomUUID()}.log`;
   const mock = `
 mktemp() { echo "${logPath}"; }
@@ -30,7 +30,6 @@ docker() {
         atelier-system) return ${options.installed ? 0 : 1} ;;
         atelier) return ${options.old ? 0 : 1} ;;
       esac ;;
-    'run --rm') return ${options.vmKernelFails ? 1 : 0} ;;
     'pull '*) return ${options.pullFails ? 1 : 0} ;;
     'exec atelier-system')
       if [[ "$*" == *3001/status* ]]; then
@@ -39,7 +38,7 @@ docker() {
           printf 'starting\\nAn activity the installer has never heard of\\n42\\n'
           return
         fi
-        printf '${options.appFails ? 'failed\\nApp health failed\\n\\n\\nhttps://diagnostics.example/system\\n\\n\\nSystem logs\\nApp exited' : options.running === false ? 'starting\\nWaiting for your connection\\n\\n\\n\\nSign in to continue\\nhttps://auth.example/sign-in\\n' : 'ready\\nAtelier is ready\\n\\nhttps://app.example/custom-path\\nhttps://diagnostics.example/system\\n\\n\\n'}\\n'
+        printf '${options.appFails ? 'failed\\nApp health failed\\n\\n\\n\\n\\nApp exited' : options.running === false ? 'starting\\nWaiting for your connection\\n\\n\\nSign in to continue\\nhttps://auth.example/sign-in\\n' : 'ready\\nAtelier is ready\\n\\nhttps://app.example/custom-path\\n\\n\\n'}\\n'
         return
       fi ;;
     'logs --tail') echo 'supervisor startup failed: io.weight unavailable';;
@@ -112,7 +111,7 @@ test("invalid action is rejected before Docker changes", () => {
 test("missing filesystem driver fails before image pull or System replacement", () => {
   const result = run({ installed: true, missingFilesystem: true });
   expect(result.status).not.toBe(0);
-  expect(result.output).toContain("erofs is unavailable");
+  expect(result.output).toContain("does not have erofs, which Atelier requires");
   expect(result.output).not.toContain("DOCKER pull");
   expect(result.output).not.toContain("DOCKER stop");
 });
@@ -125,11 +124,13 @@ test("loads an available filesystem module before starting System", () => {
   expect(result.output.indexOf("MODPROBE erofs")).toBeLessThan(result.output.indexOf("DOCKER pull"));
 });
 
-test("supervisor failure makes installation fail without replacing services again", () => {
+test("supervisor failure stops System without removing its container or data", () => {
   const result = run({ appFails: true });
   expect(result.status).not.toBe(0);
   expect(result.output).toContain("3001/status");
-  expect(result.output).not.toContain("DOCKER stop");
+  expect(result.output).toContain("DOCKER stop --time 120 atelier-system");
+  expect(result.output).not.toContain("DOCKER rm");
+  expect(result.output).not.toContain("volume rm");
 });
 
 test("waits for supervisor readiness without interpreting the activity description", () => {
@@ -139,25 +140,16 @@ test("waits for supervisor readiness without interpreting the activity descripti
 });
 
 
-test("macOS uses Docker Desktop kernel and stock Bash without modifying host modules", () => {
+test("macOS starts System directly without a temporary check container or host module changes", () => {
   const result = run({ mac: true, missingFilesystem: true });
   expect(result.status).toBe(0);
-  expect(result.output).toContain("DOCKER run --rm --entrypoint /bin/sh");
-  expect(result.output).toContain("Checking Docker Desktop kernel");
+  expect(result.output).not.toContain("DOCKER run --rm");
   expect(result.output).not.toContain("MODPROBE");
   expect(result.output).toContain("Open https://app.example/custom-path");
 });
 
 
-test("unsupported Desktop kernel leaves the existing System running", () => {
-  const result = run({ mac: true, installed: true, vmKernelFails: true });
-  expect(result.status).not.toBe(0);
-  expect(result.output).toContain("Checking Docker Desktop kernel failed");
-  expect(result.output).not.toContain("DOCKER stop");
-  expect(result.output).not.toContain("DOCKER rm");
-});
-
- test("desktop defaults local while an explicit access choice overrides the OS", () => {
+test("desktop defaults local while an explicit access choice overrides the OS", () => {
   const mac = run({ mac: true });
   expect(mac.status).toBe(0);
   expect(mac.output).toContain("--access-mode localhost");
@@ -210,4 +202,13 @@ for (const state of ["restarting", "exited"] as const) {
       expect(result.output).not.toContain("http://127.0.0.1:3001/status");
     });
   }
+}
+
+for (const action of ["open", "connect"]) {
+  test(`${action} stops an existing System when its status reports failure`, () => {
+    const result = run({ installed: true, appFails: true }, ["--non-interactive", "--action", action]);
+    expect(result.status).toBe(1);
+    expect(result.output).toContain("DOCKER stop --time 120 atelier-system");
+    expect(result.output).not.toContain("DOCKER rm");
+  });
 }

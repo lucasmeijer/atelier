@@ -52,7 +52,7 @@ export function installationStatus(input: {
       : input.activity,
     appUrl: ready ? input.localMode ? input.localOrigin : `https://${hostname}` : undefined,
     supervisorUrl,
-    action,
+    action: state === "failed" ? undefined : action,
     diagnostics: state === "failed" ? {
       description: supervisorUrl ? "Open the supervisor for full logs and recovery options." : "The supervisor is not reachable over your private connection yet. Recent System logs:",
       lines: supervisorUrl ? [] : input.logs.slice(-12),

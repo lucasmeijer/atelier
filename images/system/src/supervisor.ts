@@ -8,6 +8,7 @@ import { PullProgress } from "./pull-progress.ts";
 import { Type } from "typebox";
 import { Value } from "typebox/value";
 import { installWorkspaceFirewall } from "./firewall.ts";
+import { filesystemFailure } from "./filesystems.ts";
 import { initializeResources } from "./resources.ts";
 import { spawn, type ChildProcess } from "node:child_process";
 import { chown, mkdir, readFile, rename, writeFile } from "node:fs/promises";
@@ -26,9 +27,7 @@ const { values } = parseArgs({
   },
   strict: true,
 });
-const resources = await initializeResources();
-await startHostService({ root: dirname(dirname(resources.commandsCgroup)), effectiveMemory: resources.effectiveMemory });
-await chown(hostSocketPath, 1000, 1000);
+let resources: Awaited<ReturnType<typeof initializeResources>>;
 const timeout = 120_000;
 const stateDir = "/data/supervisor";
 await Promise.all(
@@ -109,6 +108,11 @@ function log(text: string) {
   logs.push(...text.split("\n"));
   if (logs.length > 1000) logs.splice(0, logs.length - 1000);
   emit();
+}
+function reportFailure(error: unknown) {
+  failure = error instanceof Error ? error.message : String(error);
+  stage("Atelier needs attention");
+  log(failure);
 }
 function stage(text: string, nextPhase = phase) {
   phase = nextPhase;
@@ -286,9 +290,7 @@ async function replace(reference: string, pull: boolean) {
     stage("Atelier is ready");
     emit("ready", "ready");
   } catch (error) {
-    failure = error instanceof Error ? error.message : String(error);
-    stage("Atelier needs attention");
-    log(failure);
+    reportFailure(error);
   } finally {
     busy = false;
     emit();
@@ -331,7 +333,7 @@ const server = Bun.serve({
     }
     if (url.pathname === "/status") {
       // Check again at the handoff: startup health alone can become stale.
-      const appResponding = await appIsHealthy() && healthy;
+      const appResponding = healthy && await appIsHealthy();
       return Response.json({
         ...installationStatus({
           activity: healthy && !appResponding ? { description: "Checking Atelier is healthy" } : activity,
@@ -528,6 +530,15 @@ process.on("SIGINT", () => {
   void shutdown(0);
 });
 async function initialize() {
+  stage("Checking Docker host requirements");
+  failure = filesystemFailure(await readFile("/proc/filesystems", "utf8"));
+  if (failure) {
+    log(failure);
+    return;
+  }
+  resources = await initializeResources();
+  await startHostService({ root: dirname(dirname(resources.commandsCgroup)), effectiveMemory: resources.effectiveMemory });
+  await chown(hostSocketPath, 1000, 1000);
   await installWorkspaceFirewall();
   daemon(["containerd", "--config", "/etc/containerd/config.toml"]);
   await waitFor(
@@ -636,7 +647,6 @@ async function initialize() {
 }
 startup = initialize().catch((error) => {
   if (!stopping) {
-    log(String(error));
-    void shutdown(1);
+    reportFailure(error);
   }
 });

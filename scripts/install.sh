@@ -19,8 +19,8 @@ if [ -t 1 ] && [ "${TERM:-dumb}" != dumb ]; then
 fi
 last_status=""
 spinner_frame=0
-supervisor_url=""
 active_pid=""
+stop_on_failure=0
 
 finish_line() {
   if [ "$interactive" -eq 1 ] && [ -n "$last_status" ]; then printf '\r\033[2K'; fi
@@ -57,12 +57,6 @@ status() {
 fail() {
   finish_line
   printf '\n  %s! %s%s\n' "$amber" "$*" "$reset" >&2
-  if [ -n "$supervisor_url" ]; then
-    printf '  Open supervisor: %s\n' "$supervisor_url" >&2
-  else
-    printf '  Local diagnostics: docker logs %s\n' "$system_name" >&2
-  fi
-  [ -z "$log_file" ] || printf '  Bootstrap log: %s\n' "$log_file" >&2
   exit 1
 }
 run_quiet() {
@@ -86,10 +80,22 @@ run_quiet() {
   [ "$code" -eq 0 ] || fail "$label failed. See the bootstrap log for details."
 }
 cleanup() {
+  local code=$?
+  trap - ERR
   finish_line
   if [ -n "$active_pid" ] && kill -0 "$active_pid" 2>/dev/null; then
     kill "$active_pid"
     wait "$active_pid" || :
+  fi
+  if [ "$code" -ne 0 ] && [ "$stop_on_failure" -eq 1 ]; then
+    printf '\n  Stopping Atelier services after installation failure.\n' >&2
+    if ! docker stop --time 120 "$system_name" >>"$log_file" 2>&1; then
+      printf '  Could not stop Atelier services. Run: docker stop %s\n' "$system_name" >&2
+    fi
+    printf '  Local diagnostics: docker logs %s\n' "$system_name" >&2
+  fi
+  if [ "$code" -ne 0 ] && [ -n "$log_file" ]; then
+    printf '  Bootstrap log: %s\n' "$log_file" >&2
   fi
 }
 trap cleanup EXIT
@@ -193,9 +199,9 @@ if [ "$host_os" = Linux ] && [ "$desktop" -eq 0 ]; then
   for filesystem in erofs overlay; do
     if ! grep -qw "$filesystem" /proc/filesystems; then
       if ! command -v modprobe >/dev/null || ! run_root modprobe "$filesystem"; then
-        fail "$filesystem is unavailable; install the filesystem modules for $(uname -r), or use a kernel with $filesystem support"
+        fail "The Linux kernel that powers your Docker does not have $filesystem, which Atelier requires."
       fi
-      grep -qw "$filesystem" /proc/filesystems || fail "$filesystem is still unavailable after modprobe; use a kernel with $filesystem support"
+      grep -qw "$filesystem" /proc/filesystems || fail "The Linux kernel that powers your Docker does not have $filesystem, which Atelier requires."
     fi
   done
   run_root mkdir -p /etc/modules-load.d
@@ -239,8 +245,8 @@ supervisor_status() {
       if (s.state === "ready" && !appUrl) throw new Error("Ready without an app destination");
       console.log([
         s.state, clean(a.description), a.percent === undefined ? "" : Math.floor(a.percent),
-        appUrl, url(s.supervisorUrl), clean(s.action?.description ?? ""), url(s.action?.url),
-        clean(s.diagnostics?.description ?? ""), ...(s.diagnostics?.lines ?? []).map(clean),
+        appUrl, clean(s.action?.description ?? ""), url(s.action?.url),
+        ...(s.diagnostics?.lines ?? []).map(clean),
       ].join("\n"));
     } catch (error) {
       console.error(error);
@@ -266,6 +272,7 @@ check_system_running() {
   fi
 }
 wait_for_system() {
+  stop_on_failure=1
   local reply previous="" activity_start=$SECONDS start=$SECONDS description="Waiting for the supervisor" percent="" code pid status_file tick
   status_file="${log_file}.status"
   local request_connect=0 last_action="" current_action app_url
@@ -293,12 +300,11 @@ wait_for_system() {
       description="${fields[1]}"
       percent="${fields[2]:-}"
       app_url="${fields[3]:-}"
-      supervisor_url="${fields[4]:-}"
-      current_action="${fields[5]:-}"$'\n'"${fields[6]:-}"
-      if [ -n "${fields[5]:-}" ] && [ "$current_action" != "$last_action" ]; then
+      current_action="${fields[4]:-}"$'\n'"${fields[5]:-}"
+      if [ "${fields[0]}" != failed ] && [ -n "${fields[4]:-}" ] && [ "$current_action" != "$last_action" ]; then
         finish_line
-        printf '\n  %s\n' "${fields[5]}"
-        [ -z "${fields[6]:-}" ] || printf '\n  %s\n\n' "${fields[6]}"
+        printf '\n  %s\n' "${fields[4]}"
+        [ -z "${fields[5]:-}" ] || printf '\n  %s\n\n' "${fields[5]}"
         last_action="$current_action"
       fi
       case "${fields[0]}" in
@@ -306,12 +312,10 @@ wait_for_system() {
         failed)
           finish_line
           printf '\n  %s! %s%s\n' "$amber" "$description" "$reset" >&2
-          [ -z "$supervisor_url" ] || printf '  Open supervisor: %s\n' "$supervisor_url" >&2
-          [ -z "${fields[7]:-}" ] || printf '  %s\n' "${fields[7]}" >&2
-          if [ "${#fields[@]}" -gt 8 ]; then printf '  %s\n' "${fields[@]:8}" >&2; fi
+          if [ "${#fields[@]}" -gt 6 ]; then printf '  %s\n' "${fields[@]:6}" >&2; fi
           exit 1 ;;
         starting)
-          if [ "$non_interactive" -eq 1 ] && [ -n "${fields[5]:-}" ]; then
+          if [ "$non_interactive" -eq 1 ] && [ -n "${fields[4]:-}" ]; then
             printf '  Run the installer again after completing this action.\n'
             return
           fi ;;
@@ -376,26 +380,18 @@ case "$action" in
       fi
     fi
     run_quiet "Downloading Atelier services" docker pull "$system_image"
-    if [ "$desktop" -eq 1 ]; then
-      run_quiet "Checking Docker Desktop kernel" docker run --rm --entrypoint /bin/sh "$system_image" -ec '
-        for filesystem in erofs overlay; do
-          grep -qw "$filesystem" /proc/filesystems || {
-            echo "$filesystem is unavailable in Docker Desktop; update Docker Desktop" >&2
-            exit 1
-          }
-        done
-      '
-    fi
     if [ "$installed" -eq 1 ]; then
       run_quiet "Stopping Atelier services" docker stop --time 120 "$system_name"
       run_quiet "Replacing Atelier services" docker rm "$system_name"
     fi
+    stop_on_failure=1
     run_quiet "Starting Atelier services" docker run -d --name "$system_name" --hostname atelier-system --privileged --cgroupns=host --restart unless-stopped \
       --stop-timeout 120 --tmpfs /run --mount source=atelier-system,target=/data --publish 127.0.0.1::3080 \
       "$system_image" --app-image "$app_image" --access-mode "${access_mode:-tailscale}"
     ;;
   connect)
     if [ "$(docker inspect --format '{{.State.Running}}' "$system_name")" != true ]; then
+      stop_on_failure=1
       run_quiet "Starting Atelier services" docker start "$system_name"
     fi
     ;;

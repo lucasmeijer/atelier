@@ -59,3 +59,11 @@ test("local install becomes ready without Tailscale and keeps diagnostics reacha
   expect(status.supervisorUrl).toBe("http://system.atelier.localhost:55001");
   expect(status.action).toBeUndefined();
 });
+
+test("failures suppress unrelated sign-in actions", () => {
+  const status = installationStatus({ ...input, failure: "Host requirement missing", connectionState: "NeedsLogin", authUrl: "https://login.example" });
+  expect(status.state).toBe("failed");
+  expect(status.activity.description).toBe("Host requirement missing");
+  expect(status.action).toBeUndefined();
+  expect(status.appUrl).toBeUndefined();
+});
