@@ -346,6 +346,13 @@ turbo-frame { display: contents; }
     transform: translateX(0);
     transition: transform 160ms ease-out, opacity 160ms ease-out, visibility 160ms;
   }
+  /* A transformed ancestor confines fixed-position fullscreen surfaces to the
+   * Work pane. Keep the live content in place, but release that containing block
+   * immediately while fullscreen is open. */
+  .fixed-shell-work-pane:has(.atelier-fullscreen-live) {
+    transform: none;
+    transition: none;
+  }
   .fixed-workspace-presentation:not(.is-work-pane-open) .fixed-shell-work-pane {
     transform: translateX(calc(100% + var(--fixed-shell-gap)));
     opacity: 0;
