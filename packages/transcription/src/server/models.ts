@@ -17,7 +17,7 @@ export const transcriptionModels = [
 ] as const;
 
 export type TranscriptionModelId = (typeof transcriptionModels)[number]["id"];
-export const defaultTranscriptionModel: TranscriptionModelId = "nemotron-3.5";
+export const defaultTranscriptionModel: TranscriptionModelId = "nemotron-en";
 
 const settingsSchema = Type.Object({
   model: Type.Union([

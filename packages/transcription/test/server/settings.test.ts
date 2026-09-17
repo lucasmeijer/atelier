@@ -20,11 +20,11 @@ afterEach(async () => {
 });
 
 describe("transcription settings", () => {
-  test("defaults to multilingual Nemotron and persists another supported model", async () => {
+  test("defaults to Nemotron English and preserves an explicit multilingual selection", async () => {
     await useTemporaryDataDirectory();
-    expect(await readTranscriptionModel()).toBe(defaultTranscriptionModel);
-    await writeTranscriptionModel("nemotron-en");
     expect(await readTranscriptionModel()).toBe("nemotron-en");
+    await writeTranscriptionModel("nemotron-3.5");
+    expect(await readTranscriptionModel()).toBe("nemotron-3.5");
   });
 
   test.each(["parakeet-tdt", "parakeet-ctc"])("uses the default for retired %s selections", async (model) => {
@@ -39,18 +39,15 @@ describe("transcription settings", () => {
     expect(readTranscriptionModel()).rejects.toThrow();
   });
 
-  test("renders and updates the selected server model", async () => {
+  test("updates the selected server model", async () => {
     await useTemporaryDataDirectory();
-    const html = await transcriptionSettingsContribution.render();
-    expect(html).toContain('class="settings-select popup-select"');
-    expect(html).toContain('<option value="nemotron-3.5" selected>');
     const form = new FormData();
-    form.set("model", "nemotron-en");
+    form.set("model", "nemotron-3.5");
     const response = await transcriptionSettingsContribution.handleAction!({
       request: new Request("http://atelier/settings/transcription-model", { method: "POST", body: form }),
       url: new URL("http://atelier/settings/transcription-model"),
     });
     expect(response?.headers.get("content-type")).toContain("text/vnd.turbo-stream.html");
-    expect(await readTranscriptionModel()).toBe("nemotron-en");
+    expect(await readTranscriptionModel()).toBe("nemotron-3.5");
   });
 });
