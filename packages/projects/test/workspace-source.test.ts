@@ -1,10 +1,11 @@
+import { stopProjectSshAgents, workspaceSourceSshEnvironment } from "../src/ssh-agent.ts";
 import { afterEach, beforeEach, describe, expect, test } from "bun:test";
 import { createHash } from "node:crypto";
 import { chmod, mkdir, mkdtemp, realpath, rm, stat, writeFile } from "node:fs/promises";
 import { join } from "node:path";
 import { tmpdir } from "node:os";
 import { clearWorkspaceGitHubToken, createAtelierEventBus, setWorkspaceGitHubToken } from "@atelier/core";
-import { addProject, prepareWorkspaceSource, registerProjectWorkspaceInitEvents, type GitProjectInitInstruction } from "@atelier/projects";
+import { addProject, createProjectSshKey, deleteProjectSshKey, prepareWorkspaceSource, registerProjectWorkspaceInitEvents, type GitProjectInitInstruction } from "@atelier/projects";
 import type { WorkspaceDockerPlan } from "@atelier/workspace";
 
 async function run(command: string[], options: { cwd?: string } = {}): Promise<{ stdout: string; stderr: string; exitCode: number }> {
@@ -65,6 +66,7 @@ describe("workspace source preparation", () => {
   });
 
   afterEach(async () => {
+    await stopProjectSshAgents();
     clearWorkspaceGitHubToken();
     if (previousDataDir === undefined) delete process.env.ATELIER_DATA_DIR;
     else process.env.ATELIER_DATA_DIR = previousDataDir;
@@ -131,6 +133,25 @@ describe("workspace source preparation", () => {
     } finally {
       daemon.stop();
     }
+  });
+
+  test("persisted project key changes reach already-provisioned sockets without restarting", async () => {
+    const project = (await addProject("git@example.test:/repo.git")).project;
+    const environment = await workspaceSourceSshEnvironment("ws-live-keys", project.id);
+    const other = await workspaceSourceSshEnvironment("ws-no-project");
+    expect(environment.GIT_SSH_COMMAND).toContain("StrictHostKeyChecking=yes");
+    async function listed(env: Record<string, string>) {
+      const process = Bun.spawn(["ssh-add", "-l"], { env: { ...globalThis.process.env, ...env }, stdin: "ignore", stdout: "pipe", stderr: "pipe" });
+      return { status: await process.exited, output: await new Response(process.stdout).text() };
+    }
+    expect((await listed(environment)).status).toBe(1);
+    const keyPath = join(dataDir, "live-key");
+    await run(["ssh-keygen", "-q", "-t", "ed25519", "-N", "", "-f", keyPath]);
+    const key = await createProjectSshKey(project.id, await Bun.file(keyPath).text());
+    expect((await listed(environment)).output).toContain(key.fingerprint);
+    expect((await listed(other)).status).toBe(1);
+    await deleteProjectSshKey(project.id, key.id);
+    expect((await listed(environment)).status).toBe(1);
   });
 
   test("updates the template for later workspaces without changing existing workspaces", async () => {

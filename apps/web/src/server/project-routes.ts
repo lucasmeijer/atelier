@@ -15,7 +15,7 @@ import {
   addProject, createProjectEnvironmentVariable, createProjectSshKey, createProjectSecret,
   deleteProject, deleteProjectEnvironmentVariable, deleteProjectSecret, deleteProjectSshKey,
   formatProjectSpec, getProjectConfiguration, listProjectEnvironmentVariables, listProjectSecrets, secretNeedsValue,
-  listProjectSshKeys, listProjects, parseProjectSpec, updateProject,
+  getProjectSshKnownHosts, setProjectSshKnownHosts, listProjectSshKeys, listProjects, parseProjectSpec, updateProject,
   updateProjectEnvironmentVariable, updateProjectSecret, setProjectSecretValue, projectSecretRoutingRevision, projectSecretValueInputSchema, setProjectDockerfile, setProjectPreloadImages,
   type ProjectEnvironmentVariable, type ProjectSecretInput, type ProjectSecretSummary, type ProjectSshKeySummary, type ProjectSummary,
 } from "@atelier/projects";
@@ -198,15 +198,22 @@ export function createProjectRoutes(deps: {
       });
       return `<form class="project-ssh-key-configured" method="post" action="${projectPath}/ssh-keys/${encodeURIComponent(key.id)}/delete" data-turbo="true"><span title="${escapeHtml(`${key.keyType} ${key.fingerprint}`)}"><code>${escapeHtml(key.keyType)}</code> <code>${escapeHtml(key.fingerprint)}</code></span>${removeButton}</form>`;
     }).join("");
-    return `<div class="project-ssh-key-fields" id="${domId("project_ssh_key_fields", project.id)}">${configuredKeys}<form class="project-ssh-key-form" method="post" action="${projectPath}/ssh-keys" data-turbo="true" data-controller="settings-autosave" data-action="focusout->settings-autosave#saveWhenLeaving submit->settings-autosave#submit">
+    return `<div class="project-ssh-key-fields" id="${domId("project_ssh_key_fields", project.id)}"><p>Keys stay encrypted outside workspaces.</p>${configuredKeys}<form class="project-ssh-key-form" method="post" action="${projectPath}/ssh-keys" data-turbo="true" data-controller="settings-autosave" data-action="focusout->settings-autosave#saveWhenLeaving submit->settings-autosave#submit">
       <label><span>Add a new private key</span><textarea class="textarea" name="privateKey" placeholder="-----BEGIN OPENSSH PRIVATE KEY-----\nb3BlbnNzaC1rZXktdjEAAAAA…\n-----END OPENSSH PRIVATE KEY-----" autocomplete="off" required></textarea></label>
     </form></div>`;
   }
 
-  function projectSshKeyEditor(project: ProjectSummary, keys: ProjectSshKeySummary[], section?: ProjectSettingsSection): string {
+  function projectSshHostTrustFields(projectId: string, knownHosts: string): string {
+    return `<form id="${domId("project_ssh_host_trust", projectId)}" class="project-ssh-key-fields project-ssh-key-form" method="post" action="/projects/${encodeURIComponent(projectId)}/ssh-known-hosts" data-turbo="true" data-controller="settings-autosave" data-action="focusout->settings-autosave#saveWhenLeaving submit->settings-autosave#submit">
+      <label><span>Additional servers</span><textarea class="textarea" name="knownHosts" placeholder="git.example.com ssh-ed25519 AAAA…" spellcheck="false">${escapeHtml(knownHosts)}</textarea></label>
+      <p>GitHub is trusted automatically. Verify other servers’ known_hosts entries with your administrator. Applies to new workspaces.</p>
+    </form>`;
+  }
+
+  function projectSshKeyEditor(project: ProjectSummary, keys: ProjectSshKeySummary[], knownHosts: string, section?: ProjectSettingsSection): string {
     return `<section class="project-configuration-list project-ssh-key" id="${domId("project_ssh_key", project.id)}"${revealSection(section, "ssh-keys")}>
-      <div class="project-configuration-head"><h3>SSH key</h3><p>If you want to have your agent ssh into a remote machine, but you do not want to expose the required ssh key to the agent, you can paste your private ssh key below. It will be stored and encrypted outside of the agent sandbox. The agent will be given an ssh socket that they can use to do their work, without getting access to the private key.</p></div>
-      ${projectConfigurationDisclosure(keys.length === 0 ? "Configure SSH private keys" : "Configure SSH keys", projectSshKeyFields(project, keys), section === "ssh-keys")}
+      ${projectConfigurationDisclosure("Configure SSH private keys", projectSshKeyFields(project, keys), section === "ssh-keys")}
+      ${projectConfigurationDisclosure("Trusted SSH servers", projectSshHostTrustFields(project.id, knownHosts))}
     </section>`;
   }
 
@@ -237,14 +244,14 @@ export function createProjectRoutes(deps: {
   }
 
   async function projectEditorBody(project: ProjectSummary, instanceUrl: string, section?: ProjectSettingsSection): Promise<string> {
-    const [environment, secrets, sshKeys] = await Promise.all([listProjectEnvironmentVariables(project.id), listProjectSecrets(project.id), listProjectSshKeys(project.id)]);
+    const [environment, secrets, sshKeys, knownHosts] = await Promise.all([listProjectEnvironmentVariables(project.id), listProjectSecrets(project.id), listProjectSshKeys(project.id), getProjectSshKnownHosts(project.id)]);
     if (section === undefined && secrets.some(secretNeedsValue)) section = "secrets";
     return `<div id="project_editor_body" class="project-editor-body">
       <div class="project-editor-page project-editor-detail-page">
         <div class="project-editor-detail-body">
           <section class="project-edit-section"${revealSection(section, "repository")}><form class="project-edit-form" aria-label="Repository" method="post" action="/projects/${encodeURIComponent(project.id)}" data-controller="settings-autosave" data-action="change->settings-autosave#save"><label class="project-edit-field"><span>Display name</span><input class="text-field" name="name" value="${escapeHtml(project.name)}" required></label><label class="project-edit-field"><span>Repository</span><input class="text-field" name="gitUrl" value="${escapeHtml(formatProjectSpec(project))}" required></label></form></section>
           <section class="project-configuration-list"><div class="project-configuration-head"><h3>Set up with an agent</h3><p>Let an agent configure dependencies, environment variables and secrets for your project. Starts from the default image, even if your custom Dockerfile is broken.</p></div>${actionLinkHtml({ href: `/projects/${encodeURIComponent(project.id)}/onboarding`, variant: "secondary", content: { kind: "caption", caption: "Set up with agent" }, attributesHtml: 'data-turbo-stream="true"' })}</section>
-          <div class="project-edit-config">${projectSecretEditor(project, secrets, section)}${projectSshKeyEditor(project, sshKeys, section)}${projectEnvironmentEditor(project, environment, section)}${projectDockerfileEditor(project, section)}${projectPreloadImagesEditor(project, section)}</div>
+          <div class="project-edit-config">${projectSecretEditor(project, secrets, section)}${projectSshKeyEditor(project, sshKeys, knownHosts, section)}${projectEnvironmentEditor(project, environment, section)}${projectDockerfileEditor(project, section)}${projectPreloadImagesEditor(project, section)}</div>
           <section class="project-edit-danger-zone"${revealSection(section, "danger")}>${projectConfigurationDisclosure("Danger zone", `<div class="project-edit-danger">${projectDeleteControl(project.id)}</div>`, section === "danger")}</section>
           <section class="project-configuration-list">
             <div class="project-configuration-head"><h3>Atelier instance URL</h3><p>The external URL for this Atelier instance.</p></div>
@@ -410,7 +417,7 @@ export function createProjectRoutes(deps: {
     return projectSettingsResponse(projectId, request, { project }, async () => paneStream);
   }
 
-  type ProjectSettingsResult = { project: ProjectSummary } | { secret: ProjectSecretSummary; deleted?: true } | { environmentVariable: ProjectEnvironmentVariable; deleted?: true };
+  type ProjectSettingsResult = { knownHosts: string } | { project: ProjectSummary } | { secret: ProjectSecretSummary; deleted?: true } | { environmentVariable: ProjectEnvironmentVariable; deleted?: true };
 
   /** Every settings mutation refreshes workspace warnings, including JSON callers. */
   async function projectSettingsResponse(projectId: string, request: Request, result: ProjectSettingsResult, renderFields: () => Promise<string> = async () => ""): Promise<Response> {
@@ -551,6 +558,12 @@ export function createProjectRoutes(deps: {
     return `${turboReplaceStream(domId("project_ssh_key_fields", projectId), projectSshKeyFields(project, await listProjectSshKeys(projectId)))}${warnings}`;
   }
 
+  async function updateProjectSshKnownHostsEndpoint(projectId: string, request: Request): Promise<Response> {
+    const input = requestAcceptsJson(request) ? jsonString(await readJsonObject(request), "knownHosts") : String((await request.formData()).get("knownHosts") ?? "");
+    const knownHosts = await setProjectSshKnownHosts(projectId, input);
+    return projectSettingsResponse(projectId, request, { knownHosts }, async () => turboReplaceStream(domId("project_ssh_host_trust", projectId), projectSshHostTrustFields(projectId, knownHosts)));
+  }
+
   async function createProjectSshKeyFromForm(projectId: string, request: Request): Promise<Response> {
     const formData = await request.formData();
     await createProjectSshKey(projectId, String(formData.get("privateKey") ?? ""));
@@ -633,6 +646,11 @@ export function createProjectRoutes(deps: {
     if ((params = match(/^\/projects\/([^/]+)\/secrets\/([^/]+)\/value$/)) && request.method === "POST") return await setProjectSecretValueEndpoint(params[0]!, params[1]!, request);
     if ((params = match(/^\/projects\/([^/]+)\/secrets\/([^/]+)$/)) && request.method === "POST") return await updateProjectSecretEndpoint(params[0]!, params[1]!, request);
     if ((params = match(/^\/projects\/([^/]+)\/secrets\/([^/]+)\/delete$/)) && request.method === "POST") return await deleteProjectSecretEndpoint(params[0]!, params[1]!, request);
+    if ((params = match(/^\/projects\/([^/]+)\/ssh-known-hosts$/))) {
+      const projectId = params[0]!;
+      if (request.method === "GET" && requestAcceptsJson(request)) return jsonResponse({ knownHosts: await getProjectSshKnownHosts(projectId) });
+      if (request.method === "POST") return updateProjectSshKnownHostsEndpoint(projectId, request);
+    }
     if ((params = match(/^\/projects\/([^/]+)\/ssh-keys$/)) && request.method === "POST") return await createProjectSshKeyFromForm(params[0]!, request);
     if ((params = match(/^\/projects\/([^/]+)\/ssh-keys\/([^/]+)\/delete$/)) && request.method === "POST") return await deleteProjectSshKeyFromForm(params[0]!, params[1]!);
     if ((params = match(/^\/projects\/([^/]+)\/delete$/)) && request.method === "POST") return await deleteProjectEndpoint(params[0]!, request);

@@ -21,6 +21,7 @@ import { runHostObservableCommand, tailTerminalText } from "@atelier/observable-
 import { Type, type Static } from "typebox";
 import { Value } from "typebox/value";
 import { getProjectConfiguration, listProjects, isGitProjectInit } from "./project.ts";
+import { workspaceSourceSshEnvironment, stopWorkspaceSshAgent } from "./ssh-agent.ts";
 
 export interface PreparedWorkspaceSource {
   workspaceId: string;
@@ -113,7 +114,7 @@ async function pathExists(path: string): Promise<boolean> {
   return await stat(path).then(() => true, () => false);
 }
 
-async function ensureTemplate(gitUrl: string, branch: string | null, key: string, options: { workspaceId: string; events?: AtelierEventBus; logPath: string }): Promise<{ repoPath: string; resolvedCommit: string; effectiveBranch: string | null }> {
+async function ensureTemplate(gitUrl: string, branch: string | null, key: string, options: { workspaceId: string; events?: AtelierEventBus; logPath: string; sshEnv: Record<string, string> }): Promise<{ repoPath: string; resolvedCommit: string; effectiveBranch: string | null }> {
   const dir = templateDir(key);
   const repoPath = templateRepoPath(key);
   const tmpPath = join(dir, `repo.tmp-${process.pid}-${Date.now()}`);
@@ -183,17 +184,23 @@ git_cmd -C "$repo_path" rev-parse HEAD > "$resolved_commit_file"
 printf '%s\n' "$effective_branch" > "$effective_branch_file"
 `;
 
+  const env = { ...options.sshEnv };
+  if (token) env.GH_TOKEN = token;
   const result = await runHostObservableCommand({
     session: `atelier-provision-git-${crypto.randomUUID().slice(0, 8)}`,
     cwd: dir,
     command: script,
-    env: token ? { GH_TOKEN: token } : undefined,
+    env,
     onSessionStarted: async (session) => {
       await options.events?.emit("workspace_provision_progress", { workspaceId: options.workspaceId, detail: "Clone project", terminalSession: session });
     },
   });
   await appendFile(options.logPath, result.output).catch(() => undefined);
-  if (result.exitCode !== 0) throw new AtelierCoreError("git_error", tailTerminalText(result.output) || `git provisioning failed with exit code ${result.exitCode}`);
+  if (result.exitCode !== 0) {
+    const detail = tailTerminalText(result.output) || `git provisioning failed with exit code ${result.exitCode}`;
+    const trustHelp = result.output.includes("Host key verification failed") ? "\nConfigure verified server keys in Project settings → Trusted SSH servers, then retry workspace creation." : "";
+    throw new AtelierCoreError("git_error", `${detail}${trustHelp}`);
+  }
 
   const effectiveBranch = (await readFile(effectiveBranchPath, "utf8")).trim() || null;
   const resolvedCommit = (await readFile(resolvedCommitPath, "utf8")).trim();
@@ -286,7 +293,7 @@ async function verifyStandaloneWorktree(worktreePath: string): Promise<void> {
   }
 }
 
-export async function prepareWorkspaceSource(options: { workspaceId: string; gitUrl: string; branch: string | null; worktreePath?: string; events?: AtelierEventBus }): Promise<PreparedWorkspaceSource> {
+export async function prepareWorkspaceSource(options: { workspaceId: string; gitUrl: string; branch: string | null; worktreePath?: string; projectId?: string; events?: AtelierEventBus }): Promise<PreparedWorkspaceSource> {
   const gitUrl = options.gitUrl.trim();
   if (!gitUrl) throw invalidArguments("missing git URL");
   const branch = options.branch?.trim() || null;
@@ -306,7 +313,8 @@ export async function prepareWorkspaceSource(options: { workspaceId: string; git
 
     try {
       await writeFile(logPath, `Preparing project ${gitUrl}${branch ? `#${branch}` : ""}\n`);
-      const template = await ensureTemplate(gitUrl, branch, key, { workspaceId: options.workspaceId, events: options.events, logPath });
+      const sshEnv = await workspaceSourceSshEnvironment(options.workspaceId, options.projectId);
+      const template = await ensureTemplate(gitUrl, branch, key, { workspaceId: options.workspaceId, events: options.events, logPath, sshEnv });
       await copyWorkspaceTemplate(template.repoPath, tmpWorkPath, sourceRoot());
       await verifyStandaloneWorktree(tmpWorkPath);
       await rm(worktreePath, { recursive: true, force: true });
@@ -334,6 +342,7 @@ export async function prepareWorkspaceSource(options: { workspaceId: string; git
         templateKey: key,
       };
     } catch (error) {
+      await stopWorkspaceSshAgent(options.workspaceId);
       await rm(tmpWorkPath, { recursive: true, force: true }).catch(() => undefined);
       await options.events?.emit("workspace_provision_progress", { workspaceId: options.workspaceId, output: tailTerminalText(await readFile(logPath, "utf8").catch(() => "")) });
       throw error;
@@ -349,7 +358,7 @@ export function registerProjectWorkspaceInitEvents(events: AtelierEventBus): voi
   });
   events.on("workspace_source_prepare", async ({ workspaceId, init, workHostPath }) => {
     if (!isGitProjectInit(init)) return;
-    await prepareWorkspaceSource({ workspaceId, gitUrl: init.gitUrl, branch: init.branch, worktreePath: workHostPath, events });
+    await prepareWorkspaceSource({ workspaceId, gitUrl: init.gitUrl, branch: init.branch, projectId: init.projectId, worktreePath: workHostPath, events });
   });
 
   events.on("workspace_plan_prepare", async ({ workspaceId, init, plan }) => {

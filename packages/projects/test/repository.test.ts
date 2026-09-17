@@ -104,7 +104,11 @@ describe("projects", () => {
     expect(await readFile(file, "utf8")).not.toContain("OPENSSH PRIVATE KEY");
     expect(await revealProjectSshKeys(project.id, file, keyFile)).toEqual([privateKey, privateKey]);
     expect((await listProjects(file)).projects[0]).toEqual({ ...project, configurationFingerprint: expect.any(String) });
-    expect((await listProjects(file)).projects[0]!.configurationFingerprint).not.toBe(project.configurationFingerprint);
+    expect((await listProjects(file)).projects[0]!.configurationFingerprint).toBe(project.configurationFingerprint);
+
+    const encryptedKeyPath = join(dir, "encrypted-key");
+    expect(await Bun.spawn(["ssh-keygen", "-q", "-t", "ed25519", "-N", "password", "-f", encryptedKeyPath]).exited).toBe(0);
+    await expect(createProjectSshKey(project.id, await readFile(encryptedKeyPath, "utf8"), file, keyFile)).rejects.toThrow("incorrect passphrase");
   });
 
   test("project environment variables support empty values", async () => {

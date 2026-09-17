@@ -5,7 +5,7 @@ import { acquireFileLock, AtelierCoreError, getAtelierRuntimeContext } from "@at
 import { Type, type Static } from "typebox";
 import { Value } from "typebox/value";
 
-export type ProjectSummary = Omit<ProjectRecord, "secrets" | "sshKeys" | "environment"> & { configurationFingerprint?: string };
+export type ProjectSummary = Omit<ProjectRecord, "secrets" | "sshKeys" | "sshKnownHosts" | "environment"> & { configurationFingerprint?: string };
 export type StoredProjectSecret = Static<typeof storedProjectSecretSchema>;
 export type ProjectSecretSummary = Omit<StoredProjectSecret, "encryptedSecret" | "optional" | "annotation"> & { annotation: string; optional: boolean; configured: boolean; valueRevision?: string };
 export type StoredProjectSshKey = Static<typeof storedProjectSshKeySchema>;
@@ -70,6 +70,7 @@ const projectRecordSchema = Type.Object({
   lastWorkspaceCreatedAt: Type.Optional(Type.Number()),
   secrets: Type.Optional(Type.Array(storedProjectSecretSchema)),
   sshKeys: Type.Optional(Type.Array(storedProjectSshKeySchema)),
+  sshKnownHosts: Type.Optional(Type.String()),
   environment: Type.Optional(Type.Array(projectEnvironmentVariableSchema)),
   dockerfile: Type.Optional(Type.String()),
   preloadImages: Type.Optional(Type.Array(Type.String())),
@@ -181,14 +182,14 @@ export function findProjectRecord(store: ProjectStore, projectId: string): Proje
   return project;
 }
 
-export function projectConfigurationFingerprint(project: Pick<ProjectRecord, "gitUrl" | "branch" | "sessionShareKey" | "dockerfile" | "secrets" | "sshKeys"> & { environment?: Pick<ProjectEnvironmentVariable, "name" | "value">[] }): string {
-  // Only settings consumed by workspace setup belong here; annotations and optionality are live metadata.
+export function projectConfigurationFingerprint(project: Pick<ProjectRecord, "gitUrl" | "branch" | "sessionShareKey" | "dockerfile" | "secrets" | "sshKnownHosts"> & { environment?: Pick<ProjectEnvironmentVariable, "name" | "value">[] }): string {
+  // Only workspace setup snapshots belong here; SSH keys are authorized live.
   const configuration = {
     gitUrl: project.gitUrl, branch: project.branch, sessionShareKey: project.sessionShareKey,
     dockerfile: project.dockerfile ?? "",
     environment: (project.environment ?? []).map(({ name, value }) => ({ name, value })).sort((a, b) => a.name.localeCompare(b.name)),
     secrets: (project.secrets ?? []).filter((secret) => secret.encryptedSecret).map(({ envName, hostPattern, placeholder, encryptedSecret }) => ({ envName, hostPattern, placeholder, encryptedSecret })).sort((a, b) => a.envName.localeCompare(b.envName)),
-    sshKeys: (project.sshKeys ?? []).map(({ encryptedPrivateKey }) => encryptedPrivateKey).sort(),
+    sshKnownHosts: project.sshKnownHosts ?? "",
   };
   return createHash("sha256").update(JSON.stringify(configuration)).digest("hex");
 }

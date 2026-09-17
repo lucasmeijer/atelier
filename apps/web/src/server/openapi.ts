@@ -31,6 +31,7 @@ const jsonBody = (schema: TSchema) => ({ required: true, content: { "application
 const emptyObjectSchema = { type: "object", additionalProperties: false };
 const workspaceIssuesSchema = { type: "array", items: { type: "object", required: ["kind", "message"], properties: { kind: { type: "string", enum: ["readiness", "image"] }, message: { type: "string" } }, additionalProperties: false } };
 const projectSecretInputSchema = { type: "object", required: ["envName", "hostPattern"], properties: { envName: { type: "string" }, hostPattern: { type: "string" }, placeholder: { type: "string" }, annotation: { type: "string", description: "What this secret is needed for" }, optional: { type: "boolean", default: false }, secretValue: { type: "string", writeOnly: true } }, additionalProperties: false };
+const sshKnownHostsSchema = { type: "object", required: ["knownHosts"], properties: { knownHosts: { type: "string", description: "Operator-verified known_hosts entries; empty clears additional trust. GitHub is trusted by default." } } };
 const projectSummaryProperties = { lastWorkspaceCreatedAt: { type: "number", description: "Unix timestamp in milliseconds of the most recent workspace creation for this project; absent if none has been recorded" }, configurationFingerprint: { type: "string", description: "Opaque fingerprint of workspace setup settings" }, id: { type: "string" }, name: { type: "string" }, gitUrl: { type: "string" }, branch: { type: ["string", "null"] }, sessionShareKey: { type: "string" }, dockerfile: { type: "string" }, preloadImages: { type: "array", items: { type: "string" }, description: "Images prepared before newly created workspaces become ready. Does not change existing workspaces." } };
 const agentConversationSummarySchema = {
   type: "object",
@@ -80,6 +81,10 @@ export function atelierOpenApi(commands: WorkspaceModuleCommandHandler[], contri
       "/projects/{projectId}": {
         get: { summary: "Inspect project configuration", parameters: [projectId], responses: jsonResponse("Project configuration", { $ref: "#/components/schemas/ProjectConfigurationEnvelope" }) },
         post: { summary: "Update a project", parameters: [projectId], requestBody: jsonBody({ type: "object", required: ["name", "gitUrl"], properties: { name: { type: "string" }, gitUrl: { type: "string" } }, additionalProperties: false }), responses: jsonResponse("Project updated", { $ref: "#/components/schemas/ProjectEnvelope" }) },
+      },
+      "/projects/{projectId}/ssh-known-hosts": {
+        get: { summary: "Read explicitly trusted SSH server keys", parameters: [projectId], responses: jsonResponse("Trusted host keys", sshKnownHostsSchema) },
+        post: { summary: "Save operator-verified known_hosts entries for future workspace preparation", parameters: [projectId], requestBody: jsonBody(sshKnownHostsSchema), responses: jsonResponse("Trusted host keys saved", sshKnownHostsSchema) },
       },
       "/projects/{projectId}/settings": {
         get: {

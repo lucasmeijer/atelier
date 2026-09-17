@@ -2,7 +2,7 @@ import { createHash, randomUUID } from "node:crypto";
 import { mkdtemp, rm, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
-import { AtelierCoreError } from "@atelier/core";
+import { AtelierCoreError, runCommand } from "@atelier/core";
 import { decryptProjectValue, encryptProjectValue } from "./secret-crypto.ts";
 import { findProjectRecord, projectsFile, readProjectStore, updateProjectStore, type ProjectSshKeySummary, type StoredProjectSshKey } from "./project.ts";
 
@@ -11,10 +11,9 @@ async function keyIdentity(privateKey: string): Promise<Pick<ProjectSshKeySummar
   const file = join(directory, "private-key");
   try {
     await writeFile(file, privateKey.endsWith("\n") ? privateKey : `${privateKey}\n`, { mode: 0o600 });
-    const process = Bun.spawn(["ssh-keygen", "-y", "-f", file], { stdout: "pipe", stderr: "pipe", stdin: "ignore" });
-    const [publicKey, stderr, status] = await Promise.all([new Response(process.stdout).text(), new Response(process.stderr).text(), process.exited]);
-    if (status !== 0) throw new AtelierCoreError("invalid_ssh_private_key", stderr.trim() || "ssh-keygen rejected the private key; use an unencrypted OpenSSH private key");
-    const [keyType, encodedKey] = publicKey.trim().split(/\s+/, 2);
+    const { stdout, stderr, exitCode } = await runCommand(["ssh-keygen", "-y", "-P", "", "-f", file]);
+    if (exitCode !== 0) throw new AtelierCoreError("invalid_ssh_private_key", stderr.trim() || "ssh-keygen rejected the private key; use an unencrypted OpenSSH private key");
+    const [keyType, encodedKey] = stdout.toString().trim().split(/\s+/, 2);
     if (!keyType || !encodedKey) throw new AtelierCoreError("invalid_ssh_private_key", "ssh-keygen returned an invalid public key");
     const fingerprint = createHash("sha256").update(Buffer.from(encodedKey, "base64")).digest("base64").replace(/=+$/, "");
     return { keyType, fingerprint: `SHA256:${fingerprint}` };

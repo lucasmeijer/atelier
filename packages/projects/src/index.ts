@@ -81,3 +81,5 @@ export {
 
 export { projectWorkspaceSettingsSchema, type ProjectWorkspaceSettings } from "./project.ts";
 export { readProjectWorkspaceSettings, writeProjectWorkspaceSettings, projectWorkspaceInitWithSettings, validateProjectWorkspaceSettings } from "./workspace-settings.ts";
+
+export { getProjectSshKnownHosts, setProjectSshKnownHosts } from "./ssh-host-trust.ts";
