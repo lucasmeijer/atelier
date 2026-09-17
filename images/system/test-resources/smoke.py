@@ -98,14 +98,10 @@ try:
     print('CPU management/workloads usec',used,flush=True);assert used[management]>used[workloads]*3
     for c in workers+[manager]:remove(c)
     print('Collective memory OOM',flush=True)
-    before=int(stat(workloads,'memory.events')['oom_kill']); high_before=int(stat(workloads,'memory.events')['high'])
+    before=int(stat(workloads,'memory.events')['oom_kill'])
     workers=[workload(f'memory{i}','memory','1000') for i in range(3)]
-    until(lambda:int(stat(workloads,'memory.events')['high'])>high_before,40);sample(3)
-    print('memory.high pressure verified; temporarily lift soft threshold to exercise hard ceiling promptly',flush=True)
-    pathlib.Path(workloads,'memory.high').write_text('max')
     until(lambda:int(stat(workloads,'memory.events')['oom_kill'])>before,40);sample(3)
     for c in workers:remove(c)
-    pathlib.Path(workloads,'memory.high').write_text(str(config['policy']['memoryHigh']))
     print('Collective process exhaustion',flush=True)
     before=int(stat(workloads,'pids.events')['max'])
     workers=[workload('pids-a','pids','1500'),workload('pids-b','pids','2000')]

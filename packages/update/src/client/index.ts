@@ -30,6 +30,9 @@ export const atelierClientModule: WorkspaceClientModule = {
             window.location.replace("/");
             return;
           }
+          if (!response.headers.get("content-type")?.startsWith("text/vnd.turbo-stream.html")) {
+            throw new Error(`Unexpected restart response (HTTP ${response.status} ${response.statusText})`);
+          }
           window.Turbo!.renderStreamMessage(await response.text());
         } catch (error) {
           this.errorTarget.textContent = `Could not request the update: ${error instanceof Error ? error.message : String(error)}`;

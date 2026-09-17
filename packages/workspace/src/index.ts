@@ -30,6 +30,7 @@ export type {
 } from "./events.ts";
 
 export { createWorkspaceMetadataState, type WorkspaceMetadataState } from "./metadata-state.ts";
+export { ensureHostInotifyLimit } from "./host-inotify.ts";
 export { createWorkspaceProvisioning, type WorkspaceProvisioning, type WorkspaceProvisionRun, type WorkspaceProvisionStep } from "./provisioning.ts";
 import type { WorkspaceProvisionRun } from "./provisioning.ts";
 

@@ -139,10 +139,7 @@ export function createTmuxBashTool(
       // Capture the complete PTY stream before the command starts. The retained
       // file is only advertised when the model-facing result is truncated.
       const captureFullOutput = `tmux pipe-pane -o -t "$TMUX_PANE" ${shellQuote(`umask 077; cat > ${shellQuote(fullOutputPath)}`)}`;
-      const runCommand = `(
-${forceTtySize}
-${params.command}
-)
+      const runCommand = `/usr/local/bin/atelier-bash-command /bin/bash -c ${shellQuote(`${forceTtySize}\n${params.command}`)}
 status=$?
 printf '%s\\n' "$status" > ${shellQuote(exitFile)}`;
       const inner = `${buildSetRemainOnExitCommand()}; ${captureFullOutput}; ${forceTtySize}; ${ninjaStatus}; ${colorEnv}; ${guards}; ${runCommand}`;

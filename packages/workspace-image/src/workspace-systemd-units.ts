@@ -1,6 +1,11 @@
 /** Installed in the workspace image; provisioning and standalone tests share these. */
 export function workspaceRuntimeUnits() {
   return {
+    "atelierbash.slice": `[Unit]
+Description=Expendable agent Bash commands
+[Slice]
+CPUWeight=10
+`,
     "atelier-init.service": `[Unit]
 Description=Atelier workspace initialization
 [Service]

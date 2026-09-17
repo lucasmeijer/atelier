@@ -15,7 +15,6 @@ export function resourcePolicy(memory: number, pids: number) {
   const max = Math.floor(memory - reserve);
   return {
     memory: max,
-    memoryHigh: Math.floor(max * 0.9),
     reserve,
     pids: Math.min(8192, pids - 1024),
   };
@@ -110,7 +109,9 @@ export async function initializeResources() {
   }
   await writeFile(join(management, "memory.low"), String(policy.reserve));
   await writeFile(join(workloads, "memory.max"), String(policy.memory));
-  await writeFile(join(workloads, "memory.high"), String(policy.memoryHigh));
+  // Throttling this ancestor stalls gateways and workspace initialization too.
+  // Keep the hard bound; expendable Bash processes carry a higher OOM score.
+  await writeFile(join(workloads, "memory.high"), "max");
   await writeFile(join(workloads, "memory.swap.max"), "0");
   await writeFile(join(workloads, "pids.max"), String(policy.pids));
   await mkdir(join(workloads, "commands"), { recursive: true });

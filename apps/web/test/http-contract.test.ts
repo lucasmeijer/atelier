@@ -75,6 +75,15 @@ beforeEach(dataDir.setUp);
 afterEach(dataDir.tearDown);
 
 describe("HTTP contracts", () => {
+  test("restart requests from both surfaces reach the update module", async () => {
+    const { app } = createTestApp();
+    for (const surface of ["sidebar", "settings"]) {
+      const result = await app.fetch(new Request(`http://test.local/update/restart?surface=${surface}`, { method: "POST" }));
+      expect(result.status).toBe(409);
+      expect(await result.text()).toBe("Updates require Atelier System");
+    }
+  });
+
   test("HEAD / and /up match their GET status without a body", async () => {
     const { app } = createTestApp();
     const home = await app.fetch(new Request("http://test.local/", { method: "HEAD" }));

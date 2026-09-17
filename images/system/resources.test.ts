@@ -4,13 +4,11 @@ const GiB = 1024 ** 3;
 test("collective workloads leave management headroom on small and large Systems", () => {
   expect(resourcePolicy(3 * GiB, 4096)).toEqual({
     memory: 2 * GiB,
-    memoryHigh: Math.floor(1.8 * GiB),
     reserve: GiB,
     pids: 3072,
   });
   expect(resourcePolicy(64 * GiB, Infinity)).toEqual({
     memory: 60 * GiB,
-    memoryHigh: 54 * GiB,
     reserve: 4 * GiB,
     pids: 8192,
   });

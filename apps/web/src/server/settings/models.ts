@@ -450,6 +450,7 @@ async function connectedStep(provider: string, surface: ModelSetupSurface, rende
 }
 
 export async function handleModelSettingsRequest(request: Request, url: URL, renderPickerUpdates: () => Promise<string>): Promise<Response | undefined> {
+  if (!url.pathname.startsWith("/settings/models/") && !url.pathname.startsWith("/settings/providers/")) return undefined;
   const surface = modelSetupSurfaces.find((candidate) => candidate === (url.searchParams.get("surface") ?? "settings"));
   if (!surface) return response("Unknown model setup surface", { status: 400 });
   if (url.pathname === "/settings/models/step" && (request.method === "GET" || request.method === "POST")) {

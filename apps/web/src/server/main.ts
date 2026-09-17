@@ -1,6 +1,7 @@
 import { configureOnboardingTools } from "@atelier/agent/server";
 import { createProjectSecretRequester } from "./project-secret-request.ts";
 import { ensureDefaultWorkspaceImage } from "@atelier/workspace-image";
+import { ensureHostInotifyLimit } from "@atelier/workspace";
 import { recoverWorkspaces, prepareWorkspaceForUse } from "./workspace-recovery.ts";
 import { designSystemCatalogueHtml } from "@atelier/design-system/catalogue";
 import { configureAgentDelegation } from "@atelier/agent/server";
@@ -449,7 +450,8 @@ function closeProvisionTermSocket(data: ProvisionTermSocketData): void {
   data.terminal?.close();
 }
 
-await ensureDefaultWorkspaceImage({ buildOutput: "inherit" });
+const defaultWorkspaceImage = await ensureDefaultWorkspaceImage({ buildOutput: "inherit" });
+await ensureHostInotifyLimit(defaultWorkspaceImage);
 for (const workspace of persistedWorkspaces) await ingressSockets.ensure(workspace.id);
 await workspaceIngress.initialize();
 const maxPortAttempts = allowPortFallback ? 100 : 1;

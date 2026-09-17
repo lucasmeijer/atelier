@@ -63,6 +63,12 @@
   ],
   "files": [
     {
+      "from": "rootfs/usr/local/bin/atelier-bash-command",
+      "to": "/usr/local/bin/atelier-bash-command",
+      "mode": "0755",
+      "afterRun": true
+    },
+    {
       "from": "rootfs/usr/local/bin/chromium",
       "to": "/usr/local/bin/chromium",
       "mode": "0755",
