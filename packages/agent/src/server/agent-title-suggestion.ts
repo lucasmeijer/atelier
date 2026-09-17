@@ -1,10 +1,26 @@
 import { createKeyedOperationQueue, type AtelierEventBus } from "@atelier/core";
-import { listWorkspaces, setWorkspaceTitle } from "@atelier/workspace";
-import type { ModelRef } from "./model-state.ts";
+import { getWorkspaceTitle, listWorkspaces, setWorkspaceTitle } from "@atelier/workspace";
+import { resolveNewWorkspaceAgentModel, type ModelRef } from "./model-state.ts";
 import { createPiModelRuntime } from "./pi-config-models.ts";
 import { listWorkspaceAgentConversations, setWorkspaceAgentConversationTitle, untitledAgentConversationTitle, type WorkspaceAgentConversationInfo } from "./session-store.ts";
 
-const pending = new Set<string>();
+const pendingRenames = new Set<string>();
+
+export function createAutomaticWorkspaceNamingGate() {
+  const active = new Set<string>();
+  const completed = new Set<string>();
+  return async (workspaceId: string, name: () => Promise<boolean>): Promise<void> => {
+    if (active.has(workspaceId) || completed.has(workspaceId)) return;
+    active.add(workspaceId);
+    try {
+      if (await name()) completed.add(workspaceId);
+    } finally {
+      active.delete(workspaceId);
+    }
+  };
+}
+
+const automaticallyNameWorkspace = createAutomaticWorkspaceNamingGate();
 const serializeTitleOperation = createKeyedOperationQueue();
 
 function promptFor(userPrompt: string): string {
@@ -52,17 +68,15 @@ interface AgentSessionTitleStore {
 }
 
 export function createAgentSessionTitleSetter(store: AgentSessionTitleStore) {
-  return async (agent: WorkspaceAgentConversationInfo, title: string, options: { events?: AtelierEventBus; onlyIfUnnamed?: boolean } = {}): Promise<WorkspaceAgentConversationInfo> => {
+  return async (agent: WorkspaceAgentConversationInfo, title: string, options: { events?: AtelierEventBus } = {}): Promise<WorkspaceAgentConversationInfo> => {
     const result = await serializeTitleOperation(agent.workspaceId, async () => {
       const current = (await store.listConversations(agent.workspaceId)).find((candidate) => candidate.conversationId === agent.conversationId);
       if (!current) throw new Error(`Agent conversation not found: ${agent.conversationId}`);
-      if (options.onlyIfUnnamed && current.title !== untitledAgentConversationTitle) return { agent: current, changed: false, workspaceNamed: false };
       const renamed = await store.setConversationTitle(current, title);
       const workspaceShouldFollow = await store.workspaceShouldFollowAgentTitle(agent.workspaceId, current.title);
       if (workspaceShouldFollow) await store.setWorkspaceTitle(agent.workspaceId, title);
-      return { agent: renamed, changed: true, workspaceNamed: workspaceShouldFollow };
+      return { agent: renamed, workspaceNamed: workspaceShouldFollow };
     });
-    if (!result.changed) return result.agent;
     await options.events?.emit("workspace_agent_conversation_title_changed", { workspaceId: agent.workspaceId, conversationId: agent.conversationId, title });
     if (result.workspaceNamed) await options.events?.emit("workspace_title_changed", { workspaceId: agent.workspaceId, title });
     return result.agent;
@@ -83,36 +97,35 @@ interface AgentTitleSuggestionErrorDetails {
   error?: unknown;
 }
 
-function logAgentTitleSuggestionError(agent: WorkspaceAgentConversationInfo, model: ModelRef | undefined, message: string, details: AgentTitleSuggestionErrorDetails = {}): void {
+function logAgentTitleSuggestionError(agent: { workspaceId: string; conversationId?: string }, model: ModelRef | undefined, message: string, details: AgentTitleSuggestionErrorDetails = {}): void {
   console.error("could not suggest Agent session title", { workspaceId: agent.workspaceId, conversationId: agent.conversationId, model: model ? `${model.provider}/${model.id}` : undefined, message, ...details });
 }
 
-function suggestAgentTitle(agent: WorkspaceAgentConversationInfo, userMessages: string[], options: { events?: AtelierEventBus; agentModel?: ModelRef; onlyIfUnnamed: boolean }): void {
-  const pendingKey = `${agent.workspaceId}:${agent.conversationId}`;
-  if (pending.has(pendingKey)) return;
+function suggestAgentTitle(agent: { workspaceId: string; conversationId?: string }, userMessages: string[], options: { events?: AtelierEventBus; agentModel?: ModelRef; onlyIfUnnamed: boolean }): void {
   const promptText = userMessages.map((message) => message.trim()).filter(Boolean).join("\n\n");
   if (!promptText) return;
 
-  pending.add(pendingKey);
-  void (async () => {
+  const suggest = async (): Promise<boolean> => {
     let titleModelRef = options.agentModel;
     try {
-      if (options.onlyIfUnnamed && agent.title !== untitledAgentConversationTitle) return;
+      // The persisted title also suppresses automatic naming after a server restart.
+      if (options.onlyIfUnnamed && await getWorkspaceTitle(agent.workspaceId) !== null) return true;
+      if (!titleModelRef && !agent.conversationId) titleModelRef = await resolveNewWorkspaceAgentModel();
       if (!titleModelRef) {
         logAgentTitleSuggestionError(agent, undefined, "agent model is not selected");
-        return;
+        return false;
       }
       const runtime = await createPiModelRuntime();
       const model = runtime.getModels(titleModelRef.provider)
         .toSorted((a, b) => a.cost.input - b.cost.input)[0];
       if (!model) {
         logAgentTitleSuggestionError(agent, titleModelRef, "provider has no models available");
-        return;
+        return false;
       }
       titleModelRef = { provider: model.provider, id: model.id };
       if (!(await runtime.checkAuth(model.provider))) {
         logAgentTitleSuggestionError(agent, titleModelRef, "model authentication is not configured");
-        return;
+        return false;
       }
       const response = await runtime.completeSimple(model, {
         messages: [{ role: "user", content: promptFor(promptText), timestamp: Date.now() }],
@@ -122,7 +135,7 @@ function suggestAgentTitle(agent: WorkspaceAgentConversationInfo, userMessages: 
           stopReason: response.stopReason,
           diagnostics: response.diagnostics,
         });
-        return;
+        return false;
       }
       const responseText = textFromResponse(response);
       const title = normalizeSlug(responseText);
@@ -130,15 +143,41 @@ function suggestAgentTitle(agent: WorkspaceAgentConversationInfo, userMessages: 
         if (responseText && responseText.toLowerCase() !== "error") {
           logAgentTitleSuggestionError(agent, titleModelRef, "model returned an unusable Agent session title", { responseText, stopReason: response.stopReason });
         }
-        return;
+        return false;
       }
-      await setAgentSessionTitle(agent, title, { events: options.events, onlyIfUnnamed: options.onlyIfUnnamed });
+      if (options.onlyIfUnnamed) {
+        await serializeTitleOperation(agent.workspaceId, async () => {
+          // Recheck after the LLM returns: a manual title always wins.
+          if (await getWorkspaceTitle(agent.workspaceId) !== null) return;
+          await setWorkspaceTitle(agent.workspaceId, title);
+          await options.events?.emit("workspace_title_changed", { workspaceId: agent.workspaceId, title });
+          const conversations = await listWorkspaceAgentConversations(agent.workspaceId);
+          const conversation = agent.conversationId
+            ? conversations.find((candidate) => candidate.conversationId === agent.conversationId)
+            : conversations[0];
+          if (conversation?.title === untitledAgentConversationTitle) {
+            await setWorkspaceAgentConversationTitle(conversation, title);
+            await options.events?.emit("workspace_agent_conversation_title_changed", { workspaceId: agent.workspaceId, conversationId: conversation.conversationId, title });
+          }
+        });
+      } else {
+        const conversation = (await listWorkspaceAgentConversations(agent.workspaceId)).find((candidate) => candidate.conversationId === agent.conversationId)!;
+        await setAgentSessionTitle(conversation, title, { events: options.events });
+      }
+      return true;
     } catch (error) {
       logAgentTitleSuggestionError(agent, titleModelRef, error instanceof Error ? error.message : String(error), { error });
-    } finally {
-      pending.delete(pendingKey);
+      return false;
     }
-  })();
+  };
+  if (options.onlyIfUnnamed) {
+    void automaticallyNameWorkspace(agent.workspaceId, suggest);
+  } else {
+    const key = `${agent.workspaceId}:${agent.conversationId}`;
+    if (pendingRenames.has(key)) return;
+    pendingRenames.add(key);
+    void suggest().finally(() => pendingRenames.delete(key));
+  }
 }
 
 export function maybeNameAgentFromPrompt(agent: WorkspaceAgentConversationInfo, userMessages: string[], options: { events?: AtelierEventBus; agentModel?: ModelRef } = {}): void {
@@ -147,4 +186,8 @@ export function maybeNameAgentFromPrompt(agent: WorkspaceAgentConversationInfo, 
 
 export function renameAgentFromContext(agent: WorkspaceAgentConversationInfo, userMessages: string[], options: { events?: AtelierEventBus; agentModel?: ModelRef } = {}): void {
   suggestAgentTitle(agent, userMessages, { ...options, onlyIfUnnamed: false });
+}
+
+export function maybeNameWorkspaceFromPrompt(workspaceId: string, prompt: string, options: { events?: AtelierEventBus; agentModel?: ModelRef } = {}): void {
+  suggestAgentTitle({ workspaceId }, [prompt], { ...options, onlyIfUnnamed: true });
 }

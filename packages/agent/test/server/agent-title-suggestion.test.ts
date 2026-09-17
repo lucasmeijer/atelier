@@ -1,7 +1,7 @@
 import { describe, expect, test } from "bun:test";
 import { createAtelierEventBus } from "@atelier/core";
 import type { WorkspaceAgentConversationInfo } from "../../src/server/session-store.ts";
-import { createAgentSessionTitleSetter } from "../../src/server/agent-title-suggestion.ts";
+import { createAutomaticWorkspaceNamingGate, createAgentSessionTitleSetter } from "../../src/server/agent-title-suggestion.ts";
 
 const agent = (title = "Untitled"): WorkspaceAgentConversationInfo => ({
   workspaceId: "workspace-1",
@@ -58,13 +58,46 @@ describe("Agent session titles", () => {
     expect(harness.emitted).toEqual(["agent:renamed-shared-name", "workspace:renamed-shared-name"]);
   });
 
-  test("an automatic suggestion cannot overwrite an already named Agent session", async () => {
-    const harness = titleHarness(true, "manual-name");
+});
 
-    const result = await harness.setTitle(agent("manual-name"), "late-ai-name", { events: harness.events, onlyIfUnnamed: true });
+describe("automatic workspace naming", () => {
+  test("launch and message submissions share one in-flight request and successful result", async () => {
+    const name = createAutomaticWorkspaceNamingGate();
+    const result = Promise.withResolvers<boolean>();
+    let requests = 0;
+    const launch = name("workspace-1", async () => { requests++; return await result.promise; });
+    await name("workspace-1", async () => { requests++; return true; });
+    expect(requests).toBe(1);
+    result.resolve(true);
+    await launch;
+    await name("workspace-1", async () => { requests++; return true; });
+    expect(requests).toBe(1);
+  });
 
-    expect(result.title).toBe("manual-name");
-    expect(harness.workspaceTitles).toEqual([]);
-    expect(harness.emitted).toEqual([]);
+  test("failed or insufficient-context suggestions allow a later prompt to retry", async () => {
+    const name = createAutomaticWorkspaceNamingGate();
+    let requests = 0;
+    await name("workspace-1", async () => { requests++; return false; });
+    await name("workspace-1", async () => { requests++; return true; });
+    expect(requests).toBe(2);
+  });
+
+  test("a thrown request releases the in-flight gate", async () => {
+    const name = createAutomaticWorkspaceNamingGate();
+    await expect(name("workspace-1", async () => { throw new Error("provider failed"); })).rejects.toThrow("provider failed");
+    let retried = false;
+    await name("workspace-1", async () => { retried = true; return true; });
+    expect(retried).toBe(true);
+  });
+
+  test("different workspaces can generate titles concurrently", async () => {
+    const name = createAutomaticWorkspaceNamingGate();
+    const result = Promise.withResolvers<boolean>();
+    const first = name("workspace-1", () => result.promise);
+    let secondNamed = false;
+    await name("workspace-2", async () => { secondNamed = true; return true; });
+    expect(secondNamed).toBe(true);
+    result.resolve(true);
+    await first;
   });
 });
