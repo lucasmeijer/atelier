@@ -1,6 +1,8 @@
 import { hostDiagnosticGroups } from "../diagnostics.ts";
 import { hostOriginAllowed } from "./authorization.ts";
 import { actionLinkHtml } from "@atelier/design-system/action-link";
+import { copyButtonHtml } from "@atelier/design-system/copy-button";
+import { publicWorkspaceAppOrigin } from "@atelier/proxy-ingress";
 import { buttonHtml } from "@atelier/design-system/button";
 import { destructiveConfirmationHtml } from "@atelier/design-system/destructive-confirmation";
 import { dialogHtml } from "@atelier/design-system/dialog";
@@ -60,8 +62,10 @@ async function handle(request: Request, url: URL, context: WorkspaceModuleRouteC
   const json = requestAcceptsJson(request);
   if (url.pathname === "/host" && request.method === "GET") {
     if (json) return Response.json({ available: hostAvailable(), url: "/host", boundary: "Atelier System", shellUser: "root" });
+    const instanceUrl = process.env.ATELIER_PUBLIC_URL || publicWorkspaceAppOrigin(request);
+    const instance = `<div class="host-instance-url"><span>External URL:</span><a href="${e(instanceUrl)}" target="_blank" rel="noopener noreferrer">${e(instanceUrl)}</a>${copyButtonHtml({ label: "Copy Atelier instance URL", copyText: instanceUrl })}</div>`;
     const body = hostAvailable() ? `<div class="host-content"><turbo-frame id="${statsFrame}" src="/host/sample"><p role="status">Sampling host…</p></turbo-frame><turbo-frame id="${terminalFrame}" src="/host/terminals"><p role="status">Loading terminals…</p></turbo-frame></div>` : `<p>Host access requires an Atelier System image with the host service. This instance has no System host connection.</p>`;
-    const dialog = dialogHtml({ element: { id: "host_dialog", attributesHtml: 'data-dialog-auto-show data-controller="host-panel" data-action="close->host-panel#closed"' }, titleCaption: "Host", iconHtml: Icons.Terminal, bodyHtml: body });
+    const dialog = dialogHtml({ element: { id: "host_dialog", attributesHtml: 'data-dialog-auto-show data-controller="host-panel" data-action="close->host-panel#closed"' }, titleCaption: "Host", iconHtml: Icons.Terminal, bodyHtml: `<div class="host-content">${instance}${body}</div>` });
     return request.headers.has("turbo-frame") ? response(`<turbo-frame id="${workspaceModuleModalFrameId}">${dialog}</turbo-frame>`) : context.renderModalPage(dialog);
   }
   if (!hostAvailable()) return json

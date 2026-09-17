@@ -1,3 +1,7 @@
+.host-instance-url { display: flex; align-items: center; gap: 8px; min-width: 0; color: var(--text); }
+.host-instance-url > span { flex-shrink: 0; }
+.host-instance-url a { overflow-wrap: anywhere; min-width: 0; color: inherit; }
+.host-instance-url .copy-button { flex-shrink: 0; }
 .host-content { display: grid; gap: 20px; min-width: 0; }
 .host-stats { display: grid; gap: 14px; }
 .host-section-heading { display: flex; align-items: center; justify-content: space-between; gap: 12px; }
