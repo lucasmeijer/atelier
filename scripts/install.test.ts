@@ -2,7 +2,7 @@ import { expect, test } from "bun:test";
 
 const installer = await Bun.file(new URL("./install.sh", import.meta.url)).text();
 
-function run(options: { systemState?: "restarting" | "exited"; nonRoot?: boolean; denySudo?: boolean; mac?: boolean; wsl?: boolean; installed?: boolean; old?: boolean; pullFails?: boolean; running?: boolean; appFails?: boolean; pendingHealth?: boolean; missingFilesystem?: boolean; loadable?: boolean } = {}, args = ["--non-interactive"]) {
+function run(options: { systemState?: "restarting" | "exited"; nonRoot?: boolean; denySudo?: boolean; mac?: boolean; wsl?: boolean; installed?: boolean; old?: boolean; pullFails?: boolean; appFails?: boolean; pendingHealth?: boolean; missingFilesystem?: boolean; loadable?: boolean } = {}, args: string[] = []) {
   const logPath = `/tmp/atelier-install-test-${crypto.randomUUID()}.log`;
   const mock = `
 mktemp() { echo "${logPath}"; }
@@ -38,7 +38,7 @@ docker() {
           printf 'starting\\nAn activity the installer has never heard of\\n42\\n'
           return
         fi
-        printf '${options.appFails ? 'failed\\nApp health failed\\n\\n\\n\\n\\nApp exited' : options.running === false ? 'starting\\nWaiting for your connection\\n\\n\\nSign in to continue\\nhttps://auth.example/sign-in\\n' : 'ready\\nAtelier is ready\\n\\nhttps://app.example/custom-path\\n\\n\\n'}\\n'
+        printf '${options.appFails ? 'failed\\nApp health failed\\n\\n\\n\\n\\nApp exited' : 'ready\\nAtelier is ready\\n\\nhttps://app.example/custom-path\\n\\n\\n'}\\n'
         return
       fi ;;
     'logs --tail') echo 'supervisor startup failed: io.weight unavailable';;
@@ -46,14 +46,22 @@ docker() {
   esac
 }
 `;
-  const result = Bun.spawnSync([process.platform === "darwin" ? "/bin/bash" : "bash", "-c", mock + installer.replace("tee /etc/modules-load.d/atelier-system.conf", "tee /dev/null"), "installer", ...args], { stdin: "ignore" });
+  const script = installer
+    .replace("tee /etc/modules-load.d/atelier-system.conf", "tee /dev/null")
+    // Mock terminal availability and answers; these tests exercise Docker orchestration.
+    .replace("{ [ -t 0 ]; } 2>/dev/null </dev/tty", "true")
+    .replace(
+      'IFS= read -r -t 10 "$1" </dev/tty',
+      `if [ "$1" = action ]; then action=update; else answer=${options.installed ? "yes" : "1"}; fi`,
+    );
+  const result = Bun.spawnSync([process.platform === "darwin" ? "/bin/bash" : "bash", "-c", mock + script, "installer", ...args], { stdin: "ignore" });
   const log = Bun.spawnSync(["cat", logPath]).stdout.toString();
   Bun.spawnSync(["rm", "-f", logPath, `${logPath}.checked`]);
   return { status: result.exitCode, output: result.stdout.toString() + result.stderr.toString() + log };
 }
 
 test("fresh install launches privileged System with persistent named volume and bootstrap app", () => {
-  const result = run({}, ["--non-interactive", "--system-image", "test/system:v1", "--app-image", "test/app:v1"]);
+  const result = run({}, ["--system-image", "test/system:v1", "--app-image", "test/app:v1"]);
   expect(result.status).toBe(0);
   expect(result.output).toContain("DOCKER pull test/system:v1");
   expect(result.output).toContain("--name atelier-system --hostname atelier-system --privileged --cgroupns=host --restart unless-stopped --stop-timeout 120 --tmpfs /run --mount source=atelier-system,target=/data --publish 127.0.0.1::3080 test/system:v1 --app-image test/app:v1 --access-mode tailscale");
@@ -77,13 +85,6 @@ test("failed pull leaves existing System untouched", () => {
   expect(result.output).not.toContain("DOCKER stop");
   expect(result.output).not.toContain("DOCKER rm");
   expect(result.output).not.toContain("DOCKER run");
-});
-
-test("noninteractive installation yields for a System-owned user action", () => {
-  const result = run({ running: false });
-  expect(result.status).toBe(0);
-  expect(result.output.match(/http:\/\/127\.0\.0\.1:3001\/status/g)?.length).toBe(1);
-  expect(result.output).not.toContain("DOCKER exec atelier-system tailscale");
 });
 
 test("connect requests System-owned reconnection without downloading or replacing images", () => {
@@ -156,7 +157,7 @@ test("desktop defaults local while an explicit access choice overrides the OS", 
   const wsl = run({ wsl: true });
   expect(wsl.status).toBe(0);
   expect(wsl.output).toContain("--access-mode localhost");
-  const remote = run({ mac: true }, ["--non-interactive", "--access-mode", "tailscale"]);
+  const remote = run({ mac: true }, ["--access-mode", "tailscale"]);
   expect(remote.status).toBe(0);
   expect(remote.output).toContain("--access-mode tailscale");
 });
@@ -164,7 +165,7 @@ test("desktop defaults local while an explicit access choice overrides the OS", 
 
 for (const action of ["open", "connect"]) {
   test(`${action} does not require local access support from an existing System`, () => {
-    const result = run({ installed: true }, ["--non-interactive", "--action", action]);
+    const result = run({ installed: true }, ["--action", action]);
     expect(result.status).toBe(0);
     expect(result.output).not.toContain("3080/tcp");
     expect(result.output).not.toContain("3001/access");
@@ -194,7 +195,7 @@ test("denied sudo fails before changing the Linux host", () => {
 for (const state of ["restarting", "exited"] as const) {
   for (const action of ["update", "open"] as const) {
     test(`${action} stops waiting and shows container logs when System is ${state}`, () => {
-      const result = run({ installed: true, systemState: state }, ["--non-interactive", "--action", action]);
+      const result = run({ installed: true, systemState: state }, ["--action", action]);
       expect(result.status).toBe(1);
       expect(result.output).toContain(`Atelier services are ${state}`);
       expect(result.output).toContain("supervisor startup failed: io.weight unavailable");
@@ -206,7 +207,7 @@ for (const state of ["restarting", "exited"] as const) {
 
 for (const action of ["open", "connect"]) {
   test(`${action} stops an existing System when its status reports failure`, () => {
-    const result = run({ installed: true, appFails: true }, ["--non-interactive", "--action", action]);
+    const result = run({ installed: true, appFails: true }, ["--action", action]);
     expect(result.status).toBe(1);
     expect(result.output).toContain("DOCKER stop --time 120 atelier-system");
     expect(result.output).not.toContain("DOCKER rm");

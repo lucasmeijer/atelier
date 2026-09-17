@@ -5,7 +5,6 @@ system_image=ghcr.io/lucasmeijer/atelier-system:latest
 app_image=ghcr.io/lucasmeijer/atelier:stable
 action=""
 access_mode=""
-non_interactive=0
 system_name=atelier-system
 
 # Keep subprocess output available without turning the welcome into a log tail.
@@ -58,6 +57,10 @@ fail() {
   finish_line
   printf '\n  %s! %s%s\n' "$amber" "$*" "$reset" >&2
   exit 1
+}
+prompt() {
+  printf '%s' "$2"
+  IFS= read -r -t 10 "$1" </dev/tty || fail "No response received within 10 seconds, or terminal input closed. Run the installer again when ready."
 }
 run_quiet() {
   local label="$1" pid start=$SECONDS code=0
@@ -113,7 +116,6 @@ System replacements preserve the atelier-system volume and interrupt workspaces.
   --app-image REF      First-install app image (default: ghcr.io/lucasmeijer/atelier:stable)
   --access-mode MODE  localhost or tailscale (default selected for this machine)
   --action ACTION     install, update, connect, or open
-  --non-interactive   Install/update without prompts; print login instructions
   -h, --help          Show help
 
 The app image is only used when System has no persisted app selection.
@@ -132,13 +134,16 @@ while [ "$#" -gt 0 ]; do
         --access-mode) access_mode="$2" ;;
       esac
       shift 2 ;;
-    --non-interactive) non_interactive=1; shift ;;
     -h|--help) usage; exit 0 ;;
     *) fail "unknown option: $1" ;;
   esac
 done
 case "$action" in ""|install|update|connect|open) ;; *) fail "unknown action: $action" ;; esac
 case "$access_mode" in ""|localhost|tailscale) ;; *) fail "unknown access mode: $access_mode" ;; esac
+# stdin may carry the script itself (curl | bash); prompts use the controlling terminal.
+{ [ -t 0 ]; } 2>/dev/null </dev/tty ||
+  fail "Interactive setup requires a terminal. Run this installer from a terminal (piping to bash is supported)."
+
 host_os="$(uname -s)"
 desktop=0
 if [ "$host_os" = Darwin ] || { [ "$host_os" = Linux ] && grep -qi microsoft /proc/sys/kernel/osrelease; }; then desktop=1; fi
@@ -314,11 +319,6 @@ wait_for_system() {
           printf '\n  %s! %s%s\n' "$amber" "$description" "$reset" >&2
           if [ "${#fields[@]}" -gt 6 ]; then printf '  %s\n' "${fields[@]:6}" >&2; fi
           exit 1 ;;
-        starting)
-          if [ "$non_interactive" -eq 1 ] && [ -n "${fields[4]:-}" ]; then
-            printf '  Run the installer again after completing this action.\n'
-            return
-          fi ;;
       esac
     else
       [ "$code" -ne 2 ] || fail "The supervisor returned an invalid status."
@@ -338,16 +338,11 @@ wait_for_system() {
 }
 
 if [ -z "$action" ]; then
-  if [ "$non_interactive" -eq 1 ]; then
-    action=update
-  else
-    finish_line
-    printf '  Welcome back.\n'
-    printf '  Choose: open, update, connect, or quit: '
-    IFS= read -r action </dev/tty || fail "no terminal; specify --non-interactive or --action"
-    [ "$action" != quit ] || exit 0
-    case "$action" in connect|update|open) ;; *) fail "unknown action: $action" ;; esac
-  fi
+  finish_line
+  printf '  Welcome back.\n'
+  prompt action "  Choose: open, update, connect, or quit: "
+  [ "$action" != quit ] || exit 0
+  case "$action" in connect|update|open) ;; *) fail "unknown action: $action" ;; esac
 fi
 
 case "$action" in
@@ -355,29 +350,23 @@ case "$action" in
     if [ "$installed" -eq 1 ]; then
       finish_line
       printf '  %sUpdating interrupts running workspaces.%s\n' "$amber" "$reset"
-      if [ "$non_interactive" -eq 0 ]; then
-        printf '  Continue? [y/N]: '
-        IFS= read -r answer </dev/tty || fail "no terminal; specify --non-interactive"
-        case "$answer" in y|Y|yes) ;; *) exit 0 ;; esac
-      fi
+      prompt answer "  Continue? [y/N]: "
+      case "$answer" in y|Y|yes) ;; *) exit 0 ;; esac
     fi
     if [ "$installed" -eq 0 ] && [ -z "$access_mode" ]; then
       if [ "$desktop" -eq 1 ]; then access_mode=localhost; else access_mode=tailscale; fi
-      if [ "$non_interactive" -eq 0 ]; then
-        finish_line
-        local_caption="I'm installing this on my dev machine, no need for remote access now"
-        remote_caption="I'm installing this on a server so I can control my agents from anywhere"
-        if [ "$access_mode" = localhost ]; then
-          first_caption="$local_caption"; second_caption="$remote_caption"; alternate_mode=tailscale
-        else
-          first_caption="$remote_caption"; second_caption="$local_caption"; alternate_mode=localhost
-        fi
-        printf '  1. %s\n' "$first_caption"
-        printf '  %s2. %s%s\n' "$dim" "$second_caption" "$reset"
-        printf '  Choose [1]: '
-        IFS= read -r answer </dev/tty || fail "no terminal; specify --non-interactive"
-        case "${answer:-1}" in 1) ;; 2) access_mode="$alternate_mode" ;; *) fail "choose 1 or 2" ;; esac
+      finish_line
+      local_caption="I'm installing this on my dev machine, no need for remote access now"
+      remote_caption="I'm installing this on a server so I can control my agents from anywhere"
+      if [ "$access_mode" = localhost ]; then
+        first_caption="$local_caption"; second_caption="$remote_caption"; alternate_mode=tailscale
+      else
+        first_caption="$remote_caption"; second_caption="$local_caption"; alternate_mode=localhost
       fi
+      printf '  1. %s\n' "$first_caption"
+      printf '  %s2. %s%s\n' "$dim" "$second_caption" "$reset"
+      prompt answer "  Choose [1]: "
+      case "${answer:-1}" in 1) ;; 2) access_mode="$alternate_mode" ;; *) fail "choose 1 or 2" ;; esac
     fi
     run_quiet "Downloading Atelier services" docker pull "$system_image"
     if [ "$installed" -eq 1 ]; then
