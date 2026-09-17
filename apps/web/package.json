@@ -32,6 +32,7 @@
     "typebox": "^1.0.57",
     "@atelier/subagents": "workspace:*",
     "@atelier/desktop": "workspace:*",
-    "@atelier/llm": "workspace:*"
+    "@atelier/llm": "workspace:*",
+    "@atelier/host": "workspace:*"
   }
 }

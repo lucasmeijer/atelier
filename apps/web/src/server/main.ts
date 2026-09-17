@@ -419,7 +419,7 @@ async function validateSocket(request: Request, url: URL): Promise<SocketData | 
     return { kind: "provision-term", session };
   }
   for (const handler of socketHandlers) {
-    const session = await handler(url);
+    const session = await handler(url, request);
     if (session) return { kind: "workspace-module", ...session };
   }
   return undefined;

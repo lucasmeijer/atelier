@@ -56,6 +56,8 @@ export interface ObservableTerminalEvents {
 
 export interface HostObservableTerminalAttachOptions {
   session: string;
+  /** Optional isolated tmux server, for System-owned host sessions. */
+  socketName?: string;
   cols: number;
   rows: number;
   readonly?: boolean;
@@ -70,7 +72,7 @@ export interface ObservableTerminalAttachOptions extends HostObservableTerminalA
 }
 
 function tmuxAttachArgs(options: HostObservableTerminalAttachOptions): string[] {
-  const args: string[] = [];
+  const args: string[] = options.socketName ? ["-L", options.socketName] : [];
   if (options.fixedSize) {
     args.push("set-option", "-t", options.session, "window-size", "manual", ";", "resize-window", "-t", options.session, "-x", String(options.cols), "-y", String(options.rows), ";");
   }

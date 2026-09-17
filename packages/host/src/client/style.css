@@ -1,0 +1,43 @@
+.host-content { display: grid; gap: 20px; min-width: 0; }
+.host-stats { display: grid; gap: 14px; }
+.host-section-heading { display: flex; align-items: center; justify-content: space-between; gap: 12px; }
+.host-section-heading h3 { margin: 0 0 4px; font-size: var(--text-body); font-weight: var(--weight-bold); color: var(--text-bright); }
+.host-section-heading p { color: var(--text-muted); margin: 0; }
+.host-section-heading form, .host-terminal-heading form { margin: 0; flex-shrink: 0; }
+.host-table-wrap { border: 1px solid var(--line); border-radius: var(--radius-surface); overflow: hidden; }
+.host-diagnostics-table { width: 100%; border-collapse: collapse; font: inherit; line-height: var(--leading-standard); }
+.host-diagnostics-table th, .host-diagnostics-table td { padding: 7px 12px; text-align: start; }
+.host-diagnostics-table thead { background: var(--bg); color: var(--text-muted); }
+.host-diagnostics-table thead th { font-weight: var(--weight-medium); }
+.host-diagnostics-table tbody th[scope="row"] { font-weight: inherit; }
+.host-diagnostics-table tbody tr { border-top: 1px solid var(--line); }
+.host-diagnostics-table tbody + tbody { border-top: 1px solid var(--line-strong); }
+.host-diagnostics-table .host-resource { width: 15%; vertical-align: top; padding-top: 9px; color: var(--text-bright); font-weight: var(--weight-bold); background: var(--bg); }
+.host-diagnostics-table td, .host-diagnostics-table thead th:last-child { text-align: end; }
+.host-diagnostics-table td { color: var(--text-bright); }
+.host-diagnostics-table td .status-dot { margin-inline-end: 7px; }
+.host-metric-context { margin-inline-start: 8px; color: var(--text-muted); }
+.host-reading-warning, .host-diagnostics-table .host-reading-warning { color: var(--warning); }
+.host-details { min-width: 0; border-bottom: 1px solid var(--line); padding-bottom: 12px; }
+.host-details > summary { cursor: pointer; color: var(--text); }
+.host-probe-count { float: inline-end; color: var(--text-muted); }
+.host-probes { margin-top: 12px; max-height: 280px; overflow: auto; border: 1px solid var(--line); border-radius: var(--radius-control); }
+.host-probe + .host-probe { border-top: 1px solid var(--line); }
+.host-probe > summary { padding: 10px 12px; cursor: pointer; }
+.host-probe-state { float: inline-end; margin-inline-start: 12px; color: var(--text-muted); }
+.host-probe-state.host-reading-warning { color: var(--warning); }
+.host-probe pre { margin: 0; padding: 12px; border-top: 1px solid var(--line); background: var(--bg); white-space: pre-wrap; overflow-wrap: anywhere; font: var(--text-code)/var(--leading-standard) var(--font-mono); }
+.host-terminals { display: grid; gap: 10px; min-width: 0; }
+.host-terminal-heading { display: flex; align-items: center; gap: 8px; min-width: 0; }
+.host-terminal-heading > .tab-strip { flex: 0 1 auto; }
+.host-terminal-screen { height: clamp(260px, 36dvh, 480px); min-width: 0; overflow: hidden; position: relative; font: var(--text-code)/var(--leading-standard) var(--font-mono); }
+.host-error { display: flex; align-items: start; gap: 8px; color: var(--danger); }
+.host-error p { flex: 1; }
+.host-empty { margin: 0; padding: 8px 0 16px; color: var(--text); line-height: var(--leading-copy); }
+@media (max-width: 540px) {
+  .host-diagnostics-table th, .host-diagnostics-table td { padding: 7px 8px; }
+  .host-diagnostics-table .host-resource { width: auto; }
+  .host-metric-context { display: block; margin: 0; }
+  .host-probe-count { float: none; display: block; margin: 4px 0 0 14px; }
+  .host-probe-state { float: none; display: block; margin: 4px 0 0 14px; }
+}

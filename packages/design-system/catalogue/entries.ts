@@ -1,6 +1,7 @@
 /** Search by id. Each entry co-locates WHEN, contract, imports and executable examples.
  * page.ts renders these functions AND displays their source: no parallel demo markup.
  * Native CSS primitives intentionally do not have pass-through renderers. */
+import { tabHtml, tabStripHtml } from "../src/tab-strip/tab-strip-html.ts";
 import { buttonHtml } from "../src/button/button-html.ts";
 import { actionLinkHtml } from "../src/action-link/action-link-html.ts";
 import { buttonGroupHtml } from "../src/button-group/button-group-html.ts";
@@ -30,6 +31,13 @@ export interface CatalogueEntry {
   examples: { title: string; render: (idSuffix?: string) => string }[];
 }
 export const entries: CatalogueEntry[] = [
+  {
+    id: "tab-strip", title: "Tab strip", when: "Horizontal closable views, including Work and Host terminals.",
+    contract: "Shared action-item anatomy and roving tabindex. Left/Right/Home/End activate tabs. Features own selection, close forms, and optional reordering.",
+    imports: { "tab-strip": "tabHtml, tabStripHtml" },
+    sources: ["src/tab-strip/tab-strip-html.ts", "src/tab-strip/tab-strip-controller.ts", "src/tab-strip/tab-strip.css"],
+    examples: [{ title: "Terminal tabs", render: () => tabStripHtml({ label: "Example terminals", tabsHtml: ["Shell", "Diagnostics"].map((text, index) => tabHtml({ label: { kind: "text", text }, selected: index === 0, primary: { tag: "button", attributesHtml: 'type="button"' }, iconHtml: Icons.Terminal })).join("") }) }],
+  },
   {
     id: "motion",
     title: "Motion · state changes",

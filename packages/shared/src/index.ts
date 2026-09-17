@@ -226,6 +226,7 @@ export interface WorkspaceServerSocketSession {
 
 export type WorkspaceServerSocketHandler = (
   url: URL,
+  request: Request,
 ) => Promise<WorkspaceServerSocketSession | undefined> | WorkspaceServerSocketSession | undefined;
 
 export interface WorkspaceAppRef {

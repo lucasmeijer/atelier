@@ -23,6 +23,7 @@
         "@atelier/design-system": "workspace:*",
         "@atelier/desktop": "workspace:*",
         "@atelier/files": "workspace:*",
+        "@atelier/host": "workspace:*",
         "@atelier/keypress-probe": "workspace:*",
         "@atelier/llm": "workspace:*",
         "@atelier/projects": "workspace:*",
@@ -134,6 +135,18 @@
         "@codemirror/state": "6.7.1",
         "@codemirror/view": "6.43.6",
         "@lezer/highlight": "1.2.3",
+        "typebox": "^1.0.57",
+      },
+    },
+    "packages/host": {
+      "name": "@atelier/host",
+      "dependencies": {
+        "@atelier/core": "workspace:*",
+        "@atelier/design-system": "workspace:*",
+        "@atelier/observable-terminal": "workspace:*",
+        "@atelier/proxy-ingress": "workspace:*",
+        "@atelier/shared": "workspace:*",
+        "@hotwired/stimulus": "3.2.2",
         "typebox": "^1.0.57",
       },
     },
@@ -338,6 +351,8 @@
     "@atelier/desktop": ["@atelier/desktop@workspace:packages/desktop"],
 
     "@atelier/files": ["@atelier/files@workspace:packages/files"],
+
+    "@atelier/host": ["@atelier/host@workspace:packages/host"],
 
     "@atelier/keypress-probe": ["@atelier/keypress-probe@workspace:packages/keypress-probe"],
 

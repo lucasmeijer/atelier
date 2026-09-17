@@ -1,5 +1,7 @@
 /// <reference lib="dom" />
 
+import { TabStripController } from "./tab-strip/tab-strip-controller.ts";
+
 import { MarkdownDiffController } from "./markdown/markdown-diff-controller.ts";
 import { PerimeterButtonController } from "./perimeter-button/perimeter-button-controller.ts";
 import { WarningBannersController } from "./warning-banner/warning-banner-controller.ts";
@@ -16,6 +18,7 @@ import { TransientFeedbackController } from "./transient-feedback/transient-feed
 import { ToggleController } from "./toggle/toggle-controller.ts";
 
 const automaticBehaviors = [
+  ['[role="tablist"]', "tab-strip"],
   ["body", "action-items"],
   ["body", "warning-banners"],
   [".activity-button, .progress-button", "perimeter-button"],
@@ -46,6 +49,7 @@ function attachAutomaticBehaviors(root: ParentNode): void {
 }
 
 export function registerDesignSystemControllers(application: Pick<Application, "register">): void {
+  application.register("tab-strip", TabStripController);
   application.register("markdown-diff", MarkdownDiffController);
   application.register("perimeter-button", PerimeterButtonController);
   application.register("warning-banners", WarningBannersController);

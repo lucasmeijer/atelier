@@ -120,7 +120,6 @@ export function createWorkspacePresentationController(
       this.state = this.restoreState();
       this.media = window.matchMedia(phoneLayoutMediaQuery);
       this.media.addEventListener("change", this.viewportChanged);
-      this.element.addEventListener("keydown", this.keydown);
       this.element.addEventListener("atelier:workspace-residency-visible", this.residencyVisible);
       this.element.addEventListener("atelier:workspace-residency-hidden", this.residencyHidden);
       document.addEventListener("visibilitychange", this.documentVisibilityChanged);
@@ -138,7 +137,6 @@ export function createWorkspacePresentationController(
 
     disconnect(): void {
       this.media?.removeEventListener("change", this.viewportChanged);
-      this.element.removeEventListener("keydown", this.keydown);
       this.element.removeEventListener("atelier:workspace-residency-visible", this.residencyVisible);
       this.element.removeEventListener("atelier:workspace-residency-hidden", this.residencyHidden);
       document.removeEventListener("visibilitychange", this.documentVisibilityChanged);
@@ -484,7 +482,6 @@ export function createWorkspacePresentationController(
       this.element.querySelectorAll<HTMLElement>("[data-agent-conversation-id]").forEach((selector) => {
         const active = selector.dataset.agentConversationId === this.state.activeAgentId;
         selector.setAttribute("aria-selected", String(active));
-        selector.tabIndex = active ? 0 : -1;
       });
       this.element.querySelectorAll<PresentationPane>("[data-workspace-pane-role='agent']").forEach((pane) => pane.classList.toggle("is-active", pane.dataset.workspacePaneId === this.state.activeAgentId));
       if (selectedAgentChanged) this.element.dispatchEvent(new CustomEvent(workspaceAgentSelectionEvent, { bubbles: true, detail: { workspaceId: this.workspaceIdValue, conversationId: this.state.activeAgentId } }));
@@ -492,7 +489,6 @@ export function createWorkspacePresentationController(
       this.element.querySelectorAll<HTMLElement>("[data-work-view-key]").forEach((selector) => {
         const active = selector.dataset.workViewKey === this.state.activeWorkViewKey;
         selector.setAttribute("aria-selected", String(active));
-        selector.tabIndex = active ? 0 : -1;
       });
       this.element.querySelectorAll<PresentationPane>("[data-workspace-pane-role='work']").forEach((pane) => pane.classList.toggle("is-active", pane.dataset.workspacePaneId === this.state.activeWorkViewKey));
       this.element.querySelectorAll<HTMLElement>("[data-mobile-destination]").forEach((destination) => {
@@ -695,19 +691,6 @@ export function createWorkspacePresentationController(
     private documentVisibilityChanged = (): void => {
       if (document.visibilityState !== "visible") return;
       if (this.visiblePanes().some((pane) => pane.dataset.workspacePaneRole === "work")) this.finishVisibleWorkViewPreparation();
-    };
-
-    private keydown = (event: KeyboardEvent): void => {
-      const selector = event.target instanceof HTMLElement ? event.target.closest<HTMLElement>("[role='tab']") : null;
-      if (!selector || !["ArrowLeft", "ArrowRight", "Home", "End"].includes(event.key)) return;
-      const list = selector.closest("[role='tablist']");
-      const selectors = list ? [...list.querySelectorAll<HTMLElement>("[role='tab']")] : [];
-      if (selectors.length < 2) return;
-      event.preventDefault();
-      const index = selectors.indexOf(selector);
-      const nextIndex = event.key === "Home" ? 0 : event.key === "End" ? selectors.length - 1 : (index + (event.key === "ArrowRight" ? 1 : -1) + selectors.length) % selectors.length;
-      selectors[nextIndex]?.click();
-      selectors[nextIndex]?.focus();
     };
   };
 }

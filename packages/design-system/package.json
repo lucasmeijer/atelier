@@ -33,7 +33,8 @@
     "./assets": "./src/assets.ts",
     "./styles": "./src/design-system.css",
     "./catalogue": "./catalogue/page.ts",
-    "./styles/server": "./src/inline-styles.ts"
+    "./styles/server": "./src/inline-styles.ts",
+    "./tab-strip": "./src/tab-strip/tab-strip-html.ts"
   },
   "dependencies": {
     "@atelier/shared": "workspace:*",

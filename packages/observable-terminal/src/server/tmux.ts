@@ -5,6 +5,7 @@ export interface ObservableTerminalSessionOptions {
   session: string;
   /** Workspaces use a supervised server; never auto-start an unmanaged one. */
   requireExistingServer?: boolean;
+  socketName?: string;
   cwd: string;
   command: string;
   cols?: number;
@@ -50,16 +51,17 @@ export function buildObservableSessionCommand(options: ObservableTerminalSession
   }
   commands.push(`set-option -t ${target} status ${options.status === true ? "on" : "off"}`);
   if (options.historyLimit) commands.push(`set-option -t ${target} history-limit ${options.historyLimit}`);
-  return `${observableTerminalEnvPrefix()} tmux ${options.requireExistingServer ? "-N " : ""}${commands.join(" \\; ")}`;
+  return `${observableTerminalEnvPrefix()} tmux ${options.requireExistingServer ? "-N " : ""}${options.socketName ? `-L ${shellQuote(options.socketName)} ` : ""}${commands.join(" \\; ")}`;
 }
 
 /** Configure tmux-owned history to behave like natural terminal scrollback. */
-export function buildNaturalScrollCommand(): string {
+export function buildNaturalScrollCommand(socketName?: string): string {
+  const tmux = socketName ? `tmux -L ${shellQuote(socketName)}` : "tmux";
   return [
-    "tmux set-option -g mouse on",
-    "tmux bind-key -n S-PPage copy-mode -e '\\;' send-keys -X page-up",
-    "tmux bind-key -T copy-mode S-PPage send-keys -X page-up",
-    "tmux bind-key -T copy-mode S-NPage send-keys -X page-down",
+    `${tmux} set-option -g mouse on`,
+    `${tmux} bind-key -n S-PPage copy-mode -e '\\;' send-keys -X page-up`,
+    `${tmux} bind-key -T copy-mode S-PPage send-keys -X page-up`,
+    `${tmux} bind-key -T copy-mode S-NPage send-keys -X page-down`,
   ].join(" && ");
 }
 

@@ -306,12 +306,12 @@ turbo-frame { display: contents; }
 .fixed-shell-workspace-title { min-width: 0; flex: 0 1 auto; display: flex; align-items: center; gap: 8px; }
 .fixed-shell-workspace-title strong { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font: 400 var(--text-body)/var(--leading-standard) var(--font-sans); }
 .fixed-shell-workspace-title small { color: var(--text); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
-.fixed-shell-agent-conversations, .fixed-shell-work-view-selectors { min-width: 0; display: flex; align-self: stretch; align-items: center; gap: 4px; overflow-x: auto; scrollbar-width: none; }
+.fixed-shell-agent-conversations { min-width: 0; display: flex; align-self: stretch; align-items: center; gap: 4px; overflow-x: auto; scrollbar-width: none; }
 .fixed-shell-agent-conversations { flex: 0 1 auto; }
-.fixed-shell-work-view-selectors { flex: 1; }
-.fixed-shell-agent-conversations::-webkit-scrollbar, .fixed-shell-work-view-selectors::-webkit-scrollbar { display: none; }
-.fixed-shell-agent-icon, .fixed-shell-work-view-icon { width: 16px; height: 16px; flex: 0 0 auto; display: grid; place-items: center; color: var(--text); }
-.fixed-shell-agent-icon svg, .fixed-shell-work-view-icon svg { width: 16px; height: 16px; }
+.fixed-shell-work-pane .tab-strip { flex: 1; align-self: stretch; }
+.fixed-shell-agent-conversations::-webkit-scrollbar { display: none; }
+.fixed-shell-agent-icon { width: 16px; height: 16px; flex: 0 0 auto; display: grid; place-items: center; color: var(--text); }
+.fixed-shell-agent-icon svg { width: 16px; height: 16px; }
 .fixed-shell-agent-bodies, .fixed-shell-work-bodies { position: relative; height: 100%; min-height: 0; overflow: hidden; }
 .fixed-shell-surface { position: absolute; inset: 0; display: none; min-width: 0; min-height: 0; overflow: auto; }
 .fixed-shell-surface:focus { outline: none; }

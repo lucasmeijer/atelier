@@ -1,3 +1,6 @@
+import { hostSocketPath } from "../../../packages/host/src/protocol.ts";
+import { startHostService } from "../../../packages/host/src/system/service.ts";
+import { dirname } from "node:path";
 import { escapeHtml } from "../../../packages/shared/src/html.ts";
 import { startLocalIngress } from "./local-ingress.ts";
 import { installationStatus, type Activity } from "./installation-status.ts";
@@ -7,7 +10,7 @@ import { Value } from "typebox/value";
 import { installWorkspaceFirewall } from "./firewall.ts";
 import { initializeResources } from "./resources.ts";
 import { spawn, type ChildProcess } from "node:child_process";
-import { mkdir, readFile, rename, writeFile } from "node:fs/promises";
+import { chown, mkdir, readFile, rename, writeFile } from "node:fs/promises";
 import { parseArgs } from "node:util";
 import { command, docker, sleep, stopCommands } from "./process.ts";
 import { setSupervisorRoutes } from "./tailscale.ts";
@@ -24,6 +27,8 @@ const { values } = parseArgs({
   strict: true,
 });
 const resources = await initializeResources();
+await startHostService({ root: dirname(dirname(resources.commandsCgroup)), effectiveMemory: resources.effectiveMemory });
+await chown(hostSocketPath, 1000, 1000);
 const timeout = 120_000;
 const stateDir = "/data/supervisor";
 await Promise.all(
@@ -246,6 +251,8 @@ async function replace(reference: string, pull: boolean) {
       `type=bind,src=${resources.commandsCgroup},dst=/run/atelier-system/workload-processes`,
       "--mount",
       "type=bind,src=/run/atelier-system/resources.json,dst=/run/atelier-system/resources.json,readonly",
+      "--mount",
+      "type=bind,src=/run/atelier-host,dst=/run/atelier-host,readonly",
       "--mount",
       "type=bind,src=/run/atelier-system/access-v1,dst=/run/atelier-system/access-v1,readonly",
       "--label",

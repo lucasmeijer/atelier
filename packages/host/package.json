@@ -1,0 +1,18 @@
+{
+  "name": "@atelier/host",
+  "private": true,
+  "type": "module",
+  "exports": {
+    "./server": "./src/server/index.ts",
+    "./client": "./src/client/index.ts"
+  },
+  "dependencies": {
+    "@atelier/core": "workspace:*",
+    "@atelier/design-system": "workspace:*",
+    "@atelier/observable-terminal": "workspace:*",
+    "@atelier/shared": "workspace:*",
+    "@hotwired/stimulus": "3.2.2",
+    "typebox": "^1.0.57",
+    "@atelier/proxy-ingress": "workspace:*"
+  }
+}
