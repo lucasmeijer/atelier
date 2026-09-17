@@ -41,6 +41,7 @@ COPY packages/subagents/package.json packages/subagents/package.json
 COPY packages/syntax/package.json packages/syntax/package.json
 COPY packages/transcription/package.json packages/transcription/package.json
 COPY packages/update/package.json packages/update/package.json
+COPY packages/llm/package.json packages/llm/package.json
 
 RUN --mount=type=cache,target=/root/.bun/install/cache \
     bun install --frozen-lockfile
