@@ -17,37 +17,12 @@ RUN --mount=type=cache,target=/var/cache/apt,sharing=locked \
  && apt-get install -y --no-install-recommends ca-certificates
 WORKDIR /app
 
-COPY package.json bun.lock bunfig.toml tsconfig.json ./
-COPY apps/web/package.json apps/web/package.json
-COPY packages/core/package.json packages/core/package.json
-COPY packages/agent/package.json packages/agent/package.json
-COPY packages/design-system/package.json packages/design-system/package.json
-COPY packages/files/package.json packages/files/package.json
-COPY packages/markdown/package.json packages/markdown/package.json
-COPY packages/projects/package.json packages/projects/package.json
-COPY packages/workspace/package.json packages/workspace/package.json
-COPY packages/workspace-image/package.json packages/workspace-image/package.json
-COPY packages/workspace-terminal/package.json packages/workspace-terminal/package.json
-COPY packages/observable-terminal/package.json packages/observable-terminal/package.json
-COPY packages/shared/package.json packages/shared/package.json
-COPY packages/browser/package.json packages/browser/package.json
-COPY packages/desktop/package.json packages/desktop/package.json
-COPY packages/keypress-probe/package.json packages/keypress-probe/package.json
-COPY packages/vscode/package.json packages/vscode/package.json
-COPY packages/proxy-egress/package.json packages/proxy-egress/package.json
-COPY packages/proxy-ingress/package.json packages/proxy-ingress/package.json
-COPY packages/review/package.json packages/review/package.json
-COPY packages/subagents/package.json packages/subagents/package.json
-COPY packages/syntax/package.json packages/syntax/package.json
-COPY packages/transcription/package.json packages/transcription/package.json
-COPY packages/update/package.json packages/update/package.json
-COPY packages/llm/package.json packages/llm/package.json
+COPY . .
 
 RUN --mount=type=cache,target=/root/.bun/install/cache \
     bun install --frozen-lockfile
 
 FROM deps AS build
-COPY . .
 RUN bun run --cwd apps/web build:client
 
 FROM ${ATELIER_RUNTIME_IMAGE} AS runtime
