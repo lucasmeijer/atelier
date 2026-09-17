@@ -3,11 +3,9 @@ import { Type } from "typebox";
 import { Value } from "typebox/value";
 import { invalidArguments, type JsonObject } from "@atelier/core";
 import { hasAvailableConfiguredModel, renderModelSetupDialog, parseModelRef, modelRefValue } from "@atelier/llm/server";
-import { escapeHtml, turboStream, turboStreamResponse, type AgentWorkspaceParameters, type WorkspaceAgentLaunch } from "@atelier/shared";
-import { renderTranscriptionComposerControl, transcriptionComposerController } from "@atelier/transcription/server";
+import { turboStream, turboStreamResponse, type AgentWorkspaceParameters, type WorkspaceAgentLaunch } from "@atelier/shared";
 import { resolveNewWorkspaceAgentModel } from "./model-state.ts";
-import { renderLaunchComposerSettings, renderPromptActions, renderComposerActions } from "./render-composer.ts";
-import { ids } from "./render-context.ts";
+import { renderLaunchComposerSettings } from "./render-composer.ts";
 import { ensureDefaultWorkspaceAgentConversation } from "./session-store.ts";
 import { refreshConfiguredAgentRuntimes } from "./runtime.ts";
 
@@ -49,34 +47,17 @@ export const nativeAgentLaunch: WorkspaceAgentLaunch = {
   renderFooter({ query, ...context }) {
     return renderLaunchComposerSettings({ ...context, selectedModel: query.get("model") ?? undefined, selectedThinkingLevel: query.get("level") ?? undefined });
   },
-  async render(context) {
-    const draftId = context.draftId;
-    const rowId = ids.draftAttachRow(draftId);
-    const uploadUrl = `/agent-attachment-drafts/${encodeURIComponent(draftId)}/attachments?row=${encodeURIComponent(rowId)}`;
-    return {
-      attributesHtml: `data-controller="composer-focus agent-model-setup agent-attachments ${transcriptionComposerController}" data-action="mousedown->composer-focus#preserveInputFocus dragover->agent-attachments#dragOver dragleave->agent-attachments#dragLeave drop->agent-attachments#drop" data-agent-attachments-upload-url-value="${escapeHtml(uploadUrl)}"`,
-      formAttributesHtml: 'data-action="submit->agent-model-setup#guard submit->transcription-composer#submit keydown->submit-shortcut#keydown submit->submit-shortcut#submit submit->launch-composer-dialog#submit turbo:submit-end->submit-shortcut#submitted"',
-      bodyHtml: `<input type="hidden" name="attachmentDraft" value="${escapeHtml(draftId)}">
-        <div class="agent-attach-row" id="${rowId}" data-agent-attachments-target="row"></div>
-        <div class="composer-input-area"><textarea class="composer-input" name="text" rows="8" enterkeyhint="send" placeholder="Describe what you want the agent to do… (optional)" aria-label="Describe what you want the agent to do… (optional)" data-action="paste->agent-attachments#paste"></textarea>${renderTranscriptionComposerControl()}</div>${renderComposerActions(renderPromptActions(undefined, false))}`,
-      footerHtml: await nativeAgentLaunch.renderFooter(context),
-      discardUrl: `/agent-attachment-drafts/${encodeURIComponent(draftId)}/discard`,
-    };
-  },
   prepare: prepareAgentLaunch,
   async submit(form) {
-    if (!await hasAvailableConfiguredModel()) return { response: turboStreamResponse(turboStream("update", "settings_modal_host", await renderModelSetupDialog())) };
-    const attachmentDraft = String(form.get("attachmentDraft") ?? "");
-    if (!attachmentDraft) throw invalidArguments("attachmentDraft is required");
+    if (!await hasAvailableConfiguredModel()) return { response: turboStreamResponse(turboStream("update", "settings_modal_host", await renderModelSetupDialog()), { status: 422 }) };
     const model = String(form.get("model") ?? "");
     const thinkingLevel = String(form.get("level") ?? "");
     return {
-      submissionId: attachmentDraft,
       async prepare() {
         const ref = parseModelRef(model);
         if (ref) await setActiveAgentModel(ref.provider, ref.id, thinkingLevel);
-        const context = await prepareAgentLaunch({ initialPrompt: String(form.get("text") ?? ""), model, thinkingLevel, attachmentDraft });
-        return context!;
+        const context = await prepareAgentLaunch({ model, thinkingLevel });
+        return context ?? { agent: {} };
       },
     };
   },

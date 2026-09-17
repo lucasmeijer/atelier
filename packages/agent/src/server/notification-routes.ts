@@ -26,7 +26,7 @@ export const handleNotificationRequest: AgentRouteHandler = async (request, url,
   const reply = (message: string, status = 200): Response => requestAcceptsJson(request)
     ? Response.json(status < 400 ? { ...state(), message } : { error: { code: status === 409 ? "turn_ended" : "invalid_arguments", message } }, { status })
     : turboStreamResponse(notificationControlTurboStream(ctx, runtime.isStreaming)
-      + turboStream("replace", notificationFeedbackId(ctx.workspaceId), renderNotificationFeedback(ctx.workspaceId, message, status >= 400)), { status });
+      + turboStream("replace", notificationFeedbackId(ctx.workspaceId, ctx.conversationId), renderNotificationFeedback(ctx.workspaceId, ctx.conversationId, message, status >= 400)), { status });
   let input;
   let subscription;
   try {

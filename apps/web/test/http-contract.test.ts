@@ -148,7 +148,7 @@ describe("HTTP contracts", () => {
       branch: "main",
     });
     expect(seen[0]?.options?.context).toEqual({
-      agent: { initialPrompt: "Add tests", initialPromptMode: "composer", model: "", thinkingLevel: "", attachmentDraft: "" },
+      agent: { provider: "builtin", initialPrompt: "Add tests", initialPromptMode: "composer", model: "", thinkingLevel: "", attachmentDraft: undefined },
     });
   });
 
@@ -345,7 +345,6 @@ describe("HTTP contracts", () => {
         "/workspaces/{id}/agents/{conversationId}/close": {
           post: { responses: {
             "200": { content: { "application/json": { schema: { $ref: "#/components/schemas/AgentConversationCloseResult" } } } },
-            "409": { content: { "application/json": { schema: { $ref: "#/components/schemas/Error" } } } },
           } },
         },
       },

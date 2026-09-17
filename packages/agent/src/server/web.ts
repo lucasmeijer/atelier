@@ -1,4 +1,5 @@
-import { renderNotificationHeader } from "./render-notification.ts";
+import { Icons } from "@atelier/design-system/icons";
+import { nativeAgentLaunch } from "./launch.ts";
 import { untitledAgentConversationTitle, archiveWorkspaceAgentConversation, createNextWorkspaceAgentConversation, listWorkspaceAgentConversations, sessionShareDir, sessionShareKeyForInit, sessionShareMountPath, type WorkspaceAgentConversationInfo } from "./session-store.ts";
 import { handleUsageRequest, renderUsagePaneAction } from "./usage-web.ts";
 import { usageOpenApiPaths } from "./usage-openapi.ts";
@@ -36,7 +37,6 @@ export function createWorkspaceAgentTabProvider(dependencies: {
   const serializedClose = createKeyedOperationQueue();
 
   return {
-    renderHeader: ({ workspaceId, conversations }) => renderNotificationHeader(workspaceId, conversations),
     async list({ workspaceId }) {
       return (await dependencies.list(workspaceId)).map(({ conversationId, title }) => ({ id: conversationId, title, untitled: title === untitledAgentConversationTitle }));
     },
@@ -83,15 +83,6 @@ export const workspaceAgentTabProvider = createWorkspaceAgentTabProvider({
   restore: restoreWorkspaceAgentRuntime,
   archive: archiveWorkspaceAgentConversation,
 });
-
-export const agentWorkspaceCommands: WorkspaceCommandContribution[] = [
-  {
-    id: "agent.create",
-    label: "New Agent",
-    scope: "workspace",
-    surfaces: { ui: { placement: "agent-action" } },
-  },
-];
 
 const projectAgentWorkspaceCommand: WorkspaceCommandContribution = {
   id: "agent.open-launch-composer",
@@ -178,26 +169,18 @@ export const agentWorkspaceModule: WorkspaceModule = {
       responses: { "200": { description: "Server-rendered transcript with the target's lazy ancestors expanded", content: { "text/vnd.turbo-stream.html": { schema: { type: "string" } } } } },
     } },
   },
-  commands: [{
-    id: "agent.create",
-    async execute({ workspaceId, events }) {
-      const sourceConversation = (await listWorkspaceAgentConversations(workspaceId))[0];
-      const conversation = await createNextWorkspaceAgentConversation(workspaceId);
-      const applySettingsTimer = setTimeout(() => {
-        // SAFETY: Workspace commands receive the web server's AtelierEventBus.
-        void applyNewAgentSettings(conversation, sourceConversation, events as AtelierEventBus | undefined).catch((error) => console.error("Could not apply settings to new Agent conversation", error));
-      }, 0);
-      applySettingsTimer.unref?.();
-      return { createdAgentConversationId: conversation.conversationId };
-    },
-  }],
   routes: [{ handle: handleUsageRequest }, {
     async handle(request, url, context) {
       // SAFETY: The module boundary validates or constructs this value with the asserted domain shape.
       return handleAgentRequest(request, url, { events: context.events as AtelierEventBus | undefined });
     },
   }],
-  agentTabs: workspaceAgentTabProvider,
+  agentProvider: {
+    id: "builtin", label: "Builtin", iconHtml: Icons.Agent,
+    tabs: workspaceAgentTabProvider,
+    create: createBuiltinAgent,
+    launch: nativeAgentLaunch,
+  },
   initialize(context) {
     // SAFETY: The module boundary validates or constructs this value with the asserted domain shape.
     const events = context.events as AtelierEventBus;
@@ -225,6 +208,16 @@ export const agentWorkspaceModule: WorkspaceModule = {
     registerWorkspaceAgentTool("delete_current_workspace", (workspaceId) => createDeleteCurrentWorkspaceTool(workspaceId, async (force) => await context.deleteCurrentWorkspace(workspaceId, force)));
   },
   attachToWorkspace() {
-    return { commands: [...agentWorkspaceCommands, projectAgentWorkspaceCommand] };
+    return { commands: [projectAgentWorkspaceCommand] };
   },
 };
+
+async function createBuiltinAgent({ workspaceId, events }: { workspaceId: string; events?: AtelierEventBus }): Promise<string> {
+  const sourceConversation = (await listWorkspaceAgentConversations(workspaceId))[0];
+  const conversation = await createNextWorkspaceAgentConversation(workspaceId);
+  const applySettingsTimer = setTimeout(() => {
+    void applyNewAgentSettings(conversation, sourceConversation, events).catch((error) => console.error("Could not apply settings to new Agent conversation", error));
+  }, 0);
+  applySettingsTimer.unref?.();
+  return conversation.conversationId;
+}

@@ -82,7 +82,7 @@ export function workspacePaneOnboardingState(presentation: WorkspacePanePresenta
 export interface WorkspacePresentation {
   workspace: Pick<WorkspacePaneEntry, "id" | "title">;
   agentConversations: readonly AgentPaneContribution[];
-  agentHeaderHtml?: string;
+  agentProviders: readonly { id: string; label: string; iconHtml: string }[];
   workViews: readonly WorkPaneContribution[];
   commands?: readonly { id: string; label: string; description?: string; scope: string; iconHtml?: string; placement?: "work-launcher" | "agent-action"; binding?: string }[];
   overlayHtml?: readonly string[];
@@ -469,7 +469,6 @@ export function renderWorkspaceDeletionPresentation(workspaceId: string, deletio
 }
 
 export function renderWorkspacePresentation(presentation: WorkspacePresentation): string {
-  if (presentation.agentConversations.length === 0) throw new Error("Workspace presentation requires an Agent conversation");
   const id = workspacePresentationDomId(presentation.workspace.id);
   return `<div id="${id}" class="fixed-workspace-presentation" data-controller="workspace-presentation" data-workspace-presentation-workspace-id-value="${escapeHtml(presentation.workspace.id)}" data-workspace-id="${escapeHtml(presentation.workspace.id)}" data-workspace-commands="${escapeHtml(JSON.stringify(presentation.commands ?? []))}">
     <div class="fixed-shell-main">${renderAgentPane(presentation)}${renderWorkPane(presentation)}</div>

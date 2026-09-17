@@ -33,6 +33,8 @@
     "@atelier/subagents": "workspace:*",
     "@atelier/desktop": "workspace:*",
     "@atelier/llm": "workspace:*",
-    "@atelier/host": "workspace:*"
+    "@atelier/host": "workspace:*",
+    "@atelier/prompt": "workspace:*",
+    "@atelier/codex-agent": "workspace:*"
   }
 }

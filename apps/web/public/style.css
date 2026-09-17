@@ -678,3 +678,14 @@ button.settings-link:disabled { opacity: .45; cursor: default; filter: none; }
 .secret-value-request__note { color: var(--text-muted); }
 
 .dialog[data-project-onboarding-dialog] { width: min(540px, calc(100vw - 32px)); }
+
+/* Host-owned agent creation and initial prompt composition. */
+.agent-empty-canvas { display:flex; align-items:center; justify-content:center; min-height:100%; padding:32px; }
+.agent-empty-choices { width:100%; max-width:360px; }
+.agent-empty-choices h2 { font-size:20px; color:var(--text-bright); margin:0 0 8px; }
+.agent-empty-choices > p { color:var(--text); margin:0 0 24px; }
+.agent-empty-choices .action-list { display:grid; gap:12px; }
+.agent-empty-choices .action-item { padding:18px; border:1px solid var(--line-strong); border-radius:var(--radius-surface); background:var(--panel); }
+#launch_composer_provider { display:flex; align-items:center; gap:8px; flex-wrap:wrap; }
+.launch-attach { position:relative; overflow:hidden; color:var(--text); cursor:pointer; font-size:var(--text-code); }
+.launch-attach input { position:absolute; inset:0; opacity:0; cursor:pointer; width:100%; }

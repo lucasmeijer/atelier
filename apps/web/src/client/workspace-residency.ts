@@ -11,7 +11,7 @@ const workspaceAttentionTokensSchema = Type.Record(Type.String(), Type.Integer({
 
 interface WorkspaceSurfacePreparationController {
   prepareIntendedSurfaces(): Promise<void>;
-  selectedAgentId(): string;
+  selectedAgentId(): string | undefined;
 }
 
 type WorkspacePreparationPriority = "background" | "foreground" | "obsolete";
@@ -254,7 +254,7 @@ class WorkspaceResidencyController extends Controller<HTMLElement> {
     return this.preparationIsActive(operation) && operation.generation === (this.generations.get(operation.workspaceId) ?? 0);
   }
 
-  private selectedAgentIsWorking(workspaceId: string, conversationId: string): boolean {
+  private selectedAgentIsWorking(workspaceId: string, conversationId: string | undefined): boolean {
     return this.busyViews(workspaceId).includes(`agent:${conversationId}`);
   }
 

@@ -35,18 +35,17 @@ const projectSummaryProperties = { lastWorkspaceCreatedAt: { type: "number", des
 const agentConversationSummarySchema = {
   type: "object",
   required: ["id", "title"],
-  properties: { id: { type: "string", format: "uuid" }, title: { type: "string" } },
+  properties: { id: { type: "string", format: "uuid" }, title: { type: "string" }, providerId: { type: "string" } },
   additionalProperties: false,
 };
 
 export function atelierOpenApi(commands: WorkspaceModuleCommandHandler[], contributedPaths: Record<string, import("@atelier/core").JsonObject> = {}) {
   const commandSchemas = Object.fromEntries(commands.map((command) => [command.id, command.inputSchema ?? emptyWorkspaceCommandInputSchema]));
   const closeAgentConversationPath = { post: {
-    summary: "Archive an Agent conversation",
+    summary: "Close an Agent conversation using its provider lifecycle",
     parameters: [workspaceId, agentConversationId],
     responses: {
       ...jsonResponse("Agent conversation archived", { $ref: "#/components/schemas/AgentConversationCloseResult" }),
-      "409": { description: "The last Agent conversation cannot be archived", content: { "application/json": { schema: { $ref: "#/components/schemas/Error" } } } },
     },
   } };
   const agentMessageResponses = {
@@ -63,6 +62,7 @@ export function atelierOpenApi(commands: WorkspaceModuleCommandHandler[], contri
       description: "JSON representations of Atelier's content-negotiated UI operations. Send Accept: application/json.",
     },
     paths: {
+      "/agent-providers": { get: { summary: "List available agent providers, default first", responses: jsonResponse("Providers and installation-wide default", { type: "object", properties: { defaultProviderId: { type: "string" }, providers: { type: "array", items: { type: "object", properties: { id: { type: "string" }, label: { type: "string" } } } } } }) } },
       "/design-system-catalogue.html": { get: { summary: "Browse design-system components, usage and edge-case playgrounds", responses: { "200": { description: "Server-rendered package catalogue", content: { "text/html": { schema: { type: "string" } } } } } } },
       ...contributedPaths,
       "/up": { get: { summary: "Health check", responses: { "200": { description: "Atelier is healthy", content: { "text/plain": { schema: { type: "string" } } } } } } },
@@ -147,7 +147,7 @@ export function atelierOpenApi(commands: WorkspaceModuleCommandHandler[], contri
               { type: "object", required: ["type", "project"], properties: { type: { const: "project" }, project: { type: "string" } }, additionalProperties: false },
             ] },
             title: { type: "string" },
-            agent: { type: "object", properties: { initialPrompt: { type: "string" }, model: { type: "string" }, thinkingLevel: { type: "string" }, serviceTier: { type: "string", enum: ["default", "priority"] }, attachmentDraft: { type: "string" } }, additionalProperties: false },
+            agent: { type: "object", properties: { provider: { type: "string", description: "Agent provider ID; defaults to the most recently created provider" }, initialPrompt: { type: "string" }, model: { type: "string" }, thinkingLevel: { type: "string" }, serviceTier: { type: "string", enum: ["default", "priority"] }, attachmentDraft: { type: "string" } }, additionalProperties: false },
           },
           additionalProperties: false,
         },

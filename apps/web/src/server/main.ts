@@ -1,4 +1,6 @@
-import { nativeAgentLaunch as defaultAgentLaunch, configureOnboardingTools, configureAgentDelegation } from "@atelier/agent/server";
+import { agentProvider, rememberAgentProvider } from "./agent-providers.ts";
+import { deliverAttachmentDraft, removeAttachmentDraft, validDraftId } from "@atelier/prompt/server";
+import { configureOnboardingTools, configureAgentDelegation } from "@atelier/agent/server";
 import { createProjectSecretRequester } from "./project-secret-request.ts";
 import { ensureDefaultWorkspaceImage } from "@atelier/workspace-image";
 import { ensureHostInotifyLimit } from "@atelier/workspace";
@@ -237,6 +239,9 @@ app = createWebApp({
       await options.run.step(hook.id, hook.label, work, hook.recovery);
     }
     await options.run.step("workspace.integrations", "Run workspace startup integrations", () => atelierEvents.emit("workspace_created", { workspaceId: id, init: options.init, context: options.context }));
+    await rememberAgentProvider(options.context?.agent?.provider ?? "builtin", atelierEvents);
+    const draft = options.context?.agent?.attachmentDraft;
+    if (draft && validDraftId(draft)) await removeAttachmentDraft(draft);
   },
   async persistWorkspaceParked(id, parked) {
     await setWorkspaceParked(id, parked);
@@ -275,7 +280,17 @@ for (const module of workspaceModules) {
   });
 }
 
-provisioningHooks.push({ id: "workspace.agent", label: "Prepare default agent", run: ({ workspaceId, creationContext }) => defaultAgentLaunch.prepareWorkspace(workspaceId, creationContext) });
+provisioningHooks.push({ id: "workspace.agent", label: "Prepare agent", async run({ workspaceId, creationContext }) {
+  const parameters = creationContext?.agent;
+  const provider = agentProvider(parameters?.provider ?? "builtin");
+  if (parameters) {
+    const attachments = parameters.attachmentDraft && validDraftId(parameters.attachmentDraft)
+      ? await deliverAttachmentDraft(workspaceId, parameters.attachmentDraft)
+      : { images: [], attachmentNotes: [] };
+    parameters.input = { text: parameters.initialPrompt ?? "", ...attachments };
+  }
+  await provider.launch.prepareWorkspace(workspaceId, creationContext);
+} });
 
 app.resumeWorkspaceDeletions();
 

@@ -1,0 +1,57 @@
+.composer-surface { --composer-footer-height: 32px; position: relative; background: var(--panel); border: 1.5px solid var(--line-strong); border-radius: var(--radius-overlay); box-shadow: var(--shadow); overflow: hidden; padding-bottom: var(--composer-footer-height); pointer-events: auto; container-type: inline-size; font: var(--text-body)/var(--leading-standard) var(--font-sans); }
+.composer-surface:focus-within { border-color: var(--accent); }
+.agent-attach-row { display: flex; gap: 6px; flex-wrap: wrap; padding: 0 8px; }
+.agent-attach-row:not(:empty) { padding-top: 8px; }
+.agent-chip {
+  display: inline-flex; align-items: center; gap: 6px; border: 1px solid var(--line); background: var(--bg);
+  border-radius: var(--radius-control); padding: 2px 8px; font-size: var(--text-body); position: relative; overflow: hidden;
+}
+.agent-chip-ico { font-size: var(--text-body); }
+.agent-chip-name { font-weight: var(--weight-semibold); max-width: 180px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.agent-chip-size { color: var(--text-muted); font-size: var(--text-body); }
+.agent-chip-prog { position: absolute; left: 0; right: 0; bottom: 0; height: 2px; background: var(--line); }
+.agent-chip-prog i { display: block; height: 100%; background: var(--accent); }
+.agent-chip.error { border-color: var(--danger); color: var(--danger); }
+.composer-surface form { cursor: text; position: relative; }
+.composer-surface .composer-actions, .composer-surface .agent-attach-row { cursor: default; }
+.composer-input {
+  --composer-input-max-height: 260px;
+  width: 100%; border: none; resize: none; font-family: inherit; font-size: var(--text-body); line-height: var(--leading-standard);
+  padding: 8px 12px 2px; outline: none; background: transparent; color: var(--text-bright); min-height: calc(1.5em * 4 + 12px); max-height: var(--composer-input-max-height); display: block;
+  box-sizing: border-box; overflow-y: hidden;
+}
+.composer-input::placeholder { color: var(--text-muted); }
+.composer-selection { max-width: 170px; padding: 1px 2px; border: 1px solid transparent; border-radius: var(--radius-control); background: transparent; cursor: pointer; }
+.composer-selection:hover { border-color: var(--line-strong); background: var(--panel); color: var(--text-bright); }
+.composer {
+  --composer-control-inset: 10px;
+  --composer-control-size: 26px;
+  --composer-controls-min-height: calc(2 * var(--composer-control-size) + 3 * var(--composer-control-inset));
+  position: relative; z-index: 2;
+  padding: 0 var(--agent-inline-gutter) calc(1.375rem + env(safe-area-inset-bottom, 0));
+  pointer-events: none;
+}
+.composer-surface form { min-height: calc(1.5em * 2 + 21px); }
+.composer-input-area { position: relative; }
+.composer-input { font: 400 var(--text-body)/var(--leading-copy) var(--font-sans); padding: 12px calc(var(--composer-control-size) + 2 * var(--composer-control-inset)) 6px 16px; min-height: max(var(--composer-controls-min-height), calc(1.5em * 2 + 21px)); max-height: var(--composer-input-max-height); }
+.composer-input-area [data-transcription-composer-target="button"] { position: absolute; top: var(--composer-control-inset); right: var(--composer-control-inset); }
+.composer-input::placeholder { color: var(--text-muted); font: inherit; }
+.composer-actions { position: absolute; z-index: 1; left: var(--composer-control-inset); right: var(--composer-control-inset); bottom: var(--composer-control-inset); display: flex; align-items: center; gap: 6px; padding: 0; pointer-events: none; }
+.composer-actions > * { pointer-events: auto; }
+.composer-actions .spacer { display: block; flex: 1; }
+.composer-primary-action { display: inline-flex; flex: 0 0 auto; }
+.composer-footer { position: absolute; left: 0; right: 0; bottom: 0; z-index: 3; height: var(--composer-footer-height); display: flex; align-items: center; gap: 8px; overflow: hidden; padding: 0 12px; border-top: 1px solid var(--line); background: color-mix(in srgb, var(--bg) 72%, transparent); font: inherit; }
+.composer-selections { min-width: 0; flex: 1 1 0; display: inline-flex; align-items: center; justify-content: flex-end; gap: 4px; margin-left: auto; }
+.composer-selection-field { flex-shrink: 0; min-width: 0; display: inline-flex; align-items: center; }
+.launch-composer { padding: 0; }
+.launch-composer .composer-surface { border: 0; border-radius: 0; box-shadow: none; }
+.launch-composer .composer-input { min-height: var(--composer-input-max-height); overflow-y: auto; }
+@media (max-width: 700px), (pointer: coarse) {
+  .composer { --composer-control-size: 62.5px; }
+  .composer-surface { --composer-footer-height: 52px; }
+}
+@media (max-width: 700px) { .composer-input { font-size: 16px; } }
+/* Host launch settings can wrap without hiding provider-specific controls. */
+.launch-composer .composer-surface { padding-bottom:0; }
+.launch-composer .composer-footer { position:relative; height:auto; min-height:var(--composer-footer-height); overflow:visible; padding:8px 12px; }
+.launch-composer .composer-actions { position:static; padding:8px 12px; }

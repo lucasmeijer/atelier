@@ -48,7 +48,7 @@ const launchComposerPromptHistorySchema = Type.Array(Type.String());
 class LaunchComposerDialogController extends Controller<HTMLDialogElement> {
   static values = { discardUrl: String };
   declare readonly discardUrlValue: string;
-  private submitted = false;
+  private submissionAccepted = false;
   private readonly promptHistoryNavigator = new PromptHistoryNavigator();
 
   connect(): void {
@@ -87,16 +87,17 @@ class LaunchComposerDialogController extends Controller<HTMLDialogElement> {
     this.promptHistoryNavigator.inputChanged();
   };
 
-  submit(): void {
+  submitted(event: CustomEvent<{ success: boolean }>): void {
+    if (!event.detail.success) return;
     const prompt = this.input.value;
     if (prompt.trim()) localStorage.setItem(launchComposerPromptHistoryStorageKey, JSON.stringify([...this.promptHistory(), prompt]));
     // Intentionally only dismiss the LaunchComposer here: do not select or wait for the launched Workspace.
-    this.submitted = true;
+    this.submissionAccepted = true;
     this.element.close();
   }
 
   private readonly closed = (): void => {
-    if (this.submitted) return;
+    if (this.submissionAccepted) return;
     void fetch(this.discardUrlValue, { method: "POST" }).catch((error) => console.error("Could not discard attachment draft", error));
     const frame = this.element.closest("turbo-frame")!;
     frame.removeAttribute("src");

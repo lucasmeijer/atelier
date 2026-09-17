@@ -1,3 +1,4 @@
+import { renderAgentNotifications } from "./render-notification.ts";
 import { createPiModelRuntime, hasConnectedModelProvider, modelRefValue, parseModelRef } from "@atelier/llm/server";
 import { activityButtonHtml } from "@atelier/design-system/activity-button";
 import { actionItemHtml } from "@atelier/design-system/action-item";
@@ -65,6 +66,7 @@ export async function renderAgentPane(ctx: AgentRenderContext, agent: WorkspaceA
       data-agent-pane-workspace-id-value="${escapeHtml(ctx.workspaceId)}"
       data-agent-pane-conversation-id-value="${escapeHtml(ctx.conversationId)}"
       ${agentAttachmentDropAttrs(uploadUrl)}>
+      <div class="agent-body-controls">${renderAgentNotifications(ctx.workspaceId, [{ id: ctx.conversationId }])}</div>
       <div class="agent-transcript" tabindex="0" role="region" aria-label="Agent transcript" data-agent-pane-target="transcript">
         <div class="agent-transcript-surface"><div class="agent-transcript-content" id="${ids.transcript(ctx)}" data-agent-pane-target="transcriptContent">${state.transcriptHtml}</div></div>
       </div>

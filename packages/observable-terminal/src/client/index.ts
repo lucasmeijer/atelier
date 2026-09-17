@@ -81,6 +81,7 @@ export interface ObservableTerminalViewerOptions {
   errorMessage?: string;
   transformInput?: (data: string) => string;
   onOutput?: (text: string) => void;
+  onDisconnect?: () => void;
 }
 
 const terminalProgressState = {
@@ -178,6 +179,7 @@ export async function createObservableTerminalViewer(options: ObservableTerminal
     writeOutput(data);
   };
   ws.onclose = () => {
+    options.onDisconnect?.();
     const message = options.disconnectedMessage;
     if (message) writeOutput(message);
   };

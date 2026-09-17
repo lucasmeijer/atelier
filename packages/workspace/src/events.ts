@@ -74,6 +74,7 @@ export interface WorkspaceImageConfigureEvent {
 
 declare module "@atelier/core" {
   interface AtelierEventMap {
+    agent_provider_default_changed: { providerId: string };
     workspace_image_configure: WorkspaceImageConfigureEvent;
     workspace_source_prepare: WorkspaceSourcePrepareEvent;
     workspace_plan_prepare: WorkspacePlanPrepareEvent;
