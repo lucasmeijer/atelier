@@ -138,3 +138,29 @@ describe("host patterns and internal IP checks", () => {
     expect(isInternalAddress("fc00::1")).toBe(true);
   });
 });
+
+describe("refreshable subscription secrets", () => {
+  test("resolves on each authenticated request, not unrelated requests", async () => {
+    let refreshes = 0;
+    const hooks = createHttpHooks({ secrets: { subscription: {
+      value: "", placeholder: "subscription-placeholder", hosts: ["api.anthropic.com"],
+      resolve: async () => `token-${++refreshes}`,
+    } } });
+    await hooks.httpHooks.onRequest(new Request("https://api.anthropic.com/health"));
+    expect(refreshes).toBe(0);
+    for (const count of [1, 2]) {
+      const response = await hooks.httpHooks.onRequest(new Request("https://api.anthropic.com/v1/messages", { headers: { authorization: "Bearer subscription-placeholder" } }));
+      expect(response.headers.get("authorization")).toBe(`Bearer token-${count}`);
+    }
+    await expect(hooks.httpHooks.onRequest(new Request("https://example.com", { headers: { authorization: "Bearer subscription-placeholder" } }))).rejects.toBeInstanceOf(HttpRequestBlockedError);
+    expect(refreshes).toBe(2);
+  });
+
+  test("disconnection and refresh failures propagate instead of sending stale credentials", async () => {
+    const hooks = createHttpHooks({ secrets: { subscription: {
+      value: "", placeholder: "subscription-placeholder", hosts: ["chatgpt.com"],
+      resolve: async () => { throw new Error("Subscription disconnected"); },
+    } } });
+    await expect(hooks.httpHooks.onRequest(new Request("https://chatgpt.com/backend-api/codex/responses", { headers: { authorization: "Bearer subscription-placeholder" } }))).rejects.toThrow("Subscription disconnected");
+  });
+});

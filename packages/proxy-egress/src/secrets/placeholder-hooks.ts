@@ -7,7 +7,7 @@ import { isInternalAddress } from "./ip.ts";
 import { matchesAnyHost, normalizeHostnamePattern } from "./patterns.ts";
 import { ON_REQUEST_EARLY_POLICY_SAFE, type HttpHooks } from "./types.ts";
 
-export type SecretDefinition = { hosts: string[]; value: string; placeholder?: string };
+export type SecretDefinition = { hosts: string[]; value: string; resolve?: () => Promise<string>; placeholder?: string };
 export type CreateHttpHooksOptions = {
   allowedHosts?: string[];
   allowedInternalHosts?: string[];
@@ -26,7 +26,7 @@ export type RequestTransformHttpHooks = Omit<HttpHooks, "onRequest"> & {
 };
 export type CreateHttpHooksResult<Hooks extends HttpHooks = HttpHooks> = { httpHooks: Hooks; env: Record<string, string>; allowedHosts: string[]; secrets: SecretInfo[] };
 
-type SecretEntry = { name: string; placeholder: string; value: string; hosts: string[] };
+type SecretEntry = { name: string; placeholder: string; value: string; resolve?: () => Promise<string>; hosts: string[] };
 
 export function createHttpHooks(options?: CreateHttpHooksOptions & { onRequest?: undefined }): CreateHttpHooksResult<RequestTransformHttpHooks>;
 export function createHttpHooks(options: CreateHttpHooksOptions): CreateHttpHooksResult;
@@ -43,16 +43,23 @@ export function createHttpHooks(options: CreateHttpHooksOptions = {}): CreateHtt
     if (!placeholder) throw new Error(`invalid placeholder for secret: ${name}`);
     assertSecretPlaceholderIsSafe(name, placeholder, entries);
     env[name] = placeholder;
-    entries.push({ name, placeholder, value: secret.value, hosts: uniqueHosts(secret.hosts) });
+    entries.push({ name, placeholder, value: secret.value, resolve: secret.resolve, hosts: uniqueHosts(secret.hosts) });
   }
 
   const secrets = entries.map((entry) => ({ name: entry.name, placeholder: entry.placeholder, hosts: [...entry.hosts] }));
 
-  const applySecretsToRequest = (request: Request): Request => {
+  const applySecretsToRequest = async (request: Request): Promise<Request> => {
     const hostname = getHostname(request.url);
-    assertSecretValuesAllowedForHost(request, hostname, entries, options.replaceSecretsInQuery ?? false);
-    const headers = replaceSecretPlaceholdersInHeaders(request.headers, hostname, entries);
-    const url = replaceSecretPlaceholdersInUrl(request.url, hostname, entries, options.replaceSecretsInPath ?? false, options.replaceSecretsInQuery ?? false);
+    const resolvedEntries = await Promise.all(entries.map(async (entry) => {
+      const usedInHeaders = requestContainsSecretValuesInHeaders(request.headers, [entry.placeholder]);
+      const usedInUrl = (options.replaceSecretsInPath && new URL(request.url).pathname.includes(entry.placeholder))
+        || (options.replaceSecretsInQuery && requestContainsSecretValuesInQuery(request.url, [entry.placeholder]));
+      const resolve = entry.resolve && matchesAnyHost(hostname, entry.hosts) && (usedInHeaders || usedInUrl);
+      return { ...entry, value: resolve ? await entry.resolve!() : entry.value };
+    }));
+    assertSecretValuesAllowedForHost(request, hostname, resolvedEntries, options.replaceSecretsInQuery ?? false);
+    const headers = replaceSecretPlaceholdersInHeaders(request.headers, hostname, resolvedEntries);
+    const url = replaceSecretPlaceholdersInUrl(request.url, hostname, resolvedEntries, options.replaceSecretsInPath ?? false, options.replaceSecretsInQuery ?? false);
     if (url === request.url) {
       if (headers !== request.headers) headers.forEach((value, name) => request.headers.set(name, value));
       return request;

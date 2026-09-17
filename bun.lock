@@ -48,6 +48,7 @@
         "@atelier/markdown": "workspace:*",
         "@atelier/observable-terminal": "workspace:*",
         "@atelier/projects": "workspace:*",
+        "@atelier/proxy-egress": "workspace:*",
         "@atelier/shared": "workspace:*",
         "@atelier/syntax": "workspace:*",
         "@atelier/transcription": "workspace:*",

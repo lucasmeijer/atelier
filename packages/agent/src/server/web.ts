@@ -1,3 +1,4 @@
+import { registerSubscriptionCli, installSubscriptionCli } from "./subscription-cli.ts";
 import { handleUsageRequest, renderUsagePaneAction } from "./usage-web.ts";
 import { usageOpenApiPaths } from "./usage-openapi.ts";
 import { resolveAgentConversation } from "./delegation.ts";
@@ -211,6 +212,12 @@ export const agentWorkspaceModule: WorkspaceModule = {
     // SAFETY: The module boundary validates or constructs this value with the asserted domain shape.
     const events = context.events as AtelierEventBus;
     agentEvents = events;
+    registerSubscriptionCli();
+    context.registerProvisioningHook({
+      id: "workspace.subscription-cli",
+      label: "Connect subscription CLIs",
+      run: ({ workspaceId }) => installSubscriptionCli(workspaceId),
+    });
     registerAgentEvents(events);
     registerSessionShareMountEvents(events);
     events.on("workspace_agent_turn_finished", async ({ workspaceId, conversationId }) => {

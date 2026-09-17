@@ -12,6 +12,7 @@ export const proxyEgressServerModule: WorkspaceModule = {
 
 export { proxyEgressServerModule as atelierServerModule };
 export {
+  registerWorkspaceSubscriptionSecrets,
   clearWorkspaceGitHubToken,
   createWorkspaceSecretContext,
   discoverHostGitHubToken,

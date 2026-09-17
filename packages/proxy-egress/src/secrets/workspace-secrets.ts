@@ -12,6 +12,13 @@ export type WorkspaceSecretContext = {
   secrets: Array<{ name: string; placeholder: string; hosts: string[] }>;
 };
 
+const subscriptionSecrets: Record<string, SecretDefinition> = {};
+
+export function registerWorkspaceSubscriptionSecrets(secrets: Record<string, SecretDefinition>): void {
+  Object.assign(subscriptionSecrets, secrets);
+  invalidateContexts();
+}
+
 const contexts = new Map<string, WorkspaceSecretContext>();
 let configurationGeneration = 0;
 // New requests reload hooks; existing raw CONNECT tunnels still require client reconnection.
@@ -52,7 +59,7 @@ export async function createWorkspaceSecretContext(workspaceId: string, init?: W
     }
   }
   if (generation !== configurationGeneration) return createWorkspaceSecretContext(workspaceId, init);
-  const created = buildContext(workspaceId, secrets);
+  const created = buildContext(workspaceId, { ...secrets, ...subscriptionSecrets });
   contexts.set(workspaceId, created);
   return created;
 }
@@ -80,7 +87,7 @@ function buildContext(workspaceId: string, secrets: Record<string, SecretDefinit
   });
   return {
     workspaceId,
-    env: hooks.env,
+    env: Object.fromEntries(Object.entries(hooks.env).filter(([name]) => !(name in subscriptionSecrets))),
     hooks: hooks.httpHooks,
     secrets: hooks.secrets,
   };

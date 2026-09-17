@@ -1,3 +1,4 @@
+import { syncSubscriptionClis } from "./subscription-cli.ts";
 import { defaultProviderModels } from "./hardcoded-provider-knowledge.ts";
 import { mkdir, readFile, rename, unlink, writeFile } from "node:fs/promises";
 import { dirname, join } from "node:path";
@@ -304,6 +305,7 @@ async function refreshConnectedProviderCatalogue(runtime: ModelRuntime, provider
 export async function loginPiOAuthProvider(providerId: string, interaction: PiAuthInteraction): Promise<void> {
   const runtime = await createPiModelRuntime();
   await runtime.login(providerId, "oauth", interaction);
+  if (providerId === "openai-codex" || providerId === "anthropic") await syncSubscriptionClis();
   await refreshConnectedProviderCatalogue(runtime, providerId, interaction.signal);
 }
 
@@ -329,10 +331,12 @@ export async function connectModelProviderApiKey(provider: string, key: string, 
     prompt: async (prompt) => prompt.type === "select" ? prompt.options[0]?.id ?? "" : trimmed,
     notify: () => {},
   });
+  if (provider === "openai-codex" || provider === "anthropic") await syncSubscriptionClis();
   await refreshConnectedProviderCatalogue(runtime, provider);
 }
 export async function disconnectModelProvider(provider: string): Promise<void> {
   await (await createPiModelRuntime()).logout(provider);
+  if (provider === "openai-codex" || provider === "anthropic") await syncSubscriptionClis();
   await updateAgentModelsSettings((settings) => {
     settings.picker = (settings.picker ?? []).filter((model) => model.provider !== provider);
     if (settings.activeModel?.provider === provider) settings.activeModel = settings.picker[0];
