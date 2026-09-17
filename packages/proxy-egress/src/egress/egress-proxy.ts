@@ -1,3 +1,4 @@
+import { bridgeWebSocket, requestWebSocketUpgrade, validateWebSocketRequest, type UpgradeRequest } from "./websocket.ts";
 import dns from "node:dns/promises";
 import { readFileSync } from "node:fs";
 import { chmod, mkdir, unlink } from "node:fs/promises";
@@ -23,7 +24,7 @@ const workspaceProxies = new Map<string, Promise<WorkspaceEgressProxy>>();
 type SecretContext = () => Promise<WorkspaceSecretContext>;
 type FetchUpstream = (url: string, init: RequestInit) => Promise<Response>;
 type ConnectUpstream = (port: number, hostname: string) => net.Socket;
-type ProxyContext = { secrets: SecretContext; fetch: FetchUpstream; connect: ConnectUpstream };
+type ProxyContext = { secrets: SecretContext; fetch: FetchUpstream; connect: ConnectUpstream; upgrade: UpgradeRequest };
 export type WorkspaceEgressProxy = { close(): Promise<void> };
 const mitmTargetServers = new Map<string, Promise<MitmTargetServer>>();
 
@@ -98,15 +99,19 @@ export async function ensureWorkspaceEgressProxy(workspaceId: string): Promise<v
 
 // The listener's closure supplies identity. Nothing in HTTP headers, CONNECT,
 // or the requested URL can select another workspace's secrets.
-export async function startWorkspaceEgressProxy({ socketPath, ca, getContext, upstreamFetch = fetch, upstreamConnect = (port, hostname) => net.connect(port, hostname) }: {
-  socketPath: string; ca: MitmCa; getContext: SecretContext; upstreamFetch?: FetchUpstream; upstreamConnect?: ConnectUpstream;
+export async function startWorkspaceEgressProxy({ socketPath, ca, getContext, upstreamFetch = fetch, upstreamConnect = (port, hostname) => net.connect(port, hostname), upstreamUpgrade = requestWebSocketUpgrade }: {
+  socketPath: string; ca: MitmCa; getContext: SecretContext; upstreamFetch?: FetchUpstream; upstreamConnect?: ConnectUpstream; upstreamUpgrade?: UpgradeRequest;
 }): Promise<WorkspaceEgressProxy> {
-  const context: ProxyContext = { secrets: getContext, fetch: upstreamFetch, connect: upstreamConnect };
+  const context: ProxyContext = { secrets: getContext, fetch: upstreamFetch, connect: upstreamConnect, upgrade: upstreamUpgrade };
   const connections = new Set<net.Socket>();
   const server = createServer((req, res) => void handleProxyHttp(context, req, res).catch((thrown) => {
     const error = thrown instanceof Error ? thrown : new Error(String(thrown));
     writeError(res, proxyFailure(error));
   }));
+  server.on("upgrade", (req, socket, head) => {
+    socket.pause();
+    void handleProxyUpgrade(context, req, socket, head).catch(error => socket.end(connectErrorResponse(proxyFailure(error))));
+  });
   server.on("connection", socket => { connections.add(socket); socket.once("close", () => connections.delete(socket)); });
   server.on("connect", (req, socket, head) => void handleConnect(ca, context, req, socket, head).catch((thrown) => {
     const error = thrown instanceof Error ? thrown : new Error(String(thrown));
@@ -253,6 +258,18 @@ async function startMitmTargetServer(ca: MitmCa, hostname: string): Promise<Mitm
       writeError(mitmRes, proxyFailure(error));
     });
   });
+  server.on("upgrade", (req, socket, head) => {
+    socket.pause();
+    const connection = req.socket.remotePort ? connections.get(req.socket.remotePort) : undefined;
+    if (!connection) {
+      socket.end(connectErrorResponse(proxyFailure(new HttpRequestBlockedError("unknown MITM connection"))));
+      return;
+    }
+    // The CONNECT-bound hostname, never the inner Host header, selects the destination.
+    const path = req.url || "/";
+    req.url = `https://${connection.hostname}${path.startsWith("/") ? path : `/${path}`}`;
+    void handleProxyUpgrade(connection.context, req, socket, head).catch(error => socket.end(connectErrorResponse(proxyFailure(error))));
+  });
   await new Promise<void>((resolve, reject) => {
     server.once("error", reject);
     server.listen(0, "127.0.0.1", () => { server.off("error", reject); resolve(); });
@@ -308,6 +325,30 @@ async function handleProxyHttp(context: ProxyContext, req: IncomingMessage, res:
   await writeFetchResponse(res, finalResponse);
 }
 
+async function handleProxyUpgrade(context: ProxyContext, req: IncomingMessage, socket: Duplex, head: Buffer): Promise<void> {
+  // Install a listener before asynchronous policy/credential work; disconnects cancel the bridge below.
+  socket.on("error", () => socket.destroy());
+  const target = new URL(requestTargetUrl(req));
+  if (target.protocol === "ws:") target.protocol = "http:";
+  if (target.protocol === "wss:") target.protocol = "https:";
+  const checkDestination = async (url: URL) => {
+    if (!["http:", "https:"].includes(url.protocol) || url.username || url.password || url.hash) {
+      throw new HttpRequestBlockedError("Invalid WebSocket destination", 400, "Bad Request");
+    }
+    await assertDestinationAllowed(context, url.hostname, Number(url.port || (url.protocol === "https:" ? 443 : 80)), url.protocol === "https:" ? "https" : "http");
+  };
+  const request = new Request(target, { method: req.method, headers: incomingHeaders(req) });
+  validateWebSocketRequest(request);
+  await checkDestination(target);
+  const { hooks } = await context.secrets();
+  const next = await hooks.onRequest(request);
+  validateWebSocketRequest(next);
+  if (next.url !== request.url) await checkDestination(new URL(next.url));
+  if (hooks.isRequestAllowed && !await hooks.isRequestAllowed(next)) throw new HttpRequestBlockedError("request blocked by policy");
+  if (socket.destroyed) return;
+  await bridgeWebSocket(next, socket, head, context.upgrade);
+}
+
 async function assertDestinationAllowed(context: ProxyContext, hostname: string, port: number, protocol: "http" | "https"): Promise<void> {
   const secrets = await context.secrets();
   const hooks = secrets.hooks;
@@ -322,7 +363,7 @@ async function assertDestinationAllowed(context: ProxyContext, hostname: string,
 
 function requestTargetUrl(req: IncomingMessage): string {
   const raw = req.url || "/";
-  if (/^https?:\/\//i.test(raw)) return raw;
+  if (/^(https?|wss?):\/\//i.test(raw)) return raw;
   const host = req.headers.host;
   if (!host) throw new HttpRequestBlockedError("missing Host header");
   const encrypted = req.socket instanceof tls.TLSSocket;
