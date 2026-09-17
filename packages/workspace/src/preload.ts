@@ -1,7 +1,28 @@
 import { mkdir, readFile, writeFile, rename, stat } from "node:fs/promises";
 import { join } from "node:path";
-import { requireDocker, workloadCommand, runCommand, waitForCommand, withCommandSignal } from "@atelier/core";
+import { requireDocker, workloadCommand, runCommand, waitForCommand, withCommandSignal, shellQuote } from "@atelier/core";
 import { ensureDefaultWorkspaceImage } from "@atelier/workspace-image";
+
+import { runHostObservableCommand, stripTerminalControls, tailTerminalText } from "@atelier/observable-terminal/server";
+import type { WorkspaceProvisionProgress } from "./provisioning.ts";
+
+type Report = (progress: WorkspaceProvisionProgress) => void;
+interface CachePreparation {
+  task: Promise<void>;
+  progress: WorkspaceProvisionProgress;
+  listeners: Set<Report>;
+}
+async function buildCacheCommand(args: string[], report: Report) {
+  const result = await runHostObservableCommand({
+    session: `atelier-provision-image-cache-${crypto.randomUUID().slice(0, 12)}`,
+    cwd: "/",
+    command: args.map(shellQuote).join(" "),
+    onSessionStarted: (terminalSession) => report({ terminalSession, output: undefined }),
+  });
+  const output = tailTerminalText(stripTerminalControls(result.output));
+  report({ terminalSession: undefined, output });
+  if (result.exitCode !== 0) throw new Error(output || `Image cache preparation failed with exit code ${result.exitCode}`);
+}
 
 export const defaultWorkspacePreload = "atelier:default-workspace";
 
@@ -25,9 +46,9 @@ export function normalizeImageReference(input: string): string {
 
 /** One app owns the shared directory. Image prep is deduplicated; mkfs commands
  * serialize so different manifests sharing a layer cannot replace each other's files. */
-export function createImagePreloader(run: Command = command, docker: typeof requireDocker = requireDocker, cacheDirectory = "/data/erofs-cache", defaultWorkspace: () => Promise<string> = ensureDefaultWorkspaceImage) {
+export function createImagePreloader(run: Command = command, docker: typeof requireDocker = requireDocker, cacheDirectory = "/data/erofs-cache", defaultWorkspace: () => Promise<string> = ensureDefaultWorkspaceImage, build: (args: string[], report: Report) => Promise<void> = buildCacheCommand) {
   const resolving = new Map<string, Promise<string>>();
-  const preparing = new Map<string, Promise<void>>();
+  const preparing = new Map<string, CachePreparation>();
   let cacheQueue = Promise.resolve();
   const ctr = (...args: string[]) => run(["ctr", "--namespace", "moby", ...args]);
   async function resolve(requested: string): Promise<string> {
@@ -51,14 +72,19 @@ export function createImagePreloader(run: Command = command, docker: typeof requ
     }
     return waitForCommand(task);
   }
-  function prepare(reference: string): Promise<void> {
-    let task = preparing.get(reference);
-    if (!task) {
-      task = cacheQueue.then(() => withCommandSignal(AbortSignal.timeout(5 * 60_000), async () => {
+  async function prepare(reference: string, report: Report): Promise<void> {
+    let entry = preparing.get(reference);
+    if (!entry) {
+      const state: CachePreparation = { task: Promise.resolve(), progress: { detail: "Waiting for image cache preparation queue" }, listeners: new Set<Report>() };
+      const publish: Report = (progress) => {
+        Object.assign(state.progress, progress);
+        for (const listener of state.listeners) listener(progress);
+      };
+      state.task = cacheQueue.then(() => withCommandSignal(AbortSignal.timeout(5 * 60_000), async () => {
+        publish({ detail: "Checking cached image layers" });
         const image = await docker(["image", "inspect", reference, "--format", "{{json .RootFS.Layers}}"]);
         const diffIDs: string[] = JSON.parse(image.stdout) ?? [];
-        // ctr atomically publishes final cache files but rebuilds them even when
-        // present. Readiness after an app restart must reuse a complete cache.
+        // Avoid launching ctr at all when every layer is already cached.
         const present = await Promise.all(diffIDs.map(async (diffID) => {
           const match = /^sha256:([a-f0-9]{64})$/.exec(diffID);
           if (!match) throw new Error(`Unsupported image layer digest: ${diffID}`);
@@ -72,14 +98,22 @@ export function createImagePreloader(run: Command = command, docker: typeof requ
             throw error;
           }
         }));
-        if (present.every(Boolean)) return;
-        await run(await workloadCommand(["ctr", "--namespace", "moby", "images", "build-erofs-cache", reference, cacheDirectory]));
+        if (present.every(Boolean)) {
+          publish({ detail: `Reusing all ${diffIDs.length} cached layers` });
+          return;
+        }
+        publish({ detail: `Preparing image cache: ${present.filter(Boolean).length}/${diffIDs.length} layers cached`, output: undefined });
+        await build(await workloadCommand(["ctr", "--namespace", "moby", "images", "build-erofs-cache", reference, cacheDirectory]), publish);
       }));
-      cacheQueue = task.then(() => {}, () => {});
-      preparing.set(reference, task);
-      task.catch(() => preparing.delete(reference));
+      cacheQueue = state.task.then(() => {}, () => {});
+      entry = state;
+      preparing.set(reference, entry);
+      state.task.catch(() => preparing.delete(reference));
     }
-    return waitForCommand(task);
+    report(entry.progress);
+    entry.listeners.add(report);
+    try { await waitForCommand(entry.task); }
+    finally { entry.listeners.delete(report); }
   }
   return {
     async snapshot(images: string[], directory: string): Promise<string | undefined> {
@@ -108,15 +142,19 @@ export function createImagePreloader(run: Command = command, docker: typeof requ
       }
       return images;
     },
-    async install(images: PreparedImage[], container: string, report: (detail: string) => void = () => {}): Promise<void> {
+    async install(images: PreparedImage[], container: string, report: (detail: string) => void = () => {}, activity: Report = () => {}): Promise<void> {
       if (!images.length) return;
       // containerd is sufficient for importing snapshots; socket activation keeps Docker asleep.
       report("Starting workspace containerd");
       await docker(["exec", "--user", "root", container, "systemctl", "start", "containerd.service"]);
       for (const image of images) {
         if (!image.reference) throw new Error(`Image has not been resolved: ${image.requested}`);
-        report(`Preparing image cache for ${image.requested} (including queue wait)`);
-        await prepare(image.reference);
+        await prepare(image.reference, (progress) => {
+          if (progress.detail) report(`${image.requested}: ${progress.detail}`);
+          const { detail: _detail, ...visualization } = progress;
+          activity(visualization);
+        });
+        activity({ output: undefined, terminalSession: undefined });
         report(`Exporting image ${image.requested}`);
         const archive = await run(["atelier-image-transfer", "export", image.reference]);
         report(`Importing image ${image.requested} into workspace`);

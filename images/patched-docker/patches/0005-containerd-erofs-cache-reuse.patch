@@ -1,0 +1,85 @@
+--- a/cmd/ctr/commands/images/build_erofs_cache.go
++++ b/cmd/ctr/commands/images/build_erofs_cache.go
+@@ -18,11 +18,13 @@
+ 
+ import (
+ 	"context"
++	"encoding/json"
+ 	"errors"
+ 	"fmt"
+ 	"os"
+ 	"path/filepath"
+ 	"strings"
++	"time"
+ 
+ 	"github.com/containerd/errdefs"
+ 	"github.com/containerd/platforms"
+@@ -129,10 +131,40 @@
+ 		return fmt.Errorf("failed to resolve manifest: %w", err)
+ 	}
+ 
+-	for _, layer := range manifest.Layers {
++	configBlob, err := content.ReadBlob(ctx, cs, manifest.Config)
++	if err != nil {
++		return fmt.Errorf("failed to read image configuration: %w", err)
++	}
++	var config ocispec.Image
++	if err := json.Unmarshal(configBlob, &config); err != nil {
++		return err
++	}
++	if len(config.RootFS.DiffIDs) != len(manifest.Layers) {
++		return errors.New("image layer and diffID counts differ")
++	}
++
++	for i, layer := range manifest.Layers {
+ 		if !images.IsLayerType(layer.MediaType) || erofsutils.IsErofsMediaType(layer.MediaType) || images.IsNonDistributable(layer.MediaType) {
+ 			continue
+ 		}
++		diffID := config.RootFS.DiffIDs[i]
++		if err := diffID.Validate(); err != nil {
++			return err
++		}
++		// Non-default conversion options deliberately rebuild: diffID alone
++		// does not identify compression settings or dm-verity metadata.
++		if !withDmverity && len(opts) == 0 {
++			cached, err := reusableCacheBlob(erofsutils.CacheBlobPath(cacheDir, diffID))
++			if err != nil {
++				return err
++			}
++			if cached {
++				fmt.Fprintf(os.Stderr, "[%d/%d] Reusing %s\n", i+1, len(manifest.Layers), diffID)
++				continue
++			}
++		}
++		started := time.Now()
++		fmt.Fprintf(os.Stderr, "[%d/%d] Building %s (%d compressed bytes)\n", i+1, len(manifest.Layers), diffID, layer.Size)
+ 		if err := buildLayer(ctx, cs, layer, cacheDir, withDmverity, opts...); err != nil {
+ 			// Preserve errdefs.IsNotFound so callers can add context-appropriate
+ 			// remediation (e.g. ctr suggesting `ctr content fetch`).
+@@ -141,10 +173,26 @@
+ 			}
+ 			return fmt.Errorf("failed to cache layer %s: %w", layer.Digest, err)
+ 		}
++		fmt.Fprintf(os.Stderr, "[%d/%d] Built in %s\n", i+1, len(manifest.Layers), time.Since(started).Round(time.Millisecond))
+ 	}
+ 	return nil
+ }
+ 
++// reusableCacheBlob only accepts complete, atomically published cache files.
++func reusableCacheBlob(path string) (bool, error) {
++	info, err := os.Stat(path)
++	if errors.Is(err, os.ErrNotExist) {
++		return false, nil
++	}
++	if err != nil {
++		return false, err
++	}
++	if !info.Mode().IsRegular() || info.Size() < 4096 {
++		return false, fmt.Errorf("invalid cached EROFS layer: %s", path)
++	}
++	return true, nil
++}
++
+ // buildLayer converts one layer into a temp file inside cacheDir, then
+ // atomically renames it to its diffID-keyed name (same filesystem, so no extra
+ // copy and no reliance on TMPDIR). An existing entry is overwritten, keeping the

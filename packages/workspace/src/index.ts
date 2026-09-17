@@ -32,7 +32,7 @@ export type {
 export { createWorkspaceMetadataState, type WorkspaceMetadataState } from "./metadata-state.ts";
 export { ensureHostInotifyLimit } from "./host-inotify.ts";
 export { createWorkspaceProvisioning, type WorkspaceProvisioning, type WorkspaceProvisionRun, type WorkspaceProvisionStep } from "./provisioning.ts";
-import type { WorkspaceProvisionRun } from "./provisioning.ts";
+import type { WorkspaceProvisionRun, WorkspaceProvisionProgress } from "./provisioning.ts";
 
 export {
   createWorkspacePresentationStore,
@@ -511,10 +511,12 @@ export async function createWorkspace(options: { id: string; events: AtelierEven
       for (const file of activePlan.containerFiles) await requireDocker(["cp", file.source, `${container}:${file.target}`]);
       await requireDocker(["start", container]);
     });
-    await run.step("workspace.startup", "Prepare workspace", async () => {
+    await run.step("workspace.startup", "Initialize workspace", async () => {
       const log = await waitForWorkspaceStartup(id);
       run.report({ output: log });
-      await checkWorkspaceReadiness(id, (detail) => run.report({ detail }));
+    }, "retry-or-continue");
+    await run.step("workspace.readiness", "Prepare workspace", async () => {
+      await checkWorkspaceReadiness(id, (detail) => run.report({ detail }), (progress) => run.report(progress));
     }, "retry-or-continue");
   } catch (error) {
     // Cancellation hands ownership to deletion, which reviews files before removing them.
@@ -678,7 +680,7 @@ export async function setWorkspaceParked(id: string, parked: boolean): Promise<n
 }
 
 /** Repeated on resume and app recovery; the persisted list never rereads project settings. */
-export async function checkWorkspaceReadiness(id: string, report: (detail: string) => void = () => {}): Promise<void> {
+export async function checkWorkspaceReadiness(id: string, report: (detail: string) => void = () => {}, activity: (progress: WorkspaceProvisionProgress) => void = () => {}): Promise<void> {
   report("Checking workspace gateway");
   await checkWorkspaceGateway(id);
   for (const socket of ["ingress", "egress"]) {
@@ -689,5 +691,5 @@ export async function checkWorkspaceReadiness(id: string, report: (detail: strin
   await requireDocker(["exec", "--user", "root", workspaceContainerName(id), "curl", "--noproxy", "*", "--fail", "--silent", "--max-time", "5", "http://127.0.0.1:58124/health"]);
   report("Resolving required images");
   const images = await workspaceImagePreloader.load(atelierDataPath(getAtelierRuntimeContext(), "workspaces", id), report);
-  await workspaceImagePreloader.install(images, workspaceContainerName(id), report);
+  await workspaceImagePreloader.install(images, workspaceContainerName(id), report, activity);
 }

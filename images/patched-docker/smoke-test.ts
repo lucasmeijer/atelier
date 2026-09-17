@@ -92,12 +92,26 @@ set -eu
 ctr --namespace moby leases create --id "cache-gc-$$" >/dev/null
 ctr --namespace moby leases delete --sync "cache-gc-$$"
 touch /tmp/cache-gc-exercised
+echo mkfs >> /tmp/cache-builds
 exec /usr/bin/mkfs.erofs "$@"
 `);
   await command(["docker", "cp", mkfsWrapper, `${producer}:/usr/local/bin/mkfs.erofs`]);
   await exec(producer, "chmod", "+x", "/usr/local/bin/mkfs.erofs");
   await ctr(producer, "images", "build-erofs-cache", "--platform", platform, base, "/data/erofs-cache");
   await exec(producer, "test", "-f", "/tmp/cache-gc-exercised");
+  const builds = () => exec(producer, "cat", "/tmp/cache-builds");
+  const firstBuilds = await builds();
+  await ctr(producer, "images", "build-erofs-cache", "--platform", platform, base, "/data/erofs-cache");
+  assert.equal(await builds(), firstBuilds, "a warm cache must not invoke mkfs");
+  // A partially cold image must convert only its missing layer, leaving all
+  // other published files (including their inode and timestamp) untouched.
+  await exec(producer, "sh", "-ec", `find /data/erofs-cache -name '*.erofs' -type f | sort > /tmp/cache-files
+missing="$(head -n 1 /tmp/cache-files)"
+rm "$missing"
+tail -n +2 /tmp/cache-files | xargs stat -c '%n %i %Y' > /tmp/cache-before`);
+  await ctr(producer, "images", "build-erofs-cache", "--platform", platform, base, "/data/erofs-cache");
+  assert.equal(await builds(), firstBuilds + "mkfs\n", "only the missing layer should invoke mkfs");
+  await exec(producer, "sh", "-ec", "tail -n +2 /tmp/cache-files | xargs stat -c '%n %i %Y' > /tmp/cache-after; diff /tmp/cache-before /tmp/cache-after");
   await exec(producer, "rm", "/usr/local/bin/mkfs.erofs");
   await start(consumer, true);
   // BuildKit asks containerd for an empty diff while preparing a scratch base.
