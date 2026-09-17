@@ -4,6 +4,7 @@
   "type": "module",
   "exports": {
     ".": "./src/index.ts",
+    "./markdown-diff": "./src/markdown-diff.ts",
     "./pierre": "./src/pierre.ts",
     "./shader-languages": "./src/shader-languages.ts"
   },

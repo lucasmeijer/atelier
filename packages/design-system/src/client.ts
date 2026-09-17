@@ -1,5 +1,6 @@
 /// <reference lib="dom" />
 
+import { MarkdownDiffController } from "./markdown/markdown-diff-controller.ts";
 import { PerimeterButtonController } from "./perimeter-button/perimeter-button-controller.ts";
 import { WarningBannersController } from "./warning-banner/warning-banner-controller.ts";
 import { ManagedListController } from "./managed-list/managed-list-controller.ts";
@@ -45,6 +46,7 @@ function attachAutomaticBehaviors(root: ParentNode): void {
 }
 
 export function registerDesignSystemControllers(application: Pick<Application, "register">): void {
+  application.register("markdown-diff", MarkdownDiffController);
   application.register("perimeter-button", PerimeterButtonController);
   application.register("warning-banners", WarningBannersController);
   application.register("action-items", ActionItemController);

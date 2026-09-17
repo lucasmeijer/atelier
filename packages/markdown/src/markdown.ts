@@ -3,6 +3,7 @@ import { buttonHtml } from "@atelier/design-system/button";
 import MarkdownIt from "markdown-it";
 import { atelierFileHref, renderAtelierEmbed } from "./atelier-markdown.ts";
 import { escapeHtml, isWorkspaceAppPort, workspaceProxyUrl } from "@atelier/shared";
+import { renderMarkdownDiff } from "@atelier/syntax/markdown-diff";
 import { highlightCodeHtml } from "@atelier/syntax";
 
 export interface MarkdownRenderOptions {
@@ -33,21 +34,25 @@ markdown.renderer.rules.fence = (tokens, index, _options, environment: MarkdownE
   const filename = filenameMatch ? (filenameMatch[1] ?? filenameMatch[2] ?? filenameMatch[3]) : filenameInfo;
   const codeText = token.content.replace(/\n$/, "");
   if (rawLang?.toLowerCase() === "mermaid") return environment.provisional ? renderPendingMermaid(filename) : renderMermaid(codeText, filename);
-  const highlighted = highlightCodeHtml({ code: codeText, language: rawLang });
+  const isDiff = rawLang?.toLowerCase() === "diff";
+  const code = isDiff ? renderMarkdownDiff(codeText, environment.provisional) : renderHighlightedFence(codeText, rawLang);
+  const label = isDiff ? "Copy diff to clipboard" : rawLang ? `Copy ${rawLang} code to clipboard` : "Copy code to clipboard";
+  const title = filename ?? (isDiff ? "Diff" : rawLang ? `${rawLang} code` : "Code");
+  const headerClass = isDiff ? "markdown-diff-filename" : "agent-code-block-header";
+  const header = filename ? `<div class="${headerClass}" title="${escapeHtml(filename)}">${escapeHtml(filename)}</div>` : "";
+  const classes = `agent-code-block copy-region${isDiff ? " markdown-diff" : ""}`;
+  const content = `${copyButtonHtml({ label, copyText: isDiff ? token.content : undefined })}${header}${code}`;
+  return `<div class="${classes}" data-controller="atelier-fullscreen" data-atelier-fullscreen-mode-value="template" data-atelier-fullscreen-title-value="${escapeHtml(title)}">${content}<template data-atelier-fullscreen-target="content"><div class="${classes}">${content}</div></template></div>`;
+};
+
+function renderHighlightedFence(code: string, language?: string): string {
+  const highlighted = highlightCodeHtml({ code, language });
   const attrs = [
-    rawLang ? `data-lang="${escapeHtml(rawLang)}"` : "",
+    language ? `data-lang="${escapeHtml(language)}"` : "",
     highlighted.language ? `class="language-${escapeHtml(highlighted.language)}"` : "",
   ].filter(Boolean).join(" ");
-  const label = rawLang ? `Copy ${rawLang} code to clipboard` : "Copy code to clipboard";
-  const title = filename ?? (rawLang ? `${rawLang} code` : "Code");
-  const header = filename
-    ? `<div class="agent-code-block-header" title="${escapeHtml(filename)}">${escapeHtml(filename)}</div>`
-    : "";
-  const preOpen = `<pre${attrs ? ` ${attrs}` : ""}>`;
-  const inlineCode = `${preOpen}<code data-copy-source>${highlighted.html}</code></pre>`;
-  const fullscreenCode = `${preOpen}<code>${highlighted.html}</code></pre>`;
-  return `<div class="agent-code-block copy-region" data-controller="atelier-fullscreen" data-atelier-fullscreen-mode-value="template" data-atelier-fullscreen-title-value="${escapeHtml(title)}">${copyButtonHtml({ label })}${header}${inlineCode}<template data-atelier-fullscreen-target="content"><div class="agent-code-block">${fullscreenCode}</div></template></div>`;
-};
+  return `<pre${attrs ? ` ${attrs}` : ""}><code data-copy-source>${highlighted.html}</code></pre>`;
+}
 
 function mermaidDiagram(source: string, fullscreen = false): string {
   return `<div class="agent-mermaid-diagram${fullscreen ? " agent-mermaid-diagram-fullscreen" : ""}" data-controller="agent-mermaid"><div class="agent-mermaid-canvas" data-agent-mermaid-target="diagram" aria-busy="true"><pre data-agent-mermaid-target="source" hidden>${escapeHtml(source)}</pre></div></div>`;

@@ -27,3 +27,15 @@
   font-size: .88em;
   overflow-wrap: anywhere;
 }
+
+/* Diff fences share code-block controls, with patch structure as the emphasis. */
+.markdown-diff { border: 1px solid var(--line); border-radius: var(--radius-control); overflow: hidden; background: var(--panel); }
+.markdown-diff-file + .markdown-diff-file { border-top: 1px solid var(--line); }
+.markdown-diff-filename { padding: 8px 42px 8px 12px; font: var(--text-code) var(--font-mono); color: var(--text-muted); background: var(--panel); overflow-wrap: anywhere; border-bottom: 1px solid var(--line); }
+.markdown-diff pre.markdown-diff-snippet { border: 0; border-radius: 0; padding: 10px 0; margin: 0; background: var(--panel); }
+.markdown-diff pre.markdown-diff-snippet code { min-width: 100%; width: max-content; }
+.markdown-diff-line { display: inline-block; min-width: 100%; box-sizing: border-box; padding: 0 12px; min-height: 1lh; }
+.markdown-diff-line--addition { background: color-mix(in srgb, var(--success) 13%, transparent); }
+.markdown-diff-line--deletion { background: color-mix(in srgb, var(--danger) 13%, transparent); }
+.markdown-diff-line--hunk { color: var(--accent); background: var(--accent-soft); }
+.markdown-diff-line--meta { color: var(--text-muted); }
