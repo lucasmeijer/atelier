@@ -207,7 +207,7 @@ turbo-frame { display: contents; }
 .fixed-shell-live-body, .fixed-shell-live-body > * { width: 100%; height: 100%; min-width: 0; min-height: 0; }
 .fixed-shell-app *, .fixed-shell-app *::before, .fixed-shell-app *::after { box-sizing: border-box; }
 
-.fixed-shell-workspace-pane { flex: 0 0 var(--fixed-workspace-width); width: var(--fixed-workspace-width); gap: var(--fixed-shell-gap); }
+.fixed-shell-workspace-pane { flex: 0 0 var(--fixed-workspace-width); width: var(--fixed-workspace-width); gap: var(--fixed-shell-gap); background: var(--fixed-shell-bg); }
 
 [data-show-workspace-pane] > svg, [data-collapse-workspace-pane] > svg { transform: scaleX(-1); }
 
