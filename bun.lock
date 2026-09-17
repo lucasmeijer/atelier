@@ -19,6 +19,8 @@
       "dependencies": {
         "@atelier/agent": "workspace:*",
         "@atelier/browser": "workspace:*",
+        "@atelier/claude-agent": "workspace:*",
+        "@atelier/cli-agent": "workspace:*",
         "@atelier/codex-agent": "workspace:*",
         "@atelier/core": "workspace:*",
         "@atelier/design-system": "workspace:*",
@@ -85,10 +87,19 @@
         "typebox": "^1.0.57",
       },
     },
-    "packages/codex-agent": {
-      "name": "@atelier/codex-agent",
+    "packages/claude-agent": {
+      "name": "@atelier/claude-agent",
       "dependencies": {
-        "@atelier/agent": "workspace:*",
+        "@atelier/cli-agent": "workspace:*",
+        "@atelier/core": "workspace:*",
+        "@atelier/llm": "workspace:*",
+        "@atelier/shared": "workspace:*",
+        "@atelier/workspace": "workspace:*",
+      },
+    },
+    "packages/cli-agent": {
+      "name": "@atelier/cli-agent",
+      "dependencies": {
         "@atelier/core": "workspace:*",
         "@atelier/design-system": "workspace:*",
         "@atelier/llm": "workspace:*",
@@ -97,6 +108,17 @@
         "@atelier/shared": "workspace:*",
         "@atelier/workspace": "workspace:*",
         "typebox": "^1.0.57",
+      },
+    },
+    "packages/codex-agent": {
+      "name": "@atelier/codex-agent",
+      "dependencies": {
+        "@atelier/agent": "workspace:*",
+        "@atelier/cli-agent": "workspace:*",
+        "@atelier/core": "workspace:*",
+        "@atelier/llm": "workspace:*",
+        "@atelier/shared": "workspace:*",
+        "@atelier/workspace": "workspace:*",
       },
     },
     "packages/core": {
@@ -370,6 +392,10 @@
     "@atelier/agent": ["@atelier/agent@workspace:packages/agent"],
 
     "@atelier/browser": ["@atelier/browser@workspace:packages/browser"],
+
+    "@atelier/claude-agent": ["@atelier/claude-agent@workspace:packages/claude-agent"],
+
+    "@atelier/cli-agent": ["@atelier/cli-agent@workspace:packages/cli-agent"],
 
     "@atelier/codex-agent": ["@atelier/codex-agent@workspace:packages/codex-agent"],
 

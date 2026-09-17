@@ -22,7 +22,10 @@ test("builtin is the initial default and successful choices persist", async () =
   expect((await defaultAgentProvider()).id).toBe("builtin");
   await rememberAgentProvider("codex");
   expect(JSON.parse(await Bun.file(join(directory, "default-agent-provider.json")).text())).toBe("codex");
-  expect((await orderedAgentProviders()).map(({ id }) => id)).toEqual(["codex", "builtin"]);
+  expect((await orderedAgentProviders()).map(({ id }) => id)).toEqual(["codex", "builtin", "claude"]);
+  await rememberAgentProvider("claude");
+  expect((await defaultAgentProvider()).id).toBe("claude");
+  expect((await orderedAgentProviders()).map(({ id }) => id)).toEqual(["claude", "builtin", "codex"]);
   await rememberAgentProvider("builtin");
   expect((await defaultAgentProvider()).id).toBe("builtin");
 });

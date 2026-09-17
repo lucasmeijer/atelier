@@ -1,5 +1,5 @@
 {
-  "name": "@atelier/codex-agent",
+  "name": "@atelier/claude-agent",
   "private": true,
   "type": "module",
   "exports": {
@@ -10,7 +10,6 @@
     "@atelier/llm": "workspace:*",
     "@atelier/shared": "workspace:*",
     "@atelier/workspace": "workspace:*",
-    "@atelier/agent": "workspace:*",
     "@atelier/cli-agent": "workspace:*"
   }
 }

@@ -1,0 +1,4 @@
+.cli-agent-body { display:flex; flex-direction:column; height:100%; min-height:0; background:var(--bg); color:var(--text-bright); }
+.cli-agent-body .observable-terminal-host { flex:1; min-height:100px; overflow:hidden; }
+.cli-terminal-status:empty { display:none; }
+.cli-terminal-status { padding:12px 20px; display:flex; align-items:center; gap:12px; color:var(--text); }

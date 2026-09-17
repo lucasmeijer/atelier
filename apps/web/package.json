@@ -35,6 +35,8 @@
     "@atelier/llm": "workspace:*",
     "@atelier/host": "workspace:*",
     "@atelier/prompt": "workspace:*",
-    "@atelier/codex-agent": "workspace:*"
+    "@atelier/codex-agent": "workspace:*",
+    "@atelier/claude-agent": "workspace:*",
+    "@atelier/cli-agent": "workspace:*"
   }
 }

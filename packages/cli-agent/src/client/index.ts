@@ -2,9 +2,9 @@ import { atelierObservableTerminalTheme, createObservableTerminalViewer, observa
 import type { WorkspaceClientModule } from "@atelier/shared";
 
 export const atelierClientModule: WorkspaceClientModule = {
-  id: "codex-agent",
+  id: "cli-agent",
   install({ application, Controller }) {
-    application.register("codex-terminal", class extends Controller {
+    application.register("cli-terminal", class extends Controller {
       static values = { url: String };
       static targets = ["terminal"];
       declare readonly element: HTMLElement;
@@ -27,8 +27,8 @@ export const atelierClientModule: WorkspaceClientModule = {
       }
       private async updateStatus(disconnected = false): Promise<void> {
         const response = await fetch(`${this.urlValue}/status${disconnected ? "?disconnected" : ""}`, { headers: { Accept: "text/vnd.turbo-stream.html" } });
-        if (!response.ok) throw new Error(`Could not inspect Codex session (${response.status})`);
-        if (response.headers.get("X-Codex-Ended") === "true" || disconnected) clearInterval(this.statusTimer);
+        if (!response.ok) throw new Error(`Could not inspect CLI agent session (${response.status})`);
+        if (response.headers.get("X-CLI-Agent-Ended") === "true" || disconnected) clearInterval(this.statusTimer);
         if (this.element.isConnected) window.Turbo!.renderStreamMessage(await response.text());
       }
       retry(): void {
