@@ -28,7 +28,7 @@ type SessionListener = (event: any) => void;
 type ToolStreamEvent =
   | { type: "toolcall_start"; contentIndex: number; partial: { content: Array<{ name: string }> } }
   | { type: "toolcall_delta"; delta: string }
-  | { type: "toolcall_end"; toolCall: { id: string; name: string; arguments: { path: string; content: string } } };
+  | { type: "toolcall_end"; toolCall: { id: string; name: string; arguments: { path: string; content: string } | { command: string } } };
 
 interface FakeSessionHarness {
   session: any;
@@ -114,9 +114,9 @@ class InspectableAgentRuntime extends RealAgentRuntime {
 
   readonly toolContentUpdates: Array<{ prefix?: string; status: string }> = [];
 
-  protected override streamActiveToolContent(item: Extract<TranscriptItem, { type: "tool" }>): void {
+  protected override streamActiveToolContent(item: Extract<TranscriptItem, { type: "tool" }>, morphDetail = true): void {
     this.toolContentUpdates.push({ prefix: item.tool.argsStream, status: item.tool.status });
-    super.streamActiveToolContent(item);
+    super.streamActiveToolContent(item, morphDetail);
   }
 
   protected override canonicalItems(_leafId?: string): TranscriptItem[] {
@@ -191,6 +191,39 @@ test("tool deltas update authoritative state immediately and coalesce server pub
   const count = runtime.toolContentUpdates.length;
   await Bun.sleep(70);
   expect(runtime.toolContentUpdates).toHaveLength(count);
+  innerSubscription.unsubscribe();
+  subscription.unsubscribe();
+});
+
+test("completed bash rebuilds streamed shell markup with embedded languages", async () => {
+  const { session, emit } = fakeSession(deferred());
+  const runtime = runtimeFor(session);
+  const subscription = runtime.subscribeLivePresentation(() => {});
+  await subscription.ready;
+  await startPrompt(session, emit);
+  const updates: string[] = [];
+  const innerSubscription = runtime.subscribeCurrentTurn((html) => updates.push(html));
+  await innerSubscription.ready;
+  const assistantEvent = (inner: ToolStreamEvent) => emit({ type: "message_update", assistantMessageEvent: inner });
+  const command = `set -euo pipefail;node -e 'const rows=[1,2,3];console.log(rows.map(x=>x*2))'|python3 -c 'import sys;print(sys.stdin.read())'`;
+  const args = { command };
+  assistantEvent({ type: "toolcall_start", contentIndex: 0, partial: { content: [{ name: "bash" }] } });
+  assistantEvent({ type: "toolcall_delta", delta: JSON.stringify(args) });
+  await Bun.sleep(70);
+  expect(updates.at(-1)).not.toContain('class="language-javascript"');
+
+  assistantEvent({ type: "toolcall_end", toolCall: { id: "bash-call", name: "bash", arguments: args } });
+  emit({
+    type: "tool_execution_end",
+    toolCallId: "bash-call",
+    toolName: "bash",
+    isError: false,
+    result: { content: [{ type: "text", text: "ok" }], details: { exitCode: 0, displayAnsi: "ok" } },
+  });
+  const completed = updates.at(-1)!;
+  expect(completed).toContain('class="language-javascript"');
+  expect(completed).toContain('class="language-python"');
+  expect(completed).not.toContain('method="morph"');
   innerSubscription.unsubscribe();
   subscription.unsubscribe();
 });

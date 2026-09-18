@@ -152,6 +152,17 @@ rg ready /tmp/status |
     }
   });
 
+  test("highlights every inline program in packed commands", () => {
+    const command = `set -euo pipefail;node -e 'const rows=[1,2,3];console.log(rows.map(x=>x*2))'|python3 -c 'import sys;print(sys.stdin.read())';bun --eval "const done:boolean=true;console.log(done)"`;
+    const html = renderEmbedded(command);
+    expect(html.match(/class="language-javascript"/g)).toHaveLength(1);
+    expect(html.match(/class="language-python"/g)).toHaveLength(1);
+    expect(html.match(/class="language-typescript"/g)).toHaveLength(1);
+    expect(renderedText(html)).toContain("rows.map((x) => x * 2)");
+    expect(renderedText(html)).toContain("sys.stdin.read()");
+    expect(renderedText(html)).toContain("done: boolean = true");
+  });
+
   test("highlights static ripgrep patterns as embedded regular expressions", () => {
     const samples = [
       `rg -n 'TODO|FIXME|HACK' packages apps --glob '!*.generated.ts'`,

@@ -414,7 +414,7 @@ export abstract class BaseAgentRuntime implements WorkspaceAgentRuntime {
     if (this.live) this.live.textStream = undefined;
   }
 
-  protected streamActiveToolContent(item: Extract<TranscriptItem, { type: "tool" }>): void {
+  protected streamActiveToolContent(item: Extract<TranscriptItem, { type: "tool" }>, morphDetail = true): void {
     if (this.turnSubscriberCount === 0) {
       this.streamTurn();
       return;
@@ -423,7 +423,7 @@ export abstract class BaseAgentRuntime implements WorkspaceAgentRuntime {
     const status = turboStream("update", ids.itemSummaryStatus(this.ctx, item.key), content.status);
     const summary = turboStream("update", ids.itemSummaryContent(this.ctx, item.key), content.summary);
     // Preserve the tool body across deltas to avoid WebKit flashing while following the bottom.
-    const detail = content.detail === undefined ? "" : turboStream("update", ids.detailFrame(this.ctx, item.key), content.detail, { method: "morph" });
+    const detail = content.detail === undefined ? "" : turboStream("update", ids.detailFrame(this.ctx, item.key), content.detail, morphDetail ? { method: "morph" } : {});
     const metadata = turboStream("update", ids.itemSummaryMetadata(this.ctx, item.key), content.metadata);
     this.streamTurn(status + summary + metadata + detail);
   }
@@ -657,7 +657,10 @@ export abstract class BaseAgentRuntime implements WorkspaceAgentRuntime {
     if (wasShowingDetail !== presentation.showsDetail) {
       this.streamTurn(turboStream("replace", ids.item(this.ctx, item.key), renderTranscriptItem(this.ctx, item, { live: true, open: presentation.autoOpenOnReveal })));
     } else {
-      this.streamActiveToolContent(item);
+      // A completed Bash command can replace shell-only streamed markup with a
+      // mixed-language syntax tree. Rebuild that detail once; other tools and
+      // active output updates retain the non-flashing morph path.
+      this.streamActiveToolContent(item, !isBashTool(item.tool.name));
     }
   }
 
