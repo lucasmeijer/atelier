@@ -60,7 +60,7 @@ fail() {
 }
 prompt() {
   printf '%s' "$2"
-  IFS= read -r -t 10 "$1" </dev/tty || fail "No response received within 10 seconds, or terminal input closed. Run the installer again when ready."
+  IFS= read -r -t 10 "$1" <"$prompt_input" || fail "No response received within 10 seconds, or terminal input closed. Run the installer again when ready."
 }
 run_quiet() {
   local label="$1" pid start=$SECONDS code=0
@@ -140,8 +140,11 @@ while [ "$#" -gt 0 ]; do
 done
 case "$action" in ""|install|update|connect|open) ;; *) fail "unknown action: $action" ;; esac
 case "$access_mode" in ""|localhost|tailscale) ;; *) fail "unknown access mode: $access_mode" ;; esac
-# stdin may carry the script itself (curl | bash); prompts use the controlling terminal.
-{ [ -t 0 ]; } 2>/dev/null </dev/tty ||
+# stdin may carry the script itself (curl | bash). With sudo's use_pty option,
+# /dev/tty is sudo's relay PTY and receives no input when sudo itself was piped.
+# SUDO_TTY names the caller's terminal, which remains available for prompts.
+prompt_input="${SUDO_TTY:-/dev/tty}"
+{ [ -t 0 ]; } 2>/dev/null <"$prompt_input" ||
   fail "Interactive setup requires a terminal. Run this installer from a terminal (piping to bash is supported)."
 
 host_os="$(uname -s)"

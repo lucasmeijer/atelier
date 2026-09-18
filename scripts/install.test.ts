@@ -49,9 +49,9 @@ docker() {
   const script = installer
     .replace("tee /etc/modules-load.d/atelier-system.conf", "tee /dev/null")
     // Mock terminal availability and answers; these tests exercise Docker orchestration.
-    .replace("{ [ -t 0 ]; } 2>/dev/null </dev/tty", "true")
+    .replace('{ [ -t 0 ]; } 2>/dev/null <"$prompt_input"', "true")
     .replace(
-      'IFS= read -r -t 10 "$1" </dev/tty',
+      'IFS= read -r -t 10 "$1" <"$prompt_input"',
       `if [ "$1" = action ]; then action=update; else answer=${options.installed ? "yes" : "1"}; fi`,
     );
   const result = Bun.spawnSync([process.platform === "darwin" ? "/bin/bash" : "bash", "-c", mock + script, "installer", ...args], { stdin: "ignore" });
@@ -59,6 +59,11 @@ docker() {
   Bun.spawnSync(["rm", "-f", logPath, `${logPath}.checked`]);
   return { status: result.exitCode, output: result.stdout.toString() + result.stderr.toString() + log };
 }
+
+test("piped sudo installs read prompts from the caller's terminal", () => {
+  expect(installer).toContain('prompt_input="${SUDO_TTY:-/dev/tty}"');
+  expect(installer).toContain('IFS= read -r -t 10 "$1" <"$prompt_input"');
+});
 
 test("fresh install launches privileged System with persistent named volume and bootstrap app", () => {
   const result = run({}, ["--system-image", "test/system:v1", "--app-image", "test/app:v1"]);
