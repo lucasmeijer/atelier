@@ -5,7 +5,7 @@ import type { CliAgentAdapter } from "./adapter.ts";
 import { createCliSessions } from "./sessions.ts";
 import { cliSocketHandler } from "./sockets.ts";
 
-export type { CliAgentAdapter } from "./adapter.ts";
+export type { CliAgentAdapter, CliAgentSession } from "./adapter.ts";
 
 function retryButton() { return buttonHtml({ type: "button", variant: "secondary", content: { kind: "caption", caption: "Retry connection" }, attributesHtml: 'data-action="cli-terminal#retry"' }); }
 function terminalStatus(terminal: { ended: boolean; exitCode?: number }): string {

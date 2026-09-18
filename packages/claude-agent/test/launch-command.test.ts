@@ -4,6 +4,7 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { shellQuote } from "@atelier/core";
 import { claudeLaunchScript } from "../src/server/launch-command.ts";
+import { claudeMcpConfigPath } from "../src/server/mcp.ts";
 
 let home: string;
 beforeEach(async () => { home = await mkdtemp(join(tmpdir(), "claude-launch-")); });
@@ -19,6 +20,7 @@ function run(script: string) {
   return Promise.all([child.exited, new Response(child.stdout).text(), new Response(child.stderr).text()]);
 }
 const empty = { text: "", images: [], attachmentNotes: [] };
+const sessionId = "1f2e3d4c-0000-4000-8000-000000000001";
 const baseArgs = ["--dangerously-skip-permissions", "--settings", JSON.stringify({ skipDangerousModePermissionPrompt: true })];
 
 test("reuses home Claude and passes initial prompt, image paths and file notes as literal arguments", async () => {
@@ -113,8 +115,17 @@ for (const preferences of [{}, { autoUpdates: false }, { installMethod: "native"
 test("registers a session-local Stop hook", async () => {
   await executable(`${home}/.claude/local/node_modules/.bin/claude`, 'printf "%s\\0" "$@"');
   const command = `${home}/turn finished.sh`;
-  const [code, output] = await run(claudeLaunchScript(empty, [], {}, command));
+  const [code, output] = await run(claudeLaunchScript(empty, [], {}, { id: sessionId, turnFinishedCommand: command }));
   expect(code).toBe(0);
   const args = output.split("\0");
   expect(JSON.parse(args[args.indexOf("--settings") + 1]!)).toMatchObject({ hooks: { Stop: [{ hooks: [{ type: "command", command: `sh ${shellQuote(command)}` }] }] } });
+});
+
+test("adds the session-local Atelier MCP configuration without disabling the user's own servers", async () => {
+  await executable(`${home}/.claude/local/node_modules/.bin/claude`, 'printf "%s\\0" "$@"');
+  const [code, output] = await run(claudeLaunchScript(empty, [], {}, { id: sessionId, turnFinishedCommand: `${home}/turn finished.sh` }));
+  expect(code).toBe(0);
+  const args = output.split("\0");
+  expect(args[args.indexOf("--mcp-config") + 1]).toBe(claudeMcpConfigPath(sessionId));
+  expect(args).not.toContain("--strict-mcp-config");
 });

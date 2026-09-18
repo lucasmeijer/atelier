@@ -20,6 +20,7 @@ function run(script: string) {
   return Promise.all([child.exited, new Response(child.stdout).text(), new Response(child.stderr).text()]);
 }
 const empty = { text: "", images: [], attachmentNotes: [] };
+const sessionId = "1f2e3d4c-0000-4000-8000-000000000001";
 const baseArgs = ["--approve", "--offline", "--tui-mode", "regular", "--session-dir", "/home/atelier/.local/share/pi/sessions"];
 
 test("passes initial prompt, images, file notes, provider and Pi thinking level literally", async () => {
@@ -91,7 +92,7 @@ chmod +x "$3/node_modules/.bin/pi"`);
 test("registers an agent_end extension that invokes the completion command", async () => {
   await executable(binary(), 'printf "%s\\0" "$@"');
   const command = `${home}/turn finished.sh`;
-  const [code, output] = await run(piLaunchScript(empty, [], {}, command));
+  const [code, output] = await run(piLaunchScript(empty, [], {}, { id: sessionId, turnFinishedCommand: command }));
   expect(code).toBe(0);
   expect(output.split("\0")).toContain(`${command}.ts`);
   const extension = await import(`${command}.ts`);

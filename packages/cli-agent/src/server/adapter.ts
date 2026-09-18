@@ -1,6 +1,13 @@
 import type { JsonObject } from "@atelier/core";
 import type { AgentLaunchFooterContext, AgentWorkspaceParameters, WorkspaceAgentInput } from "@atelier/shared";
 
+/** Identity of the session being launched, so adapters can address their session-local files. */
+export interface CliAgentSession {
+  id: string;
+  /** Script the CLI must run when a turn ends, already authorized for this session. */
+  turnFinishedCommand: string;
+}
+
 /** Provider-specific policy; the shared module owns sessions and terminal presentation. */
 export interface CliAgentAdapter {
   /** Stable slug: also owns <id>-agents.json, <id>-agents routes and tmux names. */
@@ -17,5 +24,5 @@ export interface CliAgentAdapter {
   /** Session-local configuration; returned environment is passed only to its terminal. */
   prepareSession?(workspaceId: string, sessionId: string, mcp: { url: string; token: string }): Promise<Record<string, string>>;
   /** Bash script with the CLI-specific flags and initial prompt. */
-  launchScript(input: WorkspaceAgentInput, imagePaths: string[], settings: AgentWorkspaceParameters, turnFinishedCommand: string): string;
+  launchScript(input: WorkspaceAgentInput, imagePaths: string[], settings: AgentWorkspaceParameters, session: CliAgentSession): string;
 }

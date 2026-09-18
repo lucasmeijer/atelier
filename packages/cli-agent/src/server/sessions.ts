@@ -66,7 +66,7 @@ export function createCliSessions(adapter: CliAgentAdapter) {
 exec curl --noproxy '*' --fail --silent --show-error --max-time 10 -X POST -H ${shellQuote("Authorization: Bearer " + mcp.token)} ${shellQuote(new URL("/agent-turn-finished", mcp.url).href)}
 `);
       const env = { HOME: "/home/atelier", ...await adapter.prepareSession?.(workspaceId, id, mcp) };
-      const command = `/bin/bash -c ${shellQuote(adapter.launchScript(input, imagePaths, settings, turnFinishedCommand))}`;
+      const command = `/bin/bash -c ${shellQuote(adapter.launchScript(input, imagePaths, settings, { id, turnFinishedCommand }))}`;
       await checkedShell(workspaceId, buildObservableSessionCommand({ requireExistingServer: true, session: session.tmuxSession, cwd: workspaceRoot, command, env, remainOnExit: true, passthrough: true, historyLimit: 10000 }));
     } catch (error) {
       // Startup failure is durable session state, shown in its tab rather than discarded.

@@ -1,18 +1,21 @@
 import { parseModelRef } from "@atelier/llm/server";
-import { cliLaunchScript, type CliModelSettings } from "@atelier/cli-agent/server";
+import { cliLaunchScript, type CliAgentSession, type CliModelSettings } from "@atelier/cli-agent/server";
+import { claudeMcpConfigPath } from "./mcp.ts";
 import { shellQuote } from "@atelier/core";
 import { workspaceRoot } from "@atelier/workspace";
 import type { WorkspaceAgentInput } from "@atelier/shared";
 
 /** Run inside tmux so installation progress and failures stay visible in the tab. */
-export function claudeLaunchScript(input: WorkspaceAgentInput, imagePaths: string[], settings: CliModelSettings = {}, turnFinishedCommand?: string): string {
+export function claudeLaunchScript(input: WorkspaceAgentInput, imagePaths: string[], settings: CliModelSettings = {}, session?: CliAgentSession): string {
   // Claude has no --image flag. Its Read tool opens the materialized images.
   const prompt = [input.text, ...input.attachmentNotes, ...imagePaths.map((path) => `Read the attached image at ${JSON.stringify(path)}.`)].filter(Boolean).join("\n\n");
   const cliSettings = {
     skipDangerousModePermissionPrompt: true,
-    hooks: turnFinishedCommand ? { Stop: [{ hooks: [{ type: "command", command: `sh ${shellQuote(turnFinishedCommand)}` }] }] } : undefined,
+    hooks: session ? { Stop: [{ hooks: [{ type: "command", command: `sh ${shellQuote(session.turnFinishedCommand)}` }] }] } : undefined,
   };
-  const args = ["--dangerously-skip-permissions", "--settings", JSON.stringify(cliSettings),
+  // Added to whatever MCP servers the user configured; Claude merges both sets.
+  const mcpArgs = session ? ["--mcp-config", claudeMcpConfigPath(session.id)] : [];
+  const args = ["--dangerously-skip-permissions", "--settings", JSON.stringify(cliSettings), ...mcpArgs,
     ...(settings.model ? ["--model", parseModelRef(settings.model)!.id] : []),
     ...(settings.thinkingLevel ? ["--effort", settings.thinkingLevel] : []), ...(prompt ? ["--", prompt] : [])];
   // The subscription is already connected in Atelier. Preserve other CLI preferences.
