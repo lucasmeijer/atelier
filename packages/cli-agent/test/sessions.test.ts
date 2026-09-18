@@ -13,7 +13,6 @@ async function scenario(script: string): Promise<void> {
       const calls = [];
       const launches = [];
       const preparations = [];
-      const closedSessions = [];
       let setupError;
       let preparationError;
       let result = { stdout: "", stderr: "", exitCode: 0, durationMs: 0 };
@@ -27,7 +26,6 @@ async function scenario(script: string): Promise<void> {
           prepare: async (settings = {}) => settings,
         },
         prepareWorkspace: async (workspaceId) => { preparations.push(workspaceId); if (preparationError) throw preparationError; },
-        closeSession: async (workspaceId, id) => closedSessions.push({ workspaceId, id }),
         launchScript: (input, images, settings) => { launches.push({ input, images, settings }); return "printf 'CLI started'"; },
       };
       const module = createCliAgentModule(adapter);
@@ -46,24 +44,23 @@ test("creation materializes images and passes input and settings to the adapter 
   const settings = { input, model: "any-provider::model", thinkingLevel: "custom", serviceTier: "fast" };
   await provider.launch.prepareWorkspace("initial", { agent: settings });
   const [tab] = await list("initial");
-  expect(calls).toHaveLength(2);
+  expect(calls).toHaveLength(4);
   const image = "/work/.atelier-attachments/example-" + tab.id + "/0.png";
   expect(calls[0][1]).toContain(image);
   expect(calls[0][2]).toEqual({ stdin: "aW1hZ2U=" });
-  expect(calls[1][1]).toContain("tmux -N new-session");
+  expect(calls[3][1]).toContain("tmux -N new-session");
   expect(launches).toEqual([{ input, images: [image], settings }]);
   expect(preparations).toEqual(["initial"]);
   const [session] = (await saved("initial")).sessions;
   expect(session).toMatchObject({ id: tab.id, title: input.text, input, kind: "example", model: settings.model, thinkingLevel: "custom", tmuxSession: "example-" + tab.id });
   await list("initial");
-  expect(calls).toHaveLength(2);
+  expect(calls).toHaveLength(4);
 `));
 
 test("startup failure leaves a durable tab with its actual error", () => scenario(`
   result = { ...result, stderr: "tmux service unavailable", exitCode: 1 };
   const id = await provider.create({ workspaceId: "failure" });
   expect((await saved("failure")).sessions[0]).toMatchObject({ id, error: "tmux service unavailable" });
-  expect(closedSessions).toEqual([{ workspaceId: "failure", id }]);
   expect(await list("failure")).toEqual([{ id, title: "Example CLI" }]);
 `));
 
@@ -111,7 +108,7 @@ test("concurrent provisioning claims launch once, and recovery never resubmits",
   const context = { agent: { input: { text: "Only once", images: [], attachmentNotes: [] } } };
   await Promise.all([provider.launch.prepareWorkspace("recovery", context), provider.launch.prepareWorkspace("recovery", context)]);
   await createCliAgentModule(adapter).agentProvider.launch.prepareWorkspace("recovery", context);
-  expect(calls).toHaveLength(1);
+  expect(calls).toHaveLength(3);
   expect(launches).toHaveLength(1);
   expect(await list("recovery")).toHaveLength(1);
 `));
@@ -188,7 +185,7 @@ test("starting claims are not ended, and socket admission waits for tmux creatio
   expect(await launch).toBe(claim.id);
   expect(await readiness).toBe(claim);
   expect(await socket).toBeDefined();
-  expect(calls).toHaveLength(1);
+  expect(calls).toHaveLength(3);
   expect(await sessions.terminalState("starting", claim)).toMatchObject({ exists: true, ended: false });
 `));
 
@@ -209,4 +206,40 @@ test("failed startup releases readiness waiters but rejects socket admission", (
   expect((await readiness).error).toBe("preparation failed");
   expect(await rejection).toMatchObject({ code: "agent_session_failed", message: "preparation failed" });
   expect(calls).toHaveLength(0);
+`));
+
+test("authenticated completion identifies the exact CLI session and close revokes it", () => scenario(`
+  const { createAtelierEventBus } = await import("@atelier/core");
+  const { configureAgentMcp, handleAgentMcpRequest } = await import("@atelier/agent/server");
+  const events = createAtelierEventBus();
+  const finished = [];
+  events.on("workspace_agent_turn_finished", event => { finished.push(event); });
+  configureAgentMcp(events);
+  const id = await provider.create({ workspaceId: "completion" });
+  const script = calls.find(call => call[2]?.stdin?.includes("Authorization: Bearer"))[2].stdin;
+  const token = script.match(/Authorization: Bearer ([\\w.-]+)/)[1];
+  const request = (headers = {}, method = "POST") => new Request("http://localhost/agent-turn-finished", { method, headers: { authorization: "Bearer " + token, ...headers } });
+  expect((await handleAgentMcpRequest(request(), "another-workspace")).status).toBe(401);
+  expect((await handleAgentMcpRequest(request({ origin: "http://localhost" }), "completion")).status).toBe(403);
+  expect((await handleAgentMcpRequest(request({}, "GET"), "completion")).status).toBe(405);
+  expect((await handleAgentMcpRequest(request({ authorization: "Bearer invalid" }), "completion")).status).toBe(401);
+  expect(finished).toEqual([]);
+  expect((await handleAgentMcpRequest(request(), "completion")).status).toBe(204);
+  expect(finished).toEqual([{ workspaceId: "completion", conversationId: id }]);
+  await provider.tabs.close({ workspaceId: "completion", conversationId: id });
+  expect((await handleAgentMcpRequest(request(), "completion")).status).toBe(401);
+`));
+
+test("startup failure revokes credentials issued before adapter preparation", () => scenario(`
+  const { handleAgentMcpRequest } = await import("@atelier/agent/server");
+  let token;
+  adapter.prepareSession = async (_workspaceId, _sessionId, mcp) => {
+    token = mcp.token;
+    throw new Error("session configuration failed");
+  };
+  const id = await provider.create({ workspaceId: "failed-credentials" });
+  expect((await saved("failed-credentials")).sessions[0]).toMatchObject({ id, error: "session configuration failed" });
+  expect(launches).toHaveLength(0);
+  const request = new Request("http://localhost/agent-turn-finished", { method: "POST", headers: { authorization: "Bearer " + token } });
+  expect((await handleAgentMcpRequest(request, "failed-credentials")).status).toBe(401);
 `));

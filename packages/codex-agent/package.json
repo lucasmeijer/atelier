@@ -10,7 +10,6 @@
     "@atelier/llm": "workspace:*",
     "@atelier/shared": "workspace:*",
     "@atelier/workspace": "workspace:*",
-    "@atelier/agent": "workspace:*",
     "@atelier/cli-agent": "workspace:*"
   }
 }

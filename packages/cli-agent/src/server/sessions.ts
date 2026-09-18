@@ -1,3 +1,5 @@
+import { dirname } from "node:path";
+import { prepareAgentMcp, revokeAgentMcp } from "@atelier/agent/server";
 import { AtelierCoreError, createKeyedOperationQueue, shellQuote } from "@atelier/core";
 import { buildObservableSessionCommand } from "@atelier/observable-terminal/server";
 import { imageMimeByExtension } from "@atelier/prompt/server";
@@ -58,14 +60,19 @@ export function createCliSessions(adapter: CliAgentAdapter) {
         await checkedShell(workspaceId, `mkdir -p ${shellQuote(directory)} && base64 -d > ${shellQuote(path)}`, image.data);
         imagePaths.push(path);
       }
-      const env = { HOME: "/home/atelier", ...await adapter.prepareSession?.(workspaceId, id) };
-      const command = `/bin/bash -c ${shellQuote(adapter.launchScript(input, imagePaths, settings))}`;
+      const mcp = await prepareAgentMcp(workspaceId, id);
+      const turnFinishedCommand = `/home/atelier/.local/share/atelier-agents/${id}/turn-finished.sh`;
+      await checkedShell(workspaceId, `umask 077; mkdir -p ${shellQuote(dirname(turnFinishedCommand))} && cat > ${shellQuote(turnFinishedCommand)}`, `#!/bin/sh
+exec curl --noproxy '*' --fail --silent --show-error --max-time 10 -X POST -H ${shellQuote("Authorization: Bearer " + mcp.token)} ${shellQuote(new URL("/agent-turn-finished", mcp.url).href)}
+`);
+      const env = { HOME: "/home/atelier", ...await adapter.prepareSession?.(workspaceId, id, mcp) };
+      const command = `/bin/bash -c ${shellQuote(adapter.launchScript(input, imagePaths, settings, turnFinishedCommand))}`;
       await checkedShell(workspaceId, buildObservableSessionCommand({ requireExistingServer: true, session: session.tmuxSession, cwd: workspaceRoot, command, env, remainOnExit: true, passthrough: true, historyLimit: 10000 }));
     } catch (error) {
       // Startup failure is durable session state, shown in its tab rather than discarded.
       session.error = error instanceof Error ? error.message : String(error);
       store().write(workspaceId, { sessions: list(workspaceId) });
-      await adapter.closeSession?.(workspaceId, id);
+      await revokeAgentMcp(workspaceId, id);
     } finally {
       starting.delete(id);
       ready.resolve();
@@ -97,7 +104,7 @@ export function createCliSessions(adapter: CliAgentAdapter) {
   function close(workspaceId: string, id: string): Promise<void> {
     return serialize(workspaceId, async () => {
       const session = get(workspaceId, id);
-      await adapter.closeSession?.(workspaceId, id);
+      await revokeAgentMcp(workspaceId, id);
       if ((await terminalState(workspaceId, session)).exists) await checkedShell(workspaceId, `tmux kill-session -t ${shellQuote(session.tmuxSession)}`);
       store().write(workspaceId, { sessions: list(workspaceId).filter((session) => session.id !== id) });
     });

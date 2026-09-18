@@ -109,3 +109,12 @@ for (const preferences of [{}, { autoUpdates: false }, { installMethod: "native"
     expect(JSON.parse(output)).toMatchObject({ ...preferences, installMethod: "local", autoUpdates: true });
   });
 }
+
+test("registers a session-local Stop hook", async () => {
+  await executable(`${home}/.claude/local/node_modules/.bin/claude`, 'printf "%s\\0" "$@"');
+  const command = `${home}/turn finished.sh`;
+  const [code, output] = await run(claudeLaunchScript(empty, [], {}, command));
+  expect(code).toBe(0);
+  const args = output.split("\0");
+  expect(JSON.parse(args[args.indexOf("--settings") + 1]!)).toMatchObject({ hooks: { Stop: [{ hooks: [{ type: "command", command: `sh ${shellQuote(command)}` }] }] } });
+});

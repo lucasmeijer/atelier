@@ -33,3 +33,14 @@ export function createAgentMcpCredentials(dataDir?: string) {
     revokeWorkspace(workspaceId: string): void { store.delete(workspaceId); },
   };
 }
+
+/** CLI requests use bearer credentials, never browser cookies, and stay scoped to their ingress workspace. */
+export function authenticateAgentRequest(request: Request, authenticate: (token: string) => AgentMcpIdentity | undefined, workspaceId?: string): AgentMcpIdentity | Response {
+  if (request.headers.has("origin")) return new Response("Browser origins are not allowed", { status: 403 });
+  const token = request.headers.get("authorization")?.match(/^Bearer (\S+)$/i)?.[1];
+  const identity = token ? authenticate(token) : undefined;
+  if (!identity || (workspaceId !== undefined && identity.workspaceId !== workspaceId)) {
+    return new Response("Unauthorized", { status: 401, headers: { "WWW-Authenticate": 'Bearer realm="atelier-mcp"', "Cache-Control": "no-store" } });
+  }
+  return identity;
+}

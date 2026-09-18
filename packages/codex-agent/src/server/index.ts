@@ -1,4 +1,3 @@
-import { revokeAgentMcp } from "@atelier/agent/server";
 import { prepareCodexMcp } from "./mcp.ts";
 import { createCliAgentModule } from "@atelier/cli-agent/server";
 import { createPiModelRuntime, installSubscriptionCli } from "@atelier/llm/server";
@@ -13,6 +12,5 @@ export const atelierServerModule = createCliAgentModule({
   settings: codexModelSettings,
   prepareWorkspace: async (workspaceId) => installSubscriptionCli(workspaceId, await createPiModelRuntime()),
   prepareSession: prepareCodexMcp,
-  closeSession: revokeAgentMcp,
   launchScript: codexLaunchScript,
 });

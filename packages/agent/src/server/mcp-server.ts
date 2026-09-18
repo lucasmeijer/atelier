@@ -3,7 +3,7 @@ import { WebStandardStreamableHTTPServerTransport } from "@modelcontextprotocol/
 import { CallToolRequestSchema, ListToolsRequestSchema, ErrorCode, McpError } from "@modelcontextprotocol/sdk/types.js";
 import { Value } from "typebox/value";
 import type { ToolDefinition } from "@earendil-works/pi-coding-agent";
-import type { AgentMcpIdentity } from "./mcp-credentials.ts";
+import { authenticateAgentRequest, type AgentMcpIdentity } from "./mcp-credentials.ts";
 
 export interface AgentMcpServerOptions {
   authenticate(token: string): AgentMcpIdentity | undefined;
@@ -16,11 +16,8 @@ export function createAgentMcpServer(options: AgentMcpServerOptions) {
   const sessions = new Map<string, { identity: AgentMcpIdentity; transport: WebStandardStreamableHTTPServerTransport; server: Server }>();
   return {
     async fetch(request: Request, workspaceId?: string): Promise<Response> {
-      // Only launched CLI clients use this endpoint. No browser origins or cookie authentication.
-      if (request.headers.has("origin")) return new Response("Browser origins are not allowed", { status: 403 });
-      const token = request.headers.get("authorization")?.match(/^Bearer (\S+)$/i)?.[1];
-      const identity = token ? options.authenticate(token) : undefined;
-      if (!identity || (workspaceId !== undefined && workspaceId !== identity.workspaceId)) return new Response("Unauthorized", { status: 401, headers: { "WWW-Authenticate": 'Bearer realm="atelier-mcp"', "Cache-Control": "no-store" } });
+      const identity = authenticateAgentRequest(request, options.authenticate, workspaceId);
+      if (identity instanceof Response) return identity;
       const sessionId = request.headers.get("mcp-session-id");
       if (sessionId) {
         const session = sessions.get(sessionId);

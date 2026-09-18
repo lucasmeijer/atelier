@@ -1,6 +1,6 @@
 import type { AtelierEventBus } from "@atelier/core";
 import { execWorkspaceShell } from "@atelier/workspace";
-import { createAgentMcpCredentials } from "./mcp-credentials.ts";
+import { authenticateAgentRequest, createAgentMcpCredentials } from "./mcp-credentials.ts";
 import { createAgentMcpServer } from "./mcp-server.ts";
 import { createAtelierControlTools } from "./tools.ts";
 import { createRegisteredOnboardingTools } from "./onboarding-tools.ts";
@@ -31,7 +31,9 @@ export function configureAgentMcp(eventBus: AtelierEventBus): void {
   });
 }
 export function handleAgentMcpRequest(request: Request, workspaceId?: string): Promise<Response> | undefined {
-  if (new URL(request.url).pathname === "/mcp") return mcp.fetch(request, workspaceId);
+  const path = new URL(request.url).pathname;
+  if (path === "/mcp") return mcp.fetch(request, workspaceId);
+  if (path === "/agent-turn-finished") return handleTurnFinished(request, workspaceId);
 }
 
 export async function revokeAgentMcp(workspaceId: string, agentId: string): Promise<void> {
@@ -57,4 +59,12 @@ cat /tmp/atelier-mcp.log >&2
 exit 1`);
   if (result.exitCode !== 0) throw new Error(result.stderr.trim() || "Could not start workspace MCP relay");
   return { url: "http://127.0.0.1:2988/mcp", token: credentialStore().issue({ workspaceId, agentId }) };
+}
+
+async function handleTurnFinished(request: Request, workspaceId?: string): Promise<Response> {
+  const identity = authenticateAgentRequest(request, credentialStore().authenticate, workspaceId);
+  if (identity instanceof Response) return identity;
+  if (request.method !== "POST") return new Response("Method not allowed", { status: 405 });
+  await events!.emit("workspace_agent_turn_finished", { workspaceId: identity.workspaceId, conversationId: identity.agentId });
+  return new Response(null, { status: 204 });
 }

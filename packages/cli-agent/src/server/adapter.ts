@@ -15,9 +15,7 @@ export interface CliAgentAdapter {
   /** Runs once for a newly claimed session, before attachments and terminal launch. */
   prepareWorkspace?(workspaceId: string): Promise<void>;
   /** Session-local configuration; returned environment is passed only to its terminal. */
-  prepareSession?(workspaceId: string, sessionId: string): Promise<Record<string, string>>;
-  /** Revoke session credentials on startup failure and close. */
-  closeSession?(workspaceId: string, sessionId: string): Promise<void>;
+  prepareSession?(workspaceId: string, sessionId: string, mcp: { url: string; token: string }): Promise<Record<string, string>>;
   /** Bash script with the CLI-specific flags and initial prompt. */
-  launchScript(input: WorkspaceAgentInput, imagePaths: string[], settings: AgentWorkspaceParameters): string;
+  launchScript(input: WorkspaceAgentInput, imagePaths: string[], settings: AgentWorkspaceParameters, turnFinishedCommand: string): string;
 }

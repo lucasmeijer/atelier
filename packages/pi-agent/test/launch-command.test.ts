@@ -87,3 +87,19 @@ chmod +x "$3/node_modules/.bin/pi"`);
   expect(await Bun.file(oldBinary).exists()).toBe(true);
   expect(await Bun.file(binary()).exists()).toBe(true);
 });
+
+test("registers an agent_end extension that invokes the completion command", async () => {
+  await executable(binary(), 'printf "%s\\0" "$@"');
+  const command = `${home}/turn finished.sh`;
+  const [code, output] = await run(piLaunchScript(empty, [], {}, command));
+  expect(code).toBe(0);
+  expect(output.split("\0")).toContain(`${command}.ts`);
+  const extension = await import(`${command}.ts`);
+  let event: string | undefined;
+  let handler: () => Promise<void>;
+  const calls: unknown[] = [];
+  extension.default({ on(name: string, callback: () => Promise<void>) { event = name; handler = callback; }, async exec(...args: unknown[]) { calls.push(args); return { code: 0 }; } });
+  expect(event).toBe("agent_end");
+  await handler!();
+  expect(calls).toEqual([["sh", [command]]]);
+});

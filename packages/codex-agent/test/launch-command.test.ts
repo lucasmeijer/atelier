@@ -76,3 +76,11 @@ test("passes the chosen Codex model and thinking level to the CLI", async () => 
   expect(code).toBe(0);
   expect(output.split("\0").slice(0, -1)).toEqual([...baseArgs, "--model", "gpt-5.4", "-c", 'model_reasoning_effort="high"']);
 });
+
+test("registers a session-local turn completion notification", async () => {
+  await executable(`${home}/.local/bin/codex`, 'printf "%s\\0" "$@"');
+  const command = `${home}/turn finished.sh`;
+  const [code, output] = await run(codexLaunchScript(empty, [], {}, command));
+  expect(code).toBe(0);
+  expect(output.split("\0")).toContain(`notify=${JSON.stringify(["sh", command])}`);
+});
