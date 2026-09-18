@@ -504,6 +504,12 @@ button.settings-link:disabled { opacity: .45; cursor: default; filter: none; }
 .model-setup-heading { min-height: 40px; }
 .model-setup-actions { margin-top: 8px; }
 .model-setup-actions > :last-child:not(:first-child) { margin-inline-start: auto; }
+.model-provider-choice { position: relative; }
+.model-provider-attention { display: inline-flex; color: var(--danger); }
+.model-provider-attention-hint { display: none; position: absolute; z-index: 1; top: 100%; left: 0; width: max-content; max-width: 240px; padding: 6px 8px; border: 1px solid var(--line); border-radius: var(--radius-control); background: var(--panel); color: var(--text); font-size: 12px; pointer-events: none; }
+.model-provider-choice:hover .model-provider-attention-hint,
+.model-provider-choice:focus-within .model-provider-attention-hint { display: block; }
+
 .model-popular-providers { display: flex; flex-wrap: wrap; gap: 8px; min-width: 0; }
 .model-popular-providers > form { flex: 0 1 auto; max-width: 100%; }
 .model-popular-providers .action-item { min-height: 56px; border: 1px solid var(--line); border-radius: var(--radius-control); }

@@ -1,3 +1,4 @@
+import { providerConnections, type ProviderConnection } from "./provider-connections.ts";
 import { getPopularModelRank, getPopularProviderRank, getProviderApiKeyExample } from "./hardcoded-provider-knowledge.ts";
 import { modelRefValue as modelKey, parseModelRef } from "./model-reference.ts";
 import { actionItemHtml } from "@atelier/design-system/action-item";
@@ -24,19 +25,17 @@ import {
 import { domId, escapeHtml, providerBadgeHtml } from "@atelier/shared";
 import { append, remove, replace, replaceTargets, response, stream, update, wantsStream } from "@atelier/shared/http";
 
-type ProviderSummary = { provider: string; label: string; connected: boolean; methods: string[] };
+type ProviderSummary = { provider: string; label: string; connection: ProviderConnection; methods: string[] };
 
 async function providerSummaries(): Promise<ProviderSummary[]> {
   const runtime = await createPiModelRuntime();
-  return runtime.getProviders().map((provider): ProviderSummary => {
-    const status = runtime.getProviderAuthStatus(provider.id);
-    return {
-      provider: provider.id,
-      label: provider.id === "openai-codex" ? "ChatGPT / Codex" : provider.id === "openai" ? "OpenAI API" : provider.name ?? provider.id,
-      connected: status.configured,
-      methods: [provider.auth.oauth && "oauth", provider.auth.apiKey?.login && "api_key"].filter((method): method is string => Boolean(method)),
-    };
-  }).sort((a, b) => (getPopularProviderRank(a.provider) ?? Number.MAX_SAFE_INTEGER) - (getPopularProviderRank(b.provider) ?? Number.MAX_SAFE_INTEGER) || a.label.localeCompare(b.label));
+  const connections = await providerConnections(runtime);
+  return runtime.getProviders().map((provider): ProviderSummary => ({
+    provider: provider.id,
+    label: provider.id === "openai-codex" ? "ChatGPT / Codex" : provider.id === "openai" ? "OpenAI API" : provider.name ?? provider.id,
+    connection: connections.get(provider.id)!,
+    methods: [provider.auth.oauth && "oauth", provider.auth.apiKey?.login && "api_key"].filter((method): method is string => Boolean(method)),
+  })).sort((a, b) => (getPopularProviderRank(a.provider) ?? Number.MAX_SAFE_INTEGER) - (getPopularProviderRank(b.provider) ?? Number.MAX_SAFE_INTEGER) || a.label.localeCompare(b.label));
 }
 
 type ModelSetupSurface = "settings" | "onboarding" | "dialog" | "settings-dialog";
@@ -104,7 +103,15 @@ function groupModelProviders(providers: ProviderSummary[]) {
   return { popular, other: providers.filter((provider) => !popular.includes(provider)) };
 }
 function renderProvider(provider: ProviderSummary, surface: ModelSetupSurface): string {
-  return `<form method="post" action="${setupUrl(surface, provider.provider)}" data-turbo="true">${actionItemHtml({ kind: "single", element: { tag: "button", attributesHtml: 'type="submit"' }, label: { kind: "text", text: provider.label }, leadingHtml: `<span aria-hidden="true">${providerBadgeHtml(provider.provider, provider.label, "settings-provider-icon")}</span>` })}</form>`;
+  const attentionId = domId("provider_attention", surface, provider.provider);
+  const attention = provider.connection === "needs_attention" ? `<span class="model-provider-attention">${Icons.Exclamation}</span><span class="model-provider-attention-hint" id="${attentionId}" role="tooltip">Sign-in needs attention</span>` : "";
+  return `<form class="model-provider-choice" method="post" action="${setupUrl(surface, provider.provider)}" data-turbo="true">${actionItemHtml({
+    kind: "single",
+    element: { tag: "button", attributesHtml: `type="submit"${provider.connection === "needs_attention" ? ` aria-describedby="${attentionId}"` : ""}` },
+    label: { kind: "text", text: provider.label },
+    leadingHtml: `<span aria-hidden="true">${providerBadgeHtml(provider.provider, provider.label, "settings-provider-icon")}</span>`,
+    trailingHtml: attention,
+  })}</form>`;
 }
 function renderProviderList(providers: ProviderSummary[], surface: ModelSetupSurface, query = ""): string {
   const normalized = query.trim().toLowerCase();
@@ -190,10 +197,10 @@ function renderCustomModelsSettings(view: CustomModelsView): string {
 
 function renderProviderPicker(providers: ProviderSummary[], surface: ModelSetupSurface, customModels?: CustomModelsView): string {
   if (surface !== "onboarding") {
-    const connected = providers.filter((provider) => provider.connected);
-    return setupFrame(surface, `<p>Connected providers</p><div class="model-popular-providers">${connected.map((provider) => renderProvider(provider, surface)).join("") || '<p class="model-empty-providers">No connected providers.</p>'}</div>
+    const configured = providers.filter((provider) => provider.connection !== "disconnected");
+    return setupFrame(surface, `<p>Your providers</p><div class="model-popular-providers">${configured.map((provider) => renderProvider(provider, surface)).join("") || '<p class="model-empty-providers">No connected providers.</p>'}</div>
       <p>Connect more providers</p>
-      ${renderProviderChoices(providers.filter((provider) => !provider.connected), surface)}
+      ${renderProviderChoices(providers.filter((provider) => provider.connection === "disconnected"), surface)}
       ${customModels ? renderCustomModelsSettings(customModels) : ""}`);
   }
   return setupFrame(surface, `<p>Bring your own subscription or API key</p>${renderProviderChoices(providers, surface)}${setupSkip(surface)}`);
@@ -234,7 +241,7 @@ async function modelSelectionDialog(provider: ProviderSummary, surface: ModelSet
 }
 export async function renderModelSetupDialog(surface: "dialog" | "settings-dialog" | "onboarding" = "dialog"): Promise<string> {
   const providers = await providerSummaries();
-  const connected = providers.filter((provider) => provider.connected);
+  const connected = providers.filter((provider) => provider.connection === "connected");
   if (surface === "onboarding" && connected.length) {
     return modelSelectionDialog(connected[0]!, surface);
   }
@@ -465,14 +472,16 @@ export async function handleModelSettingsRequest(request: Request, url: URL, ren
     const provider = (await providerSummaries()).find((candidate) => candidate.provider === providerId);
     if (!provider) return response("Unknown provider", { status: 400 });
     const targetSurface = surface === "settings" ? "settings-dialog" : surface;
-    if (provider.connected) {
+    if (provider.connection === "connected") {
       const html = await modelSelectionDialog(provider, targetSurface);
       return stream(surface === "settings" ? remove("model_setup_dialog") + append("settings_modal_host", html)
         : replace(surface === "onboarding" ? "onboarding_dialog" : "model_setup_dialog", html));
     }
-    const step = provider.methods.length === 1
-        ? provider.methods[0] === "oauth" ? renderOAuthConnectionStep(await startOAuthFlow(provider.provider, provider.label, targetSurface, renderPickerUpdates)) : renderApiKeyConnectionStep(provider.provider, provider.label, targetSurface)
-        : renderConnectionMethods(provider, targetSurface);
+    const method = provider.connection === "needs_attention" ? "oauth" : provider.methods.length === 1 ? provider.methods[0] : undefined;
+    const step = method === "oauth"
+      ? renderOAuthConnectionStep(await startOAuthFlow(provider.provider, provider.label, targetSurface, renderPickerUpdates))
+      : method === "api_key" ? renderApiKeyConnectionStep(provider.provider, provider.label, targetSurface)
+      : renderConnectionMethods(provider, targetSurface);
     return stream(surface === "settings"
       ? remove("model_setup_dialog") + append("settings_modal_host", modelSetupDialog(step))
       : replace(setupId(surface), step));
@@ -485,13 +494,13 @@ export async function handleModelSettingsRequest(request: Request, url: URL, ren
   }
   if (url.pathname === "/settings/models/providers" && request.method === "GET") {
     const providers = await providerSummaries();
-    const choices = surface === "onboarding" ? providers : providers.filter((provider) => !provider.connected);
+    const choices = surface === "onboarding" ? providers : providers.filter((provider) => provider.connection === "disconnected");
     return response(renderProviderList(groupModelProviders(choices).other, surface, url.searchParams.get("q") ?? ""));
   }
   if (url.pathname === "/settings/models/catalogue" && request.method === "GET") {
     const provider = (await providerSummaries()).find((candidate) => candidate.provider === url.searchParams.get("provider"));
     if (!provider) return response("Unknown provider", { status: 400 });
-    const catalogue = provider.connected ? await providerCatalogue(provider.provider) : [];
+    const catalogue = provider.connection === "connected" ? await providerCatalogue(provider.provider) : [];
     return response(renderProviderModels(catalogue, surface, provider, url.searchParams.get("q") ?? ""));
   }
   if (url.pathname === "/settings/models/catalogue/refresh" && request.method === "POST") {
@@ -534,7 +543,7 @@ export async function handleModelSettingsRequest(request: Request, url: URL, ren
     const method = url.searchParams.get("method") ?? "";
     const summary = (await providerSummaries()).find((candidate) => candidate.provider === provider);
     if (!summary) return response("Unknown provider", { status: 400 });
-    if (summary.connected) return connectedStep(provider, surface, renderPickerUpdates);
+    if (summary.connection === "connected") return connectedStep(provider, surface, renderPickerUpdates);
     if (!summary.methods.includes(method)) return response("Unsupported authentication method", { status: 400 });
     return stream(replace(setupId(surface), method === "oauth" ? renderOAuthConnectionStep(await startOAuthFlow(provider, summary.label, surface, renderPickerUpdates)) : renderApiKeyConnectionStep(provider, summary.label, surface)));
   }
@@ -543,7 +552,7 @@ export async function handleModelSettingsRequest(request: Request, url: URL, ren
     const provider = decodeURIComponent(match[1]!);
     const summary = (await providerSummaries()).find((candidate) => candidate.provider === provider);
     if (!summary || !summary.methods.includes("api_key")) return response("Unknown API key provider", { status: 400 });
-    if (summary.connected) return connectedStep(provider, surface, renderPickerUpdates);
+    if (summary.connection === "connected") return connectedStep(provider, surface, renderPickerUpdates);
     const form = await request.formData();
     try {
       await connectModelProviderApiKey(provider, String(form.get("secret") ?? ""));
