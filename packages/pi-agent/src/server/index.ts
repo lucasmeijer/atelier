@@ -6,6 +6,7 @@ import { installPiCliConfiguration } from "./pi-cli.ts";
 import { createPiCliCredentialTransform } from "./pi-cli-bridge.ts";
 import { requirePiModels } from "./auth.ts";
 import { piLaunchScript } from "./launch-command.ts";
+import { preparePiMcp } from "./mcp.ts";
 import { piModelSettings } from "./model-settings.ts";
 
 const cliModule = createCliAgentModule({
@@ -13,6 +14,7 @@ const cliModule = createCliAgentModule({
   requireSetup: requirePiModels,
   settings: piModelSettings,
   prepareWorkspace: installPiCliConfiguration,
+  prepareSession: preparePiMcp,
   launchScript: piLaunchScript,
 });
 

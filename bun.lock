@@ -242,6 +242,7 @@
         "@atelier/workspace": "workspace:*",
         "@earendil-works/pi-ai": "catalog:",
         "@earendil-works/pi-coding-agent": "catalog:",
+        "@modelcontextprotocol/sdk": "1.30.0",
         "typebox": "^1.0.57",
       },
     },

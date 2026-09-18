@@ -10,6 +10,7 @@ for (const id of ["codex", "claude", "pi"]) {
     const authExport = id === "pi" ? "requirePiModels" : id === "codex" ? "requireCodexSubscription" : "requireClaudeSubscription";
     const model = id === "pi" ? "custom::model" : id === "codex" ? "openai-codex::gpt-5.4" : "anthropic::claude-opus-4-6";
     const npmPackage = id === "pi" ? "@earendil-works/pi-coding-agent@" : id === "codex" ? "@openai/codex@latest" : "@anthropic-ai/claude-code@latest";
+    const mcpConfigMarker = id === "codex" ? "config.toml" : id === "claude" ? "claude-mcp.json" : "/pi-atelier";
     try {
       const child = Bun.spawn([process.execPath, "-e", `
         import { expect, mock } from "bun:test";
@@ -38,21 +39,21 @@ for (const id of ["codex", "claude", "pi"]) {
         await provider.launch.prepareWorkspace("adapter", context);
         expect(authChecks).toBe(2);
         expect(credentials).toEqual(["adapter"]);
-        expect(calls).toHaveLength(${id === "codex" ? 2 : 1});
+        expect(calls).toHaveLength(3);
         expect(calls.at(-1)[1]).toContain(${JSON.stringify(npmPackage)});
         expect(calls.at(-1)[1]).toContain("${id}-");
         expect(calls.at(-1)[1]).toContain("HOME=/home/atelier");
         expect(calls.at(-1)[1]).not.toContain("test-credential");
         const [tab] = await provider.tabs.list({ workspaceId: "adapter" });
-        if (${id === "codex"}) {
-          expect(calls[0][1]).toContain("config.toml");
-          expect(calls[0][2].stdin).toContain('Authorization = "Bearer test-credential"');
-          expect(calls.at(-1)[1]).toContain("CODEX_HOME=/home/atelier/.local/share/atelier-agents/" + tab.id + "/codex");
-        }
+        const mcpSetup = calls.find((call) => call[1].includes(${JSON.stringify(mcpConfigMarker)}));
+        expect(mcpSetup).toBeDefined();
+        expect(mcpSetup[2].stdin).toContain("test-credential");
+        if (${id === "codex"}) expect(calls.at(-1)[1]).toContain("CODEX_HOME=/home/atelier/.local/share/atelier-agents/" + tab.id + "/codex");
+        if (${id === "pi"}) expect(calls.at(-1)[1]).toContain("/pi-atelier/extension.mjs");
         await provider.launch.prepareWorkspace("adapter", context);
-        expect(calls).toHaveLength(${id === "codex" ? 2 : 1});
+        expect(calls).toHaveLength(3);
         await provider.tabs.close({ workspaceId: "adapter", conversationId: tab.id });
-        expect(revoked).toEqual(${id === "codex" ? '[["adapter", tab.id]]' : '[]'});
+        expect(revoked).toEqual([["adapter", tab.id]]);
       `], { cwd: join(import.meta.dir, ".."), env: { ...process.env, ATELIER_DATA_DIR: directory }, stdout: "pipe", stderr: "pipe" });
       const [code, stdout, stderr] = await Promise.all([child.exited, new Response(child.stdout).text(), new Response(child.stderr).text()]);
       expect({ code, stdout, stderr }).toEqual({ code: 0, stdout: "", stderr: "" });

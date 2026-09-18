@@ -7,7 +7,7 @@ import type { AgentWorkspaceParameters, WorkspaceAgentInput } from "@atelier/sha
 import { createWorkspaceMetadataState, execWorkspaceShell, workspaceRoot } from "@atelier/workspace";
 import { Type, type Static } from "typebox";
 import { Value } from "typebox/value";
-import type { CliAgentAdapter } from "./adapter.ts";
+import type { CliAgentAdapter, CliAgentSession } from "./adapter.ts";
 
 const inputSchema = Type.Object({ text: Type.String(), images: Type.Array(Type.Object({ mimeType: Type.String(), data: Type.String() })), attachmentNotes: Type.Array(Type.String()) });
 const sessionSchema = Type.Object({
@@ -62,11 +62,12 @@ export function createCliSessions(adapter: CliAgentAdapter) {
       }
       const mcp = await prepareAgentMcp(workspaceId, id);
       const turnFinishedCommand = `/home/atelier/.local/share/atelier-agents/${id}/turn-finished.sh`;
+      const launchSession: CliAgentSession = { id, turnFinishedCommand };
       await checkedShell(workspaceId, `umask 077; mkdir -p ${shellQuote(dirname(turnFinishedCommand))} && cat > ${shellQuote(turnFinishedCommand)}`, `#!/bin/sh
 exec curl --noproxy '*' --fail --silent --show-error --max-time 10 -X POST -H ${shellQuote("Authorization: Bearer " + mcp.token)} ${shellQuote(new URL("/agent-turn-finished", mcp.url).href)}
 `);
-      const env = { HOME: "/home/atelier", ...await adapter.prepareSession?.(workspaceId, id, mcp) };
-      const command = `/bin/bash -c ${shellQuote(adapter.launchScript(input, imagePaths, settings, { id, turnFinishedCommand }))}`;
+      const env = { HOME: "/home/atelier", ...await adapter.prepareSession?.(workspaceId, launchSession, mcp) };
+      const command = `/bin/bash -c ${shellQuote(adapter.launchScript(input, imagePaths, settings, launchSession))}`;
       await checkedShell(workspaceId, buildObservableSessionCommand({ requireExistingServer: true, session: session.tmuxSession, cwd: workspaceRoot, command, env, remainOnExit: true, passthrough: true, historyLimit: 10000 }));
     } catch (error) {
       // Startup failure is durable session state, shown in its tab rather than discarded.
