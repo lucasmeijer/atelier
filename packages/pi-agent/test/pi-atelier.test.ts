@@ -65,7 +65,7 @@ async function fixture() {
   });
   const server = Bun.serve({ port: 0, fetch: (request) => endpoint.fetch(request) });
   cleanup.push(async () => { await endpoint.revoke({ workspaceId: identity.workspaceId }); server.stop(true); });
-  return { url: new URL("/mcp", server.url).href, token, turnFinishedCommand: "/session/turn-finished.sh", cancelled: () => cancelled };
+  return { url: new URL("/mcp", server.url).href, token, turnSignalCommand: "/session/turn-signal.sh", cancelled: () => cancelled };
 }
 
 test("pi-atelier discovers tools and carries instructions, progress, errors and completion", async () => {
@@ -90,8 +90,9 @@ test("pi-atelier discovers tools and carries instructions, progress, errors and 
   for (let attempt = 0; attempt < 50 && !mcp.cancelled(); attempt++) await Bun.sleep(10);
   expect(mcp.cancelled()).toBe(true);
 
+  await f.emit("agent_start");
   await f.emit("agent_end");
-  expect(f.executions).toEqual([["sh", [mcp.turnFinishedCommand]]]);
+  expect(f.executions).toEqual([["sh", [mcp.turnSignalCommand, "started"]], ["sh", [mcp.turnSignalCommand, "finished"]]]);
   await f.emit("session_shutdown");
   await expect(f.tools.get("present")!.execute("call", { kind: "browser" }, undefined, undefined, undefined!)).rejects.toThrow("not connected");
 });

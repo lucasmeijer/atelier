@@ -92,7 +92,7 @@ chmod +x "$3/node_modules/.bin/pi"`);
 
 test("loads the session's Atelier extension", async () => {
   await executable(binary(), 'printf "%s\\0" "$@"');
-  const [code, output] = await run(piLaunchScript(empty, [], {}, { id: sessionId, turnFinishedCommand: `${home}/turn-finished.sh` }));
+  const [code, output] = await run(piLaunchScript(empty, [], {}, { id: sessionId, turnSignalCommand: `${home}/turn-signal.sh` }));
   expect(code).toBe(0);
   expect(output.split("\0")).toContain(piAtelierExtensionPath(sessionId));
 });

@@ -30,7 +30,7 @@ function buildExtension(): Promise<string> {
 export async function preparePiMcp(workspaceId: string, session: CliAgentSession, mcp: { url: string; token: string }): Promise<Record<string, string>> {
   const directory = piAtelierDirectory(session.id);
   const extension = await buildExtension();
-  const config = JSON.stringify({ ...mcp, turnFinishedCommand: session.turnFinishedCommand });
+  const config = JSON.stringify({ ...mcp, turnSignalCommand: session.turnSignalCommand });
   const result = await execWorkspaceShell(workspaceId, `set -eu
 umask 077
 mkdir -p ${shellQuote(directory)}

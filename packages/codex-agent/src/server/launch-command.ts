@@ -1,5 +1,5 @@
 import { parseModelRef } from "@atelier/llm/server";
-import { cliLaunchScript, type CliAgentSession, type CliModelSettings } from "@atelier/cli-agent/server";
+import { cliLaunchScript, turnSignalArgv, turnSignalShell, type CliAgentSession, type CliModelSettings } from "@atelier/cli-agent/server";
 import { workspaceRoot } from "@atelier/workspace";
 import type { WorkspaceAgentInput } from "@atelier/shared";
 
@@ -11,7 +11,11 @@ export function codexLaunchScript(input: WorkspaceAgentInput, imagePaths: string
   // Config overrides also keep current Codex on its embedded server rather than a shared daemon.
   const args = ["--dangerously-bypass-approvals-and-sandbox", "--dangerously-bypass-hook-trust", "--no-alt-screen", "--cd", workspaceRoot,
     "-c", `projects={${JSON.stringify(workspaceRoot)}={trust_level="trusted"}}`,
-    ...(session ? ["-c", `notify=${JSON.stringify(["sh", session.turnFinishedCommand])}`] : []),
+    // Codex reports completion through notify; its lifecycle hooks report the start of a turn.
+    ...(session ? [
+      "-c", `notify=${JSON.stringify(turnSignalArgv(session.turnSignalCommand, "finished"))}`,
+      "-c", `hooks={UserPromptSubmit=[{hooks=[{type="command",command=${JSON.stringify(turnSignalShell(session.turnSignalCommand, "started"))}}]}]}`,
+    ] : []),
     "-c", "notice.hide_full_access_warning=true", "-c", "check_for_update_on_startup=false",
     "-c", 'cli_auth_credentials_store="file"', ...(settings.model ? ["--model", parseModelRef(settings.model)!.id] : []),
     ...(settings.thinkingLevel ? ["-c", `model_reasoning_effort=${JSON.stringify(settings.thinkingLevel)}`] : []),

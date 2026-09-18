@@ -10,7 +10,7 @@ test("prepares a bundled session-private MCP extension without putting its crede
     mock.module("@atelier/workspace", () => ({ ...workspace, execWorkspaceShell: async (...args) => { calls.push(args); return { exitCode: 0, stdout: "", stderr: "", durationMs: 0 }; } }));
     const { preparePiMcp, piAtelierExtensionPath } = await import(${JSON.stringify(source)});
     const mcp = { url: "http://127.0.0.1:2988/mcp", token: "private-bearer-token" };
-    expect(await preparePiMcp("workspace", { id: "session", turnFinishedCommand: "/session/finished.sh" }, mcp)).toEqual({});
+    expect(await preparePiMcp("workspace", { id: "session", turnSignalCommand: "/session/signal.sh" }, mcp)).toEqual({});
     expect(calls).toHaveLength(1);
     const [, command, options] = calls[0];
     expect(command).toContain("umask 077");
@@ -19,7 +19,7 @@ test("prepares a bundled session-private MCP extension without putting its crede
     const count = Number(command.match(/count=(\\d+)/)[1]);
     const input = Buffer.from(options.stdin);
     expect(input.subarray(0, count).toString()).toContain("pi-atelier");
-    expect(JSON.parse(input.subarray(count).toString())).toEqual({ ...mcp, turnFinishedCommand: "/session/finished.sh" });
+    expect(JSON.parse(input.subarray(count).toString())).toEqual({ ...mcp, turnSignalCommand: "/session/signal.sh" });
   `], { cwd: join(import.meta.dir, ".."), stdout: "pipe", stderr: "pipe" });
   const [code, stdout, stderr] = await Promise.all([child.exited, new Response(child.stdout).text(), new Response(child.stderr).text()]);
   expect({ code, stdout, stderr }).toEqual({ code: 0, stdout: "", stderr: "" });

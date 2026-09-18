@@ -208,26 +208,35 @@ test("failed startup releases readiness waiters but rejects socket admission", (
   expect(calls).toHaveLength(0);
 `));
 
-test("authenticated completion identifies the exact CLI session and close revokes it", () => scenario(`
+test("authenticated turn boundaries identify the exact CLI session and close revokes it", () => scenario(`
   const { createAtelierEventBus } = await import("@atelier/core");
-  const { configureAgentMcp, handleAgentMcpRequest } = await import("@atelier/agent/server");
+  const { configureAgentMcp, handleAgentMcpRequest, subscribeWorkspaceViewBusy } = await import("@atelier/agent/server");
   const events = createAtelierEventBus();
   const finished = [];
+  const busy = [];
   events.on("workspace_agent_turn_finished", event => { finished.push(event); });
+  subscribeWorkspaceViewBusy(event => { busy.push(event); });
   configureAgentMcp(events);
   const id = await provider.create({ workspaceId: "completion" });
   const script = calls.find(call => call[2]?.stdin?.includes("Authorization: Bearer"))[2].stdin;
   const token = script.match(/Authorization: Bearer ([\\w.-]+)/)[1];
-  const request = (headers = {}, method = "POST") => new Request("http://localhost/agent-turn-finished", { method, headers: { authorization: "Bearer " + token, ...headers } });
+  const request = (headers = {}, method = "POST", boundary = "finished") => new Request("http://localhost/agent-turn-" + boundary, { method, headers: { authorization: "Bearer " + token, ...headers } });
   expect((await handleAgentMcpRequest(request(), "another-workspace")).status).toBe(401);
   expect((await handleAgentMcpRequest(request({ origin: "http://localhost" }), "completion")).status).toBe(403);
   expect((await handleAgentMcpRequest(request({}, "GET"), "completion")).status).toBe(405);
   expect((await handleAgentMcpRequest(request({ authorization: "Bearer invalid" }), "completion")).status).toBe(401);
   expect(finished).toEqual([]);
+  expect(busy).toEqual([]);
+  expect((await handleAgentMcpRequest(request({}, "POST", "started"), "completion")).status).toBe(204);
+  expect(finished).toEqual([]);
   expect((await handleAgentMcpRequest(request(), "completion")).status).toBe(204);
+  expect(busy).toEqual([
+    { workspaceId: "completion", viewKey: "agent:" + id, busy: true },
+    { workspaceId: "completion", viewKey: "agent:" + id, busy: false },
+  ]);
   expect(finished).toEqual([{ workspaceId: "completion", conversationId: id }]);
   await provider.tabs.close({ workspaceId: "completion", conversationId: id });
-  expect((await handleAgentMcpRequest(request(), "completion")).status).toBe(401);
+  expect((await handleAgentMcpRequest(request({}, "POST", "started"), "completion")).status).toBe(401);
 `));
 
 test("startup failure revokes credentials issued before adapter preparation", () => scenario(`

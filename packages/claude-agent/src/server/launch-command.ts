@@ -1,9 +1,14 @@
 import { parseModelRef } from "@atelier/llm/server";
-import { cliLaunchScript, type CliAgentSession, type CliModelSettings } from "@atelier/cli-agent/server";
+import { cliLaunchScript, turnSignalShell, type CliAgentSession, type CliModelSettings, type TurnBoundary } from "@atelier/cli-agent/server";
 import { claudeMcpConfigPath } from "./mcp.ts";
 import { shellQuote } from "@atelier/core";
 import { workspaceRoot } from "@atelier/workspace";
 import type { WorkspaceAgentInput } from "@atelier/shared";
+
+function turnBoundaryHooks(turnSignalCommand: string) {
+  const hook = (boundary: TurnBoundary) => [{ hooks: [{ type: "command", command: turnSignalShell(turnSignalCommand, boundary) }] }];
+  return { UserPromptSubmit: hook("started"), Stop: hook("finished") };
+}
 
 /** Run inside tmux so installation progress and failures stay visible in the tab. */
 export function claudeLaunchScript(input: WorkspaceAgentInput, imagePaths: string[], settings: CliModelSettings = {}, session?: CliAgentSession): string {
@@ -11,7 +16,7 @@ export function claudeLaunchScript(input: WorkspaceAgentInput, imagePaths: strin
   const prompt = [input.text, ...input.attachmentNotes, ...imagePaths.map((path) => `Read the attached image at ${JSON.stringify(path)}.`)].filter(Boolean).join("\n\n");
   const cliSettings = {
     skipDangerousModePermissionPrompt: true,
-    hooks: session ? { Stop: [{ hooks: [{ type: "command", command: `sh ${shellQuote(session.turnFinishedCommand)}` }] }] } : undefined,
+    hooks: session ? turnBoundaryHooks(session.turnSignalCommand) : undefined,
   };
   // Added to whatever MCP servers the user configured; Claude merges both sets.
   const mcpArgs = session ? ["--mcp-config", claudeMcpConfigPath(session.id)] : [];

@@ -78,10 +78,12 @@ test("passes the chosen Codex model and thinking level to the CLI", async () => 
   expect(output.split("\0").slice(0, -1)).toEqual([...baseArgs, "--model", "gpt-5.4", "-c", 'model_reasoning_effort="high"']);
 });
 
-test("registers a session-local turn completion notification", async () => {
+test("registers session-local turn boundary notifications", async () => {
   await executable(`${home}/.local/bin/codex`, 'printf "%s\\0" "$@"');
-  const command = `${home}/turn finished.sh`;
-  const [code, output] = await run(codexLaunchScript(empty, [], {}, { id: sessionId, turnFinishedCommand: command }));
+  const command = `${home}/turn signal.sh`;
+  const [code, output] = await run(codexLaunchScript(empty, [], {}, { id: sessionId, turnSignalCommand: command }));
   expect(code).toBe(0);
-  expect(output.split("\0")).toContain(`notify=${JSON.stringify(["sh", command])}`);
+  const args = output.split("\0");
+  expect(args).toContain(`notify=${JSON.stringify(["sh", command, "finished"])}`);
+  expect(args).toContain(`hooks={UserPromptSubmit=[{hooks=[{type="command",command=${JSON.stringify(`sh ${shellQuote(command)} started`)}}]}]}`);
 });

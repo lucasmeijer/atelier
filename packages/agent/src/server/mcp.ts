@@ -4,6 +4,8 @@ import { authenticateAgentRequest, createAgentMcpCredentials } from "./mcp-crede
 import { createAgentMcpServer } from "./mcp-server.ts";
 import { createAtelierControlTools } from "./tools.ts";
 import { createRegisteredOnboardingTools } from "./onboarding-tools.ts";
+import { agentConversationKey } from "./render-context.ts";
+import { publishWorkspaceViewBusy } from "./workspace-view-busy.ts";
 import { isProjectOnboardingWorkspace } from "./workspace-capabilities.ts";
 
 const atelierMcpInstructions = `You are working inside an Atelier Docker workspace. Use Atelier tools to present your work and manage only your authorized workspace/project. Your identity is supplied by Atelier; never attempt to impersonate another agent.
@@ -33,7 +35,8 @@ export function configureAgentMcp(eventBus: AtelierEventBus): void {
 export function handleAgentMcpRequest(request: Request, workspaceId?: string): Promise<Response> | undefined {
   const path = new URL(request.url).pathname;
   if (path === "/mcp") return mcp.fetch(request, workspaceId);
-  if (path === "/agent-turn-finished") return handleTurnFinished(request, workspaceId);
+  if (path === "/agent-turn-started") return handleTurnBoundary(request, workspaceId, true);
+  if (path === "/agent-turn-finished") return handleTurnBoundary(request, workspaceId, false);
 }
 
 export async function revokeAgentMcp(workspaceId: string, agentId: string): Promise<void> {
@@ -61,10 +64,12 @@ exit 1`);
   return { url: "http://127.0.0.1:2988/mcp", token: credentialStore().issue({ workspaceId, agentId }) };
 }
 
-async function handleTurnFinished(request: Request, workspaceId?: string): Promise<Response> {
+/** CLI agents run outside Atelier's runtime, so their turn boundaries arrive as authenticated loopback requests. */
+async function handleTurnBoundary(request: Request, workspaceId: string | undefined, started: boolean): Promise<Response> {
   const identity = authenticateAgentRequest(request, credentialStore().authenticate, workspaceId);
   if (identity instanceof Response) return identity;
   if (request.method !== "POST") return new Response("Method not allowed", { status: 405 });
-  await events!.emit("workspace_agent_turn_finished", { workspaceId: identity.workspaceId, conversationId: identity.agentId });
+  publishWorkspaceViewBusy({ workspaceId: identity.workspaceId, viewKey: agentConversationKey(identity.agentId), busy: started });
+  if (!started) await events!.emit("workspace_agent_turn_finished", { workspaceId: identity.workspaceId, conversationId: identity.agentId });
   return new Response(null, { status: 204 });
 }

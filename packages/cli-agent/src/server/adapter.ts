@@ -4,8 +4,8 @@ import type { AgentLaunchFooterContext, AgentWorkspaceParameters, WorkspaceAgent
 /** Identity of the session being launched, so adapters can address their session-local files. */
 export interface CliAgentSession {
   id: string;
-  /** Script the CLI must run when a turn ends, already authorized for this session. */
-  turnFinishedCommand: string;
+  /** Script the CLI must run at each turn boundary, already authorized for this session. */
+  turnSignalCommand: string;
 }
 
 /** Provider-specific policy; the shared module owns sessions and terminal presentation. */

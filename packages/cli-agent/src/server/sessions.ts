@@ -61,10 +61,11 @@ export function createCliSessions(adapter: CliAgentAdapter) {
         imagePaths.push(path);
       }
       const mcp = await prepareAgentMcp(workspaceId, id);
-      const turnFinishedCommand = `/home/atelier/.local/share/atelier-agents/${id}/turn-finished.sh`;
-      const launchSession: CliAgentSession = { id, turnFinishedCommand };
-      await checkedShell(workspaceId, `umask 077; mkdir -p ${shellQuote(dirname(turnFinishedCommand))} && cat > ${shellQuote(turnFinishedCommand)}`, `#!/bin/sh
-exec curl --noproxy '*' --fail --silent --show-error --max-time 10 -X POST -H ${shellQuote("Authorization: Bearer " + mcp.token)} ${shellQuote(new URL("/agent-turn-finished", mcp.url).href)}
+      const turnSignalCommand = `/home/atelier/.local/share/atelier-agents/${id}/turn-signal.sh`;
+      const launchSession: CliAgentSession = { id, turnSignalCommand };
+      // $1 is the TurnBoundary the CLI reports.
+      await checkedShell(workspaceId, `umask 077; mkdir -p ${shellQuote(dirname(turnSignalCommand))} && cat > ${shellQuote(turnSignalCommand)}`, `#!/bin/sh
+exec curl --noproxy '*' --fail --silent --show-error --max-time 10 -X POST -H ${shellQuote("Authorization: Bearer " + mcp.token)} ${shellQuote(new URL("/agent-turn-", mcp.url).href)}"$1"
 `);
       const env = { HOME: "/home/atelier", ...await adapter.prepareSession?.(workspaceId, launchSession, mcp) };
       const command = `/bin/bash -c ${shellQuote(adapter.launchScript(input, imagePaths, settings, launchSession))}`;

@@ -6,7 +6,7 @@ import type { ExtensionAPI } from "@earendil-works/pi-coding-agent";
 import { Type, type Static } from "typebox";
 import { Value } from "typebox/value";
 
-const configSchema = Type.Object({ url: Type.String(), token: Type.String(), turnFinishedCommand: Type.String() });
+const configSchema = Type.Object({ url: Type.String(), token: Type.String(), turnSignalCommand: Type.String() });
 type AtelierMcpConfig = Static<typeof configSchema>;
 type JsonValue = string | number | boolean | null | JsonValue[] | { [name: string]: JsonValue };
 type McpArguments = { [name: string]: JsonValue };
@@ -24,7 +24,13 @@ type LoadConfig = () => Promise<AtelierMcpConfig>;
 
 export function createPiAtelierExtension(loadConfig: LoadConfig) {
   return function piAtelierExtension(pi: ExtensionAPI) {
-    let connection: { client: Client; instructions?: string; turnFinishedCommand: string } | undefined;
+    let connection: { client: Client; instructions?: string; turnSignalCommand: string } | undefined;
+
+    async function signalTurn(boundary: "started" | "finished"): Promise<void> {
+      if (!connection) throw new Error("Atelier MCP session is not connected");
+      const result = await pi.exec("sh", [connection.turnSignalCommand, boundary]);
+      if (result.code !== 0) throw new Error(result.stderr);
+    }
 
     pi.on("session_start", async () => {
       const config = await loadConfig();
@@ -66,7 +72,7 @@ export function createPiAtelierExtension(loadConfig: LoadConfig) {
           }
           cursor = listed.nextCursor;
         } while (cursor);
-        connection = { client: nextClient, instructions: nextClient.getInstructions(), turnFinishedCommand: config.turnFinishedCommand };
+        connection = { client: nextClient, instructions: nextClient.getInstructions(), turnSignalCommand: config.turnSignalCommand };
       } catch (error) {
         await nextClient.close();
         throw error;
@@ -74,11 +80,8 @@ export function createPiAtelierExtension(loadConfig: LoadConfig) {
     });
 
     pi.on("before_agent_start", async (event) => connection?.instructions ? { systemPrompt: `${event.systemPrompt}\n\n${connection.instructions}` } : undefined);
-    pi.on("agent_end", async () => {
-      if (!connection) throw new Error("Atelier MCP session is not connected");
-      const result = await pi.exec("sh", [connection.turnFinishedCommand]);
-      if (result.code !== 0) throw new Error(result.stderr);
-    });
+    pi.on("agent_start", () => signalTurn("started"));
+    pi.on("agent_end", () => signalTurn("finished"));
     pi.on("session_shutdown", async () => {
       const active = connection;
       connection = undefined;
