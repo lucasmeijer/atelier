@@ -59,12 +59,13 @@ RUN tar xzf /tmp/containerd.tar.gz --strip-components=1 && rm /tmp/containerd.ta
 COPY patches/0003-containerd-erofs-cache-lease.patch /tmp/lease.patch
 COPY patches/0004-containerd-erofs-empty-mounts.patch /tmp/empty-mounts.patch
 COPY patches/0005-containerd-erofs-cache-reuse.patch /tmp/cache-reuse.patch
-RUN git apply /tmp/lease.patch /tmp/empty-mounts.patch /tmp/cache-reuse.patch
+COPY patches/0006-containerd-loop-device-node.patch /tmp/loop-device-node.patch
+RUN git apply /tmp/lease.patch /tmp/empty-mounts.patch /tmp/cache-reuse.patch /tmp/loop-device-node.patch
 ARG TARGETARCH
 RUN --mount=type=cache,id=atelier-ctr-go,target=/root/.cache/go-build \
     GOTOOLCHAIN=go1.26.8 go test -mod=vendor ./internal/erofsutils \
     && GOTOOLCHAIN=go1.26.8 CGO_ENABLED=0 GOOS=linux GOARCH="$TARGETARCH" go build -mod=vendor -trimpath \
-      -ldflags '-X github.com/containerd/containerd/v2/version.Version=v2.4.0-beta.0-atelier -X github.com/containerd/containerd/v2/version.Revision=58e6cee9dee67ee87ee2f727d3570009050f9954+cache-lease+mount-root+cache-reuse' \
+      -ldflags '-X github.com/containerd/containerd/v2/version.Version=v2.4.0-beta.0-atelier -X github.com/containerd/containerd/v2/version.Revision=58e6cee9dee67ee87ee2f727d3570009050f9954+cache-lease+mount-root+cache-reuse+loop-node' \
       -o /out/ ./cmd/ctr ./cmd/containerd
 
 FROM --platform=$BUILDPLATFORM ubuntu:26.04@sha256:513c074113a871b51a8d16ab445c88779d6452d937a164fb5cc479f32668a41d AS containerd

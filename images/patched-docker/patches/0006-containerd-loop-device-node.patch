@@ -1,0 +1,42 @@
+LOOP_CTL_GET_FREE allocates the kernel loop object and returns N.
+It does not create /dev/loopN. Host devtmpfs does; a container /dev does not.
+Create the node before opening it. EEXIST means udev or a prior mknod won.
+
+--- a/core/mount/losetup_linux.go
++++ b/core/mount/losetup_linux.go
+@@ -32,6 +32,7 @@
+ const (
+ 	loopControlPath = "/dev/loop-control"
+ 	loopDevFormat   = "/dev/loop%d"
++	loopMajor       = 7
+ 
+ 	ebusyString = "device or resource busy"
+ )
+@@ -61,6 +62,17 @@
+ 	return uint32(num), nil
+ }
+ 
++// createLoopDevNode makes /dev/loopN after GET_FREE. The ioctl does not
++// create the directory entry; container /dev is not live devtmpfs.
++func createLoopDevNode(num uint32) error {
++	path := fmt.Sprintf(loopDevFormat, num)
++	err := unix.Mknod(path, unix.S_IFBLK|0660, int(unix.Mkdev(loopMajor, num)))
++	if err == nil || errors.Is(err, unix.EEXIST) {
++		return nil
++	}
++	return fmt.Errorf("could not create loop device %s: %w", path, err)
++}
++
+ // setupLoopDev attaches the backing file to the loop device and returns
+ // the file handle for the loop device. The caller is responsible for
+ // closing the file handle.
+@@ -172,6 +184,9 @@
+ 			return nil, err
+ 		}
+ 
++		if err := createLoopDevNode(num); err != nil {
++			return nil, err
++		}
+ 		loopDev := fmt.Sprintf(loopDevFormat, num)
+ 		file, err := setupLoopDev(backingFile, loopDev, param)
+ 		if err != nil {
