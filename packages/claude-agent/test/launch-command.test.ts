@@ -22,7 +22,7 @@ const empty = { text: "", images: [], attachmentNotes: [] };
 const baseArgs = ["--dangerously-skip-permissions", "--settings", JSON.stringify({ skipDangerousModePermissionPrompt: true })];
 
 test("reuses home Claude and passes initial prompt, image paths and file notes as literal arguments", async () => {
-  await executable(`${home}/.local/bin/claude`, 'printf "%s\\0" "$@"');
+  await executable(`${home}/.claude/local/node_modules/.bin/claude`, 'printf "%s\\0" "$@"');
   const text = `--help 'quoted' $(touch ${home}/injected)\nsecond line`;
   const notes = "[Attached file copied into the workspace at /work/.atelier-attachments/my file.txt]";
   const image = "/work/.atelier-attachments/image 1.png";
@@ -33,7 +33,7 @@ test("reuses home Claude and passes initial prompt, image paths and file notes a
 });
 
 test("empty launch has no initial prompt argument", async () => {
-  await executable(`${home}/.local/bin/claude`, 'printf "%s\\0" "$@"');
+  await executable(`${home}/.claude/local/node_modules/.bin/claude`, 'printf "%s\\0" "$@"');
   const [code, output] = await run(claudeLaunchScript(empty, []));
   expect(code).toBe(0);
   expect(output.split("\0").slice(0, -1)).toEqual(baseArgs);
@@ -45,12 +45,14 @@ sleep .1
 mkdir -p "$3/node_modules/.bin"
 printf '#!/bin/sh\\nprintf "CLAUDE_STARTED\\\\n"\\n' > "$3/node_modules/.bin/claude"
 chmod +x "$3/node_modules/.bin/claude"`);
+  // Do not reuse the old arbitrary npm prefix: Claude mistakes it for global.
+  await executable(`${home}/.local/bin/claude`, "echo OLD_INSTALL; exit 9");
   const results = await Promise.all([run(claudeLaunchScript(empty, [])), run(claudeLaunchScript(empty, []))]);
   for (const [code, output] of results) { expect(code).toBe(0); expect(output).toContain("CLAUDE_STARTED"); }
   const installs = (await readFile(`${home}/installs`, "utf8")).trim().split("\n");
   expect(installs).toHaveLength(1);
   expect(installs[0]).toContain("@anthropic-ai/claude-code@latest");
-  expect(await Bun.file(`${home}/.claude-cli/node_modules/.bin/claude`).exists()).toBe(true);
+  expect(await Bun.file(`${home}/.claude/local/node_modules/.bin/claude`).exists()).toBe(true);
 });
 
 test("installation failure exits visibly without running a fallback shell", async () => {
@@ -59,11 +61,11 @@ test("installation failure exits visibly without running a fallback shell", asyn
   expect(code).toBe(42);
   expect(error).toContain("registry-unavailable");
   expect(output).toContain("Claude Code failed (exit 42)");
-  expect(await Bun.file(`${home}/.local/bin/claude`).exists()).toBe(false);
+  expect(await Bun.file(`${home}/.claude/local/node_modules/.bin/claude`).exists()).toBe(false);
 });
 
 test("Claude startup failure retains its exit code and diagnostics", async () => {
-  await executable(`${home}/.local/bin/claude`, "echo invalid-configuration >&2; exit 7");
+  await executable(`${home}/.claude/local/node_modules/.bin/claude`, "echo invalid-configuration >&2; exit 7");
   const [code, output, error] = await run(claudeLaunchScript(empty, []));
   expect(code).toBe(7);
   expect(error).toContain("invalid-configuration");
@@ -71,25 +73,25 @@ test("Claude startup failure retains its exit code and diagnostics", async () =>
 });
 
 test("passes the chosen Claude model and thinking level to the CLI", async () => {
-  await executable(`${home}/.local/bin/claude`, 'printf "%s\\0" "$@"');
+  await executable(`${home}/.claude/local/node_modules/.bin/claude`, 'printf "%s\\0" "$@"');
   const [code, output] = await run(claudeLaunchScript(empty, [], { model: "anthropic::claude-opus-4-6", thinkingLevel: "high" }));
   expect(code).toBe(0);
   expect(output.split("\0").slice(0, -1)).toEqual([...baseArgs, "--model", "claude-opus-4-6", "--effort", "high"]);
 });
 
 test("prepares onboarding and workspace trust while preserving existing preferences", async () => {
-  await executable(`${home}/.local/bin/claude`, 'printf "%s\\0" "$@"');
+  await executable(`${home}/.claude/local/node_modules/.bin/claude`, 'printf "%s\\0" "$@"');
   await writeFile(`${home}/.claude.json`, JSON.stringify({ theme: "light", custom: "keep", projects: { "/work": { allowedTools: ["Read"] }, "/other": { hasTrustDialogAccepted: true } } }));
   const [code] = await run(claudeLaunchScript(empty, []));
   expect(code).toBe(0);
   expect(JSON.parse(await readFile(`${home}/.claude.json`, "utf8"))).toEqual({
-    theme: "light", custom: "keep", hasCompletedOnboarding: true,
+    theme: "light", custom: "keep", installMethod: "local", autoUpdates: true, hasCompletedOnboarding: true,
     projects: { "/work": { allowedTools: ["Read"], hasTrustDialogAccepted: true }, "/other": { hasTrustDialogAccepted: true } },
   });
 });
 
 test("invalid CLI preferences fail visibly rather than being overwritten", async () => {
-  await executable(`${home}/.local/bin/claude`, 'echo SHOULD_NOT_START');
+  await executable(`${home}/.claude/local/node_modules/.bin/claude`, 'echo SHOULD_NOT_START');
   await writeFile(`${home}/.claude.json`, "invalid json");
   const [code, output, error] = await run(claudeLaunchScript(empty, []));
   expect(code).not.toBe(0);
@@ -97,3 +99,13 @@ test("invalid CLI preferences fail visibly rather than being overwritten", async
   expect(output).not.toContain("SHOULD_NOT_START");
   expect(await readFile(`${home}/.claude.json`, "utf8")).toBe("invalid json");
 });
+
+for (const preferences of [{}, { autoUpdates: false }, { installMethod: "native", autoUpdates: false, autoUpdatesProtectedForNative: true }]) {
+  test(`enables local Claude self-updates before launch with preferences ${JSON.stringify(preferences)}`, async () => {
+    await writeFile(`${home}/.claude.json`, JSON.stringify(preferences));
+    await executable(`${home}/.claude/local/node_modules/.bin/claude`, `node -e 'const fs = require("node:fs"); process.stdout.write(fs.readFileSync(process.env.HOME + "/.claude.json", "utf8"))'`);
+    const [code, output] = await run(claudeLaunchScript(empty, []));
+    expect(code).toBe(0);
+    expect(JSON.parse(output)).toMatchObject({ ...preferences, installMethod: "local", autoUpdates: true });
+  });
+}

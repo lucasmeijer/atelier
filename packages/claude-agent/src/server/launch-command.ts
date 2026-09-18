@@ -15,6 +15,8 @@ export function claudeLaunchScript(input: WorkspaceAgentInput, imagePaths: strin
   const configure = `const fs = require("node:fs");
 const path = require("node:path").join(require("node:os").homedir(), ".claude.json");
 const config = fs.existsSync(path) ? JSON.parse(fs.readFileSync(path, "utf8")) : {};
+config.installMethod = "local";
+config.autoUpdates = true;
 config.hasCompletedOnboarding = true;
 config.theme ??= "dark";
 config.projects ??= {};
@@ -23,6 +25,9 @@ const temporary = path + ".atelier-" + process.pid;
 fs.writeFileSync(temporary, JSON.stringify(config), { mode: 0o600 });
 fs.renameSync(temporary, path);`;
   return cliLaunchScript({
+    // Claude recognizes this path as npm-local and updates it in place. An arbitrary
+    // npm prefix is detected as global, making updates target unwritable /usr/local.
+    installDirectory: ".claude/local",
     executable: "claude", label: "Claude Code", npmPackage: "@anthropic-ai/claude-code", args,
     setup: `(
   flock 8

@@ -2,14 +2,14 @@ import { shellQuote } from "@atelier/core";
 import { workspaceRoot } from "@atelier/workspace";
 
 /** Install once in shared home, then launch in tmux with visible startup diagnostics. */
-export function cliLaunchScript(options: { executable: string; label: string; npmPackage: string; version?: string; args: string[]; setup?: string }): string {
-  const { executable, label, npmPackage, version, args, setup = "" } = options;
-  // A pinned CLI must not reuse a different version from PATH or the unversioned install.
-  const directory = `$HOME/.${executable}-cli${version ? `/${version}` : ""}`;
-  const resolveExecutable = version ? `executable="${directory}/node_modules/.bin/${executable}"` : `executable="$(command -v ${executable} || true)"
+export function cliLaunchScript(options: { executable: string; label: string; npmPackage: string; version?: string; installDirectory?: string; args: string[]; setup?: string }): string {
+  const { executable, label, npmPackage, version, installDirectory, args, setup = "" } = options;
+  // Pinned versions and explicit install directories must not reuse a different install from PATH.
+  const directory = installDirectory ? `$HOME/${installDirectory}` : `$HOME/.${executable}-cli${version ? `/${version}` : ""}`;
+  const resolveExecutable = version || installDirectory ? `executable="${directory}/node_modules/.bin/${executable}"` : `executable="$(command -v ${executable} || true)"
 case "$executable" in "$HOME"/*) ;; *) executable="$HOME/.local/bin/${executable}" ;; esac`;
   const linkExecutable = version ? "" : `mkdir -p "$HOME/.local/bin"
-  ln -s "$HOME/.${executable}-cli/node_modules/.bin/${executable}" "$HOME/.local/bin/${executable}"`;
+  ln -s${installDirectory ? "f" : ""} "${directory}/node_modules/.bin/${executable}" "$HOME/.local/bin/${executable}"`;
   return `set -eu
 failure_message=${shellQuote(`\n${label} failed (exit %s). See the error above.\n`)}
 trap 'code=$?; if [ "$code" -ne 0 ]; then printf "$failure_message" "$code"; fi' EXIT
