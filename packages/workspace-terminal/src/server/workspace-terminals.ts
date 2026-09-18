@@ -1,6 +1,6 @@
 import { mkdir, readFile, rename, writeFile } from "node:fs/promises";
 import { dirname } from "node:path";
-import { AtelierCoreError, atelierDataPath, getAtelierRuntimeContext, shellQuote } from "@atelier/core";
+import { AtelierCoreError, createKeyedOperationQueue, atelierDataPath, getAtelierRuntimeContext, shellQuote } from "@atelier/core";
 import { buildKillSessionCommand, buildListSessionsCommand, buildObservableSessionCommand } from "@atelier/observable-terminal/server";
 import { execWorkspaceShell, workspaceRoot } from "@atelier/workspace";
 import { Type, type Static } from "typebox";
@@ -14,6 +14,7 @@ const workspaceTerminalSchema = Type.Object({
 });
 const workspaceTerminalsSchema = Type.Array(workspaceTerminalSchema);
 const workspaceTerminalHistoryLimit = 10_000;
+const mutateTerminals = createKeyedOperationQueue();
 
 export type WorkspaceTerminal = Static<typeof workspaceTerminalSchema>;
 
@@ -69,7 +70,6 @@ export async function listWorkspaceTerminals(workspaceId: string): Promise<Works
     return Value.Parse(workspaceTerminalsSchema, JSON.parse(await readFile(statePath(workspaceId), "utf8")));
   } catch (error) {
     if (!(error instanceof Error && "code" in error && error.code === "ENOENT")) throw error;
-    await writeTerminals(workspaceId, []);
     return [];
   }
 }
@@ -105,43 +105,49 @@ function newTerminal(terminals: WorkspaceTerminal[], title: string, tmuxSession:
 }
 
 export async function createWorkspaceTerminal(workspaceId: string, options: WorkspaceTerminalCreateOptions = {}): Promise<WorkspaceTerminal> {
-  const terminals = await listWorkspaceTerminals(workspaceId);
-  const sessions = await listTmuxSessions(workspaceId);
-  const tmuxSession = availableTitle(sessions.map((session) => session.name), options.title);
-  const result = await execWorkspaceShell(workspaceId, buildObservableSessionCommand({
-    requireExistingServer: true,
-    session: tmuxSession,
-    cwd: normalizeCwd(options.cwd),
-    command: sessionCommand(options.command),
-    passthrough: true,
-    status: false,
-    historyLimit: workspaceTerminalHistoryLimit,
-  }));
-  if (result.exitCode !== 0) throw new AtelierCoreError("terminal_create_failed", result.stderr.trim() || `could not create terminal: ${tmuxSession}`);
+  return mutateTerminals(workspaceId, async () => {
+    const terminals = await listWorkspaceTerminals(workspaceId);
+    const sessions = await listTmuxSessions(workspaceId);
+    const tmuxSession = availableTitle(sessions.map((session) => session.name), options.title);
+    const result = await execWorkspaceShell(workspaceId, buildObservableSessionCommand({
+      requireExistingServer: true,
+      session: tmuxSession,
+      cwd: normalizeCwd(options.cwd),
+      command: sessionCommand(options.command),
+      passthrough: true,
+      status: false,
+      historyLimit: workspaceTerminalHistoryLimit,
+    }));
+    if (result.exitCode !== 0) throw new AtelierCoreError("terminal_create_failed", result.stderr.trim() || `could not create terminal: ${tmuxSession}`);
 
-  const terminal = newTerminal(terminals, options.title?.trim() || "Terminal", tmuxSession, "owned");
-  await writeTerminals(workspaceId, terminals);
-  return terminal;
+    const terminal = newTerminal(terminals, options.title?.trim() || "Terminal", tmuxSession, "owned");
+    await writeTerminals(workspaceId, terminals);
+    return terminal;
+  });
 }
 
 export async function attachWorkspaceTerminal(workspaceId: string, tmuxSession: string): Promise<WorkspaceTerminal> {
-  if (!(await tmuxSessionExists(workspaceId, tmuxSession))) {
-    throw new AtelierCoreError("terminal_not_found", `tmux session not found: ${tmuxSession}`);
-  }
-  const terminals = await listWorkspaceTerminals(workspaceId);
-  const terminal = newTerminal(terminals, tmuxSession, tmuxSession, "attached");
-  await writeTerminals(workspaceId, terminals);
-  return terminal;
+  return mutateTerminals(workspaceId, async () => {
+    if (!(await tmuxSessionExists(workspaceId, tmuxSession))) {
+      throw new AtelierCoreError("terminal_not_found", `tmux session not found: ${tmuxSession}`);
+    }
+    const terminals = await listWorkspaceTerminals(workspaceId);
+    const terminal = newTerminal(terminals, tmuxSession, tmuxSession, "attached");
+    await writeTerminals(workspaceId, terminals);
+    return terminal;
+  });
 }
 
 export async function deleteWorkspaceTerminal(workspaceId: string, terminalId: string): Promise<void> {
-  const terminals = await listWorkspaceTerminals(workspaceId);
-  const index = terminals.findIndex((terminal) => terminal.id === terminalId);
-  if (index < 0) throw new AtelierCoreError("terminal_not_found", `terminal not found: ${terminalId}`);
-  const [terminal] = terminals.splice(index, 1);
-  if (terminal!.sessionRelationship === "owned") {
-    const result = await execWorkspaceShell(workspaceId, buildKillSessionCommand(terminal!.tmuxSession));
-    if (result.exitCode !== 0) throw new AtelierCoreError("terminal_close_failed", result.stderr.trim() || `could not close terminal session: ${terminal!.tmuxSession}`);
-  }
-  await writeTerminals(workspaceId, terminals);
+  return mutateTerminals(workspaceId, async () => {
+    const terminals = await listWorkspaceTerminals(workspaceId);
+    const index = terminals.findIndex((terminal) => terminal.id === terminalId);
+    if (index < 0) throw new AtelierCoreError("terminal_not_found", `terminal not found: ${terminalId}`);
+    const [terminal] = terminals.splice(index, 1);
+    if (terminal!.sessionRelationship === "owned") {
+      const result = await execWorkspaceShell(workspaceId, buildKillSessionCommand(terminal!.tmuxSession));
+      if (result.exitCode !== 0) throw new AtelierCoreError("terminal_close_failed", result.stderr.trim() || `could not close terminal session: ${terminal!.tmuxSession}`);
+    }
+    await writeTerminals(workspaceId, terminals);
+  });
 }

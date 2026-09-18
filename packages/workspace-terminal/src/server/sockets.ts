@@ -62,15 +62,7 @@ export function createTerminalSocketHandler(options: { setViewBusy(workspaceId: 
         workdir: workspaceRoot,
         readonly: false,
       }, {
-        onData: (chunk) => {
-          setTimeout(() => {
-            try {
-              socket.send(chunk);
-            } catch {
-              // Socket closed between terminal output and scheduled send.
-            }
-          }, 0);
-        },
+        onData: (chunk) => socket.send(chunk),
         onExit: () => socket.close(),
       });
     } catch (error) {

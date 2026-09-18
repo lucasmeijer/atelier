@@ -76,11 +76,13 @@ async function startTerminal(workspaceId: string, terminalId: string, options: {
   const focus = options.focus !== false;
   const key = terminalKey(workspaceId, terminalId);
   const pane = findTerminalPane(workspaceId, terminalId);
-  const host = pane?.querySelector<HTMLElement>(".observable-terminal-host");
+  if (!pane) return;
+  const host = pane.querySelector<HTMLElement>(".observable-terminal-host");
   if (!host) return;
 
   const existing = terminals.active(key);
   if (existing) {
+    existing.reconnect();
     existing.refresh();
     if (focus) existing.focus();
     return;
@@ -94,6 +96,8 @@ async function startTerminal(workspaceId: string, terminalId: string, options: {
     fontFamily: style.getPropertyValue("--font-mono"),
     fontSize: Number.parseFloat(style.getPropertyValue("--text-code")),
     theme: currentTerminalTheme,
+    onConnect: () => pane.dispatchEvent(new Event("terminal:connected")),
+    onDisconnect: () => pane.dispatchEvent(new Event("terminal:disconnected")),
     disconnectedMessage: "\r\n\x1b[31m[terminal disconnected]\x1b[0m\r\n",
     errorMessage: "\r\n\x1b[31m[terminal websocket error]\x1b[0m\r\n",
     transformInput: (data) => transformTerminalInput(workspaceId, terminalId, data),
@@ -131,6 +135,8 @@ function createTerminalSessionPickerController(Controller: WorkspaceClientContro
 function createTerminalPaneController(Controller: WorkspaceClientControllerConstructor) {
   return class TerminalPaneController extends Controller {
     static values = { workspaceId: String, id: String };
+    static targets = ["connectionStatus"];
+    declare readonly connectionStatusTarget: HTMLElement;
     declare readonly element: HTMLElement;
     declare readonly workspaceIdValue: string;
     declare readonly idValue: string;
@@ -170,6 +176,10 @@ function createTerminalPaneController(Controller: WorkspaceClientControllerConst
       this.element.style.removeProperty("--terminal-viewport-height");
       stopTerminal(this.workspaceIdValue, this.idValue);
     }
+
+    connectionLost(): void { this.connectionStatusTarget.hidden = false; }
+    connectionOpened(): void { this.connectionStatusTarget.hidden = true; }
+    retry(): void { this.viewer?.reconnect(); }
 
     startTerminalTouch(event: TouchEvent): void {
       this.terminalTouch = event.touches.length === 1 ? event.touches[0] : undefined;

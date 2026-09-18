@@ -27,6 +27,9 @@ export function createCliSessions(adapter: CliAgentAdapter) {
   function createStore() { return createWorkspaceMetadataState(`${adapter.id}-agents.json`, (value) => Value.Parse(stateSchema, value), () => ({ sessions: [] })); }
   function store() { return state ??= createStore(); }
   const serialize = createKeyedOperationQueue();
+  // Runtime readiness is separate from the durable claim. After a host restart,
+  // inspect tmux; never replay a claimed initial prompt.
+  const starting = new Map<string, Promise<void>>();
 
   function list(workspaceId: string): CliSession[] { return store().read(workspaceId).sessions; }
   function get(workspaceId: string, id: string): CliSession {
@@ -42,6 +45,8 @@ export function createCliSessions(adapter: CliAgentAdapter) {
     const session: CliSession = { id, title: input.text.trim().split("\n")[0]?.slice(0, 64) || adapter.label, tmuxSession: `${adapter.id}-${id}`, input, kind: adapter.id, model: settings.model, thinkingLevel: settings.thinkingLevel };
     // Claim before side effects. Recovery must never submit the initial prompt twice.
     store().write(workspaceId, { sessions: [...list(workspaceId), session] });
+    const ready = Promise.withResolvers<void>();
+    starting.set(id, ready.promise);
     try {
       await adapter.prepareWorkspace?.(workspaceId);
       const directory = `${workspaceRoot}/.atelier-attachments/${adapter.id}-${id}`;
@@ -57,10 +62,13 @@ export function createCliSessions(adapter: CliAgentAdapter) {
       const command = `/bin/bash -c ${shellQuote(adapter.launchScript(input, imagePaths, settings))}`;
       await checkedShell(workspaceId, buildObservableSessionCommand({ requireExistingServer: true, session: session.tmuxSession, cwd: workspaceRoot, command, env, remainOnExit: true, passthrough: true, historyLimit: 10000 }));
     } catch (error) {
-      await adapter.closeSession?.(workspaceId, id);
       // Startup failure is durable session state, shown in its tab rather than discarded.
       session.error = error instanceof Error ? error.message : String(error);
       store().write(workspaceId, { sessions: list(workspaceId) });
+      await adapter.closeSession?.(workspaceId, id);
+    } finally {
+      starting.delete(id);
+      ready.resolve();
     }
     return id;
   }
@@ -73,7 +81,13 @@ export function createCliSessions(adapter: CliAgentAdapter) {
       if (!list(workspaceId).length) await launch(workspaceId, settings.input ?? { text: "", images: [], attachmentNotes: [] }, settings);
     });
   }
-  async function terminalState(workspaceId: string, session: CliSession): Promise<{ exists: boolean; ended: boolean; exitCode?: number }> {
+  async function ready(workspaceId: string, id: string): Promise<CliSession> {
+    get(workspaceId, id);
+    await starting.get(id);
+    return get(workspaceId, id);
+  }
+  async function terminalState(workspaceId: string, session: CliSession): Promise<{ starting?: boolean; exists: boolean; ended: boolean; exitCode?: number }> {
+    if (starting.has(session.id)) return { starting: true, exists: false, ended: false };
     const result = await execWorkspaceShell(workspaceId, `tmux list-panes -t ${shellQuote(session.tmuxSession)} -F '#{pane_dead}:#{pane_dead_status}'`);
     if (result.exitCode === 1) return { exists: false, ended: true };
     if (result.exitCode !== 0) throw new AtelierCoreError(`${adapter.id}_session_check_failed`, result.stderr.trim() || `Could not inspect ${adapter.label} terminal`);
@@ -88,7 +102,7 @@ export function createCliSessions(adapter: CliAgentAdapter) {
       store().write(workspaceId, { sessions: list(workspaceId).filter((session) => session.id !== id) });
     });
   }
-  return { list, get, create, prepareWorkspace, terminalState, close };
+  return { list, get, ready, create, prepareWorkspace, terminalState, close };
 }
 
 export type CliSessions = ReturnType<typeof createCliSessions>;

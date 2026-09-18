@@ -8,7 +8,8 @@ import { cliSocketHandler } from "./sockets.ts";
 export type { CliAgentAdapter } from "./adapter.ts";
 
 function retryButton() { return buttonHtml({ type: "button", variant: "secondary", content: { kind: "caption", caption: "Retry connection" }, attributesHtml: 'data-action="cli-terminal#retry"' }); }
-function terminalStatus(terminal: { ended: boolean; exitCode?: number }): string {
+function terminalStatus(terminal: { starting?: boolean; ended: boolean; exitCode?: number }): string {
+  if (terminal.starting) return "Starting session…";
   return terminal.ended ? `Session ended${terminal.exitCode ? ` (exit ${terminal.exitCode}). See terminal output for details.` : ""}` : "";
 }
 
@@ -33,7 +34,7 @@ export function createCliAgentModule(adapter: CliAgentAdapter): WorkspaceModule 
       tabs: {
         async list({ workspaceId }) { return sessions.list(workspaceId).map(({ id, title }) => ({ id, title })); },
         async render({ workspaceId, conversationId }) {
-          const session = sessions.get(workspaceId, conversationId);
+          const session = await sessions.ready(workspaceId, conversationId);
           const terminal = await sessions.terminalState(workspaceId, session);
           const url = `/workspaces/${encodeURIComponent(workspaceId)}/${adapter.id}-agents/${encodeURIComponent(conversationId)}`;
           return `<section class="cli-agent-body" data-controller="cli-terminal" data-cli-terminal-url-value="${escapeHtml(url)}" data-action="atelier:workspace-pane-visible@window->cli-terminal#refresh atelier:theme-change@document->cli-terminal#theme">

@@ -61,6 +61,8 @@ export interface ObservableTerminalViewer {
   dispose(): void;
   focus(): void;
   refresh(): void;
+  /** Reattach after a disconnect; never creates or restarts the session. */
+  reconnect(): void;
   sendInput(data: string): void;
   getSelection(): Promise<string>;
   dragPointer(event: PointerEvent, action: "press" | "motion" | "release", select: boolean): void;
@@ -81,6 +83,7 @@ export interface ObservableTerminalViewerOptions {
   errorMessage?: string;
   transformInput?: (data: string) => string;
   onOutput?: (text: string) => void;
+  onConnect?: () => void;
   onDisconnect?: () => void;
 }
 
@@ -125,13 +128,7 @@ export async function createObservableTerminalViewer(options: ObservableTerminal
   }
 
   const websocketUrl = new URL(options.websocketUrl);
-  if (options.mode === "interactive") {
-    const { cols, rows } = term.geometry;
-    websocketUrl.searchParams.set("cols", String(cols));
-    websocketUrl.searchParams.set("rows", String(rows));
-  }
-  const ws = new WebSocket(websocketUrl);
-  ws.binaryType = "arraybuffer";
+  let ws: WebSocket;
   const sendInput = (data: string): void => {
     if (ws.readyState === WebSocket.OPEN) ws.send(data);
   };
@@ -153,8 +150,41 @@ export async function createObservableTerminalViewer(options: ObservableTerminal
       if (!disposed) console.error("Could not paint initial terminal output", error);
     });
   };
-  const outputDecoder = new TextDecoder();
   const inputDecoder = new TextDecoder();
+  const connect = (): void => {
+    if (disposed || (ws && (ws.readyState === WebSocket.OPEN || ws.readyState === WebSocket.CONNECTING))) return;
+    if (ws) {
+      ws.onopen = ws.onmessage = ws.onclose = ws.onerror = null;
+      ws.close();
+    }
+    if (options.mode === "interactive") {
+      websocketUrl.searchParams.set("cols", String(term.geometry.cols));
+      websocketUrl.searchParams.set("rows", String(term.geometry.rows));
+    }
+    const socket = ws = new WebSocket(websocketUrl);
+    socket.binaryType = "arraybuffer";
+    const outputDecoder = new TextDecoder();
+    socket.onopen = () => {
+      if (options.mode === "interactive") sendSize(term.geometry);
+      options.onConnect?.();
+    };
+    socket.onmessage = (event: MessageEvent<string | ArrayBuffer>) => {
+      const data = event.data instanceof ArrayBuffer ? new Uint8Array(event.data) : event.data;
+      options.onOutput?.(data instanceof Uint8Array ? outputDecoder.decode(data, { stream: true }) : data);
+      writeOutput(data);
+    };
+    socket.onclose = () => {
+      options.onDisconnect?.();
+      const message = options.disconnectedMessage;
+      if (message) writeOutput(message);
+    };
+    socket.onerror = () => {
+      const message = options.errorMessage;
+      if (message) writeOutput(message);
+    };
+  };
+  connect();
+
   term.on("error", (error) => console.error("Gespenst terminal error", error));
 
   if (options.mode === "interactive") {
@@ -170,25 +200,8 @@ export async function createObservableTerminalViewer(options: ObservableTerminal
     });
   }
 
-  ws.onopen = () => {
-    if (options.mode === "interactive") sendSize(term.geometry);
-  };
-  ws.onmessage = (event: MessageEvent<string | ArrayBuffer>) => {
-    const data = event.data instanceof ArrayBuffer ? new Uint8Array(event.data) : event.data;
-    options.onOutput?.(data instanceof Uint8Array ? outputDecoder.decode(data, { stream: true }) : data);
-    writeOutput(data);
-  };
-  ws.onclose = () => {
-    options.onDisconnect?.();
-    const message = options.disconnectedMessage;
-    if (message) writeOutput(message);
-  };
-  ws.onerror = () => {
-    const message = options.errorMessage;
-    if (message) writeOutput(message);
-  };
-
   return {
+    reconnect: connect,
     focus: () => term.focus(),
     refresh: () => {
       term.fit();
@@ -221,8 +234,7 @@ export async function createObservableTerminalViewer(options: ObservableTerminal
     setTheme: (nextTheme) => void term.setTheme(nextTheme),
     dispose: () => {
       disposed = true;
-      ws.onclose = null;
-      ws.onerror = null;
+      ws.onopen = ws.onmessage = ws.onclose = ws.onerror = null;
       ws.close();
       term.dispose();
     },

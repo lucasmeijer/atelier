@@ -7,6 +7,7 @@ function viewer(): ObservableTerminalViewer {
     dispose: mock(() => undefined),
     focus: mock(() => undefined),
     refresh: mock(() => undefined),
+    reconnect: mock(() => undefined),
     sendInput: mock(() => undefined),
     getSelection: mock(async () => ""),
     dragPointer: mock(() => undefined),

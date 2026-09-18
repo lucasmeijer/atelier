@@ -21,7 +21,7 @@ function renderTerminalAccessoryBar(): string {
 
 export function renderTerminalPane(workspaceId: string, terminal: WorkspaceTerminal): string {
   return `<section id="${domId("terminal_pane", workspaceId, terminal.id)}" class="terminal-work-view" data-work-view-source="${escapeHtml(terminalViewKey(terminal.id))}">
-    <div class="terminal-pane" data-controller="terminal-pane" data-action="focusin->terminal-pane#syncViewportHeight" data-terminal-pane-workspace-id-value="${escapeHtml(workspaceId)}" data-terminal-pane-id-value="${escapeHtml(terminal.id)}" data-terminal-id="${escapeHtml(terminal.id)}">
+    <div class="terminal-pane" data-controller="terminal-pane" data-action="focusin->terminal-pane#syncViewportHeight terminal:disconnected->terminal-pane#connectionLost terminal:connected->terminal-pane#connectionOpened" data-terminal-pane-workspace-id-value="${escapeHtml(workspaceId)}" data-terminal-pane-id-value="${escapeHtml(terminal.id)}" data-terminal-id="${escapeHtml(terminal.id)}">
       <div class="observable-terminal-host" tabindex="0" data-action="pointerdown->terminal-pane#dragPointer:capture
         pointermove->terminal-pane#dragPointer:capture
         pointerup->terminal-pane#dragPointer:capture
@@ -34,6 +34,7 @@ export function renderTerminalPane(workspaceId: string, terminal: WorkspaceTermi
         touchend->terminal-pane#finishTerminalTouch:!passive">
         <div class="terminal-loading" role="status" aria-label="Loading terminal"><span class="activity-spinner" aria-hidden="true"></span></div>
       </div>
+      <div data-terminal-pane-target="connectionStatus" role="status" hidden>Connection lost. ${buttonHtml({ type: "button", variant: "secondary", content: { kind: "caption", caption: "Retry connection" }, attributesHtml: 'data-action="terminal-pane#retry"' })}</div>
       ${renderTerminalAccessoryBar()}
     </div>
   </section>`;

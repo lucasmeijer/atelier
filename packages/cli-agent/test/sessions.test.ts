@@ -166,3 +166,47 @@ test("launch settings are prepared by the adapter for both form and programmatic
   expect(preparations).toHaveLength(0);
   expect(launches).toHaveLength(1);
 `));
+
+test("starting claims are not ended, and socket admission waits for tmux creation", () => scenario(`
+  const { createCliSessions } = await import(${JSON.stringify(join(import.meta.dir, "../src/server/sessions.ts"))});
+  const { cliSocketHandler } = await import(${JSON.stringify(join(import.meta.dir, "../src/server/sockets.ts"))});
+  const entered = Promise.withResolvers();
+  const preparation = Promise.withResolvers();
+  const sessions = createCliSessions({ ...adapter, prepareWorkspace: async () => { entered.resolve(); await preparation.promise; } });
+  const launch = sessions.create("starting");
+  await entered.promise;
+  const [claim] = sessions.list("starting");
+  expect(await sessions.terminalState("starting", claim)).toEqual({ starting: true, exists: false, ended: false });
+  expect(calls).toHaveLength(0);
+  let ready = false, admitted = false;
+  const readiness = sessions.ready("starting", claim.id).then(session => { ready = true; return session; });
+  const socket = cliSocketHandler("example", sessions)(new URL("http://localhost/workspaces/starting/example-agents/" + claim.id + "/ws")).then(connection => { admitted = true; return connection; });
+  await Bun.sleep(10);
+  expect(ready).toBe(false);
+  expect(admitted).toBe(false);
+  preparation.resolve();
+  expect(await launch).toBe(claim.id);
+  expect(await readiness).toBe(claim);
+  expect(await socket).toBeDefined();
+  expect(calls).toHaveLength(1);
+  expect(await sessions.terminalState("starting", claim)).toMatchObject({ exists: true, ended: false });
+`));
+
+test("failed startup releases readiness waiters but rejects socket admission", () => scenario(`
+  const { createCliSessions } = await import(${JSON.stringify(join(import.meta.dir, "../src/server/sessions.ts"))});
+  const { cliSocketHandler } = await import(${JSON.stringify(join(import.meta.dir, "../src/server/sockets.ts"))});
+  const entered = Promise.withResolvers();
+  const preparation = Promise.withResolvers();
+  const sessions = createCliSessions({ ...adapter, prepareWorkspace: async () => { entered.resolve(); await preparation.promise; throw new Error("preparation failed"); } });
+  const launch = sessions.create("failed-start");
+  await entered.promise;
+  const [claim] = sessions.list("failed-start");
+  const readiness = sessions.ready("failed-start", claim.id);
+  const socket = cliSocketHandler("example", sessions)(new URL("http://localhost/workspaces/failed-start/example-agents/" + claim.id + "/ws"));
+  const rejection = socket.then(() => { throw new Error("Socket unexpectedly admitted"); }, error => error);
+  preparation.resolve();
+  await launch;
+  expect((await readiness).error).toBe("preparation failed");
+  expect(await rejection).toMatchObject({ code: "agent_session_failed", message: "preparation failed" });
+  expect(calls).toHaveLength(0);
+`));
