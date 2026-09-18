@@ -41,7 +41,9 @@ export function subscriptionCliFiles(): Array<{ provider: string; path: string; 
       last_refresh: "2099-01-01T00:00:00Z",
     }) },
     { provider: "anthropic", path: ".claude/.credentials.json", marker: anthropicToken, content: JSON.stringify({
-      claudeAiOauth: { accessToken: anthropicToken, refreshToken: "", expiresAt: 4070908800000, scopes: ["user:inference", "user:profile"] },
+      // An empty refresh token means revoked/expired to Claude Code. Null means
+      // there is no local refresh credential; Atelier owns token refresh instead.
+      claudeAiOauth: { accessToken: anthropicToken, refreshToken: null, expiresAt: 4070908800000, scopes: ["user:inference", "user:profile"] },
     }) },
   ];
 }

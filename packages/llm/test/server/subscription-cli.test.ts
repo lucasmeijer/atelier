@@ -20,7 +20,8 @@ test("Claude Code receives inference-scoped OAuth placeholders", () => {
   expect(file.path).toBe(".claude/.credentials.json");
   const auth = JSON.parse(file.content).claudeAiOauth;
   expect(auth.accessToken).toBe(file.marker);
-  expect(auth.refreshToken).toBe("");
+  // Claude Code treats "" as a dead refresh token and reports an expired login.
+  expect(auth.refreshToken).toBeNull();
   expect(auth.scopes).toContain("user:inference");
   expect(auth.expiresAt).toBeGreaterThan(Date.now());
 });
