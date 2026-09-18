@@ -1,8 +1,8 @@
 import { shellQuote } from "@atelier/core";
-import type { WorkspaceServerSocketSession, WorkspaceSocketConnection } from "@atelier/shared";
+import type { WorkspaceServerSocketSession } from "@atelier/shared";
 import { execWorkspaceShell, workspaceContainerName, workspaceRoot } from "@atelier/workspace";
 import {
-  attachObservableTerminal,
+  createObservableTerminalSocket,
   buildCapturePaneCommand,
   buildKillSessionCommand,
   buildObservableSessionCommand,
@@ -14,7 +14,6 @@ import {
   observableTerminalRows,
   stripObservablePaneFraming,
   stripTerminalControls,
-  type ObservableTerminalConnection,
 } from "@atelier/observable-terminal/server";
 import {
   DEFAULT_MAX_BYTES,
@@ -228,62 +227,20 @@ printf '%s\\n' "$status" > ${shellQuote(exitFile)}`;
 // Inline terminal websocket: read-only attach to an agent tmux session.
 // ---------------------------------------------------------------------------
 
-interface AgentTermSocketData {
-  workspaceId: string;
-  session: string;
-  terminal?: ObservableTerminalConnection;
-}
-
 export function createAgentTermSocketSession(url: URL): WorkspaceServerSocketSession | undefined {
   const match = url.pathname.match(/^\/workspaces\/([^/]+)\/agent-term\/([^/]+)\/ws$/);
   if (!match) return undefined;
   const workspaceId = decodeURIComponent(match[1]);
   const session = decodeURIComponent(match[2]);
   if (!session.startsWith(agentTmuxPrefix)) return undefined;
-  const data: AgentTermSocketData = {
-    workspaceId,
+  return createObservableTerminalSocket({
+    containerName: workspaceContainerName(workspaceId),
     session,
-  };
-  return {
-    open: (socket) => openAgentTermSocket(socket, data),
-    close: () => closeAgentTermSocket(data),
-  };
-}
-
-function openAgentTermSocket(socket: WorkspaceSocketConnection, data: AgentTermSocketData): void {
-  try {
-    data.terminal = attachObservableTerminal({
-      containerName: workspaceContainerName(data.workspaceId),
-      session: data.session,
-      // Agent bash sessions have a fixed, desktop-like size. Do not trust the
-      // browser-reported attach size here: hidden or freshly-mounted inline
-      // terminals can briefly report tiny dimensions (for example 5x5), and a
-      // tmux attach client may otherwise propagate that size to the running
-      // command.
-      cols: agentTermCols,
-      rows: agentTermRows,
-      user: "atelier",
-      readonly: true,
-      fixedSize: true,
-    }, {
-      onData: (chunk) => {
-        setTimeout(() => {
-          try {
-            socket.send(chunk);
-          } catch {
-            // Socket closed.
-          }
-        }, 0);
-      },
-      onExit: () => socket.close(),
-    });
-  } catch (error) {
-    const message = error instanceof Error ? error.message : String(error);
-    socket.send(`\r\n[terminal attach failed: ${message}]\r\n`);
-    socket.close();
-  }
-}
-
-function closeAgentTermSocket(data: AgentTermSocketData): void {
-  data.terminal?.close();
+    // Inline terminals must never resize the agent's fixed-size command pane.
+    cols: agentTermCols,
+    rows: agentTermRows,
+    user: "atelier",
+    readonly: true,
+    fixedSize: true,
+  });
 }

@@ -1,28 +1,12 @@
 import { AtelierCoreError } from "@atelier/core";
-import { attachObservableTerminal, buildNaturalScrollCommand, type ObservableTerminalConnection } from "@atelier/observable-terminal/server";
-import { parseObservableTerminalMessage } from "@atelier/observable-terminal/shared";
-import type { WorkspaceServerSocketHandler, WorkspaceSocketConnection } from "@atelier/shared";
+import { createObservableTerminalSocket, terminalSocketDimensions, buildNaturalScrollCommand } from "@atelier/observable-terminal/server";
+import type { WorkspaceServerSocketHandler } from "@atelier/shared";
 import { execWorkspaceShell, workspaceContainerName, workspaceRoot } from "@atelier/workspace";
 import { terminalIdFromViewKey, terminalViewKey } from "../shared.ts";
 import { listWorkspaceTerminals } from "./workspace-terminals.ts";
 
-interface TerminalSocketData {
-  workspaceId: string;
-  terminalId: string;
-  tmuxSession: string;
-  cols: number;
-  rows: number;
-  terminal?: ObservableTerminalConnection;
-}
-
-function parsePositiveInteger(value: string | null, fallback: number): number {
-  const parsed = Number(value);
-  return Number.isInteger(parsed) && parsed > 0 && parsed <= 1000 ? parsed : fallback;
-}
-
 export function createTerminalSocketHandler(options: { setViewBusy(workspaceId: string, viewKey: string, busy: boolean): void }): WorkspaceServerSocketHandler {
   const busyTerminals = new Set<string>();
-  const messageDecoder = new TextDecoder();
 
   function setBusy(workspaceId: string, terminalId: string, busy: boolean): void {
     const key = `${workspaceId}\0${terminalId}`;
@@ -32,7 +16,7 @@ export function createTerminalSocketHandler(options: { setViewBusy(workspaceId: 
     options.setViewBusy(workspaceId, terminalViewKey(terminalId), busy);
   }
 
-  async function validate(url: URL): Promise<TerminalSocketData | undefined> {
+  return async (url) => {
     const match = url.pathname.match(/^\/workspaces\/([^/]+)\/views\/([^/]+)\/ws$/);
     if (!match) return undefined;
     const workspaceId = decodeURIComponent(match[1]!);
@@ -42,62 +26,15 @@ export function createTerminalSocketHandler(options: { setViewBusy(workspaceId: 
     if (!terminal) throw new AtelierCoreError("terminal_not_found", `terminal not found: ${terminalId}`);
     const configured = await execWorkspaceShell(workspaceId, buildNaturalScrollCommand());
     if (configured.exitCode !== 0) throw new AtelierCoreError("terminal_scrollback_failed", configured.stderr.trim() || "could not configure terminal scrollback");
-    return {
-      workspaceId,
-      terminalId,
-      tmuxSession: terminal.tmuxSession,
-      cols: parsePositiveInteger(url.searchParams.get("cols"), 80),
-      rows: parsePositiveInteger(url.searchParams.get("rows"), 24),
-    };
-  }
-
-  function open(socket: WorkspaceSocketConnection, data: TerminalSocketData): void {
-    try {
-      data.terminal = attachObservableTerminal({
-        containerName: workspaceContainerName(data.workspaceId),
-        session: data.tmuxSession,
-        cols: data.cols,
-        rows: data.rows,
-        user: "atelier",
-        workdir: workspaceRoot,
-        readonly: false,
-      }, {
-        onData: (chunk) => socket.send(chunk),
-        onExit: () => socket.close(),
-      });
-    } catch (error) {
-      const message = error instanceof Error ? error.message : String(error);
-      socket.send(`\r\n\x1b[31m[terminal failed to start: ${message}]\x1b[0m\r\n`);
-      socket.close();
-    }
-  }
-
-  function message(data: TerminalSocketData, input: string | Uint8Array): void {
-    const text = input instanceof Uint8Array ? messageDecoder.decode(input) : input;
-    const control = parseObservableTerminalMessage(text);
-    if (control?.type === "resize") {
-      data.terminal?.resize(control.cols, control.rows);
-      return;
-    }
-    if (control?.type === "progress") {
-      setBusy(data.workspaceId, data.terminalId, control.state !== 0);
-      return;
-    }
-    data.terminal?.write(text);
-  }
-
-  function close(data: TerminalSocketData): void {
-    setBusy(data.workspaceId, data.terminalId, false);
-    data.terminal?.close();
-  }
-
-  return async (url) => {
-    const data = await validate(url);
-    if (!data) return undefined;
-    return {
-      open: (socket) => open(socket, data),
-      message: (_socket, input) => message(data, input),
-      close: () => close(data),
-    };
+    return createObservableTerminalSocket({
+      containerName: workspaceContainerName(workspaceId),
+      session: terminal.tmuxSession,
+      ...terminalSocketDimensions(url),
+      user: "atelier",
+      workdir: workspaceRoot,
+    }, {
+      onProgress: (progress) => setBusy(workspaceId, terminalId, progress.state !== 0),
+      onClose: () => setBusy(workspaceId, terminalId, false),
+    });
   };
 }

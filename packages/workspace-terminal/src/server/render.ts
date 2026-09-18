@@ -14,15 +14,15 @@ const terminalAccessoryButtons = [
 
 function renderTerminalAccessoryBar(): string {
   const buttons = terminalAccessoryButtons.map(({ key, label, ariaLabel }) =>
-    buttonHtml({ type: "button", variant: "secondary", content: { kind: "icon-only", iconHtml: escapeHtml(label), label: ariaLabel }, attributesHtml: `${key === "control" ? 'aria-pressed="false" ' : ""}data-terminal-key="${key}" data-action="mousedown->terminal-pane#preserveTerminalFocus click->terminal-pane#sendAccessoryKey"` })
+    buttonHtml({ type: "button", variant: "secondary", content: { kind: "icon-only", iconHtml: escapeHtml(label), label: ariaLabel }, attributesHtml: `${key === "control" ? 'aria-pressed="false" data-terminal-pane-target="control" ' : ""}data-terminal-key="${key}" data-action="mousedown->terminal-pane#preserveTerminalFocus click->terminal-pane#sendAccessoryKey"` })
   ).join("");
   return `<div class="terminal-accessory-bar" role="toolbar" aria-label="Terminal keys">${buttons}</div>`;
 }
 
 export function renderTerminalPane(workspaceId: string, terminal: WorkspaceTerminal): string {
   return `<section id="${domId("terminal_pane", workspaceId, terminal.id)}" class="terminal-work-view" data-work-view-source="${escapeHtml(terminalViewKey(terminal.id))}">
-    <div class="terminal-pane" data-controller="terminal-pane" data-action="focusin->terminal-pane#syncViewportHeight terminal:disconnected->terminal-pane#connectionLost terminal:connected->terminal-pane#connectionOpened" data-terminal-pane-workspace-id-value="${escapeHtml(workspaceId)}" data-terminal-pane-id-value="${escapeHtml(terminal.id)}" data-terminal-id="${escapeHtml(terminal.id)}">
-      <div class="observable-terminal-host" tabindex="0" data-action="pointerdown->terminal-pane#dragPointer:capture
+    <div class="terminal-pane" data-controller="terminal-pane" data-action="focusin->terminal-pane#syncViewportHeight atelier:theme-change@document->terminal-pane#theme" data-terminal-pane-workspace-id-value="${escapeHtml(workspaceId)}" data-terminal-pane-id-value="${escapeHtml(terminal.id)}" data-terminal-id="${escapeHtml(terminal.id)}">
+      <div class="observable-terminal-host" data-terminal-pane-target="host" tabindex="0" data-action="pointerdown->terminal-pane#dragPointer:capture
         pointermove->terminal-pane#dragPointer:capture
         pointerup->terminal-pane#dragPointer:capture
         pointercancel->terminal-pane#dragPointer:capture

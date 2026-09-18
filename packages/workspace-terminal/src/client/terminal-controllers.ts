@@ -4,15 +4,10 @@ import {
   atelierObservableTerminalTheme,
   createObservableTerminalViewer,
   observableWebSocketUrl,
-  type ObservableTerminalTheme,
+  type ObservableTerminalViewer,
 } from "@atelier/observable-terminal/client";
 import { isWorkspacePaneVisible, type WorkspaceClientControllerConstructor, type WorkspaceClientModule } from "@atelier/shared";
-import { terminalViewKey, terminalIdFromViewKey } from "../shared.ts";
-import { TerminalViewerRegistry } from "./terminal-viewer-registry.ts";
-
-const terminals = new TerminalViewerRegistry();
-const pendingTerminalControl = new Set<string>();
-let currentTerminalTheme: ObservableTerminalTheme;
+import { terminalViewKey } from "../shared.ts";
 
 const terminalAccessoryInput = new Map([
   ["escape", "\x1b"],
@@ -37,85 +32,6 @@ export function controlModifiedTerminalInput(data: string): string {
   return data;
 }
 
-function terminalKey(workspaceId: string, terminalId: string): string {
-  return `${workspaceId}\u0000${terminalId}`;
-}
-
-function applyTerminalTheme(): void {
-  currentTerminalTheme = atelierObservableTerminalTheme();
-  terminals.setTheme(currentTerminalTheme);
-}
-
-function initializeTerminalTheme(): void {
-  applyTerminalTheme();
-  document.addEventListener("atelier:theme-change", applyTerminalTheme);
-}
-
-function findTerminalPane(workspaceId: string, terminalId: string): HTMLElement | undefined {
-  return Array.from(document.querySelectorAll<HTMLElement>(".terminal-pane[data-terminal-id]")).find((candidate) =>
-    candidate.dataset.terminalId === terminalId && candidate.dataset.terminalPaneWorkspaceIdValue === workspaceId
-  );
-}
-
-function setTerminalControlPending(workspaceId: string, terminalId: string, pending: boolean): void {
-  const key = terminalKey(workspaceId, terminalId);
-  if (pending) pendingTerminalControl.add(key);
-  else pendingTerminalControl.delete(key);
-  const button = findTerminalPane(workspaceId, terminalId)?.querySelector('[data-terminal-key="control"]');
-  button?.setAttribute("aria-pressed", String(pending));
-}
-
-function transformTerminalInput(workspaceId: string, terminalId: string, data: string): string {
-  const key = terminalKey(workspaceId, terminalId);
-  if (!pendingTerminalControl.has(key)) return data;
-  setTerminalControlPending(workspaceId, terminalId, false);
-  return controlModifiedTerminalInput(data);
-}
-
-async function startTerminal(workspaceId: string, terminalId: string, options: { focus?: boolean } = {}): Promise<void> {
-  const focus = options.focus !== false;
-  const key = terminalKey(workspaceId, terminalId);
-  const pane = findTerminalPane(workspaceId, terminalId);
-  if (!pane) return;
-  const host = pane.querySelector<HTMLElement>(".observable-terminal-host");
-  if (!host) return;
-
-  const existing = terminals.active(key);
-  if (existing) {
-    existing.reconnect();
-    existing.refresh();
-    if (focus) existing.focus();
-    return;
-  }
-  const viewId = terminalViewKey(terminalId);
-  const style = getComputedStyle(host);
-  const viewer = await terminals.start(key, () => createObservableTerminalViewer({
-    host,
-    mode: "interactive",
-    websocketUrl: observableWebSocketUrl(`/workspaces/${encodeURIComponent(workspaceId)}/views/${encodeURIComponent(viewId)}/ws`),
-    fontFamily: style.getPropertyValue("--font-mono"),
-    fontSize: Number.parseFloat(style.getPropertyValue("--text-code")),
-    theme: currentTerminalTheme,
-    onConnect: () => pane.dispatchEvent(new Event("terminal:connected")),
-    onDisconnect: () => pane.dispatchEvent(new Event("terminal:disconnected")),
-    disconnectedMessage: "\r\n\x1b[31m[terminal disconnected]\x1b[0m\r\n",
-    errorMessage: "\r\n\x1b[31m[terminal websocket error]\x1b[0m\r\n",
-    transformInput: (data) => transformTerminalInput(workspaceId, terminalId, data),
-  }));
-  if (!viewer) return;
-  if (!host.isConnected) {
-    terminals.cancel(key);
-    return;
-  }
-  if (focus && document.hasFocus()) viewer.focus();
-}
-
-function stopTerminal(workspaceId: string, terminalId: string): void {
-  const key = terminalKey(workspaceId, terminalId);
-  setTerminalControlPending(workspaceId, terminalId, false);
-  terminals.cancel(key);
-}
-
 function createTerminalSessionPickerController(Controller: WorkspaceClientControllerConstructor) {
   return class TerminalSessionPickerController extends Controller {
     static targets = ["input", "item"];
@@ -135,7 +51,9 @@ function createTerminalSessionPickerController(Controller: WorkspaceClientContro
 function createTerminalPaneController(Controller: WorkspaceClientControllerConstructor) {
   return class TerminalPaneController extends Controller {
     static values = { workspaceId: String, id: String };
-    static targets = ["connectionStatus"];
+    static targets = ["connectionStatus", "host", "control"];
+    declare readonly hostTarget: HTMLElement;
+    declare readonly controlTarget: HTMLButtonElement;
     declare readonly connectionStatusTarget: HTMLElement;
     declare readonly element: HTMLElement;
     declare readonly workspaceIdValue: string;
@@ -145,8 +63,47 @@ function createTerminalPaneController(Controller: WorkspaceClientControllerConst
     private terminalTouch?: Touch;
     private pointerDrag?: { id: number; select: boolean };
 
-    private get viewer() {
-      return terminals.active(terminalKey(this.workspaceIdValue, this.idValue));
+    private viewer?: ObservableTerminalViewer;
+    private controlPending = false;
+
+    start(): void {
+      if (!this.viewer) {
+        const style = getComputedStyle(this.hostTarget);
+        this.viewer = createObservableTerminalViewer({
+          host: this.hostTarget,
+          mode: "interactive",
+          websocketUrl: observableWebSocketUrl(`/workspaces/${encodeURIComponent(this.workspaceIdValue)}/views/${encodeURIComponent(terminalViewKey(this.idValue))}/ws`),
+          fontFamily: style.getPropertyValue("--font-mono"),
+          fontSize: Number.parseFloat(style.getPropertyValue("--text-code")),
+          theme: atelierObservableTerminalTheme(),
+          onConnect: () => this.connectionOpened(),
+          onDisconnect: () => this.connectionLost(),
+          disconnectedMessage: "\r\n\x1b[31m[terminal disconnected]\x1b[0m\r\n",
+          errorMessage: "\r\n\x1b[31m[terminal websocket error]\x1b[0m\r\n",
+          transformInput: (data) => {
+            if (!this.controlPending) return data;
+            this.setControlPending(false);
+            return controlModifiedTerminalInput(data);
+          },
+        });
+      } else {
+        this.viewer.reconnect();
+        this.viewer.refresh();
+      }
+      if (document.hasFocus()) this.viewer.focus();
+    }
+
+    stop(): void {
+      this.viewer?.dispose();
+      this.viewer = undefined;
+      this.setControlPending(false);
+    }
+
+    theme(): void { this.viewer?.setTheme(atelierObservableTerminalTheme()); }
+
+    private setControlPending(pending: boolean): void {
+      this.controlPending = pending;
+      this.controlTarget.setAttribute("aria-pressed", String(pending));
     }
 
     readonly syncViewportHeight = (): void => {
@@ -163,7 +120,7 @@ function createTerminalPaneController(Controller: WorkspaceClientControllerConst
       this.layoutObserver.observe(this.element.parentElement!);
       this.syncViewportHeight();
       if (isWorkspacePaneVisible(this.element)) {
-        void startTerminal(this.workspaceIdValue, this.idValue, { focus: document.hasFocus() });
+        this.start();
       }
     }
 
@@ -174,7 +131,7 @@ function createTerminalPaneController(Controller: WorkspaceClientControllerConst
       this.terminalTouch = undefined;
       this.pointerDrag = undefined;
       this.element.style.removeProperty("--terminal-viewport-height");
-      stopTerminal(this.workspaceIdValue, this.idValue);
+      this.stop();
     }
 
     connectionLost(): void { this.connectionStatusTarget.hidden = false; }
@@ -257,9 +214,8 @@ function createTerminalPaneController(Controller: WorkspaceClientControllerConst
       if (!(event.currentTarget instanceof HTMLButtonElement)) throw new Error("terminal accessory action must come from a button");
       const key = event.currentTarget.dataset.terminalKey;
       if (!key) throw new Error("terminal accessory button is missing its key");
-      const terminal = terminalKey(this.workspaceIdValue, this.idValue);
-      const viewer = terminals.active(terminal);
-      if (key === "control") setTerminalControlPending(this.workspaceIdValue, this.idValue, !pendingTerminalControl.has(terminal));
+      const viewer = this.viewer;
+      if (key === "control") this.setControlPending(!this.controlPending);
       else viewer?.sendInput(terminalInputForAccessoryKey(key));
       viewer?.focus();
     }
@@ -269,16 +225,14 @@ function createTerminalPaneController(Controller: WorkspaceClientControllerConst
 export const workspaceTerminalClientModule: WorkspaceClientModule = {
   id: "terminal",
   install({ application, Controller, hooks }) {
-    initializeTerminalTheme();
     application.register("terminal-pane", createTerminalPaneController(Controller));
     application.register("terminal-session-picker", createTerminalSessionPickerController(Controller));
-    hooks.onBecomeVisible(({ workspaceId, surfaceKey }) => {
-      const terminalId = terminalIdFromViewKey(surfaceKey);
-      if (terminalId) void startTerminal(workspaceId, terminalId, { focus: document.hasFocus() });
-    });
-    hooks.onNoLongerVisible(({ workspaceId, surfaceKey }) => {
-      const terminalId = terminalIdFromViewKey(surfaceKey);
-      if (terminalId) stopTerminal(workspaceId, terminalId);
-    });
+    const controller = (pane: HTMLElement) => {
+      const element = pane.querySelector<HTMLElement>('[data-controller~="terminal-pane"]');
+      // SAFETY: This element declares the terminal-pane controller registered immediately above.
+      return element ? application.getControllerForElementAndIdentifier(element, "terminal-pane") as { start(): void; stop(): void } | null : null;
+    };
+    hooks.onBecomeVisible(({ pane }) => controller(pane)?.start());
+    hooks.onNoLongerVisible(({ pane }) => controller(pane)?.stop());
   },
 };

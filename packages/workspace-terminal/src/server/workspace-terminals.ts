@@ -1,8 +1,6 @@
-import { mkdir, readFile, rename, writeFile } from "node:fs/promises";
-import { dirname } from "node:path";
-import { AtelierCoreError, createKeyedOperationQueue, atelierDataPath, getAtelierRuntimeContext, shellQuote } from "@atelier/core";
+import { AtelierCoreError, createKeyedOperationQueue, shellQuote } from "@atelier/core";
 import { buildKillSessionCommand, buildListSessionsCommand, buildObservableSessionCommand } from "@atelier/observable-terminal/server";
-import { execWorkspaceShell, workspaceRoot } from "@atelier/workspace";
+import { createWorkspaceMetadataState, execWorkspaceShell, workspaceRoot } from "@atelier/workspace";
 import { Type, type Static } from "typebox";
 import { Value } from "typebox/value";
 
@@ -32,17 +30,7 @@ interface WorkspaceTerminalCreateOptions {
   cwd?: string;
 }
 
-function statePath(workspaceId: string): string {
-  return atelierDataPath(getAtelierRuntimeContext(), "workspaces", workspaceId, "metadata", "terminals.json");
-}
-
-async function writeTerminals(workspaceId: string, terminals: WorkspaceTerminal[]): Promise<void> {
-  const path = statePath(workspaceId);
-  await mkdir(dirname(path), { recursive: true });
-  const temporary = `${path}.${process.pid}.tmp`;
-  await writeFile(temporary, `${JSON.stringify(terminals, null, 2)}\n`);
-  await rename(temporary, path);
-}
+const terminalsState = createWorkspaceMetadataState("terminals.json", (value) => Value.Parse(workspaceTerminalsSchema, value), () => []);
 
 export async function listTmuxSessions(workspaceId: string): Promise<TmuxSessionMetadata[]> {
   const separator = "\u001f";
@@ -66,12 +54,7 @@ export async function tmuxSessionExists(workspaceId: string, name: string): Prom
 }
 
 export async function listWorkspaceTerminals(workspaceId: string): Promise<WorkspaceTerminal[]> {
-  try {
-    return Value.Parse(workspaceTerminalsSchema, JSON.parse(await readFile(statePath(workspaceId), "utf8")));
-  } catch (error) {
-    if (!(error instanceof Error && "code" in error && error.code === "ENOENT")) throw error;
-    return [];
-  }
+  return terminalsState.read(workspaceId);
 }
 
 function availableTitle(existingTitles: string[], preferred?: string): string {
@@ -106,7 +89,7 @@ function newTerminal(terminals: WorkspaceTerminal[], title: string, tmuxSession:
 
 export async function createWorkspaceTerminal(workspaceId: string, options: WorkspaceTerminalCreateOptions = {}): Promise<WorkspaceTerminal> {
   return mutateTerminals(workspaceId, async () => {
-    const terminals = await listWorkspaceTerminals(workspaceId);
+    const terminals = [...await listWorkspaceTerminals(workspaceId)];
     const sessions = await listTmuxSessions(workspaceId);
     const tmuxSession = availableTitle(sessions.map((session) => session.name), options.title);
     const result = await execWorkspaceShell(workspaceId, buildObservableSessionCommand({
@@ -121,7 +104,7 @@ export async function createWorkspaceTerminal(workspaceId: string, options: Work
     if (result.exitCode !== 0) throw new AtelierCoreError("terminal_create_failed", result.stderr.trim() || `could not create terminal: ${tmuxSession}`);
 
     const terminal = newTerminal(terminals, options.title?.trim() || "Terminal", tmuxSession, "owned");
-    await writeTerminals(workspaceId, terminals);
+    terminalsState.write(workspaceId, terminals);
     return terminal;
   });
 }
@@ -131,16 +114,16 @@ export async function attachWorkspaceTerminal(workspaceId: string, tmuxSession: 
     if (!(await tmuxSessionExists(workspaceId, tmuxSession))) {
       throw new AtelierCoreError("terminal_not_found", `tmux session not found: ${tmuxSession}`);
     }
-    const terminals = await listWorkspaceTerminals(workspaceId);
+    const terminals = [...await listWorkspaceTerminals(workspaceId)];
     const terminal = newTerminal(terminals, tmuxSession, tmuxSession, "attached");
-    await writeTerminals(workspaceId, terminals);
+    terminalsState.write(workspaceId, terminals);
     return terminal;
   });
 }
 
 export async function deleteWorkspaceTerminal(workspaceId: string, terminalId: string): Promise<void> {
   return mutateTerminals(workspaceId, async () => {
-    const terminals = await listWorkspaceTerminals(workspaceId);
+    const terminals = [...await listWorkspaceTerminals(workspaceId)];
     const index = terminals.findIndex((terminal) => terminal.id === terminalId);
     if (index < 0) throw new AtelierCoreError("terminal_not_found", `terminal not found: ${terminalId}`);
     const [terminal] = terminals.splice(index, 1);
@@ -148,6 +131,6 @@ export async function deleteWorkspaceTerminal(workspaceId: string, terminalId: s
       const result = await execWorkspaceShell(workspaceId, buildKillSessionCommand(terminal!.tmuxSession));
       if (result.exitCode !== 0) throw new AtelierCoreError("terminal_close_failed", result.stderr.trim() || `could not close terminal session: ${terminal!.tmuxSession}`);
     }
-    await writeTerminals(workspaceId, terminals);
+    terminalsState.write(workspaceId, terminals);
   });
 }

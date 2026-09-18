@@ -10,7 +10,7 @@ export function createProvisionTerminalController(Controller: new (...args: neve
     private viewer?: ObservableTerminalViewer;
 
     connect(): void {
-      void this.start();
+      this.start();
     }
 
     disconnect(): void {
@@ -18,9 +18,9 @@ export function createProvisionTerminalController(Controller: new (...args: neve
       this.viewer = undefined;
     }
 
-    private async start(): Promise<void> {
+    private start(): void {
       if (this.viewer || !this.sessionValue) return;
-      this.viewer = await createObservableTerminalViewer({
+      this.viewer = createObservableTerminalViewer({
         host: this.element,
         websocketUrl: observableWebSocketUrl(`/provision-term/${encodeURIComponent(this.sessionValue)}/ws`),
         mode: "fixed-readonly",

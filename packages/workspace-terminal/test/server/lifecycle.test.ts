@@ -26,7 +26,7 @@ async function scenario(script: string): Promise<void> {
         if (command.includes("kill-session")) names.delete(command.match(/kill-session -t '([^']+)'/)[1]);
         return result;
       } }));
-      mock.module("@atelier/observable-terminal/server", () => ({ ...observable, attachObservableTerminal: (_options, events) => {
+      mock.module(import.meta.resolve("@atelier/observable-terminal/server").replace("/index.ts", "/attach.ts"), () => ({ ...observable, attachObservableTerminal: (_options, events) => {
         callbacks = events;
         return { write() {}, resize() {}, close() {} };
       } }));
@@ -70,4 +70,15 @@ test("terminal socket sends final diagnostics before closing", () => scenario(`
   callbacks.onData(new TextEncoder().encode("can't find session"));
   callbacks.onExit(1);
   expect(events).toEqual(["can't find session", "closed"]);
+`));
+
+test("existing terminal metadata keeps its flat format, IDs and session ownership", () => scenario(`
+  const existing = { id: "saved-id", title: "Saved terminal", tmuxSession: "existing-session", sessionRelationship: "attached" };
+  const path = process.env.ATELIER_DATA_DIR + "/workspaces/legacy/metadata/terminals.json";
+  await Bun.write(path, JSON.stringify([existing]));
+  expect(await list("legacy")).toEqual([existing]);
+  const created = await create("legacy");
+  expect(await Bun.file(path).json()).toEqual([existing, created]);
+  await remove("legacy", existing.id);
+  expect(await Bun.file(path).json()).toEqual([created]);
 `));

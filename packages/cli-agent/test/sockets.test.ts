@@ -13,7 +13,7 @@ test("each adapter exposes its own interactive terminal protocol", async () => {
       const writes = [], sizes = [], attachments = [];
       let callbacks, closed = 0;
       mock.module("@atelier/workspace", () => ({ ...workspace, execWorkspaceShell: async () => ({ exitCode: 0, stdout: "", stderr: "", durationMs: 0 }) }));
-      mock.module("@atelier/observable-terminal/server", () => ({ ...observable, attachObservableTerminal: (options, handlers) => {
+      mock.module(import.meta.resolve("@atelier/observable-terminal/server").replace("/index.ts", "/attach.ts"), () => ({ ...observable, attachObservableTerminal: (options, handlers) => {
         attachments.push(options); callbacks = handlers;
         return { write: text => writes.push(text), resize: (...size) => sizes.push(size), close: () => { closed++; } };
       } }));

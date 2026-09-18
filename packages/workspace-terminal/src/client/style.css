@@ -5,7 +5,7 @@
 .terminal-pane { height: 100%; min-height: 0; display: flex; flex-direction: column; padding: 4px; background: var(--bg); color: var(--text); overflow: hidden; }
 .terminal-pane > .observable-terminal-host { height: auto; }
 .terminal-loading { position: absolute; inset: 0; z-index: 3; display: grid; place-items: center; color: var(--text-muted); pointer-events: none; }
-.observable-terminal-host:has(> .observable-terminal-painted) > .terminal-loading { display: none; }
+.observable-terminal-host:has(.observable-terminal-painted) > .terminal-loading { display: none; }
 .terminal-accessory-bar { display: none; }
 @media (hover: none) and (pointer: coarse) {
   /* Prevent iOS input zoom without changing the rendered terminal font. */

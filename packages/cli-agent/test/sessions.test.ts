@@ -80,9 +80,9 @@ test("adapter preparation failures are retained without launching a process", ()
 test("ended process retains its terminal until the tab is closed", () => scenario(`
   const id = await provider.create({ workspaceId: "ended" });
   result = { ...result, stdout: "1:42\\n" };
-  const url = new URL("http://localhost/workspaces/ended/example-agents/" + id + "/status");
-  const response = await module.routes[0].handle(new Request(url), url, {});
-  expect(response.headers.get("X-CLI-Agent-Ended")).toBe("true");
+  const { createCliSessions } = await import(${JSON.stringify(join(import.meta.dir, "../src/server/sessions.ts"))});
+  const sessions = createCliSessions(adapter);
+  expect(await sessions.terminalState("ended", sessions.get("ended", id))).toMatchObject({ ended: true, exitCode: 42 });
   expect(calls.some(call => call[1].includes("kill-session"))).toBe(false);
   await provider.tabs.close({ workspaceId: "ended", conversationId: id });
   expect(calls.at(-1)[1]).toContain("tmux kill-session");

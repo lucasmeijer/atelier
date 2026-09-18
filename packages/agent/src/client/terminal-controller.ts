@@ -35,8 +35,6 @@ export function createAgentTermController(Controller: StimulusControllerConstruc
     declare readonly workspaceIdValue: string;
     declare readonly sessionValue: string;
     private viewer?: ObservableTerminalViewer;
-    private running = false;
-    private starting = false;
 
     private theme(): ObservableTerminalTheme {
       const terminalStyle = getComputedStyle(this.element);
@@ -62,12 +60,10 @@ export function createAgentTermController(Controller: StimulusControllerConstruc
     }
 
     start(): void {
-      this.running = true;
-      if (this.viewer || this.starting) return;
-      this.starting = true;
+      if (this.viewer) return;
       const style = getComputedStyle(this.element);
       const region = this.element.closest<HTMLElement>(".agent-bash-output")!;
-      void createObservableTerminalViewer({
+      this.viewer = createObservableTerminalViewer({
         host: this.element,
         mode: "fixed-readonly",
         cols: 120,
@@ -81,24 +77,10 @@ export function createAgentTermController(Controller: StimulusControllerConstruc
             region.classList.remove("agent-terminal-awaiting-output");
           }
         },
-      })
-        .then((viewer) => {
-          if (!this.running) viewer.dispose();
-          else this.viewer = viewer;
-        })
-        // Terminal startup crosses browser and extension APIs that may reject with
-        // arbitrary values. This final UI boundary converts the reason to inert text.
-        // oxlint-disable-next-line anti-slop/no-unknown-parameters -- No Error shape is assumed.
-        .catch((error: unknown) => {
-          this.element.textContent = `[terminal attach failed: ${error instanceof Error ? error.message : String(error)}]`;
-        })
-        .finally(() => {
-          this.starting = false;
-        });
+      });
     }
 
     stop(): void {
-      this.running = false;
       this.viewer?.dispose();
       this.viewer = undefined;
     }

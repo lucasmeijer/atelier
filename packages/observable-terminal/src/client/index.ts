@@ -100,13 +100,61 @@ export function observableWebSocketUrl(path: string): string {
   return `${protocol}//${location.host}${path}`;
 }
 
-export async function createObservableTerminalViewer(options: ObservableTerminalViewerOptions): Promise<ObservableTerminalViewer> {
+/** A handle owns initialization too: disposal never waits for WASM or a worker. */
+export function createObservableTerminalViewer(options: ObservableTerminalViewerOptions): ObservableTerminalViewer {
+  const mount = document.createElement("div");
+  mount.className = "observable-terminal-mount";
+  options.host.append(mount);
+  let viewer: ObservableTerminalViewer | undefined;
+  let disposed = false;
+  let initializing = false;
+  let focusRequested = false;
+  let theme = options.theme;
+
+  const start = (): void => {
+    if (disposed || initializing) return;
+    if (viewer) { viewer.reconnect(); return; }
+    initializing = true;
+    mount.textContent = "";
+    mount.classList.remove("observable-terminal-painted");
+    void initializeTerminalViewer({ ...options, theme }, mount, () => disposed).then((initialized) => {
+      if (disposed) { initialized?.dispose(); return; }
+      viewer = initialized!;
+      if (theme) viewer.setTheme(theme);
+      viewer.refresh();
+      if (focusRequested && document.hasFocus()) viewer.focus();
+    // Browser/worker initialization can reject with arbitrary external values.
+    // oxlint-disable-next-line anti-slop/no-unknown-parameters -- This is the final rendering boundary for browser initialization failures.
+    }).catch((error: unknown) => {
+      console.error("Terminal initialization failed", error);
+      if (!disposed) {
+        mount.classList.add("observable-terminal-painted");
+        mount.textContent = `[terminal initialization failed: ${error instanceof Error ? error.message : String(error)}]`;
+        options.onDisconnect?.();
+      }
+    }).finally(() => { initializing = false; });
+  };
+  start();
+  return {
+    reconnect: start,
+    focus: () => { focusRequested = true; viewer?.focus(); },
+    refresh: () => viewer?.refresh(),
+    sendInput: (data) => viewer?.sendInput(data),
+    getSelection: () => viewer?.getSelection() ?? Promise.resolve(""),
+    dragPointer: (event, action, select) => viewer?.dragPointer(event, action, select),
+    paste: (text) => viewer?.paste(text),
+    setTheme: (value) => { theme = value; viewer?.setTheme(value); },
+    dispose: () => { disposed = true; viewer?.dispose(); mount.remove(); },
+  };
+}
+
+async function initializeTerminalViewer(options: ObservableTerminalViewerOptions, mount: HTMLElement, isDisposed: () => boolean): Promise<ObservableTerminalViewer | undefined> {
   const theme = options.theme ?? DEFAULT_OBSERVABLE_TERMINAL_THEME;
   const fontSize = options.fontSize ?? (options.mode === "fixed-readonly" ? 11 : 13);
   const fontFamily = options.fontFamily ?? "JetBrains Mono, ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace";
 
   const term = await createTerminal({
-    container: options.host,
+    container: mount,
     fontSizePx: fontSize,
     fontFamily,
     scrollbackLines: options.mode === "fixed-readonly" ? 4000 : 10000,
@@ -119,6 +167,7 @@ export async function createObservableTerminalViewer(options: ObservableTerminal
     cols: options.cols,
     rows: options.rows,
   });
+  if (isDisposed()) { term.dispose(); return undefined; }
   const terminalInput = term.element.querySelector<HTMLTextAreaElement>(".gespenst__input");
   if (terminalInput && options.mode === "fixed-readonly") terminalInput.readOnly = true;
   if (options.mode === "fixed-readonly" && options.cols !== undefined && options.rows !== undefined) {
