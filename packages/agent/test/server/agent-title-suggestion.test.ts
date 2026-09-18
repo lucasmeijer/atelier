@@ -1,7 +1,8 @@
 import { describe, expect, test } from "bun:test";
 import { createAtelierEventBus } from "@atelier/core";
+import { ModelRuntime } from "@earendil-works/pi-coding-agent";
 import type { WorkspaceAgentConversationInfo } from "../../src/server/session-store.ts";
-import { createAutomaticWorkspaceNamingGate, createAgentSessionTitleSetter } from "../../src/server/agent-title-suggestion.ts";
+import { agentTitleRequestOptions, createAutomaticWorkspaceNamingGate, createAgentSessionTitleSetter } from "../../src/server/agent-title-suggestion.ts";
 
 const agent = (title = "Untitled"): WorkspaceAgentConversationInfo => ({
   workspaceId: "workspace-1",
@@ -58,6 +59,26 @@ describe("Agent session titles", () => {
     expect(harness.emitted).toEqual(["agent:renamed-shared-name", "workspace:renamed-shared-name"]);
   });
 
+});
+
+describe("title request options", () => {
+  test("leave Anthropic's cheapest model enough answer room without a thinking budget", async () => {
+    const runtime = await ModelRuntime.create({ modelsPath: null, allowModelNetwork: false, refreshOnCreate: false });
+    const model = runtime.getModels("anthropic").toSorted((a, b) => a.cost.input - b.cost.input)[0]!;
+    let request: { max_tokens: number; thinking?: { type: string; budget_tokens?: number } } | undefined;
+    const captureRequest: typeof fetch = Object.assign(async (_url: URL | RequestInfo, init?: RequestInit) => {
+      request = JSON.parse(String(init?.body));
+      return new Response("{}", { status: 400 });
+    }, { preconnect: fetch.preconnect });
+
+    await runtime.completeSimple(model, { messages: [{ role: "user", content: "Name this session", timestamp: Date.now() }] }, {
+      ...agentTitleRequestOptions, apiKey: "test-key", fetch: captureRequest,
+    });
+
+    // Anthropic rejects a thinking budget below 1024 tokens, which silently blocked every name.
+    expect(request!.thinking?.budget_tokens).toBeUndefined();
+    expect(request!.max_tokens).toBeGreaterThanOrEqual(16);
+  });
 });
 
 describe("automatic workspace naming", () => {

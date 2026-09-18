@@ -6,6 +6,12 @@ import { listWorkspaceAgentConversations, setWorkspaceAgentConversationTitle, un
 
 const pendingRenames = new Set<string>();
 
+/**
+ * A slug needs no reasoning, and asking for one shrinks the answer room a thinking
+ * budget would need: Anthropic rejects the resulting sub-1024 token budget outright.
+ */
+export const agentTitleRequestOptions = { maxTokens: 64 } as const;
+
 export function createAutomaticWorkspaceNamingGate() {
   const active = new Set<string>();
   const completed = new Set<string>();
@@ -129,7 +135,7 @@ function suggestAgentTitle(agent: { workspaceId: string; conversationId?: string
       }
       const response = await runtime.completeSimple(model, {
         messages: [{ role: "user", content: promptFor(promptText), timestamp: Date.now() }],
-      }, { reasoning: "minimal", maxTokens: 32 });
+      }, agentTitleRequestOptions);
       if (response.stopReason === "error") {
         logAgentTitleSuggestionError(agent, titleModelRef, response.errorMessage ?? "model returned an error", {
           stopReason: response.stopReason,
@@ -140,7 +146,7 @@ function suggestAgentTitle(agent: { workspaceId: string; conversationId?: string
       const responseText = textFromResponse(response);
       const title = normalizeSlug(responseText);
       if (!title) {
-        if (responseText && responseText.toLowerCase() !== "error") {
+        if (responseText.toLowerCase() !== "error") {
           logAgentTitleSuggestionError(agent, titleModelRef, "model returned an unusable Agent session title", { responseText, stopReason: response.stopReason });
         }
         return false;
