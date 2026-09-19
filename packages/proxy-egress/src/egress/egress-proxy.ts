@@ -44,10 +44,11 @@ function workspaceProxyEnv() {
     SSL_CERT_FILE: "/etc/ssl/certs/ca-certificates.crt",
     REQUESTS_CA_BUNDLE: "/etc/ssl/certs/ca-certificates.crt",
     CURL_CA_BUNDLE: "/etc/ssl/certs/ca-certificates.crt",
+    // Yarn uses Node's extra CA trust. Do not set YARN_CA_FILE: modern Yarn
+    // treats it as the unsupported caFile setting and refuses to start.
     NODE_EXTRA_CA_CERTS: workspaceMitmCaPath,
     GIT_SSL_CAINFO: "/etc/ssl/certs/ca-certificates.crt",
     NPM_CONFIG_CAFILE: "/etc/ssl/certs/ca-certificates.crt",
-    YARN_CA_FILE: "/etc/ssl/certs/ca-certificates.crt",
     PIP_CERT: "/etc/ssl/certs/ca-certificates.crt",
   };
 }
