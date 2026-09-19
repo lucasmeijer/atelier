@@ -41,6 +41,8 @@
 .composer-selection-field { flex-shrink: 0; min-width: 0; display: inline-flex; align-items: center; }
 .launch-composer .composer-surface { border: 0; border-radius: 0; box-shadow: none; padding-bottom: 0; }
 .launch-composer .composer-input { min-height: var(--composer-input-max-height); overflow-y: auto; }
+.launch-composer-input-controls { position: absolute; top: var(--composer-control-inset); right: var(--composer-control-inset); display: flex; flex-direction: column; align-items: center; gap: 6px; }
+.launch-composer-input-controls [data-transcription-composer-target="button"] { position: static; }
 @media (max-width: 700px), (pointer: coarse) {
   .composer { --composer-control-size: 62.5px; }
   .composer-surface { --composer-footer-height: 52px; }
