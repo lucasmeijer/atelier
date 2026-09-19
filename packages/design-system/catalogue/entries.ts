@@ -276,7 +276,7 @@ export const entries: CatalogueEntry[] = [
   {
     id: "warning-banner", title: "Warning banner",
     when: "Persistent, non-blocking problems or configuration notices that need user attention.",
-    contract: "Title and message are escaped text. Optional actionsHtml composes server-rendered actions. Supplying dismiss adds an × and destructive confirmation; the feature owns the POST action and opaque state token, persistence, and Turbo replacement. Dismissal does not resolve the condition.",
+    contract: "Title and message are escaped text. Optional actionsHtml composes server-rendered actions. Supplying dismiss adds an × that submits immediately without confirmation; the feature owns the POST action and opaque state token, persistence, and Turbo replacement. Dismissal does not resolve the condition.",
     imports: { "warning-banner": "warningBannerHtml" },
     sources: ["warning-banner/warning-banner-html.ts", "warning-banner/warning-banner.css"],
     examples: [{ title: "Missing configuration", render: () => `<div data-action="submit->catalogue#submit">${warningBannerHtml({ title: "Required secrets need values", message: "Your workspace can run, but features needing these secrets may not work.", dismiss: { action: "/catalogue/warnings/dismiss", state: "example" } })}<output aria-live="polite"></output></div>` }],
