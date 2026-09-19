@@ -79,7 +79,7 @@ export function createWorkspaceDeletion(options: {
     if (!canRequest(id)) throw new AtelierCoreError("workspace_not_ready", `workspace ${id} is not ready for deletion`);
     if (entry.phase.deletion?.status === "blocked" && !input.force) return { deleted: false, blocked: true, details: evidence.get(id) };
     const retryForced = entry.phase.deletion?.status === "failed" && entry.phase.deletion.operation === "deleting" ? entry.phase.deletion.forced : undefined;
-    if (input.force || ((entry.phase.kind === "provisioningPhase" && entry.phase.status === "failed") && !entry.phase.deletion) || retryForced !== undefined) return schedule(id, input.force === true || retryForced === true);
+    if (input.force || (entry.phase.kind === "provisioningPhase" && entry.phase.status === "failed") || retryForced !== undefined) return schedule(id, input.force === true || retryForced === true);
     return check(id);
   }
 

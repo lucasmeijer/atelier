@@ -473,7 +473,7 @@ class AtelierShortcutsController extends Controller<HTMLElement> {
     return this.workspaceRows().map((row) => {
       const workspaceId = row.dataset.workspaceEntryId!;
       const title = row.title || workspaceId;
-      const parked = Boolean(row.closest(".fixed-shell-parked"));
+      const parked = row.hasAttribute("data-workspace-parked");
       const visible = row.classList.contains("active");
       const matchScore = fuzzyScore(`${title} ${workspaceId} ${parked ? "parked" : ""}`);
       return {
@@ -551,7 +551,7 @@ class AtelierShortcutsController extends Controller<HTMLElement> {
   }
 
   private async openAdjacentWorkspace(direction: -1 | 1): Promise<void> {
-    const rows = this.workspaceRows().filter((row) => !row.closest(".fixed-shell-parked"));
+    const rows = this.workspaceRows().filter((row) => !row.hasAttribute("data-workspace-parked"));
     if (rows.length === 0) return;
     const currentWorkspaceId = this.visibleWorkspaceId();
     const currentIndex = rows.findIndex((row) => row.dataset.workspaceEntryId === currentWorkspaceId);

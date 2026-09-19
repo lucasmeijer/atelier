@@ -1,6 +1,6 @@
 import { tabHtml, tabStripHtml } from "@atelier/design-system/tab-strip";
-import { renderAgentPane, type AgentPaneContribution } from "./agent-pane.ts";
-import { barButton, fullscreenViewAttributes, selectorCloseForm, behaviorTurboStream, workspacePreparationInvalidatedTurboStream, type ViewCloseAction } from "./workspace-view-markup.ts";
+import { renderMobileAgentAttention, renderAgentPane, type AgentPaneContribution } from "./agent-pane.ts";
+import { busyAttentionIndicator, barButton, fullscreenViewAttributes, selectorCloseForm, behaviorTurboStream, workspacePreparationInvalidatedTurboStream, type ViewCloseAction } from "./workspace-view-markup.ts";
 import { actionItemHtml } from "@atelier/design-system/action-item";
 import { actionLinkHtml } from "@atelier/design-system/action-link";
 import { buttonHtml, type ButtonVariant } from "@atelier/design-system/button";
@@ -25,6 +25,8 @@ export interface WorkspacePaneEntry {
   id: string;
   title: string;
   active?: boolean;
+  parked: boolean;
+  project?: { id: string; title: string };
   busy?: boolean;
   requestingAttention?: boolean;
   attentionAt?: number;
@@ -38,8 +40,6 @@ export interface WorkspacePaneProject {
   id: string;
   title: string;
   lastWorkspaceCreatedAt?: number;
-  workspaces: readonly WorkspacePaneEntry[];
-  parkedWorkspaces?: readonly WorkspacePaneEntry[];
 }
 
 
@@ -62,19 +62,15 @@ export interface WorkPaneContribution {
 
 export interface WorkspacePanePresentation {
   projects: readonly WorkspacePaneProject[];
-  emptyProjects?: readonly Pick<WorkspacePaneProject, "id" | "title" | "lastWorkspaceCreatedAt">[];
-  projectlessWorkspaces?: readonly WorkspacePaneEntry[];
-  projectlessParkedWorkspaces?: readonly WorkspacePaneEntry[];
+  /** Already ordered by the workspace registry. */
+  workspaces: readonly WorkspacePaneEntry[];
 }
 
 export type WorkspacePaneOnboardingState = "first-project" | "first-workspace" | "workspaces";
 
 export function workspacePaneOnboardingState(presentation: WorkspacePanePresentation): WorkspacePaneOnboardingState {
-  const hasWorkspaces = presentation.projects.some((project) => project.workspaces.length > 0 || (project.parkedWorkspaces?.length ?? 0) > 0)
-    || (presentation.projectlessWorkspaces?.length ?? 0) > 0
-    || (presentation.projectlessParkedWorkspaces?.length ?? 0) > 0;
-  if (hasWorkspaces) return "workspaces";
-  return presentation.projects.length + (presentation.emptyProjects?.length ?? 0) > 0 ? "first-workspace" : "first-project";
+  if (presentation.workspaces.length) return "workspaces";
+  return presentation.projects.length ? "first-workspace" : "first-project";
 }
 
 export interface WorkspacePresentation {
@@ -98,7 +94,7 @@ function workspaceStatusSlot(content: string): string {
 
 function renderWorkspaceRowStatus(workspace: WorkspacePaneEntry): string {
   if (workspace.busy || workspace.requestingAttention) {
-    return workspaceStatusSlot(`<span class="status-indicator${workspace.requestingAttention ? " workspace-attention-status" : ""}" role="img" aria-label="${workspace.busy ? "Busy" : ""}${workspace.busy && workspace.requestingAttention ? "; " : ""}${workspace.requestingAttention ? "Requesting attention" : ""}">${workspace.busy ? '<i class="status-spinner sm" aria-hidden="true"></i>' : ""}${workspace.requestingAttention ? '<i class="status-dot attention" aria-hidden="true"></i>' : ""}</span>`);
+    return workspaceStatusSlot(busyAttentionIndicator(workspace));
   }
   const issues = (workspace.issues ?? []).map((issue) => issue.message);
   if (workspace.outdated) issues.push("Workspace created with an older version of Atelier. Some newer features may require a new workspace.");
@@ -107,23 +103,27 @@ function renderWorkspaceRowStatus(workspace: WorkspacePaneEntry): string {
     : "";
 }
 
-function renderWorkspaceRow(workspace: WorkspacePaneEntry, projectId?: string, options: { unpark?: boolean; projectTitle?: string } = {}): string {
+function renderWorkspaceRow(workspace: WorkspacePaneEntry): string {
+  const { parked, project } = workspace;
+  const id = workspaceRowDomId(workspace.id);
   const attentionAt = workspace.attentionAt === undefined ? "" : ` data-workspace-attention-at="${workspace.attentionAt}"`;
   const lastActivityAt = workspace.lastActivityAt === undefined ? "" : ` data-workspace-last-activity-at="${workspace.lastActivityAt}"`;
-  const project = projectId ? ` data-project-id="${escapeHtml(projectId)}"` : "";
-  const busyViews = workspace.busyAgentKeys?.length ? ` data-workspace-busy-agents="${escapeHtml(JSON.stringify(workspace.busyAgentKeys))}"` : "";
-  const label = options.unpark ? `Unpark and open ${workspace.title}` : workspace.title;
-  return actionItemHtml({
+  const projectAttribute = project ? ` data-project-id="${escapeHtml(project.id)}"` : "";
+  const busyAgents = workspace.busyAgentKeys?.length ? ` data-workspace-busy-agents="${escapeHtml(JSON.stringify(workspace.busyAgentKeys))}"` : "";
+  const label = parked ? `Unpark and open ${workspace.title}` : workspace.title;
+  const tooltip = [project?.title, label].filter(Boolean).join(" · ");
+  const row = actionItemHtml({
     kind: "single",
     label: { kind: "text", text: workspace.title },
-    description: [options.projectTitle, options.unpark ? "Parked" : undefined].filter(Boolean).join(" · ") || undefined,
     trailingHtml: renderWorkspaceRowStatus(workspace),
     element: {
       tag: "button",
-
-      attributesHtml: `id="${workspaceRowDomId(workspace.id)}" type="${options.unpark ? "submit" : "button"}" title="${escapeHtml(label)}" aria-label="${escapeHtml(label)}"${workspace.active ? ' aria-current="page"' : ""} data-workspace-entry-id="${escapeHtml(workspace.id)}"${attentionAt}${lastActivityAt}${busyViews}${project}${options.unpark ? "" : ' data-action="click->workspace-navigation#selectWorkspace"'}`,
+      attributesHtml: `${parked ? 'data-workspace-parked' : `id="${id}"`} type="${parked ? "submit" : "button"}" title="${escapeHtml(tooltip)}" aria-label="${escapeHtml(label)}"${workspace.active ? ' aria-current="page"' : ""} data-workspace-entry-id="${escapeHtml(workspace.id)}"${attentionAt}${lastActivityAt}${busyAgents}${projectAttribute}${parked ? "" : ' data-action="click->workspace-navigation#selectWorkspace"'}`,
     },
   });
+  return parked
+    ? `<form id="${id}" method="post" action="/workspaces/${encodeURIComponent(workspace.id)}/unpark" data-action="submit->workspace-navigation#unparkWorkspace">${row}</form>`
+    : row;
 }
 
 const projectDialogTarget = 'data-turbo-frame="_top" data-turbo-stream="true"';
@@ -149,32 +149,11 @@ function renderProjectHeading(project: Pick<WorkspacePaneProject, "id" | "title"
 function workspaceRowDomId(id: string): string { return domId("workspace_row", id); }
 
 function workspaceRows(presentation: WorkspacePanePresentation): Array<{ id: string; html: string }> {
-  const entries = [
-    ...presentation.projects.flatMap((project) => [
-      ...project.workspaces.map((workspace) => ({ workspace, project, parked: false })),
-      ...(project.parkedWorkspaces ?? []).map((workspace) => ({ workspace, project, parked: true })),
-    ]),
-    ...(presentation.projectlessWorkspaces ?? []).map((workspace) => ({ workspace, project: undefined, parked: false })),
-    ...(presentation.projectlessParkedWorkspaces ?? []).map((workspace) => ({ workspace, project: undefined, parked: true })),
-  ].sort((a, b) => Number(a.parked) - Number(b.parked)
-    || Number(b.workspace.requestingAttention ?? false) - Number(a.workspace.requestingAttention ?? false)
-    || (a.workspace.attentionAt !== undefined && b.workspace.attentionAt !== undefined
-      ? a.workspace.attentionAt - b.workspace.attentionAt : (b.workspace.lastActivityAt ?? 0) - (a.workspace.lastActivityAt ?? 0))
-    || a.workspace.id.localeCompare(b.workspace.id));
-  return entries.map(({ workspace, project, parked }) => {
-    const row = renderWorkspaceRow(workspace, project?.id, { unpark: parked, projectTitle: project?.title });
-    return { id: workspaceRowDomId(workspace.id), html: parked
-      ? `<form id="${workspaceRowDomId(workspace.id)}" method="post" action="/workspaces/${encodeURIComponent(workspace.id)}/unpark" data-action="submit->workspace-navigation#unparkWorkspace">${row.replace(`id="${workspaceRowDomId(workspace.id)}"`, "")}</form>`
-      : row };
-  });
-}
-
-function renderWorkspacePaneRows(presentation: WorkspacePanePresentation): string {
-  return workspaceRows(presentation).map((row) => row.html).join("");
+  return presentation.workspaces.map((workspace) => ({ id: workspaceRowDomId(workspace.id), html: renderWorkspaceRow(workspace) }));
 }
 
 function renderProjectsPane(presentation: WorkspacePanePresentation): string {
-  const paneProjects = [...presentation.projects, ...(presentation.emptyProjects ?? [])].sort((left, right) => (right.lastWorkspaceCreatedAt ?? 0) - (left.lastWorkspaceCreatedAt ?? 0) || left.title.localeCompare(right.title));
+  const paneProjects = [...presentation.projects].sort((left, right) => (right.lastWorkspaceCreatedAt ?? 0) - (left.lastWorkspaceCreatedAt ?? 0) || left.title.localeCompare(right.title));
   const onboardingState = workspacePaneOnboardingState(presentation);
   const needsFirstProject = onboardingState === "first-project";
   const needsFirstWorkspace = onboardingState === "first-workspace";
@@ -214,7 +193,7 @@ export function renderWorkspacePane(presentation: WorkspacePanePresentation, sid
     element: { tag: "aside",  attributesHtml: 'aria-label="Workspaces"' },
     headerHtml: `<strong class="panel__title">${atelierEasterEggHtml()}Atelier</strong>${buttonGroupHtml({ orientation: "horizontal", semantics: "layout", itemsHtml: `${renderPwaReminder()}${moduleActionsHtml}${settings}${barButton("Collapse Workspace pane", "click->workspace-navigation#toggleWorkspacePaneCollapsed", Icons.Panel, "data-collapse-workspace-pane")}` })}`,
     bodyHtml: `<div class="fixed-shell-pane-collections" data-workspace-pane-collections>
-      <div id="${workspacePaneScrollDomId}" class="fixed-shell-workspace-scroll" data-workspace-navigation-target="scroll">${renderWorkspacePaneRows(presentation)}</div>
+      <div id="${workspacePaneScrollDomId}" class="fixed-shell-workspace-scroll" data-workspace-navigation-target="scroll">${workspaceRows(presentation).map((row) => row.html).join("")}</div>
       <section id="global_sidebar_contributions">${sidebarContributionsHtml}</section>
     </div>`,
   })}</div>${renderProjectsPane(presentation)}</div>`;
@@ -386,16 +365,8 @@ export function renderMobileWorkspaceBar(destinationsHtml = "", moreMenuHtml = "
   </nav>`;
 }
 
-function renderMobileAgentAttention(presentation: WorkspacePresentation): string {
-  return presentation.agentConversations.some((agent) => agent.requestingAttention) ? '<i class="status-dot attention" aria-label="Agent requesting attention"></i>' : "";
-}
-
-export function mobileAgentAttentionTurboStream(presentation: WorkspacePresentation): string {
-  return turboStream("update", workViewDomId(presentation.workspace.id, "mobile_agents_attention"), renderMobileAgentAttention(presentation));
-}
-
 function renderWorkspaceBar(presentation: WorkspacePresentation): string {
-  const agentsDestination = renderMobileDestination("Agents", "agents", `${Icons.Agent}<span id="${workViewDomId(presentation.workspace.id, "mobile_agents_attention")}">${renderMobileAgentAttention(presentation)}</span>`);
+  const agentsDestination = renderMobileDestination("Agents", "agents", `${Icons.Agent}${renderMobileAgentAttention(presentation.workspace.id, presentation.agentConversations)}`);
   const workViews = renderMobileWorkViews(presentation.workViews);
   const launchers = (presentation.commands ?? []).filter((command) => command.placement === "work-launcher").map((command) => renderWorkLauncherCommand(command, presentation.workspace.id, "submit->workspace-presentation#closeMore")).join("");
   const closers = presentation.workViews.map(renderMobileWorkViewCloser).join("");

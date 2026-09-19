@@ -1,5 +1,6 @@
 import { mkdir, readFile, rename, writeFile } from "node:fs/promises";
 import { dirname } from "node:path";
+import type { WorkspaceVisibilityReport } from "@atelier/shared";
 import type { WorkspaceInitInstruction } from "@atelier/workspace";
 import { Type, type Static, type TSchema } from "typebox";
 import { Value } from "typebox/value";
@@ -25,15 +26,14 @@ export interface WorkspaceEntry {
 }
 export interface SurfaceState { requestingAttention: boolean; attentionSequence?: number }
 export interface AgentState extends SurfaceState { busy: boolean }
-export interface WorkspaceVisibility { workspaceId?: string; surfaceKeys: string[] }
 export interface WorkspaceRegistryCallbacks {
   rowChanged?(entry: WorkspaceEntry, context: { viewKey?: string; phaseChanged?: boolean; issuesChanged?: boolean }): void;
   parkedChanged?(entry: WorkspaceEntry): void;
-  listChanged?(entries: WorkspaceEntry[]): void;
+  listChanged?(): void;
   removed?(id: string): void;
 }
 const workspaceTimestampsSchema = Type.Record(Type.String(), Type.Number());
-const occurrenceSchema = Type.Object({ requestedAt: Type.Number(), sequence: Type.Integer({ minimum: 1 }) });
+const occurrenceSchema = Type.Object({ sequence: Type.Integer({ minimum: 1 }) });
 const workspaceAttentionSchema = Type.Object({
   nextSequence: Type.Integer({ minimum: 1 }),
   workspaces: Type.Record(Type.String(), Type.Number()),
@@ -125,7 +125,7 @@ export interface WorkspaceRegistry {
   clearSurfaceAttention(id: string, surfaceKey: string): void;
   surfaceState(id: string, surfaceKey: string): SurfaceState;
   agentState(id: string, agentKey: string): AgentState;
-  setVisibility(connectionId: string, visibility: WorkspaceVisibility): void;
+  setVisibility(connectionId: string, visibility: WorkspaceVisibilityReport): void;
   disconnect(connectionId: string): void;
   oldestAttentionWorkspace(): WorkspaceEntry | undefined;
   busyAgents(id: string): string[];
@@ -135,7 +135,7 @@ export function createWorkspaceRegistry(options: WorkspaceRegistryOptions = {}):
   const now = options.now ?? Date.now;
   const entries = new Map<string, WorkspaceEntry>();
   const busyAgents = new Map<string, Set<string>>();
-  const visibility = new Map<string, WorkspaceVisibility>();
+  const visibility = new Map<string, WorkspaceVisibilityReport>();
   let attention: WorkspaceAttentionSnapshot = { nextSequence: 1, workspaces: {}, surfaces: {} };
   let deletions: Record<string, WorkspaceDeletionState> = {};
   let activity: Record<string, number> = {};
@@ -199,7 +199,7 @@ export function createWorkspaceRegistry(options: WorkspaceRegistryOptions = {}):
       entries.clear();
       for (const workspace of workspaces) {
         const persisted = deletions[workspace.id];
-        const deletion = persisted?.status === "blocked" ? { status: "checking" as const } : persisted;
+        const deletion = persisted?.status === "blocked" ? { status: "checking" as const, provisioningError: persisted.provisioningError } : persisted;
         if (deletion) deletions[workspace.id] = deletion;
         const phase: WorkspacePhase = deletion
           ? { kind: "deletingPhase", deletion, busy: deletion.status === "checking" || deletion.status === "deleting" }
@@ -210,7 +210,7 @@ export function createWorkspaceRegistry(options: WorkspaceRegistryOptions = {}):
           parked: workspace.parked ?? false, imageOutdated: workspace.imageOutdated ?? false });
       }
       persistActivity(); persistAttention(); persistDeletions();
-      callbacks.listChanged?.(sorted());
+      callbacks.listChanged?.();
     },
     list: sorted,
     get(id) { return entries.get(id); },
@@ -218,7 +218,7 @@ export function createWorkspaceRegistry(options: WorkspaceRegistryOptions = {}):
       if (entries.has(id)) throw new Error(`workspace already in registry: ${id}`);
       const entry: WorkspaceEntry = { id, title, init, phase: { kind: "provisioningPhase", status: "working", busy: true }, requestingAttention: false, lastActivityAt: now(), parked: false, imageOutdated: false };
       entries.set(id, entry); activity[id] = entry.lastActivityAt; persistActivity();
-      callbacks.listChanged?.(sorted());
+      callbacks.listChanged?.();
       return entry;
     },
     startProvisioning(id) {
@@ -277,7 +277,7 @@ export function createWorkspaceRegistry(options: WorkspaceRegistryOptions = {}):
     remove(id) {
       if (!entries.delete(id)) return;
       busyAgents.delete(id); delete activity[id]; delete attention.workspaces[id]; delete attention.surfaces[id]; delete deletions[id];
-      persistActivity(); persistAttention(); persistDeletions(); callbacks.removed?.(id); callbacks.listChanged?.(sorted());
+      persistActivity(); persistAttention(); persistDeletions(); callbacks.removed?.(id); callbacks.listChanged?.();
     },
     setAgentBusy(id, key, busy) {
       if (!key.startsWith("agent:")) throw new Error(`Not an agent: ${key}`);
@@ -294,7 +294,7 @@ export function createWorkspaceRegistry(options: WorkspaceRegistryOptions = {}):
       const entry = requireEntry(id);
       if (visible(id, key) || attention.surfaces[id]?.[key]) return;
       unpark(entry);
-      (attention.surfaces[id] ??= {})[key] = { requestedAt: now(), sequence: attention.nextSequence++ };
+      (attention.surfaces[id] ??= {})[key] = { sequence: attention.nextSequence++ };
       persistAttention();
       if (entry.phase.kind === "runningPhase") requestAttention(id);
       callbacks.rowChanged?.(entry, { viewKey: key });

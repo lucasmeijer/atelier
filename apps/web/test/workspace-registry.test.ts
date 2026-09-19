@@ -124,7 +124,7 @@ describe("independent attention and visibility", () => {
     registry.setParked("a", true);
     const rows: string[] = [];
     const lists: unknown[] = [];
-    registry.setCallbacks({ rowChanged: (entry) => rows.push(entry.id), listChanged: (entries) => lists.push(entries) });
+    registry.setCallbacks({ rowChanged: (entry) => rows.push(entry.id), listChanged: () => lists.push("changed") });
     registry.requestSurfaceAttention("a", "browser:first");
     expect(registry.get("a")!.parked).toBe(false);
     registry.setTitle("a", "New title");
@@ -151,7 +151,7 @@ test("attention file writes capture nested state at invocation and preserve writ
   const directory = await mkdtemp(join(tmpdir(), "atelier-attention-"));
   try {
     const store = createFileWorkspaceAttentionStore(join(directory, "attention.json"));
-    const state: WorkspaceAttentionSnapshot = { nextSequence: 2, workspaces: { a: 100 }, surfaces: { a: { "agent:one": { requestedAt: 100, sequence: 1 } } } };
+    const state: WorkspaceAttentionSnapshot = { nextSequence: 2, workspaces: { a: 100 }, surfaces: { a: { "agent:one": { sequence: 1 } } } };
     const first = store.save(state);
     state.surfaces.a!["agent:one"]!.sequence = 2;
     await first;
@@ -200,4 +200,17 @@ test("deletion persistence retains the interrupted provisioning failure", async 
     expect(registry.get("broken")!.phase).toEqual({ kind: "provisioningPhase", status: "failed", busy: false, error: "Container unavailable" });
     await store.save({});
   } finally { await rm(directory, { recursive: true, force: true }); }
+});
+
+
+test("rechecking a blocked deletion after restart retains its interrupted provisioning phase", async () => {
+  const registry = createWorkspaceRegistry({ deletionStore: {
+    async load() { return { broken: { status: "blocked", fingerprint: "previous", provisioningError: "Preparation interrupted" } }; },
+    async save() {},
+  } });
+  await registry.seed([{ id: "broken", title: null }]);
+  expect(registry.get("broken")!.phase).toMatchObject({ kind: "deletingPhase", deletion: { status: "checking" } });
+  registry.setDeletion("broken", { status: "blocked", fingerprint: "current" });
+  registry.cancelDeletion("broken");
+  expect(registry.get("broken")!.phase).toEqual({ kind: "provisioningPhase", status: "failed", busy: false, error: "Preparation interrupted" });
 });

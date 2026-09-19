@@ -215,11 +215,9 @@ turbo-frame { display: contents; }
 .fixed-workspace-presentation:not(.is-work-pane-open) [data-collapse-work-pane],
 .fixed-shell-app:not(.is-workspace-pane-collapsed) [data-show-workspace-pane],
 .fixed-shell-app.is-workspace-pane-collapsed [data-collapse-workspace-pane] { display: none; }
-.fixed-shell-workspace-scroll { flex: 1; min-height: 0; overflow-y: auto; padding: 8px; }
-.fixed-shell-project { margin-bottom: 8px; }
+.fixed-shell-workspace-scroll { flex: 1; min-height: 0; overflow-y: auto; padding: 8px; display: flex; flex-direction: column; gap: 1px; }
+.fixed-shell-workspace-scroll > * { flex: 0 0 auto; }
 [data-empty-workspace-onboarding-destination] { color: var(--accent); background: color-mix(in srgb, var(--accent) 26%, transparent); box-shadow: inset 0 0 0 1px color-mix(in srgb, var(--accent) 45%, transparent), 0 0 0 3px color-mix(in srgb, var(--accent) 12%, transparent); }
-.fixed-shell-project.is-collapsed .fixed-shell-project-workspaces { display: none; }
-.fixed-shell-parked .fixed-shell-project-workspaces > form { min-width: 0; }
 /* Independent workspace and project panes retain their headers while scrolling. */
 .fixed-shell-pane-collections { height: 100%; min-height: 0; display: flex; flex-direction: column; }
 .fixed-shell-pane-collections > #global_sidebar_contributions { flex: 0 0 auto; }
@@ -256,7 +254,7 @@ turbo-frame { display: contents; }
 }
 .fixed-shell-workspace-status { position: relative; display: inline-grid; width: 16px; height: 16px; place-items: center; overflow: visible; }
 .fixed-shell-workspace-warning { color: var(--warning); font-style: normal; line-height: 1; }
-[data-workspace-entry-id]:not([data-workspace-preload-state="preloaded"]) .workspace-attention-status > .status-dot { opacity: .35; }
+[data-workspace-entry-id]:not([data-workspace-preload-state="preloaded"]) .status-indicator > .status-dot { opacity: .35; }
 .fixed-shell-main { min-width: 0; min-height: 0; flex: 1; display: flex; gap: var(--fixed-shell-gap); }
 .workspace-deletion-presentation { display: grid; place-items: center; overflow: auto; padding: 32px; background: var(--fixed-shell-bg); }
 .workspace-deletion-state { --text-bright: var(--text); --weight-semibold: 400; --weight-medium: 400; font-weight: 400; color: var(--text); width: min(960px, 100%); margin: auto; }

@@ -33,15 +33,11 @@ export interface WorkspacePresentationStoreOptions {
   workViewContributions: readonly WorkspaceWorkViewContribution[];
 }
 
-interface StoredWorkView {
-  reference: WorkspaceWorkViewReference;
-}
-
 interface StoredPresentation {
   workViewsInitialized: boolean;
   dismissedWarnings: Record<string, string>;
   version: 1;
-  workViews: StoredWorkView[];
+  workViews: WorkspaceWorkViewState[];
 }
 
 const presentationFilename = "presentation.json";
@@ -101,9 +97,7 @@ export function createWorkspacePresentationStore(options: WorkspacePresentationS
     }
     const workViews = storedWorkViews.map((entry, index) => {
       if (!isJsonObject(entry)) throw presentationError(workspaceId, `Work view ${index} must be an object`);
-      const reference = parseReference(workspaceId, entry.reference, true);
-      const workView: StoredWorkView = { reference };
-      return workView;
+      return { reference: parseReference(workspaceId, entry.reference, true) };
     });
     const identities = workViews.map(({ reference }) => identity(reference));
     if (new Set(identities).size !== identities.length) throw presentationError(workspaceId, "Work view references must be unique");
@@ -167,7 +161,7 @@ export function createWorkspacePresentationStore(options: WorkspacePresentationS
     async listWorkViews(workspaceId) {
       return await serialized(workspaceId, async () => {
         const state = await requiredState(workspaceId);
-        return state.workViews.map((view) => ({ reference: view.reference }));
+        return state.workViews;
       });
     },
 

@@ -4,7 +4,6 @@ import { cableRequestHeaders } from "./workspace-cable.ts";
 import { markActiveWorkspaceRow } from "./workspace-presentation.ts";
 import { registerWorkspaceControllers, residencyController } from "./workspace-controller-registry.ts";
 
-
 class EmptyWorkspaceOnboardingController extends Controller<HTMLElement> {
   static targets = ["origin", "svg", "path"];
   static values = { destination: String };
@@ -156,7 +155,7 @@ class WorkspaceNavigationController extends Controller<HTMLElement> {
     event.preventDefault();
     // SAFETY: This action is attached only to server-rendered unpark forms.
     const form = event.currentTarget as HTMLFormElement;
-    const workspaceId = form.dataset.workspaceEntryId!;
+    const workspaceId = form.querySelector<HTMLElement>("[data-workspace-entry-id]")!.dataset.workspaceEntryId!;
     await this.submitParkedState(form);
     await this.selectWorkspaceById(workspaceId);
   }

@@ -46,7 +46,6 @@ class WorkspaceResidencyController extends Controller<HTMLElement> {
   private readonly preparationOwnedResidents = new WeakSet<HTMLElement>();
   private backgroundPump?: Promise<void>;
   private backgroundWakeRequested = false;
-  private backgroundPreparationWorkspaceId?: string;
   private residencyConnected = false;
 
   connect(): void {
@@ -91,10 +90,6 @@ class WorkspaceResidencyController extends Controller<HTMLElement> {
   async selectWorkspace(workspaceId: string, href: string, historyMode: "push" | "none" = "push"): Promise<void> {
     const seq = ++this.selectionSeq;
     this.intendedWorkspaceId = workspaceId;
-    if (this.backgroundPreparationWorkspaceId === workspaceId) {
-      this.setWorkspacePreloading(workspaceId, false);
-      this.backgroundPreparationWorkspaceId = undefined;
-    }
     if (historyMode === "push" && `${location.pathname}${location.search}` !== new URL(href, location.href).pathname + new URL(href, location.href).search) history.pushState({}, "", href);
     workspaceNavigationController()?.setActiveWorkspace(workspaceId);
 
@@ -170,7 +165,7 @@ class WorkspaceResidencyController extends Controller<HTMLElement> {
     return this.attentionWorkspaces()[0]?.workspaceId;
   }
 
-  private syncNextAttentionButton(): void {
+  private syncWorkspaceRows(): void {
     document.querySelectorAll<HTMLElement>("[data-workspace-entry-id]").forEach((entry) => {
       const id = entry.dataset.workspaceEntryId!;
       entry.dataset.workspacePreloadState = this.prepared.has(id) ? "preloaded" : this.operations.has(id) ? "preloading" : "none";
@@ -233,8 +228,10 @@ class WorkspaceResidencyController extends Controller<HTMLElement> {
     } as WorkspacePreparationOperation;
     operation.promise = this.runPreparation(operation).finally(() => {
       if (this.operations.get(workspaceId) === operation) this.operations.delete(workspaceId);
+      this.syncWorkspaceRows();
     });
     this.operations.set(workspaceId, operation);
+    this.syncWorkspaceRows();
     const result = await operation.promise;
     const changedDuringPreparation = operation.generation !== (this.generations.get(workspaceId) ?? 0);
     return !result.prepared && operation.priority !== "obsolete" && changedDuringPreparation
@@ -317,7 +314,6 @@ class WorkspaceResidencyController extends Controller<HTMLElement> {
 
   private reconcileResidents(): void {
     this.evictIfNeeded();
-    this.syncNextAttentionButton();
     this.backgroundWakeRequested = true;
     this.startBackgroundPump();
   }
@@ -346,25 +342,14 @@ class WorkspaceResidencyController extends Controller<HTMLElement> {
       const candidate = this.preparationCandidates().find(({ workspaceId }) => workspaceId !== this.visibleWorkspaceId() && !this.prepared.has(workspaceId) && !attempted.has(workspaceId));
       if (!candidate || !this.makeCapacityFor(candidate.workspaceId, "background")) return;
       attempted.add(candidate.workspaceId);
-      this.backgroundPreparationWorkspaceId = candidate.workspaceId;
-      this.setWorkspacePreloading(candidate.workspaceId, true);
       try {
         const result = await this.prepareWorkspace(candidate.workspaceId, "background");
         if (!result.prepared && !result.resident.classList.contains("visible")) result.resident.remove();
       } catch (error) {
         if (!(error instanceof DOMException && error.name === "AbortError")) console.error(`Could not prepare Workspace ${candidate.workspaceId}`, error);
-      } finally {
-        this.setWorkspacePreloading(candidate.workspaceId, false);
-        if (this.backgroundPreparationWorkspaceId === candidate.workspaceId) this.backgroundPreparationWorkspaceId = undefined;
       }
       this.evictIfNeeded();
     }
-  }
-
-  private setWorkspacePreloading(workspaceId: string, preloading: boolean): void {
-    const entry = document.querySelector<HTMLElement>(`[data-workspace-entry-id="${CSS.escape(workspaceId)}"]`);
-    if (!entry) return;
-    entry.dataset.workspacePreloadState = this.prepared.has(workspaceId) ? "preloaded" : preloading ? "preloading" : "none";
   }
 
   private attentionWorkspaces(): AttentionWorkspace[] {
@@ -376,7 +361,7 @@ class WorkspaceResidencyController extends Controller<HTMLElement> {
 
   private preparationCandidates(): Array<{ workspaceId: string }> {
     const candidates = new Map<string, WorkspacePreloadCandidate>([...document.querySelectorAll<HTMLElement>("[data-workspace-entry-id]")]
-      .filter((entry) => !entry.closest(".fixed-shell-parked"))
+      .filter((entry) => !entry.hasAttribute("data-workspace-parked"))
       .map((entry) => [entry.dataset.workspaceEntryId!, {
         workspaceId: entry.dataset.workspaceEntryId!,
         lastActivityAt: Number(entry.dataset.workspaceLastActivityAt ?? 0),
@@ -414,7 +399,7 @@ class WorkspaceResidencyController extends Controller<HTMLElement> {
         preparing: operation ? this.preparationIsCurrent(operation) : false,
         attentionAt: attentionAt.get(workspaceId),
         lastActivatedAt: Math.max(Number(resident.dataset.lastActivatedAt ?? 0), this.workspaceLastActivityAt(workspaceId)),
-        protected: operation?.priority === "foreground",
+        protected: operation?.priority === "foreground" || (workspaceId === extraWorkspaceId && protectExtra),
       };
     });
     if (extraWorkspaceId && !candidates.some((candidate) => candidate.workspaceId === extraWorkspaceId)) {
@@ -435,7 +420,7 @@ class WorkspaceResidencyController extends Controller<HTMLElement> {
   }
 
   private evictIfNeeded(): void {
-    this.syncNextAttentionButton();
+    this.syncWorkspaceRows();
     const retained = retainedWorkspaceIds(this.retentionCandidates(), this.maxResidentValue);
     for (const resident of this.residentTargets) {
       if (!retained.has(resident.dataset.workspaceId!)) this.evictResident(resident);
@@ -447,7 +432,7 @@ class WorkspaceResidencyController extends Controller<HTMLElement> {
     if (resident.classList.contains("visible")) throw new Error(`Cannot evict visible Workspace ${workspaceId}`);
     this.prepared.delete(workspaceId);
     resident.remove();
-    this.syncNextAttentionButton();
+    this.syncWorkspaceRows();
   }
 
   private hideResidents(): void {
@@ -560,7 +545,6 @@ class WorkspaceResidencyController extends Controller<HTMLElement> {
   };
 
   private readonly workspacePaneChanged = (): void => {
-    if (this.backgroundPreparationWorkspaceId) this.setWorkspacePreloading(this.backgroundPreparationWorkspaceId, true);
     this.reconcileResidents();
     this.reportVisibility();
   };

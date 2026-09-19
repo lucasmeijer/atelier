@@ -251,7 +251,6 @@ export function atelierOpenApi(commands: WorkspaceModuleCommandHandler[], contri
           additionalProperties: false,
         },
         WorkViewReference: workViewReferenceSchema,
-        WorkView: { type: "object", required: ["reference"], properties: { reference: { $ref: "#/components/schemas/WorkViewReference" } }, additionalProperties: false },
         PresentedWorkView: { type: "object", required: ["key", "reference", "requestingAttention"], properties: { key: { type: "string" }, reference: { $ref: "#/components/schemas/WorkViewReference" }, requestingAttention: { type: "boolean" }, attentionSequence: { type: "integer" } }, additionalProperties: false },
         WorkViewsEnvelope: { type: "object", required: ["workViews"], properties: { workViews: { type: "array", items: { $ref: "#/components/schemas/PresentedWorkView" } } } },
         CommandResult: { type: "object", required: ["command", "workViews"], properties: {

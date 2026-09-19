@@ -10,6 +10,7 @@ import {
 } from "@atelier/agent/server";
 import {
   AtelierCoreError,
+  createKeyedOperationQueue,
   invalidArguments,
   isJsonObject,
   readJsonObject,
@@ -58,8 +59,8 @@ import { openWorkspaceFile } from "./file-navigation.ts";
 import { parseCloseWorkViewRequest, parseReorderWorkViewRequest } from "./work-view-api.ts";
 import { Type } from "typebox";
 import { Value } from "typebox/value";
-import { mobileAgentAttentionTurboStream, openWorkViewTurboStream, presentWorkViewTurboStream, removeWorkspaceResidentTurboStream, renderAtelierBar, renderMobileWorkspaceBar, renderWorkViewBodyFrame, renderWorkspaceDeletionPresentation, renderWorkspaceParkConfirmation, dismissWorkspaceParkConfirmationTurboStream, renderWorkspacePane, renderWorkspacePresentation, workspacePaneCollectionsTurboStream, workspacePaneOnboardingState, workspacePresentationDomId, workViewsTurboStream, type WorkPaneContribution, type WorkspacePaneEntry, type WorkspacePanePresentation, type WorkspacePresentation as FixedWorkspacePresentation } from "./workspace-presentation.ts";
-import { agentStateTurboStream, agentProviderChoicesTurboStream, agentTabsTurboStream, renderAgentBodyFrame, selectAgentTurboStream } from "./agent-pane.ts";
+import { openWorkViewTurboStream, presentWorkViewTurboStream, removeWorkspaceResidentTurboStream, renderAtelierBar, renderMobileWorkspaceBar, renderWorkViewBodyFrame, renderWorkspaceDeletionPresentation, renderWorkspaceParkConfirmation, dismissWorkspaceParkConfirmationTurboStream, renderWorkspacePane, renderWorkspacePresentation, workspacePaneCollectionsTurboStream, workspacePaneOnboardingState, workspacePresentationDomId, workViewsTurboStream, type WorkPaneContribution, type WorkspacePaneProject, type WorkspacePanePresentation, type WorkspacePresentation as FixedWorkspacePresentation } from "./workspace-presentation.ts";
+import { mobileAgentAttentionTurboStream, agentStateTurboStream, agentProviderChoicesTurboStream, agentTabsTurboStream, renderAgentBodyFrame, selectAgentTurboStream } from "./agent-pane.ts";
 import { workspacePreparationInvalidatedTurboStream } from "./workspace-view-markup.ts";
 import type { CableBroadcastOptions } from "./cable.ts";
 import { jsonResponse, problemJsonResponse, httpErrorStatus, response, turboReplaceStream, turboUpdateStream, wantsTurboStream } from "./http-responses.ts";
@@ -119,28 +120,14 @@ export function createWebApp(deps: WebAppDeps): WebApp {
     inspect: (id) => deletionReview.inspect(id),
     destroy: deps.destroyWorkspace,
     cancelPreparation: (id) => provisioning.cancel(id),
-    changed(id, state) {
-      if (state.status === "blocked") return broadcastBlockedDeletion(id, state);
-      broadcastDeletionPresentation(id);
-    },
+    changed: broadcastDeletionPresentation,
   });
   const agentProviders = registeredAgentProviders();
   const agentTabs = createAgentPaneHost(agentProviders);
   const presentationStore = createWorkspacePresentationStore({
     workViewContributions: workViewAdapters,
   });
-  const presentationMutationQueues = new Map<string, Promise<void>>();
-
-  async function serializePresentationMutation<Result>(workspaceId: string, operation: () => Promise<Result>): Promise<Result> {
-    const previous = presentationMutationQueues.get(workspaceId) ?? Promise.resolve();
-    const result = previous.then(operation);
-    const settled = result.then(() => undefined, () => undefined);
-    presentationMutationQueues.set(workspaceId, settled);
-    void settled.then(() => {
-      if (presentationMutationQueues.get(workspaceId) === settled) presentationMutationQueues.delete(workspaceId);
-    });
-    return await result;
-  }
+  const serializePresentationMutation = createKeyedOperationQueue();
 
   function broadcastShell(html: string, options?: CableBroadcastOptions): void {
     deps.cable?.broadcast(CableTopics.shell(), html, options);
@@ -156,7 +143,7 @@ export function createWebApp(deps: WebAppDeps): WebApp {
   }
 
   deps.events?.on("agent_provider_default_changed", async () => {
-    for (const entry of registry.list().filter((entry) => entry.phase.kind === "runningPhase" && !entry.phase.deletion)) {
+    for (const entry of registry.list().filter((entry) => entry.phase.kind === "runningPhase")) {
       broadcastShell(agentProviderChoicesTurboStream(await fixedWorkspacePresentation(entry.id)));
     }
   });
@@ -255,7 +242,7 @@ export function createWebApp(deps: WebAppDeps): WebApp {
       if (context.viewKey) {
         if (context.viewKey.startsWith("agent:")) {
           broadcastShell(agentStateTurboStream(entry.id, context.viewKey.slice(6), registry.agentState(entry.id, context.viewKey)));
-          void fixedWorkspacePresentation(entry.id).then((presentation) => broadcastShell(mobileAgentAttentionTurboStream(presentation)));
+          void agentPaneContributions(entry.id).then((agents) => broadcastShell(mobileAgentAttentionTurboStream(entry.id, agents)));
         } else {
           void currentWorkPanePresentations(entry.id).then((views) => broadcastShell(workViewsTurboStream(entry.id, views)));
         }
@@ -349,49 +336,31 @@ export function createWebApp(deps: WebAppDeps): WebApp {
 
   async function workspacePaneCollections(activeWorkspaceId: string): Promise<WorkspacePanePresentation> {
     const { projects: savedProjects } = await listProjects();
-    const projectsById = new Map(savedProjects.map((project) => [project.id, project]));
-    const grouped = new Map<string, WorkspaceEntry[]>();
-    const parkedByProject = new Map<string, WorkspaceEntry[]>();
-    const projectless: WorkspaceEntry[] = [];
-    const projectlessParked: WorkspaceEntry[] = [];
-    for (const entry of registry.list()) {
-      if (!isGitProjectInit(entry.init)) {
-        (entry.parked ? projectlessParked : projectless).push(entry);
-        continue;
+    const projectsById = new Map<string, WorkspacePaneProject>(savedProjects.map((project) => [project.id, {
+      id: project.id, title: project.name, lastWorkspaceCreatedAt: project.lastWorkspaceCreatedAt,
+    }]));
+    const workspaces = registry.list().map((entry) => {
+      let project: WorkspacePaneProject | undefined;
+      if (isGitProjectInit(entry.init)) {
+        project = projectsById.get(entry.init.projectId) ?? { id: entry.init.projectId, title: entry.init.name };
+        projectsById.set(project.id, project);
       }
-      const destination = entry.parked ? parkedByProject : grouped;
-      destination.set(entry.init.projectId, [...(destination.get(entry.init.projectId) ?? []), entry]);
-    }
-    const paneEntry = (entry: WorkspaceEntry): WorkspacePaneEntry => {
-      const pane: WorkspacePaneEntry = {
+      return {
         id: entry.id,
         title: workspaceTitle(entry),
         active: entry.id === activeWorkspaceId,
+        parked: entry.parked,
+        project,
         busy: entry.phase.busy,
         requestingAttention: entry.requestingAttention,
+        attentionAt: entry.attentionAt,
         lastActivityAt: entry.lastActivityAt,
         busyAgentKeys: registry.busyAgents(entry.id),
         outdated: entry.imageOutdated,
         issues: entry.issues,
       };
-      const attentionAt = entry.attentionAt;
-      if (attentionAt !== undefined) pane.attentionAt = attentionAt;
-      return pane;
-    };
-    const workspaceProjectIds = new Set([...grouped.keys(), ...parkedByProject.keys()]);
-    return {
-      projects: [...workspaceProjectIds].map((id) => {
-        const entries = grouped.get(id) ?? [];
-        const parkedEntries = parkedByProject.get(id) ?? [];
-        const init = (entries[0] ?? parkedEntries[0])!.init;
-        if (!isGitProjectInit(init)) throw new Error(`Project ${id} contains a projectless Workspace`);
-        const project = projectsById.get(id);
-        return { id, title: project?.name ?? init.name, lastWorkspaceCreatedAt: project?.lastWorkspaceCreatedAt, workspaces: entries.map(paneEntry), parkedWorkspaces: parkedEntries.map(paneEntry) };
-      }),
-      emptyProjects: savedProjects.filter((project) => !workspaceProjectIds.has(project.id)).map((project) => ({ id: project.id, title: project.name, lastWorkspaceCreatedAt: project.lastWorkspaceCreatedAt })),
-      projectlessWorkspaces: projectless.map(paneEntry),
-      projectlessParkedWorkspaces: projectlessParked.map(paneEntry),
-    };
+    });
+    return { projects: [...projectsById.values()], workspaces };
   }
 
   function workViewPresentations(workspaceId: string, currentWorkViews: readonly WorkspaceWorkViewPresentation[], storedWorkViews: readonly WorkspaceWorkViewState[]): WorkPaneContribution[] {
@@ -428,6 +397,15 @@ export function createWebApp(deps: WebAppDeps): WebApp {
     return { warnings: workspaceWarnings(entry, configuration), dismissedWarnings };
   }
 
+  async function agentPaneContributions(workspaceId: string) {
+    return (await agentTabs.list({ workspaceId })).map((conversation) => ({
+      ...conversation,
+      ...registry.agentState(workspaceId, `agent:${conversation.id}`),
+      bodyUrl: `/workspaces/${encodeURIComponent(workspaceId)}/agents/${encodeURIComponent(conversation.id)}/body`,
+      close: agentClose(workspaceId, conversation.id, conversation.title),
+    }));
+  }
+
   async function workspacePresentationBundle(workspaceId: string): Promise<{
     presentation: FixedWorkspacePresentation;
     commandContributions: WorkspaceCommandContribution[];
@@ -436,7 +414,7 @@ export function createWebApp(deps: WebAppDeps): WebApp {
   }> {
     const entry = requireWorkspace(workspaceId);
     const attachments = await attachWorkspaceModules(workspaceId);
-    const agentConversations = await agentTabs.list({ workspaceId });
+    const agentConversations = await agentPaneContributions(workspaceId);
     const currentWorkViews = attachments.flatMap((attachment) => attachment.workViews ?? []);
     await presentationStore.initialize(workspaceId, currentWorkViews.filter((view) => view.initiallyOpen !== false).map((view) => view.reference));
     const storedWorkViews = await presentationStore.listWorkViews(workspaceId);
@@ -451,12 +429,7 @@ export function createWebApp(deps: WebAppDeps): WebApp {
     const presentation: FixedWorkspacePresentation = {
       workspace: { id: entry.id, title: workspaceTitle(entry) },
       agentProviders: await orderedAgentProviders(),
-      agentConversations: agentConversations.map((conversation) => ({
-        ...conversation,
-        ...registry.agentState(workspaceId, `agent:${conversation.id}`),
-        bodyUrl: `/workspaces/${encodeURIComponent(workspaceId)}/agents/${encodeURIComponent(conversation.id)}/body`,
-        close: agentClose(workspaceId, conversation.id, conversation.title),
-      })),
+      agentConversations,
       workViews: workViewPresentations(workspaceId, currentWorkViews, storedWorkViews),
       commands,
       warningsHtml: workspaceWarningsHtml(entry.id, warningState),
@@ -633,7 +606,7 @@ export function createWebApp(deps: WebAppDeps): WebApp {
       url: `/workspaces/${encodeURIComponent(entry.id)}`,
     };
     if (entry.issues?.length) workspace.issues = entry.issues;
-    if (entry.phase.deletion || entry.parked || entry.phase.kind !== "runningPhase") return jsonResponse({ workspace });
+    if (entry.parked || entry.phase.kind !== "runningPhase") return jsonResponse({ workspace });
 
     const { presentation, commandContributions, storedWorkViews, warningState } = await workspacePresentationBundle(id);
     const handlers = new Map(workspaceModuleCommands().map((handler) => [handler.id, handler]));
@@ -702,7 +675,6 @@ export function createWebApp(deps: WebAppDeps): WebApp {
         const message = error instanceof Error ? error.message : String(error);
         logError(`could not provision workspace ${id}: ${message}`);
         registry.setProvisioningState(id, "failed", message);
-        registry.requestAttention(id);
       }
     })();
   }
@@ -849,23 +821,16 @@ export function createWebApp(deps: WebAppDeps): WebApp {
   function broadcastDeletionPresentation(id: string): void {
     const entry = requireWorkspace(id);
     if (!entry.phase.deletion) throw new Error(`workspace ${id} has no deletion state`);
-    const resident = `<div class="workspace-detail-resident" data-workspace-residency-target="resident" data-workspace-id="${escapeHtml(id)}">${deletionPresentation(entry, entry.phase.deletion)}</div>`;
+    const resident = `<div id="${workspaceResidentId(id)}" class="workspace-detail-resident" data-workspace-residency-target="resident" data-workspace-id="${escapeHtml(id)}">${deletionPresentation(entry, entry.phase.deletion)}</div>`;
     const unselect = entry.phase.deletion.status === "deleting"
       ? `<turbo-stream action="unselect-workspace" data-workspace-id="${escapeHtml(id)}"></turbo-stream>`
       : "";
-    broadcastShell(`${unselect}${deletionPresentationStream(entry, entry.phase.deletion)}${turboReplaceStream(workspaceResidentId(id), resident)}`);
+    broadcastShell(`${unselect}${turboReplaceStream(workspaceResidentId(id), resident)}${workspacePreparationInvalidatedTurboStream(id)}`);
   }
 
   function currentDeletionStream(id: string): string {
     const entry = registry.get(id);
     return entry?.phase.deletion ? deletionPresentationStream(entry, entry.phase.deletion) : removeWorkspaceResidentTurboStream(id);
-  }
-
-  async function broadcastBlockedDeletion(id: string, state: WorkspaceDeletionState): Promise<void> {
-    const pane = await refreshWorkspacePaneCollections();
-    const entry = requireWorkspace(id);
-    const resident = `<div class="workspace-detail-resident" data-workspace-residency-target="resident" data-workspace-id="${escapeHtml(id)}">${deletionPresentation(entry, state)}</div>`;
-    broadcastShell(`${pane}${deletionPresentationStream(entry, state)}${turboReplaceStream(workspaceResidentId(id), resident)}`);
   }
 
   async function forceDeleteAllWorkspacesFromSettings(): Promise<{ deleted: number; errors: string[] }> {
@@ -900,15 +865,10 @@ export function createWebApp(deps: WebAppDeps): WebApp {
     return turboStreamResponse(currentDeletionStream(id));
   }
 
-  async function cancelWorkspaceDeletionEndpoint(id: string, request: Request): Promise<Response> {
+  function cancelWorkspaceDeletionEndpoint(id: string, request: Request): Response {
     if (!deletion.cancel(id)) return turboStreamResponse("", { status: 409 });
-    if (requireWorkspace(id).phase.kind === "provisioningPhase") {
-      return requestAcceptsJson(request) ? jsonResponse({ cancelled: true }) : turboStreamResponse("");
-    }
-    const stream = `${turboReplaceStream(workspacePresentationDomId(id), renderWorkspacePresentation(await fixedWorkspacePresentation(id)))}${workspacePreparationInvalidatedTurboStream(id)}`;
-    broadcastShell(stream);
-    if (requestAcceptsJson(request)) return jsonResponse({ cancelled: true });
-    return turboStreamResponse(stream);
+    // The registry phase change restores the resident through the same path as startup.
+    return requestAcceptsJson(request) ? jsonResponse({ cancelled: true }) : turboStreamResponse("");
   }
 
   async function confirmWorkspaceDeletionEndpoint(id: string, request: Request): Promise<Response> {
