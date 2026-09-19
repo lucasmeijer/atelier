@@ -245,8 +245,11 @@ export async function addProject(spec: string, file = projectsFile()): Promise<A
     if (store.projects.some((project) => project.id === id || (project.gitUrl === gitUrl && project.branch === branch))) {
       throw new AtelierCoreError("project_exists", `project already exists: ${formatProjectSpec({ gitUrl, branch })}`);
     }
-    const name = projectNameFromGitUrl(gitUrl);
-    const project = { id, name, gitUrl, branch, sessionShareKey: name };
+    const baseName = projectNameFromGitUrl(gitUrl);
+    const name = store.projects.some((project) => project.gitUrl === gitUrl)
+      ? `${baseName} (${branch ?? "default branch"})`
+      : baseName;
+    const project = { id, name, gitUrl, branch, sessionShareKey: baseName };
     store.projects.push(project);
     return { project: projectSummary(project) };
   });

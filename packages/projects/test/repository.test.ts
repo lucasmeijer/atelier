@@ -28,6 +28,22 @@ describe("projects", () => {
     expect(await listProjects(file)).toEqual({ projects: [result.project] });
   });
 
+  test("addProject includes the branch in the name only for an existing repository", async () => {
+    const file = join(await mkdtemp(join(tmpdir(), "atelier-projects-")), "projects.json");
+    const first = (await addProject("https://github.com/org/repo.git#main", file)).project;
+    const second = (await addProject("https://github.com/org/repo.git#feature/search", file)).project;
+    const defaultBranch = (await addProject("https://github.com/org/repo.git", file)).project;
+    const otherRepo = (await addProject("https://github.com/other/repo.git#feature/search", file)).project;
+
+    expect(first.name).toBe("repo");
+    expect(second.name).toBe("repo (feature/search)");
+    expect(defaultBranch.name).toBe("repo (default branch)");
+    expect(otherRepo.name).toBe("repo");
+    expect(second.sessionShareKey).toBe(first.sessionShareKey);
+    expect((await listProjects(file)).projects).toEqual(expect.arrayContaining([first, second, defaultBranch, otherRepo]));
+    expect(addProject("https://github.com/org/repo.git#feature/search", file)).rejects.toThrow("project already exists");
+  });
+
   test("updateProject edits project fields without changing id", async () => {
     const file = join(await mkdtemp(join(tmpdir(), "atelier-projects-")), "projects.json");
     const project = (await addProject("https://github.com/org/repo.git", file)).project;
