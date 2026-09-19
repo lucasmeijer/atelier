@@ -4,9 +4,10 @@ export const transcriptionComposerController = "transcription-composer";
 
 const microphoneIcon = `<svg class="transcription-microphone" viewBox="0 0 20 20" aria-hidden="true"><path d="M10 12.5a3 3 0 0 0 3-3v-4a3 3 0 0 0-6 0v4a3 3 0 0 0 3 3Zm-5-3a5 5 0 0 0 10 0M10 14.5V18m-3 0h6"/></svg>`;
 
-export function renderTranscriptionComposerControl(): string {
+export function renderTranscriptionComposerControl(options: { disabled?: boolean } = {}): string {
   const button = progressButtonHtml({
     type: "button",
+    disabled: options.disabled,
     variant: "secondary",
     iconOnly: true,
     initialLabel: "Dictate with microphone",

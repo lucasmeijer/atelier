@@ -28,7 +28,11 @@ function composeTranscript(prefix: string, spoken: string, suffix: string) {
 
 export function createTranscriptionComposerController(Controller: WorkspaceClientControllerConstructor, microphoneSource: SharedMicrophone) {
   return class TranscriptionComposerController extends Controller {
-    static targets = ["button", "waveform", "status"];
+    static targets = ["button", "waveform", "status", "preview"];
+    static values = { terminal: Boolean, unavailable: Boolean };
+    declare readonly unavailableValue: boolean;
+    declare readonly terminalValue: boolean;
+    declare readonly previewTarget: HTMLElement;
 
     declare readonly buttonTarget: HTMLButtonElement;
     declare readonly waveformTarget: HTMLCanvasElement;
@@ -52,13 +56,15 @@ export function createTranscriptionComposerController(Controller: WorkspaceClien
     private pendingSubmitter?: HTMLButtonElement | HTMLInputElement;
 
     connect(): void {
-      window.addEventListener("keydown", this.keydown);
+      if (!this.terminalValue) window.addEventListener("keydown", this.keydown);
     }
 
     disconnect(): void {
       window.removeEventListener("keydown", this.keydown);
-      this.stopCapture();
-      this.socket?.close();
+      this.closeSession();
+      this.submitPending = false;
+      this.pendingSubmitter = undefined;
+      this.setState("idle", "Dictate");
     }
 
     private readonly keydown = (event: KeyboardEvent): void => {
@@ -76,7 +82,7 @@ export function createTranscriptionComposerController(Controller: WorkspaceClien
     submit(event: SubmitEvent): void {
       if (this.state === "idle" || this.state === "error") return;
       if (this.state === "loading" && this.input.value.trim()) {
-        this.socket?.close();
+        this.closeSession();
         this.setState("idle", "Dictate");
         return;
       }
@@ -91,12 +97,13 @@ export function createTranscriptionComposerController(Controller: WorkspaceClien
     }
 
     toggle(): void {
+      if (this.unavailableValue) return;
       if (this.state === "recording") {
         this.finish();
         return;
       }
       if (this.state === "loading") {
-        this.socket?.close();
+        this.closeSession();
         this.setState("idle", "Dictate");
         this.focusAfterTranscription();
         return;
@@ -106,24 +113,30 @@ export function createTranscriptionComposerController(Controller: WorkspaceClien
     }
 
     private start(): void {
-      const selectionStart = this.input.selectionStart;
-      const selectionEnd = this.input.selectionEnd;
-      this.prefix = this.input.value.slice(0, selectionStart);
-      this.suffix = this.input.value.slice(selectionEnd);
+      if (!this.terminalValue) {
+        const selectionStart = this.input.selectionStart;
+        const selectionEnd = this.input.selectionEnd;
+        this.prefix = this.input.value.slice(0, selectionStart);
+        this.suffix = this.input.value.slice(selectionEnd);
+      }
       this.committed = "";
       this.partial = "";
       this.setState("loading", "Preparing transcription model…");
-      this.input.blur();
+      if (!this.terminalValue) this.input.blur();
       this.setProgress(0);
       const socket = new WebSocket(observableWebSocketUrl("/transcription/realtime"));
       this.socket = socket;
       socket.addEventListener("message", (event) => {
+        if (this.socket !== socket) return;
         this.received(Value.Parse(transcriptionEventSchema, JSON.parse(String(event.data))));
       });
-      socket.addEventListener("error", () => this.fail("Could not connect to transcription"));
+      socket.addEventListener("error", () => {
+        if (this.socket === socket) this.fail("Could not connect to transcription");
+      });
       socket.addEventListener("close", () => {
-        this.stopCapture();
-        if (this.state !== "error") this.setState("idle", "Dictate");
+        if (this.socket !== socket) return;
+        this.closeSession();
+        this.setState("idle", "Dictate");
       });
     }
 
@@ -144,7 +157,12 @@ export function createTranscriptionComposerController(Controller: WorkspaceClien
         this.renderTranscript();
       } else if (event.type.endsWith(".completed")) {
         const transcript = event.transcript ?? this.partial;
-        this.committed += `${this.committed && transcript ? " " : ""}${transcript}`;
+        const segment = `${this.committed && transcript ? " " : ""}${transcript}`;
+        if (this.terminalValue && transcript) {
+          // Only completed segments are immutable; provisional text may be revised.
+          this.element.dispatchEvent(new CustomEvent("transcription:segment", { detail: { text: segment } }));
+        }
+        this.committed += segment;
         this.partial = "";
         this.renderTranscript();
         if (this.state === "finishing") this.transcriptionFinished();
@@ -154,8 +172,18 @@ export function createTranscriptionComposerController(Controller: WorkspaceClien
     }
 
     private async startCapture(): Promise<void> {
+      const socket = this.socket;
       try {
         const microphone = await microphoneSource.acquire();
+        if (this.socket !== socket || socket?.readyState !== WebSocket.OPEN) {
+          microphone.release();
+          return;
+        }
+        if (this.state === "finishing") {
+          microphone.release();
+          this.commitAudio();
+          return;
+        }
         const context = new AudioContext();
         const source = context.createMediaStreamSource(microphone.stream);
         const processor = context.createScriptProcessor(4096, 1, 1);
@@ -185,7 +213,7 @@ export function createTranscriptionComposerController(Controller: WorkspaceClien
         this.setState("recording", "Listening…");
         this.animateWaveform();
       } catch (error) {
-        this.fail(error instanceof Error ? error.message : String(error));
+        if (this.socket === socket) this.fail(error instanceof Error ? error.message : String(error));
       }
     }
 
@@ -201,7 +229,7 @@ export function createTranscriptionComposerController(Controller: WorkspaceClien
     }
 
     private transcriptionFinished(): void {
-      this.socket?.close();
+      this.closeSession();
       this.setState("idle", "Dictate");
       if (!this.submitPending) {
         this.focusAfterTranscription();
@@ -216,6 +244,10 @@ export function createTranscriptionComposerController(Controller: WorkspaceClien
 
     private focusAfterTranscription(): void {
       if (focusLikelyOpensSoftwareKeyboard()) return;
+      if (this.terminalValue) {
+        this.element.dispatchEvent(new CustomEvent("transcription:focus"));
+        return;
+      }
       this.input.focus({ preventScroll: true });
       const { caret } = this.transcript();
       this.input.setSelectionRange(caret, caret);
@@ -239,6 +271,10 @@ export function createTranscriptionComposerController(Controller: WorkspaceClien
     }
 
     private renderTranscript(): void {
+      if (this.terminalValue) {
+        this.previewTarget.textContent = this.partial;
+        return;
+      }
       setTextInputValue(this.input, this.transcript().text);
       this.input.scrollTop = this.input.scrollHeight;
     }
@@ -274,12 +310,28 @@ export function createTranscriptionComposerController(Controller: WorkspaceClien
       }
     }
 
-    private fail(message: string): void {
+    unavailableValueChanged(): void {
+      if (this.unavailableValue && this.element.hasAttribute("data-transcribing")) {
+        this.fail("Terminal disconnected. Dictation stopped.");
+      }
+      this.updateButtonDisabled();
+    }
+
+    private updateButtonDisabled(): void {
+      this.buttonTarget.disabled = this.state === "finishing" || this.unavailableValue;
+    }
+
+    private closeSession(): void {
       this.stopCapture();
+      this.socket?.close();
+      this.socket = undefined;
+    }
+
+    private fail(message: string): void {
+      this.closeSession();
       this.submitPending = false;
       this.pendingSubmitter = undefined;
       this.setState("error", message);
-      this.socket?.close();
     }
 
     private setProgress(progress: number): void {
@@ -291,7 +343,7 @@ export function createTranscriptionComposerController(Controller: WorkspaceClien
       this.state = state;
       this.buttonTarget.dataset.state = state;
       this.buttonTarget.dataset.progressState = working ? "in-progress" : "initial";
-      this.buttonTarget.disabled = state === "finishing";
+      this.updateButtonDisabled();
       this.buttonTarget.toggleAttribute("aria-busy", working);
       this.buttonTarget.ariaPressed = state === "recording" || state === "finishing" ? "true" : "false";
       this.buttonTarget.title = label;
@@ -300,8 +352,10 @@ export function createTranscriptionComposerController(Controller: WorkspaceClien
       const transcribing = state === "loading" || state === "recording" || state === "finishing";
       const transcriptionStateChanged = this.element.hasAttribute("data-transcribing") !== transcribing;
       this.element.toggleAttribute("data-transcribing", transcribing);
-      this.input.readOnly = transcribing;
-      if (transcriptionStateChanged) notifyInputListeners(this.input);
+      if (!this.terminalValue) {
+        this.input.readOnly = transcribing;
+        if (transcriptionStateChanged) notifyInputListeners(this.input);
+      } else if (!transcribing) this.previewTarget.textContent = "";
       if (state === "finishing") this.setProgress(100);
       else if (!working) this.setProgress(0);
     }

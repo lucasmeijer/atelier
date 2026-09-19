@@ -21,11 +21,20 @@ export const atelierClientModule: WorkspaceClientModule = {
         this.viewer = createObservableTerminalViewer({
           host: this.terminalTarget, mode: "interactive", websocketUrl: observableWebSocketUrl(`${this.urlValue}/ws`),
           theme: atelierObservableTerminalTheme(),
-          onConnect: () => { this.connectionStatusTarget.hidden = true; },
-          onDisconnect: () => { this.connectionStatusTarget.hidden = false; },
+          onConnect: () => this.setConnected(true),
+          onDisconnect: () => this.setConnected(false),
         });
       }
       disconnect(): void { this.resize.disconnect(); this.viewer?.dispose(); this.viewer = undefined; }
+      private setConnected(connected: boolean): void {
+        this.connectionStatusTarget.hidden = connected;
+        this.element.setAttribute("data-transcription-composer-unavailable-value", String(!connected));
+      }
+      dictate(event: CustomEvent<{ text: string }>): void {
+        // Treat recognized text as a paste, never as terminal control keys or Enter.
+        this.viewer!.paste(event.detail.text.replace(/[\x00-\x1f\x7f-\x9f]/g, " "));
+      }
+      focus(): void { this.viewer?.focus(); }
       retry(): void {
         // Reinspect session status on explicit retry, not on a polling timer.
         this.element.closest<HTMLElement & { reload(): void }>("turbo-frame")!.reload();

@@ -2,3 +2,6 @@
 .cli-agent-body .observable-terminal-host { flex:1; min-height:100px; overflow:hidden; }
 .cli-terminal-status[hidden], .cli-terminal-status:empty { display:none; }
 .cli-terminal-status { padding:12px 20px; display:flex; align-items:center; gap:12px; color:var(--text); }
+.cli-terminal-toolbar { position:relative; display:flex; align-items:center; justify-content:flex-end; gap:12px; padding:6px 12px; }
+.cli-terminal-dictation-preview { flex:1; min-width:0; overflow:hidden; text-overflow:ellipsis; white-space:nowrap; color:var(--text-muted); font-size:var(--text-body); }
+.cli-terminal-toolbar [data-state="error"] + .transcription-status { top:calc(100% + 6px); bottom:auto; z-index:1; }

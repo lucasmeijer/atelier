@@ -12,6 +12,7 @@
     "@atelier/design-system": "workspace:*",
     "@atelier/observable-terminal": "workspace:*",
     "@atelier/prompt": "workspace:*",
+    "@atelier/transcription": "workspace:*",
     "@atelier/shared": "workspace:*",
     "@atelier/workspace": "workspace:*",
     "typebox": "^1.0.57",
