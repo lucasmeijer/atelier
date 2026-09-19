@@ -73,6 +73,16 @@ export interface ObservableTerminalAttachOptions extends HostObservableTerminalA
 
 function tmuxAttachArgs(options: HostObservableTerminalAttachOptions): string[] {
   const args: string[] = options.socketName ? ["-L", options.socketName] : [];
+  if (!options.readonly) {
+    // History belongs to tmux, not the browser terminal. Configure each attachment
+    // so new and existing sessions work without caller-specific preparation.
+    args.push(
+      "set-option", "-t", options.session, "mouse", "on", ";",
+      "bind-key", "-n", "S-PPage", "copy-mode -e ; send-keys -X page-up", ";",
+      "bind-key", "-T", "copy-mode", "S-PPage", "send-keys -X page-up", ";",
+      "bind-key", "-T", "copy-mode", "S-NPage", "send-keys -X page-down", ";",
+    );
+  }
   if (options.fixedSize) {
     args.push("set-option", "-t", options.session, "window-size", "manual", ";", "resize-window", "-t", options.session, "-x", String(options.cols), "-y", String(options.rows), ";");
   }

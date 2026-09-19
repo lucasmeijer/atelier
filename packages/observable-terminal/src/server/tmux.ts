@@ -54,17 +54,6 @@ export function buildObservableSessionCommand(options: ObservableTerminalSession
   return `${observableTerminalEnvPrefix()} tmux ${options.requireExistingServer ? "-N " : ""}${options.socketName ? `-L ${shellQuote(options.socketName)} ` : ""}${commands.join(" \\; ")}`;
 }
 
-/** Configure tmux-owned history to behave like natural terminal scrollback. */
-export function buildNaturalScrollCommand(socketName?: string): string {
-  const tmux = socketName ? `tmux -L ${shellQuote(socketName)}` : "tmux";
-  return [
-    `${tmux} set-option -g mouse on`,
-    `${tmux} bind-key -n S-PPage copy-mode -e '\\;' send-keys -X page-up`,
-    `${tmux} bind-key -T copy-mode S-PPage send-keys -X page-up`,
-    `${tmux} bind-key -T copy-mode S-NPage send-keys -X page-down`,
-  ].join(" && ");
-}
-
 export function buildCapturePaneCommand(options: { session: string; historyLimit?: number; ansi?: boolean; joinWrapped?: boolean }): string {
   const flags = ["capture-pane", "-p"];
   if (options.ansi !== false) flags.push("-e");

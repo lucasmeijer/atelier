@@ -2,7 +2,7 @@ import { createServer } from "node:net";
 import { createInterface } from "node:readline";
 import { chmod, mkdir, rm } from "node:fs/promises";
 import { dirname } from "node:path";
-import { attachHostObservableTerminal, buildObservableSessionCommand, buildNaturalScrollCommand, type ObservableTerminalConnection } from "@atelier/observable-terminal/server";
+import { attachHostObservableTerminal, buildObservableSessionCommand, type ObservableTerminalConnection } from "@atelier/observable-terminal/server";
 import { parseObservableTerminalMessage } from "@atelier/observable-terminal/shared";
 import { hostSocketPath, parseHostRequest, parseHostInput, terminalSize, validTerminalId, type HostReply, type HostResult, type HostCommand, type HostSample, type HostTerminal } from "../protocol.ts";
 import { command } from "./command.ts";
@@ -59,7 +59,6 @@ export async function startHostService(options: { root: string; effectiveMemory:
   await mkdir(dirname(socketPath), { recursive: true });
   // Keep the server alive even after explicitly terminating the final terminal.
   await tmux(socketName, "-f", "/dev/null", "start-server", ";", "set-option", "-g", "exit-empty", "off");
-  await command(["sh", "-c", buildNaturalScrollCommand(socketName)]);
   const service = new HostService(() => sampleHost(options.root, options.effectiveMemory), socketName);
   const server = createServer(socket => {
     let terminal: ObservableTerminalConnection | undefined;

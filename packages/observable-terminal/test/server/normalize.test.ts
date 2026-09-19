@@ -2,7 +2,6 @@ import { describe, expect, test } from "bun:test";
 import {
   buildAttachArgs,
   buildListSessionsCommand,
-  buildNaturalScrollCommand,
   buildObservableSessionCommand,
   normalizeCarriageReturns,
   observableTerminalCols,
@@ -36,12 +35,22 @@ describe("observable terminal normalization", () => {
     expect(buildListSessionsCommand("#{session_name} | #{pane_current_path}")).toBe("tmux list-sessions -F '#{session_name} | #{pane_current_path}'");
   });
 
-  test("configures natural scrolling through tmux history", () => {
-    const command = buildNaturalScrollCommand();
-    expect(command).toContain("set-option -g mouse on");
-    expect(command).toContain("S-PPage copy-mode -e");
-    expect(command).toContain("S-PPage send-keys -X page-up");
-    expect(command).toContain("S-NPage send-keys -X page-down");
+  test("interactive attachments configure tmux-owned scrollback before attaching", () => {
+    const args = buildAttachArgs({ containerName: "atelier-ws", session: "s", cols: 80, rows: 24, socketName: "isolated" });
+    const bridge = JSON.parse(args.at(-1)!);
+    expect(bridge.args).toEqual([
+      "-L", "isolated",
+      "set-option", "-t", "s", "mouse", "on", ";",
+      "bind-key", "-n", "S-PPage", "copy-mode -e ; send-keys -X page-up", ";",
+      "bind-key", "-T", "copy-mode", "S-PPage", "send-keys -X page-up", ";",
+      "bind-key", "-T", "copy-mode", "S-NPage", "send-keys -X page-down", ";",
+      "attach-session", "-t", "s",
+    ]);
+  });
+
+  test("read-only attachments do not configure scrollback", () => {
+    const args = buildAttachArgs({ containerName: "atelier-ws", session: "s", cols: 80, rows: 24, readonly: true });
+    expect(JSON.parse(args.at(-1)!).args).toEqual(["attach-session", "-r", "-t", "s"]);
   });
 
   test("builds fixed-size observable sessions", () => {
