@@ -88,6 +88,7 @@ function newTerminal(terminals: WorkspaceTerminal[], title: string, tmuxSession:
 }
 
 export async function createWorkspaceTerminal(workspaceId: string, options: WorkspaceTerminalCreateOptions = {}): Promise<WorkspaceTerminal> {
+  const cwd = normalizeCwd(options.cwd);
   return mutateTerminals(workspaceId, async () => {
     const terminals = [...await listWorkspaceTerminals(workspaceId)];
     const sessions = await listTmuxSessions(workspaceId);
@@ -95,7 +96,7 @@ export async function createWorkspaceTerminal(workspaceId: string, options: Work
     const result = await execWorkspaceShell(workspaceId, buildObservableSessionCommand({
       requireExistingServer: true,
       session: tmuxSession,
-      cwd: normalizeCwd(options.cwd),
+      cwd,
       command: sessionCommand(options.command),
       passthrough: true,
       status: false,

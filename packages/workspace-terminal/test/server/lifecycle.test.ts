@@ -82,3 +82,18 @@ test("existing terminal metadata keeps its flat format, IDs and session ownershi
   await remove("legacy", existing.id);
   expect(await Bun.file(path).json()).toEqual([created]);
 `));
+
+test("invalid terminal cwd is rejected before workspace operations", () => scenario(`
+  for (const cwd of ["/tmp/qa-run", "/work-other", "relative/path"]) {
+    await expect(create("one", { title: "QA terminal", cwd, command: "pwd" })).rejects.toMatchObject({
+      code: "terminal_invalid_cwd",
+      message: "terminal cwd must be under /work: " + cwd,
+    });
+  }
+  expect(sessions.size).toBe(0);
+  expect(await list("one")).toEqual([]);
+  for (const cwd of [undefined, "", "  ", "/work", "/work/project"]) {
+    await create("one", { cwd });
+  }
+  expect(await list("one")).toHaveLength(5);
+`));

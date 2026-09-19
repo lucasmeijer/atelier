@@ -138,7 +138,7 @@ export const terminalWorkspaceModule: WorkspaceModule = {
       inputSchema: Type.Object({
         title: Type.Optional(Type.String()),
         command: Type.Optional(Type.String()),
-        cwd: Type.Optional(Type.String()),
+        cwd: Type.Optional(Type.String({ description: "Working directory inside the workspace. Must be /work or a path under /work/. Defaults to /work when omitted or blank. To run elsewhere, use command to cd to that directory." })),
       }),
       async execute({ workspaceId, input }) {
         // SAFETY: The module boundary validates or constructs this value with the asserted domain shape.
