@@ -522,7 +522,7 @@ export function createWebApp(deps: WebAppDeps): WebApp {
   function workspaceBootResidentHtml(entry: WorkspaceEntry, options: { visible?: boolean } = {}): string {
     const projectId = isGitProjectInit(entry.init) ? entry.init.projectId : undefined;
     const deleteButton = buttonHtml({ type: "submit", variant: "danger", content: { kind: "caption", caption: "Delete workspace" } });
-    const deleteAction = `<form class="workspace-boot-actions" data-action="turbo:submit-start->workspace-navigation#workspaceDeletionStarted" method="post" action="/workspaces/${encodeURIComponent(entry.id)}/delete">${deleteButton}</form>`;
+    const deleteAction = `<form class="workspace-boot-actions" method="post" action="/workspaces/${encodeURIComponent(entry.id)}/delete">${deleteButton}</form>`;
     const recovery = entry.phase === "failed" && projectId
       ? actionLinkHtml({ href: `/projects/${encodeURIComponent(projectId)}/settings?section=repository`, variant: "primary", content: { kind: "caption", caption: "Open Project settings" }, attributesHtml: 'data-turbo-stream="true"' })
       : "";
@@ -851,7 +851,10 @@ export function createWebApp(deps: WebAppDeps): WebApp {
     const entry = requireWorkspace(id);
     if (!entry.deletion) throw new Error(`workspace ${id} has no deletion state`);
     const resident = `<div class="workspace-detail-resident" data-workspace-residency-target="resident" data-workspace-id="${escapeHtml(id)}">${deletionPresentation(entry, entry.deletion)}</div>`;
-    broadcastShell(`${deletionPresentationStream(entry, entry.deletion)}${turboReplaceStream(workspaceResidentId(id), resident)}`);
+    const unselect = entry.deletion.status === "deleting"
+      ? `<turbo-stream action="unselect-workspace" data-workspace-id="${escapeHtml(id)}"></turbo-stream>`
+      : "";
+    broadcastShell(`${unselect}${deletionPresentationStream(entry, entry.deletion)}${turboReplaceStream(workspaceResidentId(id), resident)}`);
   }
 
   function currentDeletionStream(id: string): string {

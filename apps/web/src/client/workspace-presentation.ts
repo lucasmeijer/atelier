@@ -4,6 +4,7 @@ import { workspaceAgentSelectionEvent } from "@atelier/shared";
 import { atelierCableConnectionHeader, phoneLayoutMediaQuery, type WorkspaceClientApplication, type WorkspaceClientControllerConstructor, type WorkspaceClientSurfaceVisibilityContext } from "@atelier/shared";
 import { Type, type Static } from "typebox";
 import { Value } from "typebox/value";
+import { residencyController } from "./workspace-controller-registry.ts";
 import { frameFreshness } from "./frame-freshness.ts";
 
 type PresentationPane = HTMLElement & { dataset: DOMStringMap & { workspacePaneRole?: string; workspacePaneId?: string; workspaceLogicallyVisible?: string } };
@@ -716,6 +717,9 @@ export function installWorkspacePresentationTurboStream(Turbo: TurboLike, applic
     const workspaceId = stream.dataset.workspaceId;
     if (!workspaceId) throw new Error(`${stream.getAttribute("action")} requires a Workspace ID`);
     return workspaceId;
+  };
+  Turbo.StreamActions["unselect-workspace"] = function unselectWorkspace(this: StreamElement): void {
+    residencyController()?.unselectWorkspace(behaviorWorkspaceId(this));
   };
   Turbo.StreamActions["remove-workspace-resident"] = function removeWorkspaceResident(this: StreamElement): void {
     for (const target of this.targetElements) {
