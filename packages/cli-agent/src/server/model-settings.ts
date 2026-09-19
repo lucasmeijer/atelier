@@ -1,7 +1,7 @@
 import { Type } from "typebox";
 import { Value } from "typebox/value";
 import { invalidArguments, type JsonObject } from "@atelier/core";
-import { createPiModelRuntime, getConfiguredModels, hasConnectedModelProvider, modelRefValue, modelThinkingLevels, renderLaunchModelSettings, type ComposerModelOption, type ModelRef } from "@atelier/llm/server";
+import { createPiModelRuntime, providerAvailability, getConfiguredModels, hasConnectedModelProvider, modelRefValue, modelThinkingLevels, renderLaunchModelSettings, type ComposerModelOption, type ModelRef } from "@atelier/llm/server";
 import type { AgentLaunchFooterContext } from "@atelier/shared";
 
 const settingsSchema = Type.Object({ model: Type.Optional(Type.String()), thinkingLevel: Type.Optional(Type.String()) });
@@ -17,11 +17,13 @@ export function createCliModelSettings(options: {
 }) {
   async function choices(requestedModel?: string, requestedLevel?: string) {
     const runtime = await createPiModelRuntime();
-    const available = new Set((await runtime.getAvailable()).map(modelRefValue));
     const favorites = (await getConfiguredModels()).filter((model) => !options.provider || model.provider === options.provider);
+    const availability = await providerAvailability(runtime, favorites.map((model) => model.provider));
     const models: ComposerModelOption[] = await Promise.all(favorites.map(async (model) => {
-      const unavailableReason = available.has(modelRefValue(model))
-        ? await options.unavailableReason?.(runtime, model) : "Model unavailable for this account";
+      const { modelIds, connection } = availability.get(model.provider)!;
+      const unavailableReason = modelIds.has(model.id)
+        ? await options.unavailableReason?.(runtime, model)
+        : connection === "needs_attention" ? "Reconnect in Settings → Models" : "Model unavailable for this account";
       return { ...model, name: model.label, selected: false, available: !unavailableReason, unavailableReason };
     }));
     const selected = models.find((model) => model.available && modelRefValue(model) === requestedModel)

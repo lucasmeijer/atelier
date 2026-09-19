@@ -1,5 +1,5 @@
 import { getConfiguredAgentModels, getModelThinkingLevel } from "./model-preferences.ts";
-import { createPiModelRuntime, modelThinkingLevels, modelRefValue, parseModelRef, type ModelRef } from "@atelier/llm/server";
+import { createPiModelRuntime, providerAvailability, modelThinkingLevels, parseModelRef, type ModelRef } from "@atelier/llm/server";
 
 export interface AgentModelOptionView {
   provider: string;
@@ -26,14 +26,11 @@ export async function resolveNewWorkspaceAgentModel(selectedModel?: string): Pro
 /** Omit current to select the saved default; null represents a session without a model. */
 export async function configuredModelOptionViews(current?: ModelRef | null, runtime?: Pick<Awaited<ReturnType<typeof createPiModelRuntime>>, "getAvailable" | "checkAuth" | "getModel">): Promise<AgentModelOptionView[]> {
   runtime ??= await createPiModelRuntime();
-  const available = new Set((await runtime.getAvailable()).map(modelRefValue));
   const models = await getConfiguredAgentModels();
-  const providers = [...new Set(models.map((model) => model.provider))];
-  const auth = new Map(await Promise.all(providers.map(async (provider) =>
-    [provider, await runtime.checkAuth(provider)] as const,
-  )));
+  const availability = await providerAvailability(runtime, models.map((model) => model.provider));
   return models.map((model) => {
-    const isAvailable = available.has(modelRefValue(model));
+    const { modelIds, connection } = availability.get(model.provider)!;
+    const isAvailable = modelIds.has(model.id);
     return {
       provider: model.provider,
       id: model.id,
@@ -41,8 +38,9 @@ export async function configuredModelOptionViews(current?: ModelRef | null, runt
       selected: current === undefined ? Boolean(model.active) : current !== null && current.provider === model.provider && current.id === model.id,
       available: isAvailable,
       unavailableReason: isAvailable ? undefined
+        : connection === "needs_attention" ? "Reconnect in Settings → Models"
         : !runtime.getModel(model.provider, model.id) ? "Model not found in provider catalog"
-        : !auth.get(model.provider) ? "Provider not connected"
+        : connection === "disconnected" ? "Provider not connected"
         : "Model unavailable for this account",
     };
   });

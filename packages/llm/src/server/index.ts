@@ -7,3 +7,4 @@ export { connectedUsageProviders, getProviderUsageOverview, supportedUsageProvid
 
 export { installSubscriptionCli } from "./subscription-cli.ts";
 export { renderSharedComposerSelections, renderLaunchModelSettings, modelThinkingLevels, type ComposerModelOption } from "./model-picker.ts";
+export { providerAvailability } from "./provider-availability.ts";

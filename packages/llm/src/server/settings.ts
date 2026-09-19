@@ -141,7 +141,7 @@ function continueButton(provider: string, working: boolean): string {
   return `<span class="${domId("model_setup_continue", provider)}">${buttonHtml({ type: "submit", variant: "primary", content: { kind: "caption", caption: "Continue" }, disabled: !working })}</span>`;
 }
 async function providerHasFavorite(provider: string): Promise<boolean> {
-  const available = new Set((await (await createPiModelRuntime()).getAvailable()).filter((model) => model.provider === provider).map((model) => model.id));
+  const available = new Set((await (await createPiModelRuntime()).getAvailable(provider)).map((model) => model.id));
   return (await getConfiguredModels()).some((model) => model.provider === provider && available.has(model.id));
 }
 async function renderModelSelection(provider: ProviderSummary, surface: ModelSetupSurface, error = ""): Promise<string> {

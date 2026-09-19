@@ -1,4 +1,5 @@
-import { modelRefValue, type ModelRef } from "./model-reference.ts";
+import { providerAvailability } from "./provider-availability.ts";
+import type { ModelRef } from "./model-reference.ts";
 import { readJsonSettings, updateJsonSettings } from "@atelier/core/json-settings";
 import { syncSubscriptionClis } from "./subscription-cli.ts";
 import { defaultProviderModels } from "./hardcoded-provider-knowledge.ts";
@@ -160,8 +161,9 @@ export function hasConnectedModelProvider(runtime: Pick<ModelRuntime, "getProvid
 
 export async function hasAvailableConfiguredModel(): Promise<boolean> {
   const runtime = await createPiModelRuntime();
-  const available = new Set((await runtime.getAvailable()).map(modelRefValue));
-  return (await getConfiguredModels()).some((model) => available.has(modelRefValue(model)));
+  const models = await getConfiguredModels();
+  const availability = await providerAvailability(runtime, models.map((model) => model.provider));
+  return models.some((model) => availability.get(model.provider)!.modelIds.has(model.id));
 }
 
 export async function setConfiguredModels(models: ConfiguredModel[]): Promise<void> {
@@ -239,8 +241,8 @@ export async function disconnectModelProvider(provider: string): Promise<void> {
 
 export async function seedProviderFavoriteModels(provider: string): Promise<void> {
   const runtime = await createPiModelRuntime();
-  const available = await runtime.getAvailable();
-  const defaults = defaultProviderModels(provider, available.filter((model) => model.provider === provider));
+  const available = await runtime.getAvailable(provider);
+  const defaults = defaultProviderModels(provider, available);
   await updateModelSettings((settings) => {
     const favorites = settings.picker ?? [];
     if (!favorites.some((model) => model.provider === provider)) {
