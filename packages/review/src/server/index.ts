@@ -13,7 +13,7 @@ import {
   readReviewSettings,
   updateReviewSettings,
 } from "./settings.ts";
-import { clearDeletionReview, deletionReviewFileResponse, reviewDeletionReview } from "./deletion.ts";
+import { clearDeletionReview, deletionReviewCommitResponse, deletionReviewFileResponse, reviewDeletionReview } from "./deletion.ts";
 import { addReviewComment, deleteReviewComments, deleteReviewState, listReviewComments, reconcileReviewComments, remapReviewFileComments, reviewCommentsForPrompt, updateReviewComment, type ReviewComment } from "./state.ts";
 
 const reviewReferenceSchema = Type.Object({ type: Type.Literal("review") });
@@ -136,6 +136,8 @@ export const reviewWorkspaceModule: WorkspaceModule = {
       }
       let match = url.pathname.match(/^\/workspaces\/([^/]+)\/review\/deletion\/file$/);
       if (match) return request.method === "GET" ? await deletionReviewFileResponse(decodeURIComponent(match[1]!), url) : textResponse("Method not allowed", 405);
+      match = url.pathname.match(/^\/workspaces\/([^/]+)\/review\/deletion\/commit$/);
+      if (match) return request.method === "GET" ? await deletionReviewCommitResponse(decodeURIComponent(match[1]!), url) : textResponse("Method not allowed", 405);
       match = url.pathname.match(/^\/workspaces\/([^/]+)\/review\/refresh$/);
       if (match) return request.method === "POST" ? await refreshedResponse(decodeURIComponent(match[1]!)) : textResponse("Method not allowed", 405);
       match = url.pathname.match(/^\/workspaces\/([^/]+)\/review\/stats$/);

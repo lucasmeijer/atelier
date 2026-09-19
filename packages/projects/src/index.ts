@@ -73,11 +73,7 @@ export {
   type PreparedWorkspaceSource,
 } from "./workspace-source.ts";
 
-export {
-  registerProjectWorkspaceEvents,
-  type WorkspaceDeleteBlockedDetails,
-  type WorkspaceDeleteSafetyIssue,
-} from "./workspace-repos.ts";
+export { registerProjectWorkspaceEvents } from "./workspace-repos.ts";
 
 export { projectWorkspaceSettingsSchema, type ProjectWorkspaceSettings } from "./project.ts";
 export { readProjectWorkspaceSettings, writeProjectWorkspaceSettings, projectWorkspaceInitWithSettings, validateProjectWorkspaceSettings } from "./workspace-settings.ts";

@@ -262,3 +262,61 @@ export function reviewSnippet(file: ReviewFile, side: ReviewSide, startLine: num
   if (text === undefined) return "";
   return text.split("\n").slice(startLine - 1, endLine).join("\n");
 }
+
+interface CommitEntry extends StatusEntry {
+  oldMode: string;
+  newMode: string;
+  oldHash: string;
+  newHash: string;
+}
+
+async function commitEntries(root: string, commit: string): Promise<{ base: string; entries: CommitEntry[] }> {
+  const [, parent] = (await git(root, ["rev-list", "--parents", "-n", "1", commit])).toString("utf8").trim().split(" ");
+  const base = parent ?? (await git(root, ["hash-object", "-t", "tree", "/dev/null"])).toString("utf8").trim();
+  const fields = (await git(root, ["diff", "--raw", "--no-abbrev", "-z", "-M", base, commit, "--"])).toString("utf8").split("\0");
+  const entries: CommitEntry[] = [];
+  for (let index = 0; index < fields.length - 1;) {
+    const [oldMode, newMode, oldHash, newHash, code] = fields[index++]!.slice(1).split(" ");
+    const path = fields[index++]!;
+    const entry: CommitEntry = { code: code!, path, oldMode: oldMode!, newMode: newMode!, oldHash: oldHash!, newHash: newHash! };
+    if (code!.startsWith("R") || code!.startsWith("C")) {
+      entry.previousPath = path;
+      entry.path = fields[index++]!;
+    }
+    entries.push(entry);
+  }
+  return { base, entries };
+}
+
+export async function collectCommitReviewStats(root: string, commit: string): Promise<ReviewFileStats[]> {
+  const { base, entries } = await commitEntries(root, commit);
+  const stats = parseNumstat(await git(root, ["diff", "--numstat", "-z", "-M", base, commit, "--"]));
+  return Promise.all(entries.map(async (entry) => {
+    const { binary, ...counts } = stats.get(entry.path)!;
+    const file: ReviewFileStats = { path: entry.path, change: statusChange(entry), ...counts };
+    if (entry.previousPath) file.previousPath = entry.previousPath;
+    if (binary) {
+      const size = async (hash: string, mode: string) => mode === "000000" ? undefined : Number((await git(root, ["cat-file", "-s", hash])).toString("utf8"));
+      const [before, after] = await Promise.all([size(entry.oldHash, entry.oldMode), size(entry.newHash, entry.newMode)]);
+      file.binarySizes = { before, after };
+    }
+    return file;
+  }));
+}
+
+/** Compare against the first parent; root commits compare against an empty tree. */
+export async function collectCommitReviewFile(root: string, commit: string, path: string): Promise<ReviewFile | undefined> {
+  const { entries } = await commitEntries(root, commit);
+  const entry = entries.find((candidate) => candidate.path === path);
+  if (!entry) return undefined;
+  if (entry.oldMode === "160000" || entry.newMode === "160000") {
+    return { path, change: statusChange(entry), kind: "mode", detail: "Submodule changed" };
+  }
+  const contents = (hash: string, mode: string) => mode === "000000" ? undefined : git(root, ["cat-file", "blob", hash]);
+  const [before, after] = await Promise.all([contents(entry.oldHash, entry.oldMode), contents(entry.newHash, entry.newMode)]);
+  const detail = entry.previousPath ? "File renamed"
+    : before === undefined ? "Empty file added"
+    : after === undefined ? "Empty file deleted"
+    : entry.oldMode !== entry.newMode ? "File mode changed" : "No textual changes";
+  return reviewFileFromContents(entry, before, after, detail);
+}

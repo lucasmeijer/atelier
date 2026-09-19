@@ -1,12 +1,10 @@
-import { AtelierCoreError, shellQuote, type AtelierEventBus, type JsonObject } from "@atelier/core";
+import { AtelierCoreError, collectUnpushedCommits, shellQuote, type UnpushedCommit, type AtelierEventBus, type JsonObject } from "@atelier/core";
 import { execWorkspaceShell, workspaceRoot } from "@atelier/workspace";
 import { isGitProjectInit, recordProjectWorkspaceCreation } from "./project.ts";
 import { registerGitIdentityWorkspaceEvents } from "./git-identity.ts";
 import { registerProjectWorkspaceInitEvents } from "./workspace-source.ts";
 
-export interface WorkspaceDeleteSafetyIssue extends JsonObject { repo: string; uncommittedPaths: string[] }
-export interface WorkspaceDeleteBlockedDetails { workspaceId: string; issues: WorkspaceDeleteSafetyIssue[] }
-const workspaceRepoName = "work";
+interface WorkspaceDeleteSafetyIssue extends JsonObject { repo: string; uncommittedPaths: string[]; unpushedCommits: UnpushedCommit[] }
 
 function parsePorcelainPaths(output: string): string[] {
   const paths: string[] = [];
@@ -25,8 +23,9 @@ async function inspectRepositoryDeleteSafety(id: string, path: string, repoName:
   const quotedPath = shellQuote(path);
   const status = await execWorkspaceShell(id, `git -C ${quotedPath} status --porcelain=v1 -z`);
   if (status.exitCode !== 0) throw new AtelierCoreError("git_error", status.stderr.trim() || `could not check status for ${repoName}`);
-  const issue = { repo: repoName, uncommittedPaths: parsePorcelainPaths(status.stdout) };
-  return issue.uncommittedPaths.length ? issue : null;
+  const unpushedCommits = await collectUnpushedCommits((args) => execWorkspaceShell(id, `git -C ${quotedPath} ${args.map(shellQuote).join(" ")}`));
+  const issue = { repo: repoName, uncommittedPaths: parsePorcelainPaths(status.stdout), unpushedCommits };
+  return issue.uncommittedPaths.length || issue.unpushedCommits.length ? issue : null;
 }
 
 async function inspectWorkspaceDeleteSafety(id: string): Promise<WorkspaceDeleteSafetyIssue[]> {
@@ -37,7 +36,7 @@ async function inspectWorkspaceDeleteSafety(id: string): Promise<WorkspaceDelete
   const submodules = await execWorkspaceShell(id, `git -C ${quotedRoot} submodule foreach --quiet --recursive 'printf "%s\\0" "$displaypath"'`);
   if (submodules.exitCode !== 0) throw new AtelierCoreError("git_error", submodules.stderr.trim() || "could not enumerate workspace submodules");
   const repositories = [
-    { path: workspaceRoot, name: workspaceRepoName },
+    { path: workspaceRoot, name: "work" },
     ...submodules.stdout.split("\0").filter(Boolean).map((path) => ({ path: `${workspaceRoot}/${path}`, name: path })),
   ];
   const issues: WorkspaceDeleteSafetyIssue[] = [];

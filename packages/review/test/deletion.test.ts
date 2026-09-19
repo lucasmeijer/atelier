@@ -2,7 +2,7 @@ import { afterEach, beforeEach, describe, expect, test } from "bun:test";
 import { mkdtemp, mkdir, rm, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
-import { clearDeletionReview, deletionReviewFileResponse, reviewDeletionReview } from "../src/server/deletion.ts";
+import { clearDeletionReview, deletionReviewCommitResponse, deletionReviewFileResponse, reviewDeletionReview } from "../src/server/deletion.ts";
 import { command } from "./support/repository.ts";
 
 const workspaceId = "de1e7e01";
@@ -31,18 +31,95 @@ async function workspaceRepository(): Promise<string> {
   await writeFile(join(root, "tracked.txt"), "initial\n");
   await command(root, "git", "add", "tracked.txt");
   await command(root, "git", "commit", "-qm", "initial");
+  await command(root, "git", "update-ref", "refs/remotes/origin/main", "HEAD");
   return root;
 }
 
 describe("Workspace deletion review", () => {
-  test("ignores local commits and does not contact the remote", async () => {
+  test("blocks deletion for local commits without contacting the remote", async () => {
     const root = await workspaceRepository();
     await command(root, "git", "remote", "add", "origin", "https://127.0.0.1:1/unreachable.git");
     await writeFile(join(root, "committed.txt"), "local commit\n");
     await command(root, "git", "add", "committed.txt");
     await command(root, "git", "commit", "-qm", "local commit");
 
+    expect(await reviewDeletionReview.inspect(workspaceId)).toMatchObject({
+      status: "blocked",
+      details: { repositories: [{ relativePath: "", uncommitted: [], unpushedCommits: [{ hash: expect.any(String), subject: "local commit" }] }] },
+    });
+  });
+
+  test("clears the assessment once commits are on a known remote branch", async () => {
+    const root = await workspaceRepository();
+    await command(root, "git", "commit", "--allow-empty", "-qm", "local commit");
+    expect((await reviewDeletionReview.inspect(workspaceId)).status).toBe("blocked");
+    await command(root, "git", "update-ref", "refs/remotes/origin/main", "HEAD");
     expect(await reviewDeletionReview.inspect(workspaceId)).toEqual({ status: "clear" });
+  });
+
+  test("includes commits on other local branches and detached HEAD", async () => {
+    const root = await workspaceRepository();
+    await command(root, "git", "checkout", "-qb", "unpublished");
+    await command(root, "git", "commit", "--allow-empty", "-qm", "other branch");
+    await command(root, "git", "checkout", "--detach", "refs/remotes/origin/main");
+    await command(root, "git", "commit", "--allow-empty", "-qm", "detached commit");
+    const assessment = await reviewDeletionReview.inspect(workspaceId);
+    expect(assessment).toMatchObject({
+      status: "blocked",
+      details: { repositories: [{ unpushedCommits: expect.arrayContaining([
+        { hash: expect.any(String), subject: "other branch" },
+        { hash: expect.any(String), subject: "detached commit" },
+      ]) }] },
+    });
+  });
+
+  test("reports all commits when there are no remote branches", async () => {
+    const root = await workspaceRepository();
+    await command(root, "git", "update-ref", "-d", "refs/remotes/origin/main");
+    expect(await reviewDeletionReview.inspect(workspaceId)).toMatchObject({
+      status: "blocked",
+      details: { repositories: [{ unpushedCommits: [{ hash: expect.any(String), subject: "initial" }] }] },
+    });
+  });
+
+  test("handles an unborn HEAD", async () => {
+    const root = join(dataDir, "workspaces", workspaceId, "work");
+    await mkdir(root, { recursive: true });
+    await command(root, "git", "init", "-q");
+    expect(await reviewDeletionReview.inspect(workspaceId)).toEqual({ status: "clear" });
+    await writeFile(join(root, "new.txt"), "new file");
+    expect(await reviewDeletionReview.inspect(workspaceId)).toMatchObject({
+      status: "blocked", details: { repositories: [{ unpushedCommits: [], uncommitted: [{ path: "new.txt" }] }] },
+    });
+  });
+
+  test("reports unpushed commits in submodules", async () => {
+    const root = await workspaceRepository();
+    const source = join(dataDir, "submodule-source");
+    await mkdir(source);
+    await command(source, "git", "init", "-q");
+    await command(source, "git", "-c", "user.name=Test", "-c", "user.email=test@example.test", "commit", "--allow-empty", "-qm", "submodule initial");
+    await command(root, "git", "-c", "protocol.file.allow=always", "submodule", "add", source, "nested");
+    await command(root, "git", "commit", "-qam", "add submodule");
+    await command(root, "git", "update-ref", "refs/remotes/origin/main", "HEAD");
+    expect(await reviewDeletionReview.inspect(workspaceId)).toEqual({ status: "clear" });
+    await command(join(root, "nested"), "git", "-c", "user.name=Test", "-c", "user.email=test@example.test", "commit", "--allow-empty", "-qm", "submodule local");
+    expect(await reviewDeletionReview.inspect(workspaceId)).toMatchObject({
+      status: "blocked",
+      details: { repositories: expect.arrayContaining([
+        { relativePath: "nested", uncommitted: [], unpushedCommits: [{ hash: expect.any(String), subject: "submodule local" }] },
+      ]) },
+    });
+  });
+
+  test("changes the fingerprint when unpushed commits change", async () => {
+    const root = await workspaceRepository();
+    await command(root, "git", "commit", "--allow-empty", "-qm", "first");
+    const first = await reviewDeletionReview.inspect(workspaceId);
+    await command(root, "git", "commit", "--allow-empty", "-qm", "second");
+    const second = await reviewDeletionReview.inspect(workspaceId);
+    if (first.status !== "blocked" || second.status !== "blocked") throw new Error("expected blocked assessments");
+    expect(second.fingerprint).not.toBe(first.fingerprint);
   });
 
   test("blocks deletion for uncommitted working-tree changes", async () => {
@@ -82,6 +159,20 @@ describe("Workspace deletion review", () => {
     url.searchParams.set("fingerprint", second.fingerprint);
     clearDeletionReview(workspaceId);
     expect((await deletionReviewFileResponse(workspaceId, url)).status).toBe(409);
+  });
+
+  test("commit review requests are restricted to the current assessment", async () => {
+    const root = await workspaceRepository();
+    await command(root, "git", "commit", "--allow-empty", "-qm", "local commit");
+    const assessment = await reviewDeletionReview.inspect(workspaceId);
+    if (assessment.status !== "blocked") throw new Error("expected blocked assessment");
+    const url = new URL(`http://test.local/review/deletion/commit?${new URLSearchParams({ fingerprint: assessment.fingerprint, repository: "", commit: "HEAD" })}`);
+    expect((await deletionReviewCommitResponse(workspaceId, url)).status).toBe(404);
+    expect((await deletionReviewFileResponse(workspaceId, url)).status).toBe(404);
+    url.searchParams.delete("commit");
+    expect((await deletionReviewCommitResponse(workspaceId, url)).status).toBe(400);
+    url.searchParams.set("fingerprint", "outdated");
+    expect((await deletionReviewCommitResponse(workspaceId, url)).status).toBe(409);
   });
 
   test("a clean assessment invalidates previous file requests", async () => {
