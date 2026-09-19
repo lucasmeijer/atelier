@@ -89,10 +89,10 @@ export function createWorkspaceDeletion(options: {
     evidence(id: string): JsonValue | undefined {
       return evidence.get(id);
     },
-    cancel(id: string, provisioningError?: string): boolean {
+    cancel(id: string): boolean {
       const entry = requireWorkspace(id);
       if (entry.phase.deletion?.status !== "blocked" && entry.phase.deletion?.status !== "failed") return false;
-      registry.cancelDeletion(id, provisioningError);
+      registry.cancelDeletion(id);
       evidence.delete(id);
       return true;
     },

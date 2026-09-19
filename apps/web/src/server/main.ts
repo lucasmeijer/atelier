@@ -246,7 +246,7 @@ app = createWebApp({
   },
   async persistWorkspaceParked(id, parked) {
     await setWorkspaceParked(id, parked);
-    if (!parked) {
+    if (!parked && registry.get(id)!.phase.kind === "runningPhase") {
       registry.startProvisioning(id);
       resumeWorkspace(id);
     }

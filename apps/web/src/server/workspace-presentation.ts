@@ -386,8 +386,16 @@ export function renderMobileWorkspaceBar(destinationsHtml = "", moreMenuHtml = "
   </nav>`;
 }
 
+function renderMobileAgentAttention(presentation: WorkspacePresentation): string {
+  return presentation.agentConversations.some((agent) => agent.requestingAttention) ? '<i class="status-dot attention" aria-label="Agent requesting attention"></i>' : "";
+}
+
+export function mobileAgentAttentionTurboStream(presentation: WorkspacePresentation): string {
+  return turboStream("update", workViewDomId(presentation.workspace.id, "mobile_agents_attention"), renderMobileAgentAttention(presentation));
+}
+
 function renderWorkspaceBar(presentation: WorkspacePresentation): string {
-  const agentsDestination = renderMobileDestination("Agents", "agents", Icons.Agent);
+  const agentsDestination = renderMobileDestination("Agents", "agents", `${Icons.Agent}<span id="${workViewDomId(presentation.workspace.id, "mobile_agents_attention")}">${renderMobileAgentAttention(presentation)}</span>`);
   const workViews = renderMobileWorkViews(presentation.workViews);
   const launchers = (presentation.commands ?? []).filter((command) => command.placement === "work-launcher").map((command) => renderWorkLauncherCommand(command, presentation.workspace.id, "submit->workspace-presentation#closeMore")).join("");
   const closers = presentation.workViews.map(renderMobileWorkViewCloser).join("");

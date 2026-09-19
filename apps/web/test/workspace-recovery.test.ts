@@ -128,3 +128,15 @@ test("deletion while waiting releases recovery without another preparation attem
     expect(provisioning.snapshot("removed")).toBeUndefined();
   } finally { log.mockRestore(); }
 });
+
+
+test("failure to retain a parked container leaves a non-busy provisioning failure", async () => {
+  const registry = createWorkspaceRegistry();
+  const provisioning = createWorkspaceProvisioning();
+  await registry.seed([{ id: "parked", title: null, parked: true }]);
+  const log = spyOn(console, "error").mockImplementation(() => {});
+  try {
+    await recoverWorkspaces(registry, { ...healthy, provisioning, async setRunning() { throw new Error("Cannot stop container"); } });
+    expect(registry.get("parked")).toMatchObject({ parked: false, requestingAttention: true, phase: { kind: "provisioningPhase", status: "failed", busy: false, error: "Cannot stop container" } });
+  } finally { log.mockRestore(); }
+});

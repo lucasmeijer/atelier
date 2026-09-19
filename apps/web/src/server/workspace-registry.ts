@@ -39,13 +39,13 @@ const workspaceAttentionSchema = Type.Object({
   workspaces: Type.Record(Type.String(), Type.Number()),
   surfaces: Type.Record(Type.String(), Type.Record(Type.String(), occurrenceSchema)),
 });
-const workspaceDeletionStateSchema = Type.Union([
+const workspaceDeletionStateSchema = Type.Intersect([Type.Object({ provisioningError: Type.Optional(Type.String()) }), Type.Union([
   Type.Object({ status: Type.Literal("checking") }),
   Type.Object({ status: Type.Literal("blocked"), fingerprint: Type.String() }),
   Type.Object({ status: Type.Literal("deleting"), forced: Type.Boolean() }),
   Type.Object({ status: Type.Literal("failed"), operation: Type.Literal("checking"), error: Type.String() }),
   Type.Object({ status: Type.Literal("failed"), operation: Type.Literal("deleting"), forced: Type.Boolean(), error: Type.String() }),
-]);
+])]);
 const workspaceDeletionsSchema = Type.Record(Type.String(), workspaceDeletionStateSchema);
 export type WorkspaceActivityStore = FileValueStore<Static<typeof workspaceTimestampsSchema>>;
 export type WorkspaceAttentionSnapshot = Static<typeof workspaceAttentionSchema>;
@@ -112,7 +112,7 @@ export interface WorkspaceRegistry {
   setProvisioningState(id: string, status: "working" | "waiting" | "failed", error?: string): void;
   startRunning(id: string): void;
   setDeletion(id: string, deletion: WorkspaceDeletionState): void;
-  cancelDeletion(id: string, provisioningError?: string): void;
+  cancelDeletion(id: string): void;
   setIssue(id: string, kind: WorkspaceIssueKind, message?: string): void;
   setImageOutdated(id: string, outdated: boolean): void;
   setTitle(id: string, title: string | null): void;
@@ -240,14 +240,19 @@ export function createWorkspaceRegistry(options: WorkspaceRegistryOptions = {}):
     },
     setDeletion(id, deletion) {
       const entry = requireEntry(id);
+      const provisioningError = entry.phase.kind === "provisioningPhase"
+        ? entry.phase.error ?? "Workspace preparation was cancelled. Delete this workspace or restart Atelier to retry startup."
+        : entry.phase.deletion?.provisioningError;
+      deletion = { ...deletion, provisioningError };
       deletions[id] = deletion;
       persistDeletions();
       changePhase(entry, { kind: "deletingPhase", deletion, busy: deletion.status === "checking" || deletion.status === "deleting" });
       if (deletion.status === "blocked" || deletion.status === "failed") requestAttention(id);
     },
-    cancelDeletion(id, provisioningError) {
+    cancelDeletion(id) {
       const entry = requireEntry(id);
       if (entry.phase.kind !== "deletingPhase") throw new Error("Workspace is not deleting");
+      const provisioningError = entry.phase.deletion.provisioningError;
       delete deletions[id];
       persistDeletions();
       changePhase(entry, provisioningError

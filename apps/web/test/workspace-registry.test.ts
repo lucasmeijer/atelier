@@ -2,7 +2,7 @@ import { describe, expect, test } from "bun:test";
 import { mkdtemp, rm } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
-import { createFileWorkspaceAttentionStore, createWorkspaceRegistry, type WorkspaceAttentionSnapshot, type WorkspaceAttentionStore } from "../src/server/workspace-registry.ts";
+import { createFileWorkspaceAttentionStore, createFileWorkspaceDeletionStore, createWorkspaceRegistry, type WorkspaceAttentionSnapshot, type WorkspaceAttentionStore } from "../src/server/workspace-registry.ts";
 
 function memoryAttention(): WorkspaceAttentionStore {
   let state: WorkspaceAttentionSnapshot = { nextSequence: 1, workspaces: {}, surfaces: {} };
@@ -168,6 +168,36 @@ test("cancelling deletion of interrupted provisioning returns to a non-busy prov
   const { registry } = await setup();
   registry.startProvisioning("a");
   registry.setDeletion("a", { status: "blocked", fingerprint: "changes" });
-  registry.cancelDeletion("a", "Preparation was cancelled");
-  expect(registry.get("a")!.phase).toEqual({ kind: "provisioningPhase", status: "failed", busy: false, error: "Preparation was cancelled" });
+  registry.cancelDeletion("a");
+  expect(registry.get("a")!.phase).toEqual({ kind: "provisioningPhase", status: "failed", busy: false, error: "Workspace preparation was cancelled. Delete this workspace or restart Atelier to retry startup." });
+});
+
+
+test("deletion retries and restart preserve the provisioning failure to restore on cancellation", async () => {
+  let saved = {};
+  const deletionStore = { async load() { return saved; }, async save(values: typeof saved) { saved = structuredClone(values); } };
+  const registry = createWorkspaceRegistry({ deletionStore });
+  await registry.seed([{ id: "broken", title: null }]);
+  registry.startProvisioning("broken");
+  registry.setProvisioningState("broken", "failed", "Container unavailable");
+  registry.setDeletion("broken", { status: "deleting", forced: true });
+  registry.setDeletion("broken", { status: "failed", operation: "deleting", forced: true, error: "Cannot delete" });
+  const restarted = createWorkspaceRegistry({ deletionStore });
+  await restarted.seed([{ id: "broken", title: null }]);
+  restarted.cancelDeletion("broken");
+  expect(restarted.get("broken")!.phase).toEqual({ kind: "provisioningPhase", status: "failed", busy: false, error: "Container unavailable" });
+});
+
+
+test("deletion persistence retains the interrupted provisioning failure", async () => {
+  const directory = await mkdtemp(join(tmpdir(), "atelier-deletion-"));
+  try {
+    const store = createFileWorkspaceDeletionStore(join(directory, "deletion.json"));
+    await store.save({ broken: { status: "failed", operation: "deleting", forced: true, error: "Cannot delete", provisioningError: "Container unavailable" } });
+    const registry = createWorkspaceRegistry({ deletionStore: store });
+    await registry.seed([{ id: "broken", title: null }]);
+    registry.cancelDeletion("broken");
+    expect(registry.get("broken")!.phase).toEqual({ kind: "provisioningPhase", status: "failed", busy: false, error: "Container unavailable" });
+    await store.save({});
+  } finally { await rm(directory, { recursive: true, force: true }); }
 });

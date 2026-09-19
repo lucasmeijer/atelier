@@ -7,7 +7,7 @@ import { popupHtml } from "@atelier/design-system/popup";
 import { panelHtml } from "@atelier/design-system/panel";
 import { domId, escapeHtml, turboStream } from "@atelier/shared";
 import { barButton, fullscreenViewAttributes, selectorCloseForm, behaviorTurboStream, workspacePreparationInvalidatedTurboStream, type ViewCloseAction } from "./workspace-view-markup.ts";
-import type { WorkspacePresentation } from "./workspace-presentation.ts";
+import { mobileAgentAttentionTurboStream, type WorkspacePresentation } from "./workspace-presentation.ts";
 
 export interface AgentPaneContribution {
   busy?: boolean;
@@ -155,7 +155,7 @@ export function agentTabsTurboStream(presentation: WorkspacePresentation, option
     : presentation.agentConversations.find((agent) => agent.id === options.addedConversationId);
   if (options.addedConversationId !== undefined && !added) throw new Error(`Added Agent is missing from the presentation: ${options.addedConversationId}`);
   // Refresh choices and tabs once, without remounting existing agent bodies.
-  const streams = [agentProviderChoicesTurboStream(presentation)];
+  const streams = [agentProviderChoicesTurboStream(presentation), mobileAgentAttentionTurboStream(presentation)];
   if (added) {
     streams.push(turboStream("remove", agentEmptyId(workspace.id)));
     streams.push(turboStream("append", agentBodiesDomId(workspace.id), renderAgentPaneSlot(workspace.id, added)));

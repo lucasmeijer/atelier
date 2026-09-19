@@ -58,7 +58,7 @@ import { openWorkspaceFile } from "./file-navigation.ts";
 import { parseCloseWorkViewRequest, parseReorderWorkViewRequest } from "./work-view-api.ts";
 import { Type } from "typebox";
 import { Value } from "typebox/value";
-import { openWorkViewTurboStream, presentWorkViewTurboStream, removeWorkspaceResidentTurboStream, renderAtelierBar, renderMobileWorkspaceBar, renderWorkViewBodyFrame, renderWorkspaceDeletionPresentation, renderWorkspaceParkConfirmation, dismissWorkspaceParkConfirmationTurboStream, renderWorkspacePane, renderWorkspacePresentation, workspacePaneCollectionsTurboStream, workspacePaneOnboardingState, workspacePresentationDomId, workViewsTurboStream, type WorkPaneContribution, type WorkspacePaneEntry, type WorkspacePanePresentation, type WorkspacePresentation as FixedWorkspacePresentation } from "./workspace-presentation.ts";
+import { mobileAgentAttentionTurboStream, openWorkViewTurboStream, presentWorkViewTurboStream, removeWorkspaceResidentTurboStream, renderAtelierBar, renderMobileWorkspaceBar, renderWorkViewBodyFrame, renderWorkspaceDeletionPresentation, renderWorkspaceParkConfirmation, dismissWorkspaceParkConfirmationTurboStream, renderWorkspacePane, renderWorkspacePresentation, workspacePaneCollectionsTurboStream, workspacePaneOnboardingState, workspacePresentationDomId, workViewsTurboStream, type WorkPaneContribution, type WorkspacePaneEntry, type WorkspacePanePresentation, type WorkspacePresentation as FixedWorkspacePresentation } from "./workspace-presentation.ts";
 import { agentStateTurboStream, agentProviderChoicesTurboStream, agentTabsTurboStream, renderAgentBodyFrame, selectAgentTurboStream } from "./agent-pane.ts";
 import { workspacePreparationInvalidatedTurboStream } from "./workspace-view-markup.ts";
 import type { CableBroadcastOptions } from "./cable.ts";
@@ -255,6 +255,7 @@ export function createWebApp(deps: WebAppDeps): WebApp {
       if (context.viewKey) {
         if (context.viewKey.startsWith("agent:")) {
           broadcastShell(agentStateTurboStream(entry.id, context.viewKey.slice(6), registry.agentState(entry.id, context.viewKey)));
+          void fixedWorkspacePresentation(entry.id).then((presentation) => broadcastShell(mobileAgentAttentionTurboStream(presentation)));
         } else {
           void currentWorkPanePresentations(entry.id).then((views) => broadcastShell(workViewsTurboStream(entry.id, views)));
         }
@@ -617,6 +618,10 @@ export function createWebApp(deps: WebAppDeps): WebApp {
     return entry;
   }
 
+  function workViewSummaries(id: string, views: WorkspaceWorkViewState[]) {
+    return views.map((view) => ({ key: workViewKey(view.reference), ...view, ...registry.surfaceState(id, workViewKey(view.reference)) }));
+  }
+
   async function workspaceJson(id: string): Promise<Response> {
     const entry = requireWorkspace(id);
     const workspace: Pick<WorkspaceEntry, "id" | "phase" | "parked" | "requestingAttention" | "issues"> & { title: string; url: string } = {
@@ -636,7 +641,7 @@ export function createWebApp(deps: WebAppDeps): WebApp {
       ...workspace,
       ...warningState,
       agentConversations: presentation.agentConversations.map(({ id, title, providerId, busy, requestingAttention }) => ({ id, title, providerId, busy, requestingAttention })),
-      workViews: storedWorkViews.map((workView) => ({ key: workViewKey(workView.reference), ...workView, ...registry.surfaceState(id, workViewKey(workView.reference)) })),
+      workViews: workViewSummaries(id, storedWorkViews),
       commands: commandContributions.filter((command) => handlers.has(command.id)).map((command) => ({
         id: command.id,
         label: command.label,
@@ -749,7 +754,7 @@ export function createWebApp(deps: WebAppDeps): WebApp {
     });
     const location = `/workspaces/${encodeURIComponent(id)}`;
     if (requestAcceptsJson(request)) return workspaceCreatedJsonResponse(id);
-    if (wantsTurboStream(request)) return turboStreamResponse(`${turboReplaceStream("project-editor-modal", '<div id="project-editor-modal"></div>')}${workspacePaneCollectionsTurboStream(await workspacePaneCollections(""))}${selectWorkspaceTurboStream(id)}`);
+    if (wantsTurboStream(request)) return turboStreamResponse(`${turboReplaceStream("project-editor-modal", '<div id="project-editor-modal"></div>')}${await refreshWorkspacePaneCollections()}${selectWorkspaceTurboStream(id)}`);
     return new Response(null, { status: 303, headers: { location } });
   }
 
@@ -770,7 +775,7 @@ export function createWebApp(deps: WebAppDeps): WebApp {
 
     const { id } = await createWorkspaceFromCommand({});
     const location = `/workspaces/${encodeURIComponent(id)}`;
-    if (wantsTurboStream(request)) return turboStreamResponse(workspacePaneCollectionsTurboStream(await workspacePaneCollections("")), { headers: { location } });
+    if (wantsTurboStream(request)) return turboStreamResponse(await refreshWorkspacePaneCollections(), { headers: { location } });
     return new Response(null, { status: 303, headers: { location } });
   }
 
@@ -793,7 +798,7 @@ export function createWebApp(deps: WebAppDeps): WebApp {
       launchComposerSubmissions.set(submissionId, launch);
     }
     const { id, isFirstWorkspace } = await launch;
-    return turboStreamResponse(`${workspacePaneCollectionsTurboStream(await workspacePaneCollections(""))}${turboUpdateStream(launchComposerFrameId, "")}${isFirstWorkspace ? selectWorkspaceTurboStream(id) : ""}`);
+    return turboStreamResponse(`${await refreshWorkspacePaneCollections()}${turboUpdateStream(launchComposerFrameId, "")}${isFirstWorkspace ? selectWorkspaceTurboStream(id) : ""}`);
   }
 
   async function createEmptyAgentWorkspaceEndpoint(request: Request): Promise<Response> {
@@ -857,7 +862,7 @@ export function createWebApp(deps: WebAppDeps): WebApp {
   }
 
   async function broadcastBlockedDeletion(id: string, state: WorkspaceDeletionState): Promise<void> {
-    const pane = workspacePaneCollectionsTurboStream(await workspacePaneCollections(""));
+    const pane = await refreshWorkspacePaneCollections();
     const entry = requireWorkspace(id);
     const resident = `<div class="workspace-detail-resident" data-workspace-residency-target="resident" data-workspace-id="${escapeHtml(id)}">${deletionPresentation(entry, state)}</div>`;
     broadcastShell(`${pane}${deletionPresentationStream(entry, state)}${turboReplaceStream(workspaceResidentId(id), resident)}`);
@@ -896,9 +901,8 @@ export function createWebApp(deps: WebAppDeps): WebApp {
   }
 
   async function cancelWorkspaceDeletionEndpoint(id: string, request: Request): Promise<Response> {
-    const provisioningError = provisioning.snapshot(id)?.status === "cancelled" ? "Workspace preparation was cancelled. Delete this workspace or restart Atelier to retry startup." : undefined;
-    if (!deletion.cancel(id, provisioningError)) return turboStreamResponse("", { status: 409 });
-    if (provisioningError) {
+    if (!deletion.cancel(id)) return turboStreamResponse("", { status: 409 });
+    if (requireWorkspace(id).phase.kind === "provisioningPhase") {
       return requestAcceptsJson(request) ? jsonResponse({ cancelled: true }) : turboStreamResponse("");
     }
     const stream = `${turboReplaceStream(workspacePresentationDomId(id), renderWorkspacePresentation(await fixedWorkspacePresentation(id)))}${workspacePreparationInvalidatedTurboStream(id)}`;
@@ -938,7 +942,7 @@ export function createWebApp(deps: WebAppDeps): WebApp {
         suppressParkedStateCallbacks = false;
       }
       const parkedResident = parked ? `${removeWorkspaceResidentTurboStream(id)}${dismissWorkspaceParkConfirmationTurboStream(id)}` : "";
-      const stream = `${workspacePaneCollectionsTurboStream(await workspacePaneCollections(""))}${parkedResident}`;
+      const stream = `${await refreshWorkspacePaneCollections()}${parkedResident}`;
       broadcastShell(stream);
       return { kind: "updated", stream };
     });
@@ -974,7 +978,7 @@ export function createWebApp(deps: WebAppDeps): WebApp {
       : String((await request.formData()).get("title") ?? "").trim();
     await setWorkspaceTitle(id, title);
     registry.setTitle(id, title || null);
-    return requestAcceptsJson(request) ? await workspaceJson(id) : turboStreamResponse(workspacePaneCollectionsTurboStream(await workspacePaneCollections(id)));
+    return requestAcceptsJson(request) ? await workspaceJson(id) : turboStreamResponse(await refreshWorkspacePaneCollections());
   }
 
   function workspaceModuleCommands(): WorkspaceModuleCommandHandler[] {
@@ -1063,7 +1067,7 @@ export function createWebApp(deps: WebAppDeps): WebApp {
       const command: WorkspaceCommandResponse = { id: commandId };
       if (createdWorkView) command.workView = createdWorkView;
       if (result.createdAgentConversationId) command.agentConversationId = result.createdAgentConversationId;
-      return jsonResponse({ command, workViews: await presentationStore.listWorkViews(workspaceId) });
+      return jsonResponse({ command, workViews: workViewSummaries(workspaceId, await presentationStore.listWorkViews(workspaceId)) });
     }
     return turboStreamResponse(responseStream);
   }
@@ -1091,7 +1095,7 @@ export function createWebApp(deps: WebAppDeps): WebApp {
     const successor = workViews[Math.min(closedIndex, workViews.length - 1)]?.key;
     const structural = workViewsTurboStream(workspaceId, workViews, { removedKey: closedKey, successorKey: successor });
     const responseStream = deliverShellMutation(request, structural);
-    if (requestAcceptsJson(request) && !wantsTurboStream(request)) return jsonResponse({ closed: parsed, workViews: storedWorkViews });
+    if (requestAcceptsJson(request) && !wantsTurboStream(request)) return jsonResponse({ closed: parsed, workViews: workViewSummaries(workspaceId, storedWorkViews) });
     return turboStreamResponse(responseStream);
   }
 
@@ -1103,7 +1107,7 @@ export function createWebApp(deps: WebAppDeps): WebApp {
     const storedWorkViews = await presentationStore.listWorkViews(workspaceId);
     const structural = workViewsTurboStream(workspaceId, await currentWorkPanePresentations(workspaceId));
     const responseStream = deliverShellMutation(request, structural);
-    if (requestAcceptsJson(request) && !wantsTurboStream(request)) return jsonResponse({ workViews: storedWorkViews });
+    if (requestAcceptsJson(request) && !wantsTurboStream(request)) return jsonResponse({ workViews: workViewSummaries(workspaceId, storedWorkViews) });
     return turboStreamResponse(responseStream);
   }
 

@@ -191,7 +191,7 @@ export function atelierOpenApi(commands: WorkspaceModuleCommandHandler[], contri
         WorkspacePhase: { oneOf: [
           { type: "object", required: ["kind", "status", "busy"], properties: { kind: { const: "provisioningPhase" }, status: { enum: ["working", "waiting", "failed"] }, busy: { type: "boolean" }, error: { type: "string" } }, additionalProperties: false },
           { type: "object", required: ["kind", "busy"], properties: { kind: { const: "runningPhase" }, busy: { type: "boolean" } }, additionalProperties: false },
-          { type: "object", required: ["kind", "busy", "deletion"], properties: { kind: { const: "deletingPhase" }, busy: { type: "boolean" }, deletion: { type: "object", required: ["status"], properties: { status: { enum: ["checking", "blocked", "deleting", "failed"] }, fingerprint: { type: "string" }, forced: { type: "boolean" }, operation: { enum: ["checking", "deleting"] }, error: { type: "string" } } } }, additionalProperties: false },
+          { type: "object", required: ["kind", "busy", "deletion"], properties: { kind: { const: "deletingPhase" }, busy: { type: "boolean" }, deletion: { type: "object", required: ["status"], properties: { status: { enum: ["checking", "blocked", "deleting", "failed"] }, provisioningError: { type: "string" }, fingerprint: { type: "string" }, forced: { type: "boolean" }, operation: { enum: ["checking", "deleting"] }, error: { type: "string" } } } }, additionalProperties: false },
         ] },
         WorkspaceSummary: { type: "object", required: ["id", "title", "phase", "parked", "requestingAttention"], properties: { id: { type: "string" }, title: { type: "string" }, phase: { $ref: "#/components/schemas/WorkspacePhase" }, requestingAttention: { type: "boolean" }, parked: { type: "boolean" }, projectId: { type: "string" }, issues: workspaceIssuesSchema }, additionalProperties: false },
         WorkspaceEnvelope: {
@@ -253,10 +253,10 @@ export function atelierOpenApi(commands: WorkspaceModuleCommandHandler[], contri
         WorkViewReference: workViewReferenceSchema,
         WorkView: { type: "object", required: ["reference"], properties: { reference: { $ref: "#/components/schemas/WorkViewReference" } }, additionalProperties: false },
         PresentedWorkView: { type: "object", required: ["key", "reference", "requestingAttention"], properties: { key: { type: "string" }, reference: { $ref: "#/components/schemas/WorkViewReference" }, requestingAttention: { type: "boolean" }, attentionSequence: { type: "integer" } }, additionalProperties: false },
-        WorkViewsEnvelope: { type: "object", required: ["workViews"], properties: { workViews: { type: "array", items: { $ref: "#/components/schemas/WorkView" } } } },
+        WorkViewsEnvelope: { type: "object", required: ["workViews"], properties: { workViews: { type: "array", items: { $ref: "#/components/schemas/PresentedWorkView" } } } },
         CommandResult: { type: "object", required: ["command", "workViews"], properties: {
           command: { type: "object", required: ["id"], properties: { id: { type: "string" }, workView: { $ref: "#/components/schemas/WorkViewReference" }, agentConversationId: { type: "string", format: "uuid" } }, additionalProperties: false },
-          workViews: { type: "array", items: { $ref: "#/components/schemas/WorkView" } },
+          workViews: { type: "array", items: { $ref: "#/components/schemas/PresentedWorkView" } },
         }, additionalProperties: false },
       },
     },

@@ -44,7 +44,7 @@ export async function recoverWorkspaces(
     if (entry.phase.deletion) return [];
     const { id, parked } = entry;
     const current = () => registry.get(id) === entry && !entry.phase.deletion && entry.parked === parked;
-    if (!parked) registry.startProvisioning(id);
+    registry.startProvisioning(id);
     const restore = async () => {
       try {
         await operations.provisioning.run(id, async (run) => {
@@ -52,7 +52,7 @@ export async function recoverWorkspaces(
           if (!current() || parked) return;
           await prepare(id, registry, operations, run);
         });
-        if (current() && !parked) registry.startRunning(id);
+        if (current()) registry.startRunning(id);
       } catch (error) {
         if (!current()) return;
         console.error(`could not restore workspace ${id}`, error);
