@@ -214,3 +214,13 @@ test("rechecking a blocked deletion after restart retains its interrupted provis
   registry.cancelDeletion("broken");
   expect(registry.get("broken")!.phase).toEqual({ kind: "provisioningPhase", status: "failed", busy: false, error: "Preparation interrupted" });
 });
+
+test("parked workspaces sort after active workspaces regardless of attention or recent activity", async () => {
+  const { registry } = await setup();
+  registry.requestAttention("a");
+  registry.touch("a");
+  registry.setParked("a", true);
+  expect(registry.list().map(({ id }) => id)).toEqual(["b", "a"]);
+  registry.setParked("a", false);
+  expect(registry.list().map(({ id }) => id)).toEqual(["a", "b"]);
+});
