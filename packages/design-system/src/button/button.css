@@ -51,11 +51,11 @@
 .button svg.brand-icon { fill: currentColor; stroke: none; }
 .button__icon { display: inline-flex; align-items: center; justify-content: center; }
 
-/* Popular desktop sizes; the marker also applies to descendant buttons. */
-.button:where([data-popular-button], [data-popular-button] *) { min-height: 36.93px; }
-.button.icon-only:where([data-popular-button], [data-popular-button] *) { width: 38.24px; height: 38.24px; }
-.button:where([data-popular-button], [data-popular-button] *) svg { width: 18.38px; height: 18.38px; }
-.button.icon-only:where([data-popular-button], [data-popular-button] *) svg { width: 20.59px; height: 20.59px; }
+/* Popular desktop sizes; touch-only markers retain regular desktop sizing. */
+.button:where([data-popular-button]:not([data-popular-button="touch"]), [data-popular-button]:not([data-popular-button="touch"]) *) { min-height: 36.93px; }
+.button.icon-only:where([data-popular-button]:not([data-popular-button="touch"]), [data-popular-button]:not([data-popular-button="touch"]) *) { width: 38.24px; height: 38.24px; }
+.button:where([data-popular-button]:not([data-popular-button="touch"]), [data-popular-button]:not([data-popular-button="touch"]) *) svg { width: 18.38px; height: 18.38px; }
+.button.icon-only:where([data-popular-button]:not([data-popular-button="touch"]), [data-popular-button]:not([data-popular-button="touch"]) *) svg { width: 20.59px; height: 20.59px; }
 
 @media (max-width: 700px), (pointer: coarse) {
   .button { height: 44px; padding-inline: 16px; max-width: 100%; min-width: 0; }

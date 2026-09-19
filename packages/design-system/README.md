@@ -93,7 +93,8 @@ For frequently used actions, add `data-popular-button` to the button's
 `attributesHtml` or a containing group (including ButtonGroup's `attributesHtml`).
 At ≤700px or with a coarse pointer, regular icon-only buttons are 42.5px with
 17.85px icons; popular ones are 62.5px with 26.25px icons. Popular caption buttons
-also get a 62.5px minimum height (for example, composer quick launches). Untagged
+also get a 62.5px minimum height (for example, composer quick launches). Use
+`data-popular-button="touch"` to keep regular desktop sizing while enlarging touch targets. Untagged
 caption button minimum heights are unchanged. Desktop popular controls have fixed sizes: icon buttons are 38.24px with 20.59px icons,
 and caption buttons have a 36.93px minimum height with 18.38px icons. Caption controls,
 including activity, progress and copy buttons, wrap long labels on mobile; perimeter
