@@ -109,6 +109,27 @@ const beforeWorkspaces = await workspaceIds();
 assert(beforeWorkspaces.length > 0, "keep at least one workspace running to verify updates preserve it");
 const previousChannel = await readFile("/data/app/update.json", "utf8").catch((error) => { if (error.code === "ENOENT") return undefined; throw error; });
 try {
+  // A transient runtime outage must recover the same container, not replace it.
+  await docker("pause", "atelier");
+  try {
+    await wait("runtime health failure", async () => {
+      const status = await statusSnapshot();
+      return Boolean(status.failure) && !status.busy;
+    });
+    await supervisor("/recheck", {});
+    assert.equal((await statusSnapshot()).healthy, false, "recheck preserves an unhealthy app");
+    assert.equal(await appId(), initialApp, "recheck must not replace the app");
+  } finally {
+    await docker("unpause", "atelier");
+  }
+  await wait("automatic health recovery", async () => {
+    const status = await statusSnapshot();
+    return status.healthy && !status.busy && !status.failure;
+  });
+  assert.equal(await appId(), initialApp, "automatic recovery must not replace the app");
+  assert.deepEqual(await workspaceIds(), beforeWorkspaces);
+  log.push("Transient runtime health failure recovered without replacing the app");
+
   await docker("run", "-d", "--name", registryContainer, "-p", "127.0.0.1:5500:5000", "registry:2");
   await wait("fixture registry", async () => { try { return (await fetch(`http://${registry}/v2/`)).ok; } catch { return false; } });
   const base = `${name}-base:local`;

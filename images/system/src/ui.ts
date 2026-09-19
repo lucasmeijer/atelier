@@ -34,6 +34,7 @@ export interface SupervisorView {
   operation: "startup" | "update";
   phase: number;
   healthy: boolean;
+  recoveringHealth: boolean;
   stopping: boolean;
   failure?: string;
   candidate: string;
@@ -58,8 +59,15 @@ export function supervisorFragment(view: SupervisorView): string {
     return `<li class="status-list__item"${done ? ' role="checkbox" aria-checked="true"' : failed ? ' data-status="failed"' : running ? ' aria-busy="true"' : ''}><span class="status-list__marker"${failed ? ' role="img" aria-label="Failed"' : ''}>${done ? "✓" : failed ? "✕" : ""}</span><div>${label}${failed ? `<span class="system-detail system-error">${escapeHtml(view.failure!)}</span>` : ""}</div></li>`;
   }).join("");
 
+  const failureActions = view.failure && !view.stopping ? `
+    ${view.recoveringHealth ? `<p class="system-detail">System is checking automatically. Rechecking does not restart Atelier.</p>` : ""}
+    <div class="system-actions">
+      ${view.recoveringHealth ? `<form method="post" action="/recheck">${button("Recheck health")}</form>` : ""}
+      <form method="post" action="/retry">${button(view.recoveringHealth ? "Restart Atelier" : "Retry startup")}</form>
+    </div>` : "";
+
   return `<section aria-label="Atelier System"><h1>${title}</h1>
-    <section class="system-checklist" aria-label="Atelier preparation">${view.stopping ? "" : `<ol class="status-list">${checklist}</ol>`}${view.failure && !view.stopping ? `<div class="system-actions"><form method="post" action="/retry">${button("Try again")}</form></div>` : ""}</section>
+    <section class="system-checklist" aria-label="Atelier preparation">${view.stopping ? "" : `<ol class="status-list">${checklist}</ol>`}${failureActions}</section>
     ${view.authUrl ? `<p>Sign in to finish setting up remote access.</p>${actionLinkHtml({ href: view.authUrl, variant: "primary", content: { kind: "caption", caption: "Sign in to Tailscale" } })}` : ""}
     ${view.connectionProblem ? `<p class="system-error">${escapeHtml(view.connectionProblem)}</p>` : ""}
     ${foldout("system-logs", "Docker logs", `<pre class="system-log" data-progress-log>${escapeHtml(view.logs.join("\n") || "Waiting for output…")}</pre>`)}

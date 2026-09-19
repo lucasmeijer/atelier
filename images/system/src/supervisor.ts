@@ -61,6 +61,7 @@ let activeOperation: Promise<void> = Promise.resolve();
 let startup: Promise<void> = Promise.resolve();
 let initialized = false;
 let healthy = false;
+let recoveringHealth = false;
 let stopping = false;
 let tailnetHost: string | undefined;
 let connectionState = "Starting";
@@ -86,7 +87,7 @@ function connectionProblem() {
     return "The private connection did not finish starting within 2 minutes.";
 }
 function fragment() {
-  return supervisorFragment({ operation, phase, healthy, stopping, failure, candidate,
+  return supervisorFragment({ operation, phase, healthy, recoveringHealth, stopping, failure, candidate,
     accessMode: persisted.accessMode!, connectionState, connectionProblem: connectionProblem(), authUrl, logs });
 }
 function emit(event = "progress", data = fragment()) {
@@ -220,6 +221,7 @@ async function replace(reference: string, pull: boolean) {
       "An app operation is already running or System is stopping",
     );
   busy = true;
+  recoveringHealth = false;
   failure = undefined;
   healthy = false;
   candidate = reference;
@@ -285,15 +287,46 @@ async function replace(reference: string, pull: boolean) {
     persisted.currentImage = exact;
     await persist();
     stage("Opening Atelier", 4);
-    await configureRoutes(3000);
-    healthy = true;
-    stage("Atelier is ready");
-    emit("ready", "ready");
+    await openApp();
   } catch (error) {
     reportFailure(error instanceof Error ? error.message : String(error));
   } finally {
     busy = false;
     emit();
+  }
+}
+async function openApp() {
+  await configureRoutes(3000);
+  if (stopping) return;
+  healthy = true;
+  recoveringHealth = false;
+  failure = undefined;
+  stage("Atelier is ready", 4);
+  emit("ready", "ready");
+}
+
+// Reserve the operation while probing/routing so replacement and shutdown cannot
+// race a late successful probe into reopening the old app.
+async function recheckHealth() {
+  busy = true;
+  try {
+    const ready = await appIsHealthy();
+    if (stopping) return;
+    if (!ready) {
+      if (healthy) {
+        healthy = false;
+        recoveringHealth = true;
+        failure = "Atelier stopped responding to health checks";
+        stage("Atelier needs attention", 3);
+      }
+      await configureRoutes(3001);
+    } else if (recoveringHealth) {
+      await openApp();
+    }
+  } catch (error) {
+    log(String(error));
+  } finally {
+    busy = false;
   }
 }
 function allowedOrigin(request: Request) {
@@ -405,6 +438,12 @@ const server = Bun.serve({
         return new Response("System is starting or stopping", { status: 503 });
       if (busy)
         return new Response("An operation is already running", { status: 409 });
+      if (url.pathname === "/recheck") {
+        if (!recoveringHealth) return new Response("No health recovery is pending", { status: 409 });
+        activeOperation = recheckHealth();
+        await activeOperation;
+        return Response.redirect(request.headers.get("origin") ?? url.origin, 303);
+      }
       if (url.pathname === "/retry") {
         activeOperation = replace(candidate, !persisted.currentImage);
         return Response.redirect(
@@ -630,18 +669,9 @@ async function initialize() {
   void (async () => {
     while (!stopping) {
       await sleep(3000);
-      if (!healthy || busy || stopping) continue;
-      const ready = await appIsHealthy();
-      if (!ready && healthy && !busy && !stopping) {
-        healthy = false;
-        failure = "Atelier stopped responding to health checks";
-        stage("Atelier needs attention", 3);
-        try {
-          await configureRoutes(3001);
-        } catch (error) {
-          log(String(error));
-        }
-      }
+      if ((!healthy && !recoveringHealth) || busy || stopping) continue;
+      activeOperation = recheckHealth();
+      await activeOperation;
     }
   })();
 }
