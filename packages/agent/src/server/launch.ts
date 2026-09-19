@@ -4,6 +4,7 @@ import { Value } from "typebox/value";
 import { invalidArguments, type JsonObject } from "@atelier/core";
 import { hasAvailableConfiguredModel, renderModelSetupDialog, parseModelRef, modelRefValue } from "@atelier/llm/server";
 import { turboStream, turboStreamResponse, type AgentWorkspaceParameters, type WorkspaceAgentLaunch } from "@atelier/shared";
+import { listStagedAttachments } from "@atelier/prompt/server";
 import { resolveNewWorkspaceAgentModel } from "./model-state.ts";
 import { renderLaunchComposerSettings } from "./render-composer.ts";
 import { ensureDefaultWorkspaceAgentConversation } from "./session-store.ts";
@@ -49,7 +50,9 @@ export const nativeAgentLaunch: WorkspaceAgentLaunch = {
   },
   prepare: prepareAgentLaunch,
   async submit(form) {
-    if (!await hasAvailableConfiguredModel()) return { response: turboStreamResponse(turboStream("update", "settings_modal_host", await renderModelSetupDialog()), { status: 422 }) };
+    const hasPrompt = String(form.get("text") ?? "").trim().length > 0
+      || (await listStagedAttachments(String(form.get("attachmentDraft") ?? ""))).length > 0;
+    if (hasPrompt && !await hasAvailableConfiguredModel()) return { response: turboStreamResponse(turboStream("update", "settings_modal_host", await renderModelSetupDialog()), { status: 422 }) };
     const model = String(form.get("model") ?? "");
     const thinkingLevel = String(form.get("level") ?? "");
     return {

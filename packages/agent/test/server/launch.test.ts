@@ -3,6 +3,7 @@ import { mkdtemp, rm } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { prepareAgentLaunch, nativeAgentLaunch } from "../../src/server/launch.ts";
+import { stageAttachment } from "@atelier/prompt/server";
 import { listWorkspaceAgentConversations } from "../../src/server/session-store.ts";
 
 let directory: string;
@@ -18,6 +19,34 @@ afterEach(async () => {
 test("empty launch settings do not introduce an agent task", async () => {
   expect(await prepareAgentLaunch()).toBeUndefined();
   expect(await prepareAgentLaunch({ initialPrompt: "   " })).toBeUndefined();
+});
+
+test("empty composer submissions can launch without a configured model", async () => {
+  for (const text of ["", "   \n "]) {
+    const form = new FormData();
+    form.set("text", text);
+    form.set("attachmentDraft", crypto.randomUUID());
+    const submission = await nativeAgentLaunch.submit(form);
+    expect("response" in submission).toBe(false);
+    if ("response" in submission) throw new Error("Empty launch was rejected");
+    expect(await submission.prepare()).toEqual({ agent: {} });
+  }
+});
+
+test("composer prompts still require a configured model", async () => {
+  const form = new FormData();
+  form.set("text", "Start working");
+  const submission = await nativeAgentLaunch.submit(form);
+  expect("response" in submission && submission.response.status).toBe(422);
+});
+
+test("attachment-only composer submissions still require a configured model", async () => {
+  const draftId = crypto.randomUUID();
+  await stageAttachment(draftId, new File(["Task details"], "task.txt"));
+  const form = new FormData();
+  form.set("attachmentDraft", draftId);
+  const submission = await nativeAgentLaunch.submit(form);
+  expect("response" in submission && submission.response.status).toBe(422);
 });
 
 test("agent launch owns validation of its parameters", async () => {
