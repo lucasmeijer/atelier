@@ -25,7 +25,7 @@ describe("launch title generation", () => {
       expect(name).not.toHaveBeenCalled();
       ready.resolve();
       await Bun.sleep(0);
-      expect(registry.get(workspace.id)?.phase).toBe("ready");
+      expect(registry.get(workspace.id)?.phase.kind).toBe("runningPhase");
       expect(name).toHaveBeenCalledTimes(1);
       expect(name).toHaveBeenCalledWith(workspace.id, "Build a calendar", {
         events: undefined, agentModel: { provider: model.split("::")[0], id: model.split("::")[1] },

@@ -17,7 +17,7 @@ const marker = `atelier-lifecycle-${randomUUID()}`;
 const repository = `/data/app/${marker}`;
 const fixtures: string[] = [];
 let projectId: string | undefined;
-interface Workspace { id: string; phase: string; parked?: boolean; error?: string; issues?: unknown[]; }
+interface Workspace { id: string; phase: { kind: string; status?: string; busy: boolean }; parked?: boolean; error?: string; issues?: unknown[]; }
 interface Container {
   Id: string; Name: string; Image: string; State: { Running: boolean };
   HostConfig: { NetworkMode: string; PortBindings: Record<string, { HostIp: string; HostPort: string }[]> | null };
@@ -48,8 +48,8 @@ async function waitFor(description: string, check: () => Promise<boolean>, timeo
 async function ready(id: string) {
   await waitFor(`workspace ${id} ready`, async () => {
     const { workspace } = await api<{ workspace: Workspace }>(`/workspaces/${id}`);
-    if (workspace.phase === "failed" || workspace.issues?.length) throw new Error(`Workspace ${id}: ${JSON.stringify(workspace)}`);
-    return workspace.phase === "ready" && !workspace.parked;
+    if (workspace.phase.status === "failed" || workspace.issues?.length) throw new Error(`Workspace ${id}: ${JSON.stringify(workspace)}`);
+    return workspace.phase.kind === "runningPhase" && !workspace.parked;
   }, 900_000);
 }
 async function create(source: { type: "empty" } | { type: "project"; project: string }) {

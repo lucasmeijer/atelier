@@ -43,7 +43,7 @@ describe("workspace deletion", () => {
       changed: (state) => state.status === "deleting" ? notified.promise : undefined,
     });
     await deletion.request("workspace", { force: true });
-    expect(registry.get("workspace")?.deletion).toEqual({ status: "deleting", forced: true });
+    expect(registry.get("workspace")?.phase.deletion).toEqual({ status: "deleting", forced: true });
     expect(destroyed).toEqual([]);
     notified.resolve();
     await removed;
@@ -55,7 +55,7 @@ describe("workspace deletion", () => {
     let inspections = 0;
     const { registry, deletion, destroyed, removed } = await setup({ inspect: async () => { inspections++; return assessment; } });
     expect(await deletion.request("workspace")).toEqual({ deleted: false, blocked: true, details: { file: "first" } });
-    expect(registry.hasAttention("workspace")).toBe(true);
+    expect(registry.get("workspace")?.requestingAttention).toBe(true);
     await deletion.request("workspace");
     expect(inspections).toBe(1);
     await expect(deletion.request("workspace", { fingerprint: "stale" })).rejects.toThrow("no longer current");
@@ -81,7 +81,7 @@ describe("workspace deletion", () => {
     expect(states.at(-1)).toEqual({ status: "deleting", forced: false });
   });
 
-  test("checking failures retry inspection and cancellation clears evidence and attention", async () => {
+  test("checking failures retry inspection and cancellation preserves attention until visibility", async () => {
     let fail = true;
     const { registry, deletion, states } = await setup({ inspect: async () => {
       if (fail) throw new Error("cannot inspect");
@@ -92,8 +92,8 @@ describe("workspace deletion", () => {
     fail = false;
     await deletion.request("workspace");
     expect(deletion.cancel("workspace")).toBe(true);
-    expect(registry.get("workspace")?.phase).toBe("ready");
-    expect(registry.hasAttention("workspace")).toBe(false);
+    expect(registry.get("workspace")?.phase.kind).toBe("runningPhase");
+    expect(registry.get("workspace")?.requestingAttention).toBe(true);
     expect(deletion.evidence("workspace")).toBeUndefined();
     expect(deletion.cancel("workspace")).toBe(false);
   });
@@ -107,7 +107,7 @@ describe("workspace deletion", () => {
     });
     await deletion.request("workspace", { force: true });
     await failed;
-    expect(registry.get("workspace")?.deletion).toEqual({ status: "failed", operation: "deleting", forced: true, error: "docker refused" });
+    expect(registry.get("workspace")?.phase.deletion).toEqual({ status: "failed", operation: "deleting", forced: true, error: "docker refused" });
     await deletion.request("workspace");
     await removed;
     expect(inspections).toBe(0);
@@ -128,7 +128,7 @@ describe("workspace deletion", () => {
     });
     second.deletion.resume();
     await second.blocked;
-    expect(second.registry.get("workspace")?.deletion).toEqual({ status: "blocked", fingerprint: "new" });
+    expect(second.registry.get("workspace")?.phase.deletion).toEqual({ status: "blocked", fingerprint: "new" });
     expect(second.deletion.evidence("workspace")).toEqual({ file: "new" });
   });
 
@@ -139,7 +139,7 @@ describe("workspace deletion", () => {
     registry.add("second");
     const result = await deletion.destroyAll(["workspace", "second"]);
     expect(result).toEqual({ deleted: 1, errors: ["workspace: busy"] });
-    expect(registry.get("workspace")?.deletion).toEqual({ status: "failed", operation: "deleting", forced: true, error: "busy" });
+    expect(registry.get("workspace")?.phase.deletion).toEqual({ status: "failed", operation: "deleting", forced: true, error: "busy" });
     expect(registry.get("second")).toBeUndefined();
   });
 });
@@ -161,7 +161,7 @@ test("starting workspaces can be deleted, but inspection waits for preparation c
   });
   expect(deletion.canRequest("starting")).toBe(true);
   const request = deletion.request("starting");
-  expect(registry.get("starting")?.phase).toBe("checking_delete");
+  expect(registry.get("starting")?.phase.kind).toBe("deletingPhase");
   await Bun.sleep(0);
   expect(cancelled).toEqual(["starting"]);
   expect(inspected).toEqual([]);

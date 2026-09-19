@@ -9,7 +9,7 @@ beforeEach(dataDir.setUp);
 afterEach(dataDir.tearDown);
 
 function entry(init?: WorkspaceEntry["init"]): WorkspaceEntry {
-  return { id: "example", title: null, phase: "ready", parked: false, imageOutdated: false, lastActivityAt: 0, init };
+  return { id: "example", title: null, phase: { kind: "runningPhase", busy: false }, requestingAttention: false, parked: false, imageOutdated: false, lastActivityAt: 0, init };
 }
 
 async function warningsFor(workspace: WorkspaceEntry) {

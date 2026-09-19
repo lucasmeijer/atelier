@@ -210,12 +210,12 @@ test("failed startup releases readiness waiters but rejects socket admission", (
 
 test("authenticated turn boundaries identify the exact CLI session and close revokes it", () => scenario(`
   const { createAtelierEventBus } = await import("@atelier/core");
-  const { configureAgentMcp, handleAgentMcpRequest, subscribeWorkspaceViewBusy } = await import("@atelier/agent/server");
+  const { configureAgentMcp, handleAgentMcpRequest, subscribeWorkspaceAgentBusy } = await import("@atelier/agent/server");
   const events = createAtelierEventBus();
   const finished = [];
   const busy = [];
   events.on("workspace_agent_turn_finished", event => { finished.push(event); });
-  subscribeWorkspaceViewBusy(event => { busy.push(event); });
+  subscribeWorkspaceAgentBusy(event => { busy.push(event); });
   configureAgentMcp(events);
   const id = await provider.create({ workspaceId: "completion" });
   const script = calls.find(call => call[2]?.stdin?.includes("Authorization: Bearer"))[2].stdin;
@@ -231,8 +231,8 @@ test("authenticated turn boundaries identify the exact CLI session and close rev
   expect(finished).toEqual([]);
   expect((await handleAgentMcpRequest(request(), "completion")).status).toBe(204);
   expect(busy).toEqual([
-    { workspaceId: "completion", viewKey: "agent:" + id, busy: true },
-    { workspaceId: "completion", viewKey: "agent:" + id, busy: false },
+    { workspaceId: "completion", agentKey: "agent:" + id, busy: true },
+    { workspaceId: "completion", agentKey: "agent:" + id, busy: false },
   ]);
   expect(finished).toEqual([{ workspaceId: "completion", conversationId: id }]);
   await provider.tabs.close({ workspaceId: "completion", conversationId: id });

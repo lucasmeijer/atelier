@@ -5,7 +5,7 @@ import type { WorkspaceAgentRuntime, WorkspaceAgentRuntimeOptions } from "./runt
 import type { WorkspaceAgentConversationInfo } from "./session-store.ts";
 
 export type { AgentLivePresentationSubscription, WorkspaceAgentRuntime } from "./runtime-types.ts";
-export { subscribeWorkspaceViewBusy } from "./workspace-view-busy.ts";
+export { subscribeWorkspaceAgentBusy } from "./workspace-agent-busy.ts";
 
 const runtimes = new Map<string, Promise<WorkspaceAgentRuntime>>();
 const removedWorkspaceIds = new Set<string>();

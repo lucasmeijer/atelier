@@ -19,7 +19,11 @@ const cableIdentifierSchema = Type.Union([
 
 const subscriptionIdSchema = Type.String({ minLength: 1 });
 
+const workspaceVisibilitySchema = Type.Object({ workspaceId: Type.Optional(Type.String({ minLength: 1 })), surfaceKeys: Type.Array(Type.String({ minLength: 1 })) });
+export type WorkspaceVisibilityReport = Static<typeof workspaceVisibilitySchema>;
+
 const cableClientMessageSchema = Type.Union([
+  Type.Object({ command: Type.Literal("visibility"), visibility: workspaceVisibilitySchema }),
   Type.Object({ command: Type.Literal("subscribe"), identifier: cableIdentifierSchema, subscriptionId: subscriptionIdSchema }),
   Type.Object({ command: Type.Literal("unsubscribe"), identifier: cableIdentifierSchema, subscriptionId: subscriptionIdSchema }),
   Type.Object({ command: Type.Literal("pong"), time: Type.Optional(Type.Number()) }),
@@ -71,6 +75,7 @@ export interface CableSubscription {
 }
 
 export interface AtelierCableClient {
+  reportVisibility(visibility: WorkspaceVisibilityReport): void;
   subscribe(identifier: CableIdentifier, options?: CableSubscriptionOptions): CableSubscription;
   connected(): boolean;
   connectionId(): string | undefined;

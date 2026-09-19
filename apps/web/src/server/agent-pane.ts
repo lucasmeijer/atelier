@@ -10,6 +10,9 @@ import { barButton, fullscreenViewAttributes, selectorCloseForm, behaviorTurboSt
 import type { WorkspacePresentation } from "./workspace-presentation.ts";
 
 export interface AgentPaneContribution {
+  busy?: boolean;
+  requestingAttention?: boolean;
+  attentionSequence?: number;
   untitled?: boolean;
   id: string;
   providerId: string;
@@ -51,11 +54,22 @@ export function renderAgentBodyFrame(workspaceId: string, conversationId: string
   return `<turbo-frame id="${agentBodyFrameId(workspaceId, conversationId)}">${bodyHtml}</turbo-frame>`;
 }
 
+function agentStateDomId(workspaceId: string, conversationId: string): string { return domId("agent_state", workspaceId, conversationId); }
+
+function renderAgentState(workspaceId: string, conversationId: string, state: { busy?: boolean; requestingAttention?: boolean; attentionSequence?: number }): string {
+  return `<span id="${agentStateDomId(workspaceId, conversationId)}" data-agent-attention-id="${escapeHtml(conversationId)}"${state.attentionSequence === undefined ? "" : ` data-attention-sequence="${state.attentionSequence}"`} class="status-indicator">${state.busy ? '<i class="status-spinner sm" aria-label="Busy"></i>' : ""}${state.requestingAttention ? '<i class="status-dot attention" aria-label="Requesting attention"></i>' : ""}</span>`;
+}
+
+export function agentStateTurboStream(workspaceId: string, conversationId: string, state: { busy: boolean; requestingAttention: boolean; attentionSequence?: number }): string {
+  return turboStream("replace", agentStateDomId(workspaceId, conversationId), renderAgentState(workspaceId, conversationId, state));
+}
+
 function renderAgentTab(workspaceId: string, agent: AgentPaneContribution): string {
   return actionItemHtml({
     kind: "compound",
     label: { kind: "text", text: agent.title },
     leadingHtml: `<span class="fixed-shell-agent-icon">${agent.iconHtml}</span>`,
+    trailingHtml: renderAgentState(workspaceId, agent.id, agent),
     container: {  attributesHtml: `id="${agentTabDomId(workspaceId, agent.id)}"` },
     primary: { tag: "button", attributesHtml: `type="button" role="tab" aria-selected="false" tabindex="-1" data-agent-conversation-id="${escapeHtml(agent.id)}" ${fullscreenViewAttributes(agent.id, agent.title)} data-action="click->workspace-presentation#selectAgent"` },
     engagedActionsHtml: agent.close ? selectorCloseForm(agent.close) : "",

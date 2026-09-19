@@ -80,9 +80,9 @@ _Avoid_: Atelier button, open button
 The phone-only bottom navigation bar containing Mobile destinations within the selected Workspace, such as Agents, Browser, Review, and More. It is visible while the Workspace pane is hidden and is replaced by the Atelier bar when the Workspace pane opens.
 _Avoid_: Current Workspace toolbar, resident bar
 
-**Next unread**:
-An Atelier navigation action that opens the oldest Workspace needing attention. It uses the same queue and ordering as the global keyboard command, including both Workspace unread and other Workspace-level reasons for attention.
-_Avoid_: Next Agent, next Attention
+**Next attention**:
+An Atelier navigation action that opens the Workspace that has been requesting attention longest, regardless of whether it is busy or preloaded.
+_Avoid_: Next unread, next Agent
 
 **More**:
 The user-facing phone destination that opens a bottom sheet with separate sections for Work views not configured for direct mobile access and launchers that create or reveal Work views. Singleton utility launchers such as Files remain available when their live Work views are closed. Selecting a Work view from More leaves the stable bottom destination bar unchanged, and More remains highlighted while a secondary Work view is visible. “Work” remains domain language and is not exposed as the name of this mobile affordance.
@@ -108,17 +108,33 @@ _Avoid_: Attached session
 A pre-existing terminal session surfaced through a Terminal view while retaining a lifecycle independent of that view.
 _Avoid_: Owned session
 
+**Workspace phase**:
+The single active part of a Workspace's lifecycle: Provisioning phase, Running phase, or Deleting phase. A failure or a pending decision is a state within its phase, not another phase.
+
+**Provisioning phase**:
+The phase that prepares a Workspace for use. It is busy while progressing, not busy while waiting for a user decision or after failure. A decision or failure requests attention for the Workspace.
+
+**Running phase**:
+The phase in which a Workspace's Agents and Work views are available. It is busy if any Agent is busy. When an Agent or Work view starts requesting attention, this phase requests attention for the Workspace.
+
+**Deleting phase**:
+The phase that reviews and removes a Workspace. It is busy while progressing, not busy while waiting for a user decision or after failure. A decision or failure requests attention for the Workspace.
+
+**Busy**:
+An independent yes/no state of an Agent or Workspace phase. A Workspace is busy exactly when its active phase is busy. Work views do not contribute busy state.
+
+**Requesting attention**:
+An independent yes/no state of a Workspace, Agent, or Work view. It remains set until that particular destination becomes visible. A visible destination never starts requesting attention. Repeated requests do not change its place in the oldest-first order.
+_Avoid_: Unread, Agent ready
+
 **Attention request**:
-A persistent, repeatable signal asking the user to inspect a particular Work view in the requesting agent's own Workspace. A presentation operation may request attention for its target Work view. The request clears when its target Work view becomes visible and may be requested again later; a request made while its target is already visible is acknowledged immediately. Agent conversations do not receive Attention requests, agents cannot request attention across Workspaces, and Work-view Attention does not appear on Workspace rows.
-_Avoid_: Fresh data, Work view unread, highlighted tab
+An event asking the user to inspect a destination. A phase's request sets its Workspace's requesting-attention state only while that Workspace is not visible. Workspace visibility clears only Workspace attention, not the attention of hidden Agents or Work views. Attention does not itself change the visible destination.
 
-**Agent ready**:
-A state indicating that an Agent conversation has completed work whose newest assistant response has not yet been read. It contributes only to Workspace unread and is not shown as an Attention request or Agent-conversation indicator.
-_Avoid_: Agent attention, Agent unread
+**Workspace selection**:
+Opening a Workspace makes its oldest requesting-attention Agent visible and, on desktop, its oldest requesting-attention Work view visible. An Agent presentation also makes its presented Work view visible on desktop; on mobile it only requests attention.
 
-**Workspace unread**:
-A Workspace-level status set when one of its Agent conversations completes while the Workspace is not selected. Selecting the Workspace clears the status; Agent completion does not set it while the Workspace is selected.
-_Avoid_: Workspace attention, Workspace ready
+**Preload state**:
+A browser-local state indicating whether a Workspace is preloaded, preloading, or neither. It does not affect busy or requesting-attention state. Workspace attention indicators are dimmed until preloading finishes.
 
 **File view**:
 A Work pane view for reading and, when writable, editing one Workspace file. A file has at most one open File view within a Workspace.

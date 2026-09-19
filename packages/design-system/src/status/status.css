@@ -45,3 +45,8 @@
 .status-list__item[aria-busy="true"] .status-list__marker { border-color: var(--line-strong); border-top-color: var(--accent); color: transparent; animation: status-list-marker-spin 750ms linear infinite; }
 @keyframes status-list-marker-spin { to { transform: rotate(1turn); } }
 
+
+/* Independent indicators share a center; the spinner surrounds the attention dot. */
+.status-indicator { display: inline-grid; width: 18px; height: 18px; place-items: center; flex: 0 0 auto; }
+.status-indicator > :is(.status-dot, .status-spinner) { grid-area: 1 / 1; margin: 0; }
+.status-indicator > .status-spinner { width: 16px; height: 16px; }

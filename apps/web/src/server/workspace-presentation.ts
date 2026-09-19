@@ -21,18 +21,15 @@ export type WorkViewAvailability =
   | { phase: "reconnecting"; detail?: string }
   | { phase: "unavailable"; detail: string; recoveryHtml?: string };
 
-export type WorkspaceActionState = "starting" | "awaiting_continue" | "deleting" | "requires_delete_confirmation" | "idle";
-
 export interface WorkspacePaneEntry {
   id: string;
   title: string;
   active?: boolean;
-  state?: WorkspaceActionState;
-  attention?: boolean;
+  busy?: boolean;
+  requestingAttention?: boolean;
   attentionAt?: number;
-  attentionTokens?: Record<string, number>;
   lastActivityAt?: number;
-  busyViewKeys?: readonly string[];
+  busyAgentKeys?: readonly string[];
   outdated?: boolean;
   issues?: readonly { message: string }[];
 }
@@ -52,6 +49,7 @@ export interface WorkPaneContribution {
   key: string;
   label: string;
   kind: "resource" | "contextual";
+  requestingAttention?: boolean;
   attentionSequence?: number;
   availability: WorkViewAvailability;
   /** Inline bodies are reserved for shell-level fixtures; module attachments use bodyUrl. */
@@ -99,18 +97,8 @@ function workspaceStatusSlot(content: string): string {
 }
 
 function renderWorkspaceRowStatus(workspace: WorkspacePaneEntry): string {
-  if (workspace.state === "awaiting_continue") {
-    return workspaceStatusSlot('<i class="status-dot attention at-edge" role="img" aria-label="Workspace startup needs attention" title="Workspace startup needs attention"></i>');
-  }
-  if (workspace.state === "starting" || workspace.state === "deleting") {
-    const label = workspace.state === "starting" ? "Workspace starting" : "Workspace deleting";
-    return workspaceStatusSlot(`<i class="status-spinner sm fixed-shell-workspace-busy" aria-label="${label}" title="${label}"></i>`);
-  }
-  if (workspace.busyViewKeys?.length) {
-    return workspaceStatusSlot('<i class="status-spinner sm fixed-shell-workspace-busy" aria-label="Workspace busy" title="Workspace busy"></i>');
-  }
-  if (workspace.attention) {
-    return '<span class="workspace-attention-status fixed-shell-workspace-status action-item__status" aria-label="Attention"><i class="status-dot attention at-edge" aria-hidden="true"></i></span>';
+  if (workspace.busy || workspace.requestingAttention) {
+    return workspaceStatusSlot(`<span class="status-indicator${workspace.requestingAttention ? " workspace-attention-status" : ""}" role="img" aria-label="${workspace.busy ? "Busy" : ""}${workspace.busy && workspace.requestingAttention ? "; " : ""}${workspace.requestingAttention ? "Requesting attention" : ""}">${workspace.busy ? '<i class="status-spinner sm" aria-hidden="true"></i>' : ""}${workspace.requestingAttention ? '<i class="status-dot attention" aria-hidden="true"></i>' : ""}</span>`);
   }
   const issues = (workspace.issues ?? []).map((issue) => issue.message);
   if (workspace.outdated) issues.push("Workspace created with an older version of Atelier. Some newer features may require a new workspace.");
@@ -119,99 +107,70 @@ function renderWorkspaceRowStatus(workspace: WorkspacePaneEntry): string {
     : "";
 }
 
-function renderWorkspaceRow(workspace: WorkspacePaneEntry, projectId?: string, options: { unpark?: boolean } = {}): string {
+function renderWorkspaceRow(workspace: WorkspacePaneEntry, projectId?: string, options: { unpark?: boolean; projectTitle?: string } = {}): string {
   const attentionAt = workspace.attentionAt === undefined ? "" : ` data-workspace-attention-at="${workspace.attentionAt}"`;
-  const attentionTokens = workspace.attentionTokens === undefined ? "" : ` data-workspace-attention-tokens="${escapeHtml(JSON.stringify(workspace.attentionTokens))}"`;
   const lastActivityAt = workspace.lastActivityAt === undefined ? "" : ` data-workspace-last-activity-at="${workspace.lastActivityAt}"`;
   const project = projectId ? ` data-project-id="${escapeHtml(projectId)}"` : "";
-  const busyViews = workspace.busyViewKeys?.length ? ` data-workspace-busy-views="${escapeHtml(JSON.stringify(workspace.busyViewKeys))}"` : "";
+  const busyViews = workspace.busyAgentKeys?.length ? ` data-workspace-busy-agents="${escapeHtml(JSON.stringify(workspace.busyAgentKeys))}"` : "";
   const label = options.unpark ? `Unpark and open ${workspace.title}` : workspace.title;
   return actionItemHtml({
     kind: "single",
     label: { kind: "text", text: workspace.title },
-    trailingHtml: `${renderWorkspaceRowStatus(workspace)}<span class="workspace-preparation-status fixed-shell-workspace-status action-item__status" aria-label="Preparing workspace" title="Preparing workspace"><i class="status-dot running" aria-hidden="true"></i></span>`,
+    description: [options.projectTitle, options.unpark ? "Parked" : undefined].filter(Boolean).join(" · ") || undefined,
+    trailingHtml: renderWorkspaceRowStatus(workspace),
     element: {
       tag: "button",
 
-      attributesHtml: `type="${options.unpark ? "submit" : "button"}" title="${escapeHtml(label)}" aria-label="${escapeHtml(label)}"${workspace.active ? ' aria-current="page"' : ""} data-workspace-entry-id="${escapeHtml(workspace.id)}"${attentionAt}${attentionTokens}${lastActivityAt}${busyViews}${project}${options.unpark ? "" : ' data-action="click->workspace-navigation#selectWorkspace"'}`,
+      attributesHtml: `id="${workspaceRowDomId(workspace.id)}" type="${options.unpark ? "submit" : "button"}" title="${escapeHtml(label)}" aria-label="${escapeHtml(label)}"${workspace.active ? ' aria-current="page"' : ""} data-workspace-entry-id="${escapeHtml(workspace.id)}"${attentionAt}${lastActivityAt}${busyViews}${project}${options.unpark ? "" : ' data-action="click->workspace-navigation#selectWorkspace"'}`,
     },
   });
 }
 
-const projectlessWorkspaceGroupId = "__projectless__";
-
-interface WorkspaceGroupAddAction {
-  href: string;
-  label: string;
-}
-
 const projectDialogTarget = 'data-turbo-frame="_top" data-turbo-stream="true"';
 
-interface WorkspaceGroupHeadingOptions {
-  mode?: "disclosure" | "static" | "launcher";
-  settingsHref?: string;
-  onboardingDestination?: "first-workspace";
-}
-
-function renderWorkspaceGroupHeading(id: string, title: string, add: WorkspaceGroupAddAction, options: WorkspaceGroupHeadingOptions = {}): string {
-  const mode = options.mode ?? "disclosure";
-  const addTarget = 'data-turbo-frame="launch_composer"';
-  const primary = mode === "disclosure"
-    ? { tag: "button" as const, attributesHtml: `type="button" aria-expanded="true" data-action="click->workspace-navigation#toggleProject" data-project-id="${escapeHtml(id)}"` }
-    : mode === "launcher"
-      ? { tag: "a" as const, attributesHtml: `href="${escapeHtml(add.href)}" ${addTarget} aria-label="${escapeHtml(add.label)}"` }
-      : { tag: "span" as const, };
-  const settings = options.settingsHref ? actionLinkHtml({
-    href: options.settingsHref,
-    variant: "secondary",
-    content: { kind: "icon-only", iconHtml: Icons.More, label: `Project settings: ${title}` },
-    attributesHtml: projectDialogTarget,
-  }) : "";
-  const onboardingAttribute = options.onboardingDestination ? `data-empty-workspace-onboarding-destination="${options.onboardingDestination}"` : "";
-  const addLink = actionLinkHtml({
-    href: add.href,
-    variant: "secondary",
-    content: { kind: "icon-only", iconHtml: Icons.Plus, label: add.label },
-    attributesHtml: `${onboardingAttribute} ${addTarget}`,
-  });
-  const actions = buttonGroupHtml({ orientation: "horizontal", semantics: "layout", itemsHtml: `${settings}${addLink}` });
-  return actionItemHtml({ kind: "compound", label: { kind: "text", text: title }, leadingHtml: mode === "disclosure" ? Icons.Disclosure : "", primary, engagedActionsHtml: actions });
-}
-
-function renderProjectHeading(project: Pick<WorkspacePaneProject, "id" | "title">, mode: "disclosure" | "launcher" = "disclosure", onboardingDestination?: "first-workspace"): string {
+function renderProjectHeading(project: Pick<WorkspacePaneProject, "id" | "title">, onboardingDestination?: "first-workspace"): string {
   const id = encodeURIComponent(project.id);
-  return renderWorkspaceGroupHeading(project.id, project.title, { href: `/projects/${id}/launch-composer`, label: `New workspace: ${project.title}` }, { mode, settingsHref: `/projects/${id}/settings`, onboardingDestination });
+  const href = `/projects/${id}/launch-composer`;
+  const settings = actionLinkHtml({
+    href: `/projects/${id}/settings`, variant: "secondary",
+    content: { kind: "icon-only", iconHtml: Icons.More, label: `Project settings: ${project.title}` },
+    attributesHtml: projectDialogTarget,
+  });
+  const add = actionLinkHtml({
+    href, variant: "secondary", content: { kind: "icon-only", iconHtml: Icons.Plus, label: `New workspace: ${project.title}` },
+    attributesHtml: `data-turbo-frame="launch_composer"${onboardingDestination ? ` data-empty-workspace-onboarding-destination="${onboardingDestination}"` : ""}`,
+  });
+  return actionItemHtml({ kind: "compound", label: { kind: "text", text: project.title },
+    primary: { tag: "a", attributesHtml: `href="${escapeHtml(href)}" data-turbo-frame="launch_composer"` },
+    engagedActionsHtml: buttonGroupHtml({ orientation: "horizontal", semantics: "layout", itemsHtml: settings + add }),
+  });
 }
 
-function renderParkedWorkspaceGroup(workspaces: readonly WorkspacePaneEntry[], parentId: string): string {
-  if (workspaces.length === 0) return "";
-  const groupId = `${parentId}:parked`;
-  const heading = actionItemHtml({
-    kind: "compound",
-    label: { kind: "text", text: `${workspaces.length} parked` },
-    leadingHtml: Icons.Disclosure,
-    primary: { tag: "button", attributesHtml: `type="button" aria-expanded="false" data-action="click->workspace-navigation#toggleProject" data-project-id="${escapeHtml(groupId)}"` },
+function workspaceRowDomId(id: string): string { return domId("workspace_row", id); }
+
+function workspaceRows(presentation: WorkspacePanePresentation): Array<{ id: string; html: string }> {
+  const entries = [
+    ...presentation.projects.flatMap((project) => [
+      ...project.workspaces.map((workspace) => ({ workspace, project, parked: false })),
+      ...(project.parkedWorkspaces ?? []).map((workspace) => ({ workspace, project, parked: true })),
+    ]),
+    ...(presentation.projectlessWorkspaces ?? []).map((workspace) => ({ workspace, project: undefined, parked: false })),
+    ...(presentation.projectlessParkedWorkspaces ?? []).map((workspace) => ({ workspace, project: undefined, parked: true })),
+  ].sort((a, b) => Number(a.parked) - Number(b.parked)
+    || Number(b.workspace.requestingAttention ?? false) - Number(a.workspace.requestingAttention ?? false)
+    || (a.workspace.attentionAt !== undefined && b.workspace.attentionAt !== undefined
+      ? a.workspace.attentionAt - b.workspace.attentionAt : (b.workspace.lastActivityAt ?? 0) - (a.workspace.lastActivityAt ?? 0))
+    || a.workspace.id.localeCompare(b.workspace.id));
+  return entries.map(({ workspace, project, parked }) => {
+    const row = renderWorkspaceRow(workspace, project?.id, { unpark: parked, projectTitle: project?.title });
+    return { id: workspaceRowDomId(workspace.id), html: parked
+      ? `<form id="${workspaceRowDomId(workspace.id)}" method="post" action="/workspaces/${encodeURIComponent(workspace.id)}/unpark" data-action="submit->workspace-navigation#unparkWorkspace">${row.replace(`id="${workspaceRowDomId(workspace.id)}"`, "")}</form>`
+      : row };
   });
-  return `<section class="fixed-shell-project action-list fixed-shell-parked is-collapsed" data-project-id="${escapeHtml(groupId)}">
-    ${heading}
-    <div class="fixed-shell-project-workspaces action-list">${workspaces.map((workspace) => `<form method="post" action="/workspaces/${encodeURIComponent(workspace.id)}/unpark" data-workspace-entry-id="${escapeHtml(workspace.id)}" data-action="submit->workspace-navigation#unparkWorkspace">${renderWorkspaceRow(workspace, undefined, { unpark: true })}</form>`).join("")}</div>
-  </section>`;
 }
 
 function renderWorkspacePaneRows(presentation: WorkspacePanePresentation): string {
-  const projects = presentation.projects.map((project) => `<section class="fixed-shell-project action-list" data-project-id="${escapeHtml(project.id)}">
-    ${renderProjectHeading(project)}
-    <div class="fixed-shell-project-workspaces action-list">${project.workspaces.map((workspace) => renderWorkspaceRow(workspace, project.id)).join("")}${renderParkedWorkspaceGroup(project.parkedWorkspaces ?? [], project.id)}</div>
-  </section>`).join("");
-  const projectlessWorkspaces = presentation.projectlessWorkspaces ?? [];
-  const projectlessParkedWorkspaces = presentation.projectlessParkedWorkspaces ?? [];
-  const projectlessAdd = { href: "/launch-composer", label: "New projectless workspace" };
-  const hasProjectlessWorkspaces = projectlessWorkspaces.length > 0 || projectlessParkedWorkspaces.length > 0;
-  const projectless = `<section class="fixed-shell-project action-list" data-project-id="${projectlessWorkspaceGroupId}">
-    ${renderWorkspaceGroupHeading(projectlessWorkspaceGroupId, "Projectless", projectlessAdd, { mode: hasProjectlessWorkspaces ? "disclosure" : "static" })}
-    ${hasProjectlessWorkspaces ? `<div class="fixed-shell-project-workspaces action-list">${projectlessWorkspaces.map((workspace) => renderWorkspaceRow(workspace)).join("")}${renderParkedWorkspaceGroup(projectlessParkedWorkspaces, projectlessWorkspaceGroupId)}</div>` : ""}
-  </section>`;
-  return `${projects}${projectless}`;
+  return workspaceRows(presentation).map((row) => row.html).join("");
 }
 
 function renderProjectsPane(presentation: WorkspacePanePresentation): string {
@@ -236,7 +195,7 @@ function renderProjectsPane(presentation: WorkspacePanePresentation): string {
     headerHtml: `<span class="panel__title">${Icons.Projects}Projects</span>${buttonGroupHtml({ orientation: "horizontal", semantics: "layout", itemsHtml: `${collapseProjects}${addProject}` })}`,
     bodyOverflow: "scroll",
     bodyHtml: `<div id="workspace_projects_list" class="fixed-shell-projects-list action-list" data-projects-pane-target="list">${paneProjects.length
-      ? paneProjects.map((project, index) => renderProjectHeading(project, "launcher", needsFirstWorkspace && index === 0 ? "first-workspace" : undefined)).join("")
+      ? paneProjects.map((project, index) => renderProjectHeading(project, needsFirstWorkspace && index === 0 ? "first-workspace" : undefined)).join("")
       : '<p class="fixed-shell-projects-empty">No projects yet, make one!<svg class="fixed-shell-projects-empty-arrow" width="40" height="36" viewBox="0 0 40 36" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true" focusable="false"><path d="M2 30 Q30 30 30 3 M24 9 L30 3 L36 9" /></svg></p>'}</div>`,
   })}</div>`;
 }
@@ -261,17 +220,17 @@ export function renderWorkspacePane(presentation: WorkspacePanePresentation, sid
   })}</div>${renderProjectsPane(presentation)}</div>`;
 }
 
-const atelierNextUnreadDomId = "fixed_shell_atelier_next_unread";
+const atelierNextAttentionDomId = "fixed_shell_atelier_next_attention";
 
-function renderAtelierNextUnreadButton(): string {
+function renderAtelierNextAttentionButton(): string {
   const icon = `${Icons.Next}<i class="status-dot attention" aria-hidden="true"></i>`;
-  return barButton("Next unread Workspace", "click->atelier-shortcuts#openPreparedAttentionWorkspace", icon, `id="${atelierNextUnreadDomId}" disabled`);
+  return barButton("Next workspace requesting attention", "click->atelier-shortcuts#openAttentionWorkspace", icon, `id="${atelierNextAttentionDomId}" disabled`);
 }
 
 export function renderAtelierBar(): string {
   const close = barButton("Close workspace list", "click->workspace-navigation#closeWorkspacePane", Icons.Close, "data-close-workspace-pane disabled");
   const newWorkspace = barButton("New Workspace With Same Project", "click->atelier-shortcuts#runCommand", Icons.Plus, 'data-command-id="agent.open-launch-composer"');
-  return `<nav class="fixed-shell-mobile-nav fixed-shell-atelier-bar" data-popular-button aria-label="Atelier">${close}${renderAtelierNextUnreadButton()}${newWorkspace}</nav>`;
+  return `<nav class="fixed-shell-mobile-nav fixed-shell-atelier-bar" data-popular-button aria-label="Atelier">${close}${renderAtelierNextAttentionButton()}${newWorkspace}</nav>`;
 }
 
 export function workspacePresentationDomId(workspaceId: string): string {
@@ -535,13 +494,39 @@ export function removeWorkspaceResidentTurboStream(workspaceId: string): string 
   return `<turbo-stream action="remove-workspace-resident" target="${escapeHtml(workspacePresentationDomId(workspaceId))}"></turbo-stream>`;
 }
 
-export function workspacePaneCollectionsTurboStream(presentation: WorkspacePanePresentation): string {
-  return [
-    turboStream("update", workspacePaneScrollDomId, renderWorkspacePaneRows(presentation)),
-    turboStream("replace", workspaceProjectsPaneDomId, renderProjectsPane(presentation)),
-    turboStream("replace", atelierNextUnreadDomId, renderAtelierNextUnreadButton()),
-    '<turbo-stream action="workspace-pane-changed" targets="[data-workspace-pane-collections]"></turbo-stream>',
-  ].join("");
+export function workspacePaneCollectionsTurboStream(presentation: WorkspacePanePresentation, previous?: WorkspacePanePresentation): string {
+  const rows = workspaceRows(presentation);
+  const before = new Map(previous ? workspaceRows(previous).map((row) => [row.id, row.html]) : []);
+  const streams: string[] = [];
+  // Reconnection reconciles membership without remounting the list or its controller.
+  if (!previous) streams.push(`<turbo-stream action="prune-workspace-rows" target="${workspacePaneScrollDomId}" data-row-ids="${escapeHtml(JSON.stringify(rows.map((row) => row.id)))}"></turbo-stream>`);
+  for (const id of before.keys()) if (!rows.some((row) => row.id === id)) streams.push(turboStream("remove", id));
+  for (const row of rows) {
+    if (before.get(row.id) === row.html) continue;
+    streams.push(previous && before.has(row.id) ? turboStream("replace", row.id, row.html) : turboStream("append", workspacePaneScrollDomId, row.html));
+  }
+  // Keep the longest already-ordered subsequence. Only displaced rows move;
+  // attention changes usually move exactly the row whose state changed.
+  const positions = new Map([...before.keys()].map((id, index) => [id, index]));
+  const chains: string[][] = [];
+  for (const row of rows) {
+    const position = positions.get(row.id);
+    if (position === undefined) continue;
+    let predecessor: string[] = [];
+    for (const chain of chains) {
+      if (positions.get(chain.at(-1)!)! < position && chain.length > predecessor.length) predecessor = chain;
+    }
+    chains.push([...predecessor, row.id]);
+  }
+  const stable = new Set(chains.sort((a, b) => b.length - a.length)[0] ?? []);
+  for (let index = rows.length - 1; index >= 0; index--) {
+    if (previous && stable.has(rows[index]!.id)) continue;
+    streams.push(`<turbo-stream action="move-workspace-row" target="${rows[index]!.id}" data-before-id="${rows[index + 1]?.id ?? ""}"></turbo-stream>`);
+  }
+  const projects = renderProjectsPane(presentation);
+  if (!previous || projects !== renderProjectsPane(previous)) streams.push(turboStream("replace", workspaceProjectsPaneDomId, projects));
+  streams.push('<turbo-stream action="workspace-pane-changed" targets="[data-workspace-pane-collections]"></turbo-stream>');
+  return streams.join("");
 }
 
 export function renderWorkspaceParkConfirmation(id: string, title: string): string {

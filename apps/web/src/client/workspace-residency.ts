@@ -6,8 +6,7 @@ import { Value } from "typebox/value";
 import { controllerForElement, registerWorkspaceControllers, workspaceNavigationController } from "./workspace-controller-registry.ts";
 import { oldestAttentionFirst, prioritizedWorkspacePreloads, retainedWorkspaceIds, type AttentionWorkspace, type WorkspacePreloadCandidate, type WorkspaceRetentionCandidate } from "./workspace-residency-policy.ts";
 
-const workspaceBusyViewsSchema = Type.Array(Type.String());
-const workspaceAttentionTokensSchema = Type.Record(Type.String(), Type.Integer({ minimum: 1 }));
+const workspaceBusyAgentsSchema = Type.Array(Type.String());
 
 interface WorkspaceSurfacePreparationController {
   prepareIntendedSurfaces(): Promise<void>;
@@ -59,6 +58,9 @@ class WorkspaceResidencyController extends Controller<HTMLElement> {
     document.addEventListener("atelier:workspace-preparation-requested", this.workspacePreparationRequested);
     document.addEventListener("atelier:workspace-preparation-request-acknowledged", this.workspacePreparationRequestAcknowledged);
     document.addEventListener("visibilitychange", this.documentVisibilityChanged);
+    document.addEventListener("atelier:workspace-pane-visible", this.surfaceVisibilityChanged);
+    document.addEventListener("atelier:workspace-pane-hidden", this.surfaceVisibilityChanged);
+    document.addEventListener("atelier:mobile-workspace-pane-changed", this.surfaceVisibilityChanged);
     window.addEventListener("popstate", this.historyChanged);
     const workspaceId = this.workspaceIdFromLocation();
     if (workspaceId) {
@@ -78,6 +80,10 @@ class WorkspaceResidencyController extends Controller<HTMLElement> {
     document.removeEventListener("atelier:workspace-preparation-requested", this.workspacePreparationRequested);
     document.removeEventListener("atelier:workspace-preparation-request-acknowledged", this.workspacePreparationRequestAcknowledged);
     document.removeEventListener("visibilitychange", this.documentVisibilityChanged);
+    document.removeEventListener("atelier:workspace-pane-visible", this.surfaceVisibilityChanged);
+    document.removeEventListener("atelier:workspace-pane-hidden", this.surfaceVisibilityChanged);
+    document.removeEventListener("atelier:mobile-workspace-pane-changed", this.surfaceVisibilityChanged);
+    window.AtelierCable?.reportVisibility({ surfaceKeys: [] });
     window.removeEventListener("popstate", this.historyChanged);
     for (const operation of this.operations.values()) operation.abort.abort();
   }
@@ -160,13 +166,17 @@ class WorkspaceResidencyController extends Controller<HTMLElement> {
     return this.residentTargets.find((resident) => resident.classList.contains("visible"))?.dataset.workspaceId;
   }
 
-  oldestPreparedAttentionWorkspaceId(): string | undefined {
-    return this.attentionWorkspaces().find(({ workspaceId }) => this.prepared.has(workspaceId))?.workspaceId;
+  oldestAttentionWorkspaceId(): string | undefined {
+    return this.attentionWorkspaces()[0]?.workspaceId;
   }
 
-  private syncNextUnreadButton(): void {
-    const button = document.querySelector<HTMLButtonElement>("#fixed_shell_atelier_next_unread");
-    if (button) button.disabled = this.oldestPreparedAttentionWorkspaceId() === undefined;
+  private syncNextAttentionButton(): void {
+    document.querySelectorAll<HTMLElement>("[data-workspace-entry-id]").forEach((entry) => {
+      const id = entry.dataset.workspaceEntryId!;
+      entry.dataset.workspacePreloadState = this.prepared.has(id) ? "preloaded" : this.operations.has(id) ? "preloading" : "none";
+    });
+    const button = document.querySelector<HTMLButtonElement>("#fixed_shell_atelier_next_attention");
+    if (button) button.disabled = this.oldestAttentionWorkspaceId() === undefined;
   }
 
   private syncCloseWorkspacePaneButton(): void {
@@ -255,12 +265,12 @@ class WorkspaceResidencyController extends Controller<HTMLElement> {
   }
 
   private selectedAgentIsWorking(workspaceId: string, conversationId: string | undefined): boolean {
-    return this.busyViews(workspaceId).includes(`agent:${conversationId}`);
+    return this.busyAgents(workspaceId).includes(`agent:${conversationId}`);
   }
 
-  private busyViews(workspaceId: string): string[] {
+  private busyAgents(workspaceId: string): string[] {
     const row = document.querySelector<HTMLElement>(`[data-workspace-entry-id="${CSS.escape(workspaceId)}"]`);
-    return row?.dataset.workspaceBusyViews ? Value.Parse(workspaceBusyViewsSchema, JSON.parse(row.dataset.workspaceBusyViews)) : [];
+    return row?.dataset.workspaceBusyAgents ? Value.Parse(workspaceBusyAgentsSchema, JSON.parse(row.dataset.workspaceBusyAgents)) : [];
   }
 
   private async fetchAndConnectResident(operation: WorkspacePreparationOperation): Promise<HTMLElement> {
@@ -307,7 +317,7 @@ class WorkspaceResidencyController extends Controller<HTMLElement> {
 
   private reconcileResidents(): void {
     this.evictIfNeeded();
-    this.syncNextUnreadButton();
+    this.syncNextAttentionButton();
     this.backgroundWakeRequested = true;
     this.startBackgroundPump();
   }
@@ -354,12 +364,7 @@ class WorkspaceResidencyController extends Controller<HTMLElement> {
   private setWorkspacePreloading(workspaceId: string, preloading: boolean): void {
     const entry = document.querySelector<HTMLElement>(`[data-workspace-entry-id="${CSS.escape(workspaceId)}"]`);
     if (!entry) return;
-    entry.toggleAttribute("data-workspace-preloading", preloading);
-    const attention = entry.querySelector<HTMLElement>(".workspace-attention-status");
-    if (!attention) return;
-    attention.setAttribute("aria-label", preloading ? "Attention; preparing workspace" : "Attention");
-    attention.toggleAttribute("title", preloading);
-    if (preloading) attention.title = "Preparing workspace";
+    entry.dataset.workspacePreloadState = this.prepared.has(workspaceId) ? "preloaded" : preloading ? "preloading" : "none";
   }
 
   private attentionWorkspaces(): AttentionWorkspace[] {
@@ -430,7 +435,7 @@ class WorkspaceResidencyController extends Controller<HTMLElement> {
   }
 
   private evictIfNeeded(): void {
-    this.syncNextUnreadButton();
+    this.syncNextAttentionButton();
     const retained = retainedWorkspaceIds(this.retentionCandidates(), this.maxResidentValue);
     for (const resident of this.residentTargets) {
       if (!retained.has(resident.dataset.workspaceId!)) this.evictResident(resident);
@@ -442,7 +447,7 @@ class WorkspaceResidencyController extends Controller<HTMLElement> {
     if (resident.classList.contains("visible")) throw new Error(`Cannot evict visible Workspace ${workspaceId}`);
     this.prepared.delete(workspaceId);
     resident.remove();
-    this.syncNextUnreadButton();
+    this.syncNextAttentionButton();
   }
 
   private hideResidents(): void {
@@ -457,6 +462,7 @@ class WorkspaceResidencyController extends Controller<HTMLElement> {
       }
     }
     this.syncCloseWorkspacePaneButton();
+    this.reportVisibility();
   }
 
   private async capturePreparedResident(workspaceId: string, resident: HTMLElement): Promise<void> {
@@ -525,27 +531,22 @@ class WorkspaceResidencyController extends Controller<HTMLElement> {
     resident.querySelector<HTMLElement>(".fixed-workspace-presentation")?.dispatchEvent(new CustomEvent("atelier:workspace-residency-visible"));
     const workspaceId = resident.dataset.workspaceId!;
     workspaceNavigationController()?.setActiveWorkspace(workspaceId);
-    this.acknowledgeVisibleWorkspace();
+    this.reportVisibility();
   }
 
-  private acknowledgeVisibleWorkspace(): void {
-    if (document.visibilityState !== "visible") return;
+  private readonly surfaceVisibilityChanged = (): void => { queueMicrotask(() => this.reportVisibility()); };
+
+  private reportVisibility(): void {
     const workspaceId = this.visibleWorkspaceId();
-    if (!workspaceId || workspaceId !== this.intendedWorkspaceId) return;
-    const row = document.querySelector<HTMLElement>(`[data-workspace-entry-id="${CSS.escape(workspaceId)}"]`);
-    let serializedTokens = row?.dataset.workspaceAttentionTokens;
-    if (!serializedTokens) return;
-    if (window.matchMedia(phoneLayoutMediaQuery).matches) {
-      const tokens = Value.Parse(workspaceAttentionTokensSchema, JSON.parse(serializedTokens));
-      const destination = document.querySelector<HTMLElement>(".workspace-detail-resident.visible .fixed-workspace-presentation")?.dataset.phoneDestination;
-      const visibleWorkViewKey = destination?.startsWith("work:") ? destination.slice(5) : undefined;
-      for (const key of Object.keys(tokens)) {
-        if (key !== "workspace" && !key.startsWith("agent:") && key !== visibleWorkViewKey) delete tokens[key];
-      }
-      serializedTokens = JSON.stringify(tokens);
+    const hidden = document.visibilityState !== "visible" || (window.matchMedia(phoneLayoutMediaQuery).matches && this.element.closest(".is-mobile-workspace-pane-open") !== null);
+    if (!workspaceId || hidden) {
+      window.AtelierCable?.reportVisibility({ surfaceKeys: [] });
+      return;
     }
-    // The server acknowledges only these exact occurrences, so newer Attention survives a delayed request.
-    void fetch(`/workspaces/${encodeURIComponent(workspaceId)}/attention/acknowledge?attentionTokens=${encodeURIComponent(serializedTokens)}`, { method: "POST" });
+    const resident = this.resident(workspaceId)!;
+    const surfaceKeys = [...resident.querySelectorAll<HTMLElement>('[data-workspace-surface-visible="true"]')]
+      .map((pane) => `${pane.dataset.workspacePaneRole === "agent" ? "agent:" : ""}${pane.dataset.workspacePaneId!}`);
+    window.AtelierCable?.reportVisibility({ workspaceId, surfaceKeys });
   }
 
   private setSwitchingWorkspace(switching: boolean): void {
@@ -561,11 +562,11 @@ class WorkspaceResidencyController extends Controller<HTMLElement> {
   private readonly workspacePaneChanged = (): void => {
     if (this.backgroundPreparationWorkspaceId) this.setWorkspacePreloading(this.backgroundPreparationWorkspaceId, true);
     this.reconcileResidents();
-    this.acknowledgeVisibleWorkspace();
+    this.reportVisibility();
   };
 
   private readonly documentVisibilityChanged = (): void => {
-    this.acknowledgeVisibleWorkspace();
+    this.reportVisibility();
   };
 
   private readonly workspacePreparationInvalidated = (event: Event): void => {

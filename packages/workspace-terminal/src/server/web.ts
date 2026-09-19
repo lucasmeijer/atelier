@@ -124,9 +124,7 @@ export const terminalWorkspaceModule: WorkspaceModule = {
   }],
   staticFiles: terminalStaticFiles,
   initialize(context) {
-    context.registerSocketHandler(createTerminalSocketHandler({
-      setViewBusy: (workspaceId, viewKey, busy) => context.registry.setViewBusy(workspaceId, viewKey, busy),
-    }));
+    context.registerSocketHandler(createTerminalSocketHandler());
     registerWorkspacePresenter("tmux", (workspaceId, options) => createTmuxPresenter(workspaceId, {
       events: options.events,
       presentWorkView: (reference) => context.presentWorkView(workspaceId, reference),

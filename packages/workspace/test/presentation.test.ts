@@ -65,7 +65,7 @@ describe("Workspace presentation", () => {
     expect(await restarted.dismissedWarnings("workspace-1")).toEqual({ "missing-secrets": "state-one", "project-settings-changed": "revision-one" });
     await restarted.dismissWarning("workspace-1", "missing-secrets", "state-two");
     expect((await restarted.dismissedWarnings("workspace-1"))["missing-secrets"]).toBe("state-two");
-    expect(await restarted.listWorkViews("workspace-1")).toEqual([{ reference: { type: "file", path: "/work/README.md" }, attention: false }]);
+    expect(await restarted.listWorkViews("workspace-1")).toEqual([{ reference: { type: "file", path: "/work/README.md" } }]);
   });
 
   test("dismissal before presentation initialization preserves later initial Work views", async () => {
@@ -73,7 +73,7 @@ describe("Workspace presentation", () => {
     const restarted = createWorkspacePresentationStore({ dataDir, workViewContributions });
     await restarted.initialize("workspace-1", [{ type: "file", path: "/work/README.md" }]);
     expect(await restarted.dismissedWarnings("workspace-1")).toEqual({ "missing-secrets": "state-one" });
-    expect(await restarted.listWorkViews("workspace-1")).toEqual([{ reference: { type: "file", path: "/work/README.md" }, attention: false }]);
+    expect(await restarted.listWorkViews("workspace-1")).toEqual([{ reference: { type: "file", path: "/work/README.md" } }]);
     await restarted.initialize("workspace-1", [{ type: "file", path: "/work/OTHER.md" }]);
     expect(await restarted.listWorkViews("workspace-1")).toHaveLength(1);
     expect((await restarted.listWorkViews("workspace-1"))[0]!.reference).toEqual({ type: "file", path: "/work/README.md" });
@@ -88,8 +88,8 @@ describe("Workspace presentation", () => {
     const restarted = createWorkspacePresentationStore({ dataDir, workViewContributions });
 
     expect(await restarted.listWorkViews("workspace-1")).toEqual([
-      { reference: { type: "terminal", terminalId: "terminal-1", ownership: "owned" }, attention: false },
-      { reference: { type: "file", path: "/work/CONTEXT.md" }, attention: false },
+      { reference: { type: "terminal", terminalId: "terminal-1", ownership: "owned" } },
+      { reference: { type: "file", path: "/work/CONTEXT.md" } },
     ]);
   });
 
@@ -116,30 +116,6 @@ describe("Workspace presentation", () => {
     expect((await presentation.listWorkViews("workspace-1")).map((view) => view.reference)).toEqual([readme, terminal, context]);
   });
 
-  test("Attention is persistent, repeatable, acknowledged explicitly, and never reorders Work views", async () => {
-    const terminal = { type: "terminal", terminalId: "terminal-1", ownership: "owned" } as const;
-    const context = { type: "file", path: "/work/CONTEXT.md" } as const;
-    await presentation.initialize("workspace-1", [terminal, context]);
-
-    const firstAttention = await presentation.requestAttention("workspace-1", terminal);
-    expect(await presentation.listWorkViews("workspace-1")).toEqual([
-      { reference: terminal, attention: true, attentionSequence: 1 },
-      { reference: context, attention: false },
-    ]);
-
-    const secondAttention = await presentation.requestAttention("workspace-1", terminal);
-    expect(await presentation.acknowledgeAttention("workspace-1", terminal, firstAttention)).toBe(false);
-    expect((await presentation.listWorkViews("workspace-1"))[0]?.attentionSequence).toBe(secondAttention);
-    expect(await presentation.acknowledgeAttention("workspace-1", terminal, secondAttention)).toBe(true);
-    await presentation.requestAttention("workspace-1", terminal);
-
-    expect((await createWorkspacePresentationStore({ dataDir, workViewContributions }).listWorkViews("workspace-1"))[0]).toEqual({
-      reference: terminal,
-      attention: true,
-      attentionSequence: 3,
-    });
-  });
-
   test("closing a Work view removes its persistent state and rejects a second close", async () => {
     const terminal = { type: "terminal", terminalId: "terminal-1", ownership: "owned" } as const;
     const context = { type: "file", path: "/work/CONTEXT.md" } as const;
@@ -147,7 +123,7 @@ describe("Workspace presentation", () => {
 
     await presentation.closeWorkView("workspace-1", terminal);
 
-    expect(await presentation.listWorkViews("workspace-1")).toEqual([{ reference: context, attention: false }]);
+    expect(await presentation.listWorkViews("workspace-1")).toEqual([{ reference: context }]);
     expect(presentation.closeWorkView("workspace-1", terminal)).rejects.toMatchObject({ code: "work_view_not_found" });
   });
 
@@ -187,7 +163,6 @@ describe("Workspace presentation", () => {
     await presentation.initialize("workspace-1", [context]);
 
     expect(presentation.openWorkView("workspace-1", { type: "unknown" })).rejects.toMatchObject({ code: "work_view_reference_invalid" });
-    await expect(presentation.acknowledgeAttention("workspace-1", context, 1)).resolves.toBe(false);
     expect(presentation.reorderWorkView("workspace-1", { type: "file", path: "/work/missing.md" }, 0)).rejects.toMatchObject({ code: "work_view_not_found" });
   });
 

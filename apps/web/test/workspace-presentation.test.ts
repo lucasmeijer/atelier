@@ -25,53 +25,6 @@ function fixture(overrides: Partial<WorkspacePresentation> = {}): WorkspacePrese
 
 describe("role-fixed Workspace presentation", () => {
 
-  test("renders one Workspace status using lifecycle, busy activity, Attention, then outdated-image precedence", () => {
-    const row = (status: { state?: "starting" | "deleting" | "requires_delete_confirmation" | "idle"; attention?: boolean; busyViewKeys?: readonly string[] }) => renderWorkspacePane({
-      projects: [],
-      projectlessWorkspaces: [{ id: "workspace", title: "Workspace", outdated: true, ...status }],
-    });
-
-    const starting = row({ state: "starting", attention: true, busyViewKeys: ["agent:one"] });
-    const deleting = row({ state: "deleting", attention: true, busyViewKeys: ["agent:one"] });
-    const busy = row({ state: "idle", attention: true, busyViewKeys: ["agent:one"] });
-    const attention = row({ state: "requires_delete_confirmation", attention: true });
-    expect(row({ state: "idle" })).toContain('class="fixed-shell-workspace-status action-item__status"><i class="fixed-shell-workspace-warning"');
-    expect(starting).toContain('class="fixed-shell-workspace-status action-item__status"><i class="status-spinner sm fixed-shell-workspace-busy" aria-label="Workspace starting"');
-    expect(starting).not.toContain('aria-label="Workspace busy"');
-    expect(deleting).toContain('class="fixed-shell-workspace-status action-item__status"><i class="status-spinner sm fixed-shell-workspace-busy" aria-label="Workspace deleting"');
-    expect(deleting).not.toContain('aria-label="Workspace busy"');
-    expect(busy).toContain('class="fixed-shell-workspace-status action-item__status"><i class="status-spinner sm fixed-shell-workspace-busy" aria-label="Workspace busy"');
-    expect(busy).not.toContain('aria-label="Attention"');
-    expect(attention).toContain('aria-label="Attention"');
-    expect(attention).not.toContain("fixed-shell-workspace-warning");
-  });
-
-  test("renders a parked disclosure only inside Projects that have parked Workspaces", () => {
-    const html = renderWorkspacePane({
-      projects: [
-        {
-          id: "mixed-project",
-          title: "Mixed",
-          workspaces: [{ id: "active", title: "Active workspace" }],
-          parkedWorkspaces: [{ id: "parked-1", title: "First parked" }, { id: "parked-2", title: "Second parked" }],
-        },
-        { id: "active-only-project", title: "Active only", workspaces: [{ id: "active-2", title: "Another active workspace" }] },
-      ],
-      projectlessWorkspaces: [],
-    });
-    const mixedProject = html.slice(html.indexOf('data-project-id="mixed-project"'), html.indexOf('data-project-id="active-only-project"'));
-    const activeOnlyProject = html.slice(html.indexOf('data-project-id="active-only-project"'), html.indexOf('data-project-id="__projectless__"'));
-
-    expect(mixedProject).toContain("fixed-shell-parked is-collapsed");
-    expect(mixedProject).toContain('aria-expanded="false"');
-    expect(mixedProject).toContain("2 parked");
-    expect(mixedProject).toContain("First parked");
-    expect(mixedProject).toContain('action="/workspaces/parked-1/unpark"');
-    expect(mixedProject).toContain('data-action="submit->workspace-navigation#unparkWorkspace"');
-    expect(activeOnlyProject).not.toContain("fixed-shell-parked");
-    expect(activeOnlyProject).not.toContain("parked");
-  });
-
   test("renders expensive Work bodies as lazy hydration frames", () => {
     const html = renderWorkspacePresentation(fixture({ workViews: [{
       key: "review:workspace",

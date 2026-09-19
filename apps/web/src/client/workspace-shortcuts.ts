@@ -107,7 +107,7 @@ class AtelierShortcutsController extends Controller<HTMLElement> {
       run: () => this.openAdjacentWorkspace(1),
     });
     clientHooks.registerCommand({
-      id: "workspace.open-oldest-unread",
+      id: "workspace.open-oldest-attention",
       label: "Open oldest workspace needing attention",
       scope: "global",
       binding: "Meta+Alt+Slash",
@@ -530,13 +530,13 @@ class AtelierShortcutsController extends Controller<HTMLElement> {
       ?? residencyController()?.visibleWorkspaceId();
   }
 
-  async openPreparedAttentionWorkspace(): Promise<void> {
-    const workspaceId = residencyController()?.oldestPreparedAttentionWorkspaceId();
+  async openAttentionWorkspace(): Promise<void> {
+    const workspaceId = residencyController()?.oldestAttentionWorkspaceId();
     if (workspaceId) await workspaceNavigationController()?.selectWorkspaceById(workspaceId);
   }
 
   async openOldestAttentionWorkspace(): Promise<void> {
-    const response = await fetch("/workspaces/open-oldest-unread", {
+    const response = await fetch("/workspaces/open-oldest-attention", {
       method: "POST",
       headers: { "Accept": "text/vnd.turbo-stream.html" },
     });

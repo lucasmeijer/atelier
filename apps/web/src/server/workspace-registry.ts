@@ -4,71 +4,41 @@ import type { WorkspaceInitInstruction } from "@atelier/workspace";
 import { Type, type Static, type TSchema } from "typebox";
 import { Value } from "typebox/value";
 
-export type WorkspacePhase = "starting" | "ready" | "checking_delete" | "deleting" | "failed";
-
+export type WorkspacePhase =
+  | { kind: "provisioningPhase"; status: "working" | "waiting" | "failed"; busy: boolean; error?: string; deletion?: never }
+  | { kind: "runningPhase"; busy: boolean; error?: never; deletion?: never }
+  | { kind: "deletingPhase"; busy: boolean; deletion: WorkspaceDeletionState; error?: never };
 export type WorkspaceDeletionState = Static<typeof workspaceDeletionStateSchema>;
-
 export type WorkspaceIssueKind = "readiness" | "image";
 export interface WorkspaceIssue { kind: WorkspaceIssueKind; message: string }
-
 export interface WorkspaceEntry {
   id: string;
   title: string | null;
   phase: WorkspacePhase;
+  requestingAttention: boolean;
+  attentionAt?: number;
   lastActivityAt: number;
   init: WorkspaceInitInstruction | undefined;
   parked: boolean;
   imageOutdated: boolean;
   issues?: WorkspaceIssue[];
-  deletion?: WorkspaceDeletionState;
-  error?: string;
 }
-
+export interface SurfaceState { requestingAttention: boolean; attentionSequence?: number }
+export interface AgentState extends SurfaceState { busy: boolean }
+export interface WorkspaceVisibility { workspaceId?: string; surfaceKeys: string[] }
 export interface WorkspaceRegistryCallbacks {
-  /** A single workspace changed. viewKey is set when one view triggered the change. */
   rowChanged?(entry: WorkspaceEntry, context: { viewKey?: string; phaseChanged?: boolean; issuesChanged?: boolean }): void;
-  /** A workspace's parked state changed and should be persisted. */
   parkedChanged?(entry: WorkspaceEntry): void;
-  /** List membership or ordering changed. */
   listChanged?(entries: WorkspaceEntry[]): void;
-  /** A workspace was removed from the registry. */
   removed?(id: string): void;
 }
-
-export type WorkspaceActivityStore = FileValueStore<Static<typeof workspaceTimestampsSchema>>;
-export type WorkspaceUnreadOccurrence = Static<typeof workspaceUnreadOccurrenceSchema>;
-export type WorkspaceUnreadSnapshot = Static<typeof workspaceUnreadSchema>;
-export type WorkspaceUnreadStore = FileValueStore<WorkspaceUnreadSnapshot>;
-export type WorkspaceDeletionStore = FileValueStore<Static<typeof workspaceDeletionsSchema>>;
-
-export interface WorkspaceRegistryOptions {
-  activityStore?: WorkspaceActivityStore;
-  unreadStore?: WorkspaceUnreadStore;
-  deletionStore?: WorkspaceDeletionStore;
-  now?(): number;
-}
-
-type WorkspacePhaseTransitions = { [Phase in WorkspacePhase]: WorkspacePhase[] };
-
-const allowedTransitions: WorkspacePhaseTransitions = {
-  starting: ["ready", "checking_delete", "deleting", "failed"],
-  ready: ["starting", "checking_delete", "deleting", "failed"],
-  checking_delete: ["ready", "deleting", "failed"],
-  deleting: ["failed"],
-  failed: ["starting", "ready", "checking_delete", "deleting"],
-};
-
 const workspaceTimestampsSchema = Type.Record(Type.String(), Type.Number());
-const workspaceUnreadOccurrenceSchema = Type.Object({
-  /** First transition to unread; stable across repeated occurrences for oldest-ready ordering. */
-  unreadAt: Type.Number(),
-  /** Exact occurrence identity used for compare-and-clear acknowledgement. */
-  token: Type.Integer({ minimum: 1 }),
-}, { additionalProperties: false });
-const workspaceUnreadSchema = Type.Object({
-  nextToken: Type.Integer({ minimum: 1 }),
-  views: Type.Record(Type.String(), Type.Record(Type.String(), workspaceUnreadOccurrenceSchema)),
-}, { additionalProperties: false });
+const occurrenceSchema = Type.Object({ requestedAt: Type.Number(), sequence: Type.Integer({ minimum: 1 }) });
+const workspaceAttentionSchema = Type.Object({
+  nextSequence: Type.Integer({ minimum: 1 }),
+  workspaces: Type.Record(Type.String(), Type.Number()),
+  surfaces: Type.Record(Type.String(), Type.Record(Type.String(), occurrenceSchema)),
+});
 const workspaceDeletionStateSchema = Type.Union([
   Type.Object({ status: Type.Literal("checking") }),
   Type.Object({ status: Type.Literal("blocked"), fingerprint: Type.String() }),
@@ -77,6 +47,16 @@ const workspaceDeletionStateSchema = Type.Union([
   Type.Object({ status: Type.Literal("failed"), operation: Type.Literal("deleting"), forced: Type.Boolean(), error: Type.String() }),
 ]);
 const workspaceDeletionsSchema = Type.Record(Type.String(), workspaceDeletionStateSchema);
+export type WorkspaceActivityStore = FileValueStore<Static<typeof workspaceTimestampsSchema>>;
+export type WorkspaceAttentionSnapshot = Static<typeof workspaceAttentionSchema>;
+export type WorkspaceAttentionStore = FileValueStore<WorkspaceAttentionSnapshot>;
+export type WorkspaceDeletionStore = FileValueStore<Static<typeof workspaceDeletionsSchema>>;
+export interface WorkspaceRegistryOptions {
+  activityStore?: WorkspaceActivityStore;
+  attentionStore?: WorkspaceAttentionStore;
+  deletionStore?: WorkspaceDeletionStore;
+  now?(): number;
+}
 
 interface FileValueStore<T> {
   load(): Promise<T>;
@@ -114,8 +94,8 @@ export function createFileWorkspaceActivityStore(path: string): WorkspaceActivit
   return createFileValueStore(path, workspaceTimestampsSchema, () => ({}));
 }
 
-export function createFileWorkspaceUnreadStore(path: string): WorkspaceUnreadStore {
-  return createFileValueStore(path, workspaceUnreadSchema, () => ({ nextToken: 1, views: {} }));
+export function createFileWorkspaceAttentionStore(path: string): WorkspaceAttentionStore {
+  return createFileValueStore(path, workspaceAttentionSchema, () => ({ nextSequence: 1, workspaces: {}, surfaces: {} }));
 }
 
 export function createFileWorkspaceDeletionStore(path: string): WorkspaceDeletionStore {
@@ -124,137 +104,157 @@ export function createFileWorkspaceDeletionStore(path: string): WorkspaceDeletio
 
 export interface WorkspaceRegistry {
   setCallbacks(callbacks: WorkspaceRegistryCallbacks): void;
-  /** Seed from the containers Docker knows about. Restores persisted deletion state alongside ready entries. */
-  seed(workspaces: Array<{ id: string; title: string | null; parked?: boolean; init?: WorkspaceInitInstruction; imageOutdated?: boolean; starting?: boolean }>): Promise<void>;
+  seed(workspaces: Array<{ id: string; title: string | null; parked?: boolean; init?: WorkspaceInitInstruction; imageOutdated?: boolean; provisioning?: boolean }>): Promise<void>;
   list(): WorkspaceEntry[];
   get(id: string): WorkspaceEntry | undefined;
   add(id: string, title?: string | null, init?: WorkspaceInitInstruction): WorkspaceEntry;
-  setPhase(id: string, phase: WorkspacePhase, error?: string): void;
-  setDeletion(id: string, deletion: WorkspaceDeletionState | undefined): void;
+  startProvisioning(id: string): void;
+  setProvisioningState(id: string, status: "working" | "waiting" | "failed", error?: string): void;
+  startRunning(id: string): void;
+  setDeletion(id: string, deletion: WorkspaceDeletionState): void;
+  cancelDeletion(id: string, provisioningError?: string): void;
   setIssue(id: string, kind: WorkspaceIssueKind, message?: string): void;
   setImageOutdated(id: string, outdated: boolean): void;
   setTitle(id: string, title: string | null): void;
   setParked(id: string, parked: boolean): void;
   touch(id: string): void;
   remove(id: string): void;
-  setViewBusy(id: string, viewKey: string, busy: boolean): void;
-  markViewAttention(id: string, viewKey: string, token?: number): number | undefined;
-  /** Clears only captured occurrences; Attention arriving after capture survives. */
-  acknowledgeAttention(id: string, capturedTokens: Readonly<Record<string, number>>): string[];
-  clearViewAttention(id: string, viewKey: string): void;
-  attentionTokens(id: string): Record<string, number>;
-  hasAttention(id: string): boolean;
-  workspaceAttentionAt(id: string): number | undefined;
+  setAgentBusy(id: string, agentKey: string, busy: boolean): void;
+  requestSurfaceAttention(id: string, surfaceKey: string): void;
+  requestAttention(id: string): void;
+  clearSurfaceAttention(id: string, surfaceKey: string): void;
+  surfaceState(id: string, surfaceKey: string): SurfaceState;
+  agentState(id: string, agentKey: string): AgentState;
+  setVisibility(connectionId: string, visibility: WorkspaceVisibility): void;
+  disconnect(connectionId: string): void;
   oldestAttentionWorkspace(): WorkspaceEntry | undefined;
-  busyViews(id: string): string[];
+  busyAgents(id: string): string[];
 }
 
 export function createWorkspaceRegistry(options: WorkspaceRegistryOptions = {}): WorkspaceRegistry {
   const now = options.now ?? Date.now;
-  const store = options.activityStore;
-  const unreadStore = options.unreadStore;
-  const deletionStore = options.deletionStore;
   const entries = new Map<string, WorkspaceEntry>();
-  const busyViewsByWorkspace = new Map<string, Set<string>>();
-  let unreadViewsByWorkspace: Record<string, Record<string, WorkspaceUnreadOccurrence>> = {};
-  let nextUnreadToken = 1;
-  let workspaceDeletions: Record<string, WorkspaceDeletionState> = {};
+  const busyAgents = new Map<string, Set<string>>();
+  const visibility = new Map<string, WorkspaceVisibility>();
+  let attention: WorkspaceAttentionSnapshot = { nextSequence: 1, workspaces: {}, surfaces: {} };
+  let deletions: Record<string, WorkspaceDeletionState> = {};
   let activity: Record<string, number> = {};
   let callbacks: WorkspaceRegistryCallbacks = {};
-
-  function sorted(): WorkspaceEntry[] {
-    return [...entries.values()].sort((a, b) => Number(a.parked) - Number(b.parked) || (b.lastActivityAt - a.lastActivityAt) || a.id.localeCompare(b.id));
-  }
-
-  function order(): string {
-    return sorted().map((entry) => entry.id).join("\n");
-  }
-
-  function persistActivity(): void {
-    if (!store) return;
-    void store.save(activity).catch((error) => console.error("could not persist workspace activity", error));
-  }
-
-  function persistUnread(): void {
-    if (!unreadStore) return;
-    void unreadStore.save({ nextToken: nextUnreadToken, views: unreadViewsByWorkspace }).catch((error) => console.error("could not persist workspace unread state", error));
-  }
-
-  function persistDeletions(): void {
-    if (!deletionStore) return;
-    void deletionStore.save(workspaceDeletions).catch((error) => console.error("could not persist workspace deletion state", error));
-  }
-
   function requireEntry(id: string): WorkspaceEntry {
     const entry = entries.get(id);
     if (!entry) throw new Error(`workspace not in registry: ${id}`);
     return entry;
   }
-
+  function sorted(): WorkspaceEntry[] {
+    return [...entries.values()].sort((a, b) => Number(a.parked) - Number(b.parked)
+      || Number(b.requestingAttention) - Number(a.requestingAttention)
+      || (a.requestingAttention && b.requestingAttention ? a.attentionAt! - b.attentionAt! : b.lastActivityAt - a.lastActivityAt)
+      || a.id.localeCompare(b.id));
+  }
+  function persistAttention(): void { void options.attentionStore?.save(attention).catch((error) => console.error("could not persist workspace attention", error)); }
+  function persistActivity(): void { void options.activityStore?.save(activity).catch((error) => console.error("could not persist workspace activity", error)); }
+  function persistDeletions(): void { void options.deletionStore?.save(deletions).catch((error) => console.error("could not persist workspace deletion", error)); }
+  function visible(id: string, surfaceKey?: string): boolean {
+    return [...visibility.values()].some((value) => value.workspaceId === id && (surfaceKey === undefined || value.surfaceKeys.includes(surfaceKey)));
+  }
+  function unpark(entry: WorkspaceEntry): void {
+    if (!entry.parked) return;
+    entry.parked = false;
+    callbacks.parkedChanged?.(entry);
+  }
+  function requestAttention(id: string): void {
+    const entry = requireEntry(id);
+    if (visible(id) || entry.requestingAttention) return;
+    unpark(entry);
+    entry.requestingAttention = true;
+    entry.attentionAt = now();
+    attention.workspaces[id] = entry.attentionAt;
+    persistAttention();
+    callbacks.rowChanged?.(entry, {});
+  }
+  function changePhase(entry: WorkspaceEntry, phase: WorkspacePhase): void {
+    entry.phase = phase;
+    callbacks.rowChanged?.(entry, { phaseChanged: true });
+  }
+  function surfaceState(id: string, key: string): SurfaceState {
+    const occurrence = attention.surfaces[id]?.[key];
+    return { requestingAttention: occurrence !== undefined, attentionSequence: occurrence?.sequence };
+  }
+  function clearSurfaceAttention(id: string, key: string): void {
+    if (!attention.surfaces[id]?.[key]) return;
+    delete attention.surfaces[id]![key];
+    persistAttention();
+    callbacks.rowChanged?.(requireEntry(id), { viewKey: key });
+  }
   return {
-    setCallbacks(next) {
-      callbacks = next;
-    },
-
+    setCallbacks(next) { callbacks = next; },
     async seed(workspaces) {
-      const loadedActivity = store ? await store.load() : {};
-      const workspaceIds = new Set(workspaces.map((workspace) => workspace.id));
-      activity = Object.fromEntries(Object.entries(loadedActivity).filter(([id]) => workspaceIds.has(id)));
-      if (Object.keys(activity).length !== Object.keys(loadedActivity).length) persistActivity();
-      const loadedUnread = unreadStore ? await unreadStore.load() : { nextToken: 1, views: {} };
-      nextUnreadToken = loadedUnread.nextToken;
-      unreadViewsByWorkspace = Object.fromEntries(Object.entries(loadedUnread.views).filter(([id]) => workspaceIds.has(id)));
-      if (Object.keys(unreadViewsByWorkspace).length !== Object.keys(loadedUnread.views).length) persistUnread();
-      const loadedDeletions = deletionStore ? await deletionStore.load() : {};
-      workspaceDeletions = Object.fromEntries(Object.entries(loadedDeletions).filter(([id]) => workspaceIds.has(id)));
-      if (Object.keys(workspaceDeletions).length !== Object.keys(loadedDeletions).length) persistDeletions();
-      entries.clear();
-      let persistedBlockedAssessment = false;
-      for (const workspace of workspaces) {
-        const persistedDeletion = workspaceDeletions[workspace.id];
-        // Blocked evidence is deliberately not persisted. Reinspect after restart so the
-        // confirmation can only describe the current workspace.
-        const deletion = persistedDeletion?.status === "blocked" ? { status: "checking" as const } : persistedDeletion;
-        if (deletion !== persistedDeletion && deletion) {
-          workspaceDeletions[workspace.id] = deletion;
-          persistedBlockedAssessment = true;
-        }
-        const phase: WorkspacePhase = deletion?.status === "deleting" ? "deleting" : deletion?.status === "failed" ? "failed" : deletion ? "checking_delete" : workspace.starting ? "starting" : "ready";
-        const entry: WorkspaceEntry = {
-          id: workspace.id,
-          title: workspace.title,
-          phase,
-          lastActivityAt: activity[workspace.id] ?? 0,
-          init: workspace.init,
-          parked: workspace.parked ?? false,
-          imageOutdated: workspace.imageOutdated ?? false,
-          deletion,
-        };
-        if (deletion?.status === "failed") entry.error = deletion.error;
-        entries.set(workspace.id, entry);
+      activity = await options.activityStore?.load() ?? {};
+      attention = await options.attentionStore?.load() ?? attention;
+      deletions = await options.deletionStore?.load() ?? {};
+      const ids = new Set(workspaces.map((workspace) => workspace.id));
+      for (const values of [activity, attention.workspaces, attention.surfaces, deletions]) {
+        for (const id of Object.keys(values)) if (!ids.has(id)) delete values[id];
       }
-      if (persistedBlockedAssessment) persistDeletions();
+      entries.clear();
+      for (const workspace of workspaces) {
+        const persisted = deletions[workspace.id];
+        const deletion = persisted?.status === "blocked" ? { status: "checking" as const } : persisted;
+        if (deletion) deletions[workspace.id] = deletion;
+        const phase: WorkspacePhase = deletion
+          ? { kind: "deletingPhase", deletion, busy: deletion.status === "checking" || deletion.status === "deleting" }
+          : workspace.provisioning ? { kind: "provisioningPhase", status: "working", busy: true } : { kind: "runningPhase", busy: false };
+        const attentionAt = attention.workspaces[workspace.id];
+        entries.set(workspace.id, { id: workspace.id, title: workspace.title, init: workspace.init, phase,
+          requestingAttention: attentionAt !== undefined, attentionAt, lastActivityAt: activity[workspace.id] ?? 0,
+          parked: workspace.parked ?? false, imageOutdated: workspace.imageOutdated ?? false });
+      }
+      persistActivity(); persistAttention(); persistDeletions();
       callbacks.listChanged?.(sorted());
     },
-
-    list() {
-      return sorted();
-    },
-
-    get(id) {
-      return entries.get(id);
-    },
-
+    list: sorted,
+    get(id) { return entries.get(id); },
     add(id, title = null, init) {
       if (entries.has(id)) throw new Error(`workspace already in registry: ${id}`);
-      const entry: WorkspaceEntry = { id, title, phase: "starting", lastActivityAt: now(), init, parked: false, imageOutdated: false };
-      entries.set(id, entry);
-      activity[id] = entry.lastActivityAt;
-      persistActivity();
+      const entry: WorkspaceEntry = { id, title, init, phase: { kind: "provisioningPhase", status: "working", busy: true }, requestingAttention: false, lastActivityAt: now(), parked: false, imageOutdated: false };
+      entries.set(id, entry); activity[id] = entry.lastActivityAt; persistActivity();
       callbacks.listChanged?.(sorted());
       return entry;
     },
-
+    startProvisioning(id) {
+      const entry = requireEntry(id);
+      if (entry.phase.kind === "deletingPhase") throw new Error("Cannot provision a deleting workspace");
+      changePhase(entry, { kind: "provisioningPhase", status: "working", busy: true });
+    },
+    setProvisioningState(id, status, error) {
+      const entry = requireEntry(id);
+      if (entry.phase.kind !== "provisioningPhase") throw new Error("Workspace is not provisioning");
+      if (entry.phase.status === status && entry.phase.error === error) return;
+      changePhase(entry, { kind: "provisioningPhase", status, busy: status === "working", error });
+      if (status !== "working") requestAttention(id);
+    },
+    startRunning(id) {
+      const entry = requireEntry(id);
+      if (entry.phase.kind === "deletingPhase") throw new Error("Cannot run a deleting workspace");
+      changePhase(entry, { kind: "runningPhase", busy: (busyAgents.get(id)?.size ?? 0) > 0 });
+    },
+    setDeletion(id, deletion) {
+      const entry = requireEntry(id);
+      deletions[id] = deletion;
+      persistDeletions();
+      changePhase(entry, { kind: "deletingPhase", deletion, busy: deletion.status === "checking" || deletion.status === "deleting" });
+      if (deletion.status === "blocked" || deletion.status === "failed") requestAttention(id);
+    },
+    cancelDeletion(id, provisioningError) {
+      const entry = requireEntry(id);
+      if (entry.phase.kind !== "deletingPhase") throw new Error("Workspace is not deleting");
+      delete deletions[id];
+      persistDeletions();
+      changePhase(entry, provisioningError
+        ? { kind: "provisioningPhase", status: "failed", busy: false, error: provisioningError }
+        : { kind: "runningPhase", busy: (busyAgents.get(id)?.size ?? 0) > 0 });
+      if (provisioningError) requestAttention(id);
+    },
     setIssue(id, kind, message) {
       const entry = requireEntry(id);
       const issues = (entry.issues ?? []).filter((issue) => issue.kind !== kind);
@@ -262,176 +262,55 @@ export function createWorkspaceRegistry(options: WorkspaceRegistryOptions = {}):
       entry.issues = issues.length ? issues : undefined;
       callbacks.rowChanged?.(entry, { issuesChanged: true });
     },
-
-    setImageOutdated(id, outdated) {
-      const entry = requireEntry(id);
-      entry.imageOutdated = outdated;
-      callbacks.rowChanged?.(entry, { issuesChanged: true });
-    },
-
-    setPhase(id, phase, error) {
-      const entry = requireEntry(id);
-      if (entry.phase === phase) return;
-      if (!allowedTransitions[entry.phase].includes(phase)) {
-        throw new Error(`illegal workspace phase transition: ${entry.phase} -> ${phase} (${id})`);
-      }
-      entry.phase = phase;
-      entry.error = phase === "failed" ? error : undefined;
-      callbacks.rowChanged?.(entry, { phaseChanged: true });
-    },
-
-    setDeletion(id, deletion) {
-      const entry = requireEntry(id);
-      const phase: WorkspacePhase = deletion?.status === "deleting" ? "deleting" : deletion?.status === "failed" ? "failed" : deletion ? "checking_delete" : "ready";
-      if (entry.phase !== phase && !allowedTransitions[entry.phase].includes(phase)) throw new Error(`illegal workspace phase transition: ${entry.phase} -> ${phase} (${id})`);
-      entry.phase = phase;
-      entry.deletion = deletion;
-      entry.error = deletion?.status === "failed" ? deletion.error : undefined;
-      if (deletion) workspaceDeletions[id] = deletion;
-      else delete workspaceDeletions[id];
-      persistDeletions();
-      callbacks.rowChanged?.(entry, {});
-    },
-
-    setTitle(id, title) {
-      const entry = entries.get(id);
-      if (!entry || entry.title === title) return;
-      entry.title = title;
-      callbacks.rowChanged?.(entry, {});
-    },
-
+    setImageOutdated(id, outdated) { const entry = requireEntry(id); entry.imageOutdated = outdated; callbacks.rowChanged?.(entry, { issuesChanged: true }); },
+    setTitle(id, title) { const entry = requireEntry(id); if (entry.title === title) return; entry.title = title; callbacks.rowChanged?.(entry, {}); },
     setParked(id, parked) {
-      const entry = entries.get(id);
-      if (!entry || entry.parked === parked) return;
-      entry.parked = parked;
-      callbacks.parkedChanged?.(entry);
-      callbacks.listChanged?.(sorted());
+      const entry = requireEntry(id); if (entry.parked === parked) return;
+      entry.parked = parked; callbacks.parkedChanged?.(entry); callbacks.rowChanged?.(entry, {});
     },
-
-    touch(id) {
-      const entry = entries.get(id);
-      if (!entry) return;
-      const before = order();
-      entry.lastActivityAt = now();
-      activity[id] = entry.lastActivityAt;
-      persistActivity();
-      if (order() !== before) callbacks.listChanged?.(sorted());
-    },
-
+    touch(id) { const entry = requireEntry(id); entry.lastActivityAt = now(); activity[id] = entry.lastActivityAt; persistActivity(); callbacks.rowChanged?.(entry, {}); },
     remove(id) {
       if (!entries.delete(id)) return;
-      busyViewsByWorkspace.delete(id);
-      if (activity[id] !== undefined) {
-        delete activity[id];
-        persistActivity();
+      busyAgents.delete(id); delete activity[id]; delete attention.workspaces[id]; delete attention.surfaces[id]; delete deletions[id];
+      persistActivity(); persistAttention(); persistDeletions(); callbacks.removed?.(id); callbacks.listChanged?.(sorted());
+    },
+    setAgentBusy(id, key, busy) {
+      if (!key.startsWith("agent:")) throw new Error(`Not an agent: ${key}`);
+      const entry = requireEntry(id);
+      const agents = busyAgents.get(id) ?? new Set<string>();
+      if (agents.has(key) === busy) return;
+      if (busy) agents.add(key); else agents.delete(key);
+      busyAgents.set(id, agents);
+      if (entry.phase.kind === "runningPhase") entry.phase.busy = agents.size > 0;
+      if (busy) unpark(entry);
+      callbacks.rowChanged?.(entry, { viewKey: key });
+    },
+    requestSurfaceAttention(id, key) {
+      const entry = requireEntry(id);
+      if (visible(id, key) || attention.surfaces[id]?.[key]) return;
+      unpark(entry);
+      (attention.surfaces[id] ??= {})[key] = { requestedAt: now(), sequence: attention.nextSequence++ };
+      persistAttention();
+      if (entry.phase.kind === "runningPhase") requestAttention(id);
+      callbacks.rowChanged?.(entry, { viewKey: key });
+    },
+    requestAttention,
+    clearSurfaceAttention,
+    surfaceState,
+    agentState(id, key) { return { ...surfaceState(id, key), busy: busyAgents.get(id)?.has(key) ?? false }; },
+    setVisibility(connectionId, state) {
+      if (state.workspaceId !== undefined) requireEntry(state.workspaceId);
+      visibility.set(connectionId, state);
+      if (state.workspaceId === undefined) return;
+      const entry = requireEntry(state.workspaceId);
+      if (entry.requestingAttention) {
+        entry.requestingAttention = false; delete entry.attentionAt; delete attention.workspaces[entry.id];
+        persistAttention(); callbacks.rowChanged?.(entry, {});
       }
-      if (unreadViewsByWorkspace[id] !== undefined) {
-        delete unreadViewsByWorkspace[id];
-        persistUnread();
-      }
-      if (workspaceDeletions[id] !== undefined) {
-        delete workspaceDeletions[id];
-        persistDeletions();
-      }
-      callbacks.removed?.(id);
-      callbacks.listChanged?.(sorted());
+      for (const key of state.surfaceKeys) clearSurfaceAttention(entry.id, key);
     },
-
-    setViewBusy(id, viewKey, busy) {
-      const views = busyViewsByWorkspace.get(id);
-      if ((views?.has(viewKey) ?? false) === busy) return;
-      if (busy) {
-        if (views) views.add(viewKey);
-        else busyViewsByWorkspace.set(id, new Set([viewKey]));
-      } else {
-        views!.delete(viewKey);
-        if (views!.size === 0) busyViewsByWorkspace.delete(id);
-      }
-      const entry = entries.get(id);
-      if (!entry) return;
-      if (busy && entry.parked) {
-        entry.parked = false;
-        callbacks.parkedChanged?.(entry);
-        callbacks.rowChanged?.(entry, { viewKey });
-        callbacks.listChanged?.(sorted());
-        return;
-      }
-      callbacks.rowChanged?.(entry, { viewKey });
-    },
-
-    markViewAttention(id, viewKey, suppliedToken) {
-      const entry = entries.get(id);
-      if (!entry) return undefined;
-      const token = suppliedToken ?? nextUnreadToken;
-      if (!Number.isSafeInteger(token) || token < 1) throw new Error(`invalid unread occurrence token: ${token}`);
-      if (suppliedToken === undefined || token >= nextUnreadToken) nextUnreadToken = token + 1;
-      const unparked = entry.parked;
-      if (unparked) {
-        entry.parked = false;
-        callbacks.parkedChanged?.(entry);
-      }
-      const views = unreadViewsByWorkspace[id] ?? {};
-      const previous = views[viewKey];
-      if (previous?.token === token) {
-        if (unparked) callbacks.listChanged?.(sorted());
-        return token;
-      }
-      views[viewKey] = { unreadAt: previous?.unreadAt ?? now(), token };
-      unreadViewsByWorkspace[id] = views;
-      persistUnread();
-      callbacks.rowChanged?.(entry, { viewKey });
-      if (unparked) callbacks.listChanged?.(sorted());
-      return token;
-    },
-
-    acknowledgeAttention(id, capturedTokens) {
-      const entry = entries.get(id);
-      const views = unreadViewsByWorkspace[id];
-      if (!entry || !views) return [];
-      const acknowledged = Object.entries(capturedTokens)
-        .filter(([viewKey, token]) => views[viewKey]?.token === token)
-        .map(([viewKey]) => viewKey);
-      if (acknowledged.length === 0) return acknowledged;
-      for (const viewKey of acknowledged) delete views[viewKey];
-      if (Object.keys(views).length === 0) delete unreadViewsByWorkspace[id];
-      persistUnread();
-      callbacks.rowChanged?.(entry, {});
-      return acknowledged;
-    },
-
-    clearViewAttention(id, viewKey) {
-      const entry = entries.get(id);
-      const views = unreadViewsByWorkspace[id];
-      if (!entry || !views?.[viewKey]) return;
-      delete views[viewKey];
-      if (Object.keys(views).length === 0) delete unreadViewsByWorkspace[id];
-      persistUnread();
-      callbacks.rowChanged?.(entry, { viewKey });
-    },
-
-    attentionTokens(id) {
-      return Object.fromEntries(Object.entries(unreadViewsByWorkspace[id] ?? {}).map(([viewKey, occurrence]) => [viewKey, occurrence.token]));
-    },
-
-    hasAttention(id) {
-      return unreadViewsByWorkspace[id] !== undefined;
-    },
-
-    workspaceAttentionAt(id) {
-      const timestamps = Object.values(unreadViewsByWorkspace[id] ?? {}).map(({ unreadAt }) => unreadAt);
-      return timestamps.length > 0 ? Math.min(...timestamps) : undefined;
-    },
-
-    oldestAttentionWorkspace() {
-      return [...entries.values()]
-        .filter((entry) => this.hasAttention(entry.id))
-        .sort((a, b) => Number(busyViewsByWorkspace.has(a.id)) - Number(busyViewsByWorkspace.has(b.id))
-          || (this.workspaceAttentionAt(a.id)! - this.workspaceAttentionAt(b.id)!)
-          || a.id.localeCompare(b.id))[0];
-    },
-
-    busyViews(id) {
-      return [...(busyViewsByWorkspace.get(id) ?? [])];
-    },
+    disconnect(connectionId) { visibility.delete(connectionId); },
+    oldestAttentionWorkspace() { return sorted().find((entry) => entry.requestingAttention); },
+    busyAgents(id) { return [...(busyAgents.get(id) ?? [])]; },
   };
 }

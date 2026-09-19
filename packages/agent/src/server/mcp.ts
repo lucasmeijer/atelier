@@ -5,7 +5,7 @@ import { createAgentMcpServer } from "./mcp-server.ts";
 import { createAtelierControlTools } from "./tools.ts";
 import { createRegisteredOnboardingTools } from "./onboarding-tools.ts";
 import { agentConversationKey } from "./render-context.ts";
-import { publishWorkspaceViewBusy } from "./workspace-view-busy.ts";
+import { publishWorkspaceAgentBusy } from "./workspace-agent-busy.ts";
 import { isProjectOnboardingWorkspace } from "./workspace-capabilities.ts";
 
 const atelierMcpInstructions = `You are working inside an Atelier Docker workspace. Use Atelier tools to present your work and manage only your authorized workspace/project. Your identity is supplied by Atelier; never attempt to impersonate another agent.
@@ -69,7 +69,7 @@ async function handleTurnBoundary(request: Request, workspaceId: string | undefi
   const identity = authenticateAgentRequest(request, credentialStore().authenticate, workspaceId);
   if (identity instanceof Response) return identity;
   if (request.method !== "POST") return new Response("Method not allowed", { status: 405 });
-  publishWorkspaceViewBusy({ workspaceId: identity.workspaceId, viewKey: agentConversationKey(identity.agentId), busy: started });
+  publishWorkspaceAgentBusy({ workspaceId: identity.workspaceId, agentKey: agentConversationKey(identity.agentId), busy: started });
   if (!started) await events!.emit("workspace_agent_turn_finished", { workspaceId: identity.workspaceId, conversationId: identity.agentId });
   return new Response(null, { status: 204 });
 }

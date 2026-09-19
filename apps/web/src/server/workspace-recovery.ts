@@ -9,7 +9,7 @@ interface WorkspaceReadinessOperations {
 
 async function prepare(id: string, registry: WorkspaceRegistry, operations: WorkspaceReadinessOperations, run: WorkspaceProvisionRun): Promise<void> {
   const entry = registry.get(id);
-  const current = () => registry.get(id) === entry && !entry?.deletion;
+  const current = () => registry.get(id) === entry && !entry?.phase.deletion;
   await run.step("workspace.startup", "Prepare workspace", async () => {
     if (!current()) return;
     try {
@@ -41,10 +41,10 @@ export async function recoverWorkspaces(
   operations: RecoveryOperations,
 ): Promise<void> {
   await Promise.all(registry.list().flatMap((entry) => {
-    if (entry.deletion) return [];
+    if (entry.phase.deletion) return [];
     const { id, parked } = entry;
-    const current = () => registry.get(id) === entry && !entry.deletion && entry.parked === parked;
-    if (!parked) registry.setPhase(id, "starting");
+    const current = () => registry.get(id) === entry && !entry.phase.deletion && entry.parked === parked;
+    if (!parked) registry.startProvisioning(id);
     const restore = async () => {
       try {
         await operations.provisioning.run(id, async (run) => {
@@ -52,11 +52,11 @@ export async function recoverWorkspaces(
           if (!current() || parked) return;
           await prepare(id, registry, operations, run);
         });
-        if (current() && !parked) registry.setPhase(id, "ready");
+        if (current() && !parked) registry.startRunning(id);
       } catch (error) {
         if (!current()) return;
         console.error(`could not restore workspace ${id}`, error);
-        registry.setPhase(id, "failed", error instanceof Error ? error.message : String(error));
+        registry.setProvisioningState(id, "failed", error instanceof Error ? error.message : String(error));
       }
     };
     const inspectImage = async () => {

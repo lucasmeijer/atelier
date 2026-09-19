@@ -318,8 +318,8 @@ export interface WorkspaceCreationContext extends Record<string, unknown> {
 export interface WorkspaceServerModuleContext {
   events: AtelierEventBus;
   registry: {
-    setViewBusy(workspaceId: string, viewKey: string, busy: boolean): void;
-    markViewAttention(workspaceId: string, viewKey: string, token?: number): number | undefined;
+    setAgentBusy(workspaceId: string, agentKey: string, busy: boolean): void;
+    requestSurfaceAttention(workspaceId: string, surfaceKey: string): void;
   };
   globalSidebarContributions: GlobalSidebarContributionRegistry;
   /** Add a Work view without selecting it or requesting attention. */
@@ -468,6 +468,7 @@ export {
   decodeCableServerMessage,
   serializeCableIdentifier,
   type AtelierCableClient,
+  type WorkspaceVisibilityReport,
   type CableClientMessage,
   type CableIdentifier,
   type CableServerMessage,

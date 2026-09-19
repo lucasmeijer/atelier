@@ -16,8 +16,6 @@ export interface WorkspaceWorkViewContribution<Reference extends WorkspaceWorkVi
 
 export interface WorkspaceWorkViewState<Reference extends WorkspaceWorkViewReference = WorkspaceWorkViewReference> {
   reference: Reference;
-  attention: boolean;
-  attentionSequence?: number;
 }
 
 export interface WorkspacePresentationStore {
@@ -27,8 +25,6 @@ export interface WorkspacePresentationStore {
   listWorkViews(workspaceId: string): Promise<WorkspaceWorkViewState[]>;
   openWorkView(workspaceId: string, reference: WorkspaceWorkViewReference, options?: { after?: WorkspaceWorkViewReference }): Promise<{ opened: boolean }>;
   reorderWorkView(workspaceId: string, reference: WorkspaceWorkViewReference, index: number): Promise<void>;
-  requestAttention(workspaceId: string, reference: WorkspaceWorkViewReference): Promise<number>;
-  acknowledgeAttention(workspaceId: string, reference: WorkspaceWorkViewReference, attentionSequence: number): Promise<boolean>;
   closeWorkView(workspaceId: string, reference: WorkspaceWorkViewReference): Promise<void>;
 }
 
@@ -39,14 +35,12 @@ export interface WorkspacePresentationStoreOptions {
 
 interface StoredWorkView {
   reference: WorkspaceWorkViewReference;
-  attentionSequence?: number;
 }
 
 interface StoredPresentation {
   workViewsInitialized: boolean;
   dismissedWarnings: Record<string, string>;
   version: 1;
-  nextAttentionSequence: number;
   workViews: StoredWorkView[];
 }
 
@@ -101,32 +95,23 @@ export function createWorkspacePresentationStore(options: WorkspacePresentationS
 
   function parse(workspaceId: string, value: JsonValue): StoredPresentation {
     if (!isJsonObject(value)) throw presentationError(workspaceId, "expected version 1 state");
-    const { version, nextAttentionSequence, workViews: storedWorkViews } = value;
-    if (version !== 1 || !Number.isSafeInteger(nextAttentionSequence) || Number(nextAttentionSequence) < 1 || !Array.isArray(storedWorkViews)) {
+    const { version, workViews: storedWorkViews } = value;
+    if (version !== 1 || !Array.isArray(storedWorkViews)) {
       throw presentationError(workspaceId, "expected version 1 state");
     }
     const workViews = storedWorkViews.map((entry, index) => {
       if (!isJsonObject(entry)) throw presentationError(workspaceId, `Work view ${index} must be an object`);
       const reference = parseReference(workspaceId, entry.reference, true);
-      const attentionSequence = entry.attentionSequence;
-      if (attentionSequence !== undefined && (!Number.isSafeInteger(attentionSequence) || Number(attentionSequence) < 1)) {
-        throw presentationError(workspaceId, `Work view ${index} has invalid Attention`);
-      }
       const workView: StoredWorkView = { reference };
-      if (attentionSequence !== undefined) workView.attentionSequence = Number(attentionSequence);
       return workView;
     });
     const identities = workViews.map(({ reference }) => identity(reference));
     if (new Set(identities).size !== identities.length) throw presentationError(workspaceId, "Work view references must be unique");
-    const attentionSequences = workViews.flatMap((view) => view.attentionSequence === undefined ? [] : [view.attentionSequence]);
-    if (new Set(attentionSequences).size !== attentionSequences.length || attentionSequences.some((sequence) => sequence >= Number(nextAttentionSequence))) {
-      throw presentationError(workspaceId, "Attention sequences are inconsistent");
-    }
     const dismissedWarnings = value.dismissedWarnings ?? {};
     if (!Value.Check(dismissedWarningsSchema, dismissedWarnings)) throw presentationError(workspaceId, "invalid dismissed warnings");
     const workViewsInitialized = value.workViewsInitialized ?? true;
     if (!Value.Check(booleanSchema, workViewsInitialized)) throw presentationError(workspaceId, "invalid Work view initialization state");
-    return { version: 1, nextAttentionSequence: Number(nextAttentionSequence), workViews, dismissedWarnings, workViewsInitialized };
+    return { version: 1, workViews, dismissedWarnings, workViewsInitialized };
   }
 
   async function read(workspaceId: string): Promise<StoredPresentation | undefined> {
@@ -160,7 +145,7 @@ export function createWorkspacePresentationStore(options: WorkspacePresentationS
     async dismissWarning(workspaceId, kind, warningState) {
       await serialized(workspaceId, async () => {
         // A warning can be dismissed before modules initialize their Work views.
-        const state = await read(workspaceId) ?? { version: 1, nextAttentionSequence: 1, workViews: [], dismissedWarnings: {}, workViewsInitialized: false };
+        const state = await read(workspaceId) ?? { version: 1, workViews: [], dismissedWarnings: {}, workViewsInitialized: false };
         state.dismissedWarnings[kind] = warningState;
         await write(workspaceId, state);
       });
@@ -173,7 +158,6 @@ export function createWorkspacePresentationStore(options: WorkspacePresentationS
           dismissedWarnings: existing?.dismissedWarnings ?? {},
           workViewsInitialized: true,
           version: 1,
-          nextAttentionSequence: 1,
           workViews: initialWorkViews.map((reference) => ({ reference })),
         });
         await write(workspaceId, state);
@@ -183,11 +167,7 @@ export function createWorkspacePresentationStore(options: WorkspacePresentationS
     async listWorkViews(workspaceId) {
       return await serialized(workspaceId, async () => {
         const state = await requiredState(workspaceId);
-        return state.workViews.map((view) => {
-          const workView: WorkspaceWorkViewState = { reference: view.reference, attention: view.attentionSequence !== undefined };
-          if (view.attentionSequence !== undefined) workView.attentionSequence = view.attentionSequence;
-          return workView;
-        });
+        return state.workViews.map((view) => ({ reference: view.reference }));
       });
     },
 
@@ -222,32 +202,6 @@ export function createWorkspacePresentationStore(options: WorkspacePresentationS
         const [view] = state.workViews.splice(currentIndex, 1);
         state.workViews.splice(index, 0, view!);
         await write(workspaceId, state);
-      });
-    },
-
-    async requestAttention(workspaceId, inputReference) {
-      return await serialized(workspaceId, async () => {
-        const state = await requiredState(workspaceId);
-        const reference = parseReference(workspaceId, inputReference);
-        const view = state.workViews.find((candidate) => identity(candidate.reference) === identity(reference));
-        if (!view) throw new AtelierCoreError("work_view_not_found", `Work view is not open: ${identity(reference)}`);
-        view.attentionSequence = state.nextAttentionSequence;
-        state.nextAttentionSequence += 1;
-        await write(workspaceId, state);
-        return view.attentionSequence;
-      });
-    },
-
-    async acknowledgeAttention(workspaceId, inputReference, attentionSequence) {
-      return await serialized(workspaceId, async () => {
-        const state = await requiredState(workspaceId);
-        const reference = parseReference(workspaceId, inputReference);
-        const view = state.workViews.find((candidate) => identity(candidate.reference) === identity(reference));
-        if (!view) throw new AtelierCoreError("work_view_not_found", `Work view is not open: ${identity(reference)}`);
-        if (view.attentionSequence !== attentionSequence) return false;
-        delete view.attentionSequence;
-        await write(workspaceId, state);
-        return true;
       });
     },
 

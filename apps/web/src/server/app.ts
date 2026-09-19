@@ -59,7 +59,7 @@ import { parseCloseWorkViewRequest, parseReorderWorkViewRequest } from "./work-v
 import { Type } from "typebox";
 import { Value } from "typebox/value";
 import { openWorkViewTurboStream, presentWorkViewTurboStream, removeWorkspaceResidentTurboStream, renderAtelierBar, renderMobileWorkspaceBar, renderWorkViewBodyFrame, renderWorkspaceDeletionPresentation, renderWorkspaceParkConfirmation, dismissWorkspaceParkConfirmationTurboStream, renderWorkspacePane, renderWorkspacePresentation, workspacePaneCollectionsTurboStream, workspacePaneOnboardingState, workspacePresentationDomId, workViewsTurboStream, type WorkPaneContribution, type WorkspacePaneEntry, type WorkspacePanePresentation, type WorkspacePresentation as FixedWorkspacePresentation } from "./workspace-presentation.ts";
-import { agentProviderChoicesTurboStream, agentTabsTurboStream, renderAgentBodyFrame, selectAgentTurboStream } from "./agent-pane.ts";
+import { agentStateTurboStream, agentProviderChoicesTurboStream, agentTabsTurboStream, renderAgentBodyFrame, selectAgentTurboStream } from "./agent-pane.ts";
 import { workspacePreparationInvalidatedTurboStream } from "./workspace-view-markup.ts";
 import type { CableBroadcastOptions } from "./cable.ts";
 import { jsonResponse, problemJsonResponse, httpErrorStatus, response, turboReplaceStream, turboUpdateStream, wantsTurboStream } from "./http-responses.ts";
@@ -69,20 +69,6 @@ import { setTimeout as delay } from "node:timers/promises";
 import { createWorkspaceDeletion } from "./workspace-deletion.ts";
 
 const jsonStringSchema = Type.String();
-const attentionTokensSchema = Type.Record(Type.String(), Type.Integer({ minimum: 1 }));
-
-function attentionTokens(request: Request): Record<string, number> {
-  const raw = new URL(request.url).searchParams.get("attentionTokens");
-  let parsed: unknown;
-  try {
-    parsed = raw === null ? undefined : JSON.parse(raw);
-  } catch {
-    throw invalidArguments("attentionTokens must be a valid view-token map");
-  }
-  if (!Value.Check(attentionTokensSchema, parsed)) throw invalidArguments("attentionTokens must be a valid view-token map");
-  return parsed;
-}
-
 export interface WebAppDeps {
   registry: WorkspaceRegistry;
   cable?: { broadcast(identifier: CableIdentifier, html: string, options?: CableBroadcastOptions): void };
@@ -170,15 +156,12 @@ export function createWebApp(deps: WebAppDeps): WebApp {
   }
 
   deps.events?.on("agent_provider_default_changed", async () => {
-    for (const entry of registry.list().filter((entry) => entry.phase === "ready" && !entry.deletion)) {
+    for (const entry of registry.list().filter((entry) => entry.phase.kind === "runningPhase" && !entry.phase.deletion)) {
       broadcastShell(agentProviderChoicesTurboStream(await fixedWorkspacePresentation(entry.id)));
     }
   });
   deps.events?.on("workspace_agent_view_invalidated", ({ workspaceId, conversationId, exceptConnectionId, html }) => {
     broadcastShell(`${html ?? ""}${workspacePreparationInvalidatedTurboStream(workspaceId, conversationId)}`, exceptConnectionId ? { exceptConnectionId } : undefined);
-  });
-  deps.events?.on("workspace_agent_turn_finished", ({ workspaceId, conversationId }) => {
-    broadcastShell(selectAgentTurboStream(workspaceId, conversationId));
   });
   deps.events?.on("workspace_agent_conversation_title_changed", async ({ workspaceId }) => {
     broadcastShell(agentTabsTurboStream(await fixedWorkspacePresentation(workspaceId)));
@@ -187,7 +170,11 @@ export function createWebApp(deps: WebAppDeps): WebApp {
   const provisioningPrompts = new Map<string, string>();
   const provisioning = createWorkspaceProvisioning({ events: deps.events, onChange: (workspaceId) => {
     broadcastWorkspaceBoot(workspaceId);
-    broadcastWorkspacePaneCollections();
+    const entry = registry.get(workspaceId);
+    const snapshot = provisioning.snapshot(workspaceId);
+    if (entry?.phase.kind === "provisioningPhase" && snapshot) {
+      registry.setProvisioningState(workspaceId, snapshot.status === "waiting" ? "waiting" : snapshot.status === "failed" || snapshot.status === "cancelled" ? "failed" : "working", snapshot.error);
+    }
   } });
   const workspaceCommandModalHostId = "workspace_command_modal_host";
   const launchComposerFrameId = "launch_composer";
@@ -234,11 +221,19 @@ export function createWebApp(deps: WebAppDeps): WebApp {
   const persistWorkspaceParked = deps.persistWorkspaceParked ?? setWorkspaceParked;
   let suppressParkedStateCallbacks = false;
 
-  async function refreshWorkspacePaneCollections(): Promise<string> {
-    const pane = await workspacePaneCollections("");
-    const stream = `${workspacePaneCollectionsTurboStream(pane)}${turboReplaceStream(emptyWorkspaceOnboardingId, emptyWorkspaceOnboardingHtml(pane))}`;
-    broadcastShell(stream);
-    return stream;
+  let previousWorkspacePane: WorkspacePanePresentation | undefined;
+  let paneRefresh = Promise.resolve("");
+  function refreshWorkspacePaneCollections(): Promise<string> {
+    paneRefresh = paneRefresh.then(async () => {
+      const pane = await workspacePaneCollections("");
+      const onboarding = emptyWorkspaceOnboardingHtml(pane);
+      const stream = workspacePaneCollectionsTurboStream(pane, previousWorkspacePane)
+        + (!previousWorkspacePane || onboarding !== emptyWorkspaceOnboardingHtml(previousWorkspacePane) ? turboReplaceStream(emptyWorkspaceOnboardingId, onboarding) : "");
+      previousWorkspacePane = pane;
+      broadcastShell(stream);
+      return stream;
+    });
+    return paneRefresh;
   }
 
   function broadcastWorkspacePaneCollections(): void {
@@ -249,16 +244,22 @@ export function createWebApp(deps: WebAppDeps): WebApp {
     rowChanged(entry, context) {
       broadcastWorkspacePaneCollections();
       if (context.phaseChanged) {
-        if (entry.phase === "starting") {
-          provisioning.delete(entry.id);
+        if (entry.phase.kind === "provisioningPhase") {
           broadcastWorkspaceBoot(entry.id);
-        } else if (entry.phase === "ready") {
+        } else if (entry.phase.kind === "runningPhase") {
           provisioningPrompts.delete(entry.id);
           void broadcastWorkspaceReady(entry.id);
-        } else if (entry.phase === "failed") broadcastWorkspaceBoot(entry.id);
+        }
       }
-      if (context.issuesChanged && entry.phase === "ready") void workspaceWarningStream(entry).then(broadcastShell);
-      if (context.viewKey) broadcastShell(workspacePreparationInvalidatedTurboStream(entry.id));
+      if (context.issuesChanged && entry.phase.kind === "runningPhase") void workspaceWarningStream(entry).then(broadcastShell);
+      if (context.viewKey) {
+        if (context.viewKey.startsWith("agent:")) {
+          broadcastShell(agentStateTurboStream(entry.id, context.viewKey.slice(6), registry.agentState(entry.id, context.viewKey)));
+        } else {
+          void currentWorkPanePresentations(entry.id).then((views) => broadcastShell(workViewsTurboStream(entry.id, views)));
+        }
+        broadcastShell(workspacePreparationInvalidatedTurboStream(entry.id));
+      }
     },
     listChanged() {
       if (suppressParkedStateCallbacks) return;
@@ -361,28 +362,19 @@ export function createWebApp(deps: WebAppDeps): WebApp {
       destination.set(entry.init.projectId, [...(destination.get(entry.init.projectId) ?? []), entry]);
     }
     const paneEntry = (entry: WorkspaceEntry): WorkspacePaneEntry => {
-      const deletionStatus = entry.deletion?.status;
       const pane: WorkspacePaneEntry = {
         id: entry.id,
         title: workspaceTitle(entry),
         active: entry.id === activeWorkspaceId,
-        state: entry.phase === "starting"
-          ? (provisioning.snapshot(entry.id)?.status === "waiting" ? "awaiting_continue" : "starting")
-          : deletionStatus === "checking" || deletionStatus === "deleting"
-            ? "deleting"
-            : deletionStatus === "blocked"
-              ? "requires_delete_confirmation"
-              : "idle",
-        attention: registry.hasAttention(entry.id),
+        busy: entry.phase.busy,
+        requestingAttention: entry.requestingAttention,
         lastActivityAt: entry.lastActivityAt,
-        busyViewKeys: registry.busyViews(entry.id),
+        busyAgentKeys: registry.busyAgents(entry.id),
         outdated: entry.imageOutdated,
         issues: entry.issues,
       };
-      const attentionAt = registry.workspaceAttentionAt(entry.id);
+      const attentionAt = entry.attentionAt;
       if (attentionAt !== undefined) pane.attentionAt = attentionAt;
-      const tokens = registry.attentionTokens(entry.id);
-      if (Object.keys(tokens).length > 0) pane.attentionTokens = tokens;
       return pane;
     };
     const workspaceProjectIds = new Set([...grouped.keys(), ...parkedByProject.keys()]);
@@ -417,7 +409,7 @@ export function createWebApp(deps: WebAppDeps): WebApp {
       if (contribution?.sourceKey !== undefined) view.sourceKey = contribution.sourceKey;
       if (contribution) view.bodyUrl = `/workspaces/${encodeURIComponent(workspaceId)}/work-views/${encodeURIComponent(key)}/body`;
       if (contribution?.actionsHtml !== undefined) view.actionsHtml = contribution.actionsHtml;
-      if (stored.attentionSequence !== undefined) view.attentionSequence = stored.attentionSequence;
+      Object.assign(view, registry.surfaceState(workspaceId, key));
       return view;
     });
   }
@@ -460,6 +452,7 @@ export function createWebApp(deps: WebAppDeps): WebApp {
       agentProviders: await orderedAgentProviders(),
       agentConversations: agentConversations.map((conversation) => ({
         ...conversation,
+        ...registry.agentState(workspaceId, `agent:${conversation.id}`),
         bodyUrl: `/workspaces/${encodeURIComponent(workspaceId)}/agents/${encodeURIComponent(conversation.id)}/body`,
         close: agentClose(workspaceId, conversation.id, conversation.title),
       })),
@@ -485,7 +478,7 @@ export function createWebApp(deps: WebAppDeps): WebApp {
   }
 
   async function refreshProjectWarnings(projectId: string): Promise<string> {
-    const entries = registry.list().filter((entry) => entry.phase === "ready" && isGitProjectInit(entry.init) && entry.init.projectId === projectId);
+    const entries = registry.list().filter((entry) => entry.phase.kind === "runningPhase" && isGitProjectInit(entry.init) && entry.init.projectId === projectId);
     const project = await getProjectConfiguration(projectId);
     const stream = (await Promise.all(entries.map((entry) => workspaceWarningStream(entry, project)))).join("");
     broadcastShell(stream);
@@ -510,7 +503,7 @@ export function createWebApp(deps: WebAppDeps): WebApp {
 
   async function workspaceDetailContent(id: string): Promise<string> {
     const entry = requireWorkspace(id);
-    return entry.deletion ? deletionPresentation(entry, entry.deletion) : renderWorkspacePresentation(await fixedWorkspacePresentation(id));
+    return entry.phase.deletion ? deletionPresentation(entry, entry.phase.deletion) : renderWorkspacePresentation(await fixedWorkspacePresentation(id));
   }
 
   async function workspaceDetailResidentHtml(id: string, options: { visible?: boolean } = {}): Promise<string> {
@@ -523,22 +516,22 @@ export function createWebApp(deps: WebAppDeps): WebApp {
     const projectId = isGitProjectInit(entry.init) ? entry.init.projectId : undefined;
     const deleteButton = buttonHtml({ type: "submit", variant: "danger", content: { kind: "caption", caption: "Delete workspace" } });
     const deleteAction = `<form class="workspace-boot-actions" method="post" action="/workspaces/${encodeURIComponent(entry.id)}/delete">${deleteButton}</form>`;
-    const recovery = entry.phase === "failed" && projectId
+    const recovery = (entry.phase.kind === "provisioningPhase" && entry.phase.status === "failed") && projectId
       ? actionLinkHtml({ href: `/projects/${encodeURIComponent(projectId)}/settings?section=repository`, variant: "primary", content: { kind: "caption", caption: "Open Project settings" }, attributesHtml: 'data-turbo-stream="true"' })
       : "";
-    const inner = `${renderWorkspaceProvisioning(entry.id, provisioning.snapshot(entry.id), { failed: entry.phase === "failed", error: entry.error })}${recovery}${deleteAction}`;
+    const inner = `${renderWorkspaceProvisioning(entry.id, provisioning.snapshot(entry.id), { failed: (entry.phase.kind === "provisioningPhase" && entry.phase.status === "failed"), error: entry.phase.error })}${recovery}${deleteAction}`;
     const projectAttr = projectId ? ` data-project-id="${escapeHtml(projectId)}"` : "";
     return `<div class="workspace-detail-resident workspace-boot ${options.visible ? "visible" : ""}" id="${workspaceResidentId(entry.id)}" data-workspace-residency-target="resident" data-workspace-id="${escapeHtml(entry.id)}"${projectAttr}><div class="main"><div class="body"><div class="workspace-boot-progress"><div class="workspace-boot-content">${inner}</div></div>${renderWorkspaceLaunchPrompt(provisioningPrompts.get(entry.id))}</div></div>${renderMobileWorkspaceBar()}</div>`;
   }
 
   function broadcastWorkspaceBoot(id: string): void {
     const entry = registry.get(id);
-    if (!entry || (entry.phase !== "starting" && entry.phase !== "failed")) return;
+    if (!entry || entry.phase.kind !== "provisioningPhase") return;
     broadcastShell(turboReplaceStream(workspaceResidentId(id), workspaceBootResidentHtml(entry)));
   }
 
   async function workspaceResidentFor(entry: WorkspaceEntry, options: { visible?: boolean } = {}): Promise<string> {
-    if (!entry.deletion && (entry.phase === "starting" || entry.phase === "failed")) return workspaceBootResidentHtml(entry, options);
+    if (entry.phase.kind === "provisioningPhase") return workspaceBootResidentHtml(entry, options);
     return await workspaceDetailResidentHtml(entry.id, options);
   }
 
@@ -626,24 +619,24 @@ export function createWebApp(deps: WebAppDeps): WebApp {
 
   async function workspaceJson(id: string): Promise<Response> {
     const entry = requireWorkspace(id);
-    const workspace: Pick<WorkspaceEntry, "id" | "phase" | "parked" | "error" | "issues"> & { title: string; url: string } = {
+    const workspace: Pick<WorkspaceEntry, "id" | "phase" | "parked" | "requestingAttention" | "issues"> & { title: string; url: string } = {
       id: entry.id,
       title: workspaceTitle(entry),
       phase: entry.phase,
       parked: entry.parked,
+      requestingAttention: entry.requestingAttention,
       url: `/workspaces/${encodeURIComponent(entry.id)}`,
     };
-    if (entry.error) workspace.error = entry.error;
     if (entry.issues?.length) workspace.issues = entry.issues;
-    if (entry.deletion || entry.parked || entry.phase !== "ready") return jsonResponse({ workspace });
+    if (entry.phase.deletion || entry.parked || entry.phase.kind !== "runningPhase") return jsonResponse({ workspace });
 
     const { presentation, commandContributions, storedWorkViews, warningState } = await workspacePresentationBundle(id);
     const handlers = new Map(workspaceModuleCommands().map((handler) => [handler.id, handler]));
     return jsonResponse({ workspace: {
       ...workspace,
       ...warningState,
-      agentConversations: presentation.agentConversations.map(({ id, title, providerId }) => ({ id, title, providerId })),
-      workViews: storedWorkViews.map((workView) => ({ key: workViewKey(workView.reference), ...workView })),
+      agentConversations: presentation.agentConversations.map(({ id, title, providerId, busy, requestingAttention }) => ({ id, title, providerId, busy, requestingAttention })),
+      workViews: storedWorkViews.map((workView) => ({ key: workViewKey(workView.reference), ...workView, ...registry.surfaceState(id, workViewKey(workView.reference)) })),
       commands: commandContributions.filter((command) => handlers.has(command.id)).map((command) => ({
         id: command.id,
         label: command.label,
@@ -657,11 +650,12 @@ export function createWebApp(deps: WebAppDeps): WebApp {
   function workspaceListEndpoint(request: Request, url: URL): Response {
     if (!requestAcceptsJson(request)) return Response.redirect(new URL("/", url).toString(), 302);
     return jsonResponse({ workspaces: registry.list().map((entry) => {
-      const workspace: Pick<WorkspaceEntry, "id" | "phase" | "parked" | "issues"> & { title: string; projectId?: string } = {
+      const workspace: Pick<WorkspaceEntry, "id" | "phase" | "parked" | "requestingAttention" | "issues"> & { title: string; projectId?: string } = {
         id: entry.id,
         title: workspaceTitle(entry),
         phase: entry.phase,
         parked: entry.parked,
+      requestingAttention: entry.requestingAttention,
       };
       if (entry.issues?.length) workspace.issues = entry.issues;
       if (isGitProjectInit(entry.init)) workspace.projectId = entry.init.projectId;
@@ -687,23 +681,23 @@ export function createWebApp(deps: WebAppDeps): WebApp {
       try {
         await provisioning.run(id, (run) => deps.provisionWorkspace(id, { init: options.init, context: options.context, run }));
         const entry = registry.get(id);
-        if (!entry || entry.deletion) return;
+        if (!entry || entry.phase.deletion) return;
         const warnings = provisioning.snapshot(id)!.steps.filter((step) => step.status === "warning");
         if (warnings.length) registry.setIssue(id, "readiness", warnings.map((step) => `${step.label}: ${step.error} Continued despite this failure.`).join("\n"));
         if (options.title) await setWorkspaceTitle(id, options.title);
-        registry.setPhase(id, "ready");
+        registry.startRunning(id);
         const launchPrompt = options.context?.agent?.initialPrompt?.trim();
         if (!options.title && launchPrompt && !options.context?.agent?.initialPromptMode) {
           maybeNameWorkspaceFromPrompt(id, launchPrompt, { events: deps.events, agentModel: options.context?.agent?.model ? parseModelRef(options.context.agent.model) : undefined });
         }
-        if (options.context?.agent?.initialPrompt !== undefined && !options.context.agent.initialPrompt.trim()) registry.markViewAttention(id, "workspace");
+        if (options.context?.agent?.initialPrompt !== undefined && !options.context.agent.initialPrompt.trim()) registry.requestAttention(id);
       } catch (error) {
         const entry = registry.get(id);
-        if (!entry || entry.deletion) return;
+        if (!entry || entry.phase.deletion) return;
         const message = error instanceof Error ? error.message : String(error);
         logError(`could not provision workspace ${id}: ${message}`);
-        registry.setPhase(id, "failed", message);
-        registry.markViewAttention(id, "workspace");
+        registry.setProvisioningState(id, "failed", message);
+        registry.requestAttention(id);
       }
     })();
   }
@@ -741,7 +735,7 @@ export function createWebApp(deps: WebAppDeps): WebApp {
 
   function workspaceCreatedJsonResponse(id: string): Response {
     const location = `/workspaces/${encodeURIComponent(id)}`;
-    return jsonResponse({ workspace: { id, phase: "starting", url: location } }, { status: 202, headers: { location } });
+    return jsonResponse({ workspace: { id, phase: requireWorkspace(id).phase, requestingAttention: requireWorkspace(id).requestingAttention, url: location } }, { status: 202, headers: { location } });
   }
 
   async function createOnboardingWorkspace(project: ProjectSummary, request: Request): Promise<Response> {
@@ -849,17 +843,17 @@ export function createWebApp(deps: WebAppDeps): WebApp {
 
   function broadcastDeletionPresentation(id: string): void {
     const entry = requireWorkspace(id);
-    if (!entry.deletion) throw new Error(`workspace ${id} has no deletion state`);
-    const resident = `<div class="workspace-detail-resident" data-workspace-residency-target="resident" data-workspace-id="${escapeHtml(id)}">${deletionPresentation(entry, entry.deletion)}</div>`;
-    const unselect = entry.deletion.status === "deleting"
+    if (!entry.phase.deletion) throw new Error(`workspace ${id} has no deletion state`);
+    const resident = `<div class="workspace-detail-resident" data-workspace-residency-target="resident" data-workspace-id="${escapeHtml(id)}">${deletionPresentation(entry, entry.phase.deletion)}</div>`;
+    const unselect = entry.phase.deletion.status === "deleting"
       ? `<turbo-stream action="unselect-workspace" data-workspace-id="${escapeHtml(id)}"></turbo-stream>`
       : "";
-    broadcastShell(`${unselect}${deletionPresentationStream(entry, entry.deletion)}${turboReplaceStream(workspaceResidentId(id), resident)}`);
+    broadcastShell(`${unselect}${deletionPresentationStream(entry, entry.phase.deletion)}${turboReplaceStream(workspaceResidentId(id), resident)}`);
   }
 
   function currentDeletionStream(id: string): string {
     const entry = registry.get(id);
-    return entry?.deletion ? deletionPresentationStream(entry, entry.deletion) : removeWorkspaceResidentTurboStream(id);
+    return entry?.phase.deletion ? deletionPresentationStream(entry, entry.phase.deletion) : removeWorkspaceResidentTurboStream(id);
   }
 
   async function broadcastBlockedDeletion(id: string, state: WorkspaceDeletionState): Promise<void> {
@@ -880,7 +874,7 @@ export function createWebApp(deps: WebAppDeps): WebApp {
 
   function continueWorkspaceProvisioningEndpoint(id: string, request: Request): Response {
     const entry = requireWorkspace(id);
-    if (entry.phase !== "starting") throw new AtelierCoreError("workspace_not_ready", `workspace ${id} is not waiting for provisioning confirmation`);
+    if (entry.phase.kind !== "provisioningPhase") throw new AtelierCoreError("workspace_not_ready", `workspace ${id} is not waiting for provisioning confirmation`);
     const action = new URL(request.url).searchParams.get("action");
     if (action !== null && action !== "retry") throw invalidArguments("Unknown provisioning action");
     const stepId = provisioning.resume(id, action === "retry" ? "retry" : "continue");
@@ -902,9 +896,9 @@ export function createWebApp(deps: WebAppDeps): WebApp {
   }
 
   async function cancelWorkspaceDeletionEndpoint(id: string, request: Request): Promise<Response> {
-    if (!deletion.cancel(id)) return turboStreamResponse("", { status: 409 });
-    if (provisioning.snapshot(id)?.status === "cancelled") {
-      registry.setPhase(id, "failed", "Workspace preparation was cancelled. Delete this workspace or restart Atelier to retry startup.");
+    const provisioningError = provisioning.snapshot(id)?.status === "cancelled" ? "Workspace preparation was cancelled. Delete this workspace or restart Atelier to retry startup." : undefined;
+    if (!deletion.cancel(id, provisioningError)) return turboStreamResponse("", { status: 409 });
+    if (provisioningError) {
       return requestAcceptsJson(request) ? jsonResponse({ cancelled: true }) : turboStreamResponse("");
     }
     const stream = `${turboReplaceStream(workspacePresentationDomId(id), renderWorkspacePresentation(await fixedWorkspacePresentation(id)))}${workspacePreparationInvalidatedTurboStream(id)}`;
@@ -922,7 +916,7 @@ export function createWebApp(deps: WebAppDeps): WebApp {
 
   async function retryWorkspaceDeletionEndpoint(id: string, request: Request): Promise<Response> {
     const entry = requireWorkspace(id);
-    if (entry.deletion?.status !== "failed") return turboStreamResponse("", { status: 409 });
+    if (entry.phase.deletion?.status !== "failed") return turboStreamResponse("", { status: 409 });
     const result = await deletion.request(id);
     if (requestAcceptsJson(request)) return jsonResponse(result);
     return turboStreamResponse(currentDeletionStream(id));
@@ -933,7 +927,7 @@ export function createWebApp(deps: WebAppDeps): WebApp {
   > {
     return await serializePresentationMutation(id, async () => {
       const entry = requireWorkspace(id);
-      if (entry.phase !== "ready") throw new AtelierCoreError("workspace_not_ready", `workspace ${id} is not ready`);
+      if (entry.phase.kind !== "runningPhase") throw new AtelierCoreError("workspace_not_ready", `workspace ${id} is not ready`);
       const affected = parked ? (await workspacePresentationBundle(id)).storedWorkViews.filter(({ reference }) => reference.type === "terminal" || reference.type === "vscode") : [];
       if (affected.length && !force) return { kind: "confirmation", workViews: affected };
       for (const { reference } of affected) await closeWorkView(id, reference);
@@ -952,7 +946,7 @@ export function createWebApp(deps: WebAppDeps): WebApp {
 
   async function parkWorkspaceEndpoint(id: string, parked: boolean, request: Request): Promise<Response> {
     const entry = requireWorkspace(id);
-    if (entry.phase !== "ready") return requestAcceptsJson(request)
+    if (entry.phase.kind !== "runningPhase") return requestAcceptsJson(request)
       ? jsonResponse({ error: { code: "workspace_not_ready", message: `workspace ${id} is not ready` } }, { status: 409 })
       : wantsTurboStream(request) ? turboStreamResponse("", { status: 409 }) : response("Workspace is not ready", { status: 409 });
     const force = new URL(request.url).searchParams.get("force") === "1";
@@ -1077,7 +1071,7 @@ export function createWebApp(deps: WebAppDeps): WebApp {
   async function closeWorkView(workspaceId: string, reference: WorkspaceWorkViewReference): Promise<void> {
     await workViewAdapterByType.get(reference.type)!.close?.({ workspaceId, reference });
     await presentationStore.closeWorkView(workspaceId, reference);
-    registry.clearViewAttention(workspaceId, workViewKey(reference));
+    registry.clearSurfaceAttention(workspaceId, workViewKey(reference));
   }
 
   async function closeWorkViewEndpoint(workspaceId: string, encodedReference: string, request: Request): Promise<Response> {
@@ -1127,10 +1121,9 @@ export function createWebApp(deps: WebAppDeps): WebApp {
 
   async function presentWorkViewFromAgent(workspaceId: string, reference: WorkspaceWorkViewReference): Promise<void> {
     await serializePresentationMutation(workspaceId, async () => {
-      const { opened, key, reference: availableReference } = await openAvailableWorkView(workspaceId, reference);
+      const { opened, key } = await openAvailableWorkView(workspaceId, reference);
       registry.setParked(workspaceId, false);
-      const attentionSequence = await presentationStore.requestAttention(workspaceId, availableReference);
-      registry.markViewAttention(workspaceId, key, attentionSequence);
+      registry.requestSurfaceAttention(workspaceId, key);
       const workViews = await currentWorkPanePresentations(workspaceId);
       broadcastShell(workViewsTurboStream(workspaceId, workViews, { openedKey: opened ? key : undefined, selectKey: key, intendSelection: true }));
     });
@@ -1149,9 +1142,8 @@ export function createWebApp(deps: WebAppDeps): WebApp {
     const stored = (await presentationStore.listWorkViews(workspaceId)).find((view) => workViewKey(view.reference) === key);
     if (!stored) throw new AtelierCoreError("work_view_not_found", `Work view is not open: ${key}`);
     registry.setParked(workspaceId, false);
-    const token = await presentationStore.requestAttention(workspaceId, stored.reference);
-    registry.markViewAttention(workspaceId, key, token);
-    const presentationStream = workViewsTurboStream(workspaceId, await currentWorkPanePresentations(workspaceId), { selectKey: key, intendSelection: true });
+    registry.requestSurfaceAttention(workspaceId, key);
+    const presentationStream = workViewsTurboStream(workspaceId, await currentWorkPanePresentations(workspaceId));
     const responseStream = deliverShellMutation(request, presentationStream);
     return requestAcceptsJson(request) && !wantsTurboStream(request) ? jsonResponse({ attention: stored.reference }) : turboStreamResponse(responseStream);
   }
@@ -1162,19 +1154,19 @@ export function createWebApp(deps: WebAppDeps): WebApp {
     const closedIndex = before.findIndex((agent) => agent.id === conversationId);
     if (closedIndex < 0) throw new AtelierCoreError("agent_conversation_not_found", `Agent conversation not found: ${conversationId}`);
     await agentTabs.close({ workspaceId, conversationId });
-    registry.clearViewAttention(workspaceId, `agent:${conversationId}`);
+    registry.clearSurfaceAttention(workspaceId, `agent:${conversationId}`);
     const presentation = await fixedWorkspacePresentation(workspaceId);
     const successorConversationId = presentation.agentConversations[Math.min(closedIndex, presentation.agentConversations.length - 1)]?.id;
     const structural = agentTabsTurboStream(presentation, { removedConversationId: conversationId, successorConversationId });
     const responseStream = deliverShellMutation(request, structural);
-    if (requestAcceptsJson(request) && !wantsTurboStream(request)) return jsonResponse({ archivedConversationId: conversationId, agentConversations: presentation.agentConversations.map(({ id, title, providerId }) => ({ id, title, providerId })) });
+    if (requestAcceptsJson(request) && !wantsTurboStream(request)) return jsonResponse({ archivedConversationId: conversationId, agentConversations: presentation.agentConversations.map(({ id, title, providerId, busy, requestingAttention }) => ({ id, title, providerId, busy, requestingAttention })) });
     return turboStreamResponse(responseStream);
   }
 
   async function renderModelPickerUpdates(request: Request): Promise<string> {
     const launchUpdates = (await Promise.all(agentProviders.map((provider) => provider.launch.refreshConfiguration?.(launchComposerSettingsFrameId)))).join("");
     const invalidations: string[] = [];
-    for (const entry of registry.list().filter((workspace) => workspace.phase === "ready")) {
+    for (const entry of registry.list().filter((workspace) => workspace.phase.kind === "runningPhase")) {
       const presentation = await fixedWorkspacePresentation(entry.id);
       for (const conversation of presentation.agentConversations) {
         invalidations.push(workspacePreparationInvalidatedTurboStream(entry.id, conversation.id));
@@ -1188,28 +1180,6 @@ export function createWebApp(deps: WebAppDeps): WebApp {
     requireWorkspace(workspaceId);
     const bodyHtml = await agentTabs.render({ workspaceId, conversationId });
     return response(renderAgentBodyFrame(workspaceId, conversationId, bodyHtml), { headers: { "content-type": "text/html; charset=utf-8", "cache-control": "no-store" } });
-  }
-
-  async function acknowledgeWorkspaceAttentionEndpoint(workspaceId: string, request: Request): Promise<Response> {
-    requireWorkspace(workspaceId);
-    const capturedTokens = attentionTokens(request);
-    const workViewTokens = Object.entries(capturedTokens).filter(([viewKey]) => viewKey !== "workspace" && !viewKey.startsWith("agent:"));
-    const acceptedTokens = { ...capturedTokens };
-    let workAttentionChanged = false;
-
-    if (workViewTokens.length > 0) {
-      const workViewsByKey = new Map((await presentationStore.listWorkViews(workspaceId)).map((view) => [workViewKey(view.reference), view]));
-      for (const [viewKey, token] of workViewTokens) {
-        const workView = workViewsByKey.get(viewKey);
-        if (!workView) continue;
-        if (!await presentationStore.acknowledgeAttention(workspaceId, workView.reference, token)) delete acceptedTokens[viewKey];
-        else workAttentionChanged = true;
-      }
-    }
-
-    registry.acknowledgeAttention(workspaceId, acceptedTokens);
-    if (workAttentionChanged) broadcastShell(workViewsTurboStream(workspaceId, await currentWorkPanePresentations(workspaceId)));
-    return new Response(null, { status: 204, headers: { "cache-control": "no-store" } });
   }
 
   function openOldestAttentionWorkspaceEndpoint(): Response {
@@ -1275,7 +1245,7 @@ export function createWebApp(deps: WebAppDeps): WebApp {
     if (url.pathname === "/settings/development" && request.method === "GET" && !wantsTurboStream(request)) return await surfacePage({ kind: "settings", section: undefined, development: true });
     if (url.pathname === "/workspaces" && request.method === "GET") return workspaceListEndpoint(request, url);
     if (url.pathname === "/workspaces" && request.method === "POST") return await createWorkspaceEndpoint(request);
-    if (url.pathname === "/workspaces/open-oldest-unread" && request.method === "POST") return openOldestAttentionWorkspaceEndpoint();
+    if (url.pathname === "/workspaces/open-oldest-attention" && request.method === "POST") return openOldestAttentionWorkspaceEndpoint();
 
     const projectResponse = await projectRoutes.handle(request, url);
     if (projectResponse) return projectResponse;
@@ -1321,7 +1291,6 @@ export function createWebApp(deps: WebAppDeps): WebApp {
       const commandId = routeParam(params, 1);
       return await serializePresentationMutation(workspaceId, async () => await workspaceCommandEndpoint(workspaceId, commandId, request));
     }
-    if ((params = match(/^\/workspaces\/([^/]+)\/attention\/acknowledge$/)) && request.method === "POST") return acknowledgeWorkspaceAttentionEndpoint(params[0], request);
     if ((params = match(/^\/workspaces\/([^/]+)\/agents\/([^/]+)\/body$/)) && request.method === "GET") return await agentBodyEndpoint(params[0], params[1]);
     if ((params = match(/^\/workspaces\/([^/]+)\/agents\/([^/]+)\/close$/)) && request.method === "POST") {
       const workspaceId = routeParam(params, 0);
@@ -1384,10 +1353,10 @@ export function createWebApp(deps: WebAppDeps): WebApp {
         const snapshot = provisioning.snapshot(id);
         const progress = JSON.stringify({ ...identity, provisioning: snapshot });
         onUpdate?.({ content: [{ type: "text", text: progress }], details: identity });
-        if (!entry || entry.phase === "ready" || entry.phase === "failed" || snapshot?.status === "waiting") {
+        if (!entry || entry.phase.kind === "runningPhase" || (entry.phase.kind === "provisioningPhase" && entry.phase.status === "failed") || snapshot?.status === "waiting") {
           return {
-            ...identity, status: !entry ? "deleted" : entry.phase === "ready" ? "ready" : snapshot?.status === "waiting" ? "awaiting_user" : "failed",
-            error: entry?.error ?? snapshot?.error,
+            ...identity, status: !entry ? "deleted" : entry.phase.kind === "runningPhase" ? "ready" : snapshot?.status === "waiting" ? "awaiting_user" : "failed",
+            error: entry?.phase.error ?? snapshot?.error,
             settings: init.settings,
             timings: { totalMs: snapshot?.totalMs, phases: snapshot?.steps.map(({ id, label, durationMs, status, error }) => ({ id, label, durationMs, status, error })) ?? [] },
           };

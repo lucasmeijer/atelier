@@ -51,16 +51,16 @@ describe("Workspace residency policy", () => {
     expect([...retained]).toEqual(["incoming-ready"]);
   });
 
-  test("prioritizes unread Workspaces, then explicit requests, then recent interaction", () => {
+  test("prioritizes requesting-attention Workspaces, then explicit requests, then recent interaction", () => {
     expect(prioritizedWorkspacePreloads([
       { workspaceId: "stale-read", lastActivityAt: 10 },
       { workspaceId: "recent-read", lastActivityAt: 30 },
       { workspaceId: "requested", lastActivityAt: 0, requestedAt: 20 },
-      { workspaceId: "newer-unread", lastActivityAt: 0, attentionAt: 2 },
-      { workspaceId: "older-unread", lastActivityAt: 0, attentionAt: 1 },
+      { workspaceId: "newer-requesting-attention", lastActivityAt: 0, attentionAt: 2 },
+      { workspaceId: "older-requesting-attention", lastActivityAt: 0, attentionAt: 1 },
     ]).map(({ workspaceId }) => workspaceId)).toEqual([
-      "older-unread",
-      "newer-unread",
+      "older-requesting-attention",
+      "newer-requesting-attention",
       "requested",
       "recent-read",
       "stale-read",

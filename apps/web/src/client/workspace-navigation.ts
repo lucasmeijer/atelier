@@ -1,12 +1,9 @@
 import { Controller } from "@hotwired/stimulus";
 import { recentWorkspaceProjectStorageKey } from "@atelier/shared";
-import { Type } from "typebox";
-import { Value } from "typebox/value";
 import { cableRequestHeaders } from "./workspace-cable.ts";
 import { markActiveWorkspaceRow } from "./workspace-presentation.ts";
 import { registerWorkspaceControllers, residencyController } from "./workspace-controller-registry.ts";
 
-const projectDisclosuresSchema = Type.Record(Type.String(), Type.Boolean());
 
 class EmptyWorkspaceOnboardingController extends Controller<HTMLElement> {
   static targets = ["origin", "svg", "path"];
@@ -86,7 +83,6 @@ class WorkspaceNavigationController extends Controller<HTMLElement> {
     document.addEventListener("atelier:workspace-pane-changed", this.workspacePaneChanged);
     const scroll = Number(localStorage.getItem("atelier:workspace-pane-scroll"));
     if (Number.isFinite(scroll)) this.scrollTarget.scrollTop = scroll;
-    this.restoreProjectDisclosures();
     this.setWorkspacePaneOpen(!this.element.querySelector(".workspace-detail-resident.visible"));
     this.setWorkspacePaneCollapsed(sessionStorage.getItem("atelier:workspace-pane-collapsed") === "true" && Boolean(this.visibleWorkspacePaneToggle()));
   }
@@ -128,11 +124,11 @@ class WorkspaceNavigationController extends Controller<HTMLElement> {
 
   private setWorkspacePaneOpen(open: boolean): void {
     this.element.classList.toggle("is-mobile-workspace-pane-open", open);
+    document.dispatchEvent(new CustomEvent("atelier:mobile-workspace-pane-changed"));
   }
 
   private readonly mobileResidentDestinationSelected = (): void => this.setWorkspacePaneOpen(false);
   private readonly workspacePaneChanged = (): void => {
-    this.restoreProjectDisclosures();
     const workspaceId = residencyController()?.visibleWorkspaceId();
     if (workspaceId) this.setActiveWorkspace(workspaceId);
   };
@@ -145,7 +141,6 @@ class WorkspaceNavigationController extends Controller<HTMLElement> {
 
   async selectWorkspaceById(workspaceId: string): Promise<void> {
     this.setWorkspacePaneOpen(false);
-    this.expandWorkspaceGroupsContaining(workspaceId);
     this.setActiveWorkspace(workspaceId);
     await residencyController()?.selectWorkspace(workspaceId, `/workspaces/${encodeURIComponent(workspaceId)}`);
   }
@@ -182,55 +177,10 @@ class WorkspaceNavigationController extends Controller<HTMLElement> {
     }
   }
 
-  toggleProject(event: Event): void {
-    // SAFETY: This action is attached only to server-rendered Project disclosure buttons.
-    const button = event.currentTarget as HTMLElement;
-    const id = button.dataset.projectId;
-    if (!id) return;
-    const project = this.element.querySelector<HTMLElement>(`.fixed-shell-project[data-project-id="${CSS.escape(id)}"]`)!;
-    const expanded = project.classList.contains("is-collapsed");
-    project.classList.toggle("is-collapsed", !expanded);
-    button.setAttribute("aria-expanded", String(expanded));
-    const disclosures = this.projectDisclosures();
-    disclosures[id] = expanded;
-    localStorage.setItem("atelier:workspace-project-disclosures", JSON.stringify(disclosures));
-  }
-
   setActiveWorkspace(workspaceId: string): void {
     markActiveWorkspaceRow(this.element, workspaceId);
     const row = this.element.querySelector<HTMLElement>(`[data-workspace-entry-id="${CSS.escape(workspaceId)}"]`);
     localStorage.setItem(recentWorkspaceProjectStorageKey, row?.dataset.projectId ?? "");
-  }
-
-  private expandWorkspaceGroupsContaining(workspaceId: string): void {
-    const row = this.element.querySelector<HTMLElement>(`[data-workspace-entry-id="${CSS.escape(workspaceId)}"]`);
-    if (!row) return;
-
-    const disclosures = this.projectDisclosures();
-    let group = row.closest<HTMLElement>(".fixed-shell-project[data-project-id]");
-    while (group) {
-      group.classList.remove("is-collapsed");
-      group.querySelector<HTMLElement>(":scope > .action-item [data-project-id][aria-expanded]")?.setAttribute("aria-expanded", "true");
-      disclosures[group.dataset.projectId!] = true;
-      group = group.parentElement?.closest<HTMLElement>(".fixed-shell-project[data-project-id]") ?? null;
-    }
-    localStorage.setItem("atelier:workspace-project-disclosures", JSON.stringify(disclosures));
-  }
-
-  private restoreProjectDisclosures(): void {
-    const disclosures = this.projectDisclosures();
-    this.element.querySelectorAll<HTMLElement>(".fixed-shell-project[data-project-id]").forEach((project) => {
-      const id = project.dataset.projectId!;
-      if (!(id in disclosures)) return;
-      const expanded = disclosures[id]!;
-      project.classList.toggle("is-collapsed", !expanded);
-      project.querySelector<HTMLElement>("[data-project-id][aria-expanded]")?.setAttribute("aria-expanded", String(expanded));
-    });
-  }
-
-  private projectDisclosures(): Record<string, boolean> {
-    const text = localStorage.getItem("atelier:workspace-project-disclosures");
-    return text ? Value.Parse(projectDisclosuresSchema, JSON.parse(text)) : {};
   }
 
   private scrolled = (): void => {

@@ -17,7 +17,7 @@ export {
   unloadWorkspaceAgentRuntime,
   closeWorkspaceAgentConversation,
   removeWorkspaceAgentRuntimes,
-  subscribeWorkspaceViewBusy,
+  subscribeWorkspaceAgentBusy,
   type AgentLivePresentationSubscription,
   type WorkspaceAgentRuntime,
 } from "./runtime.ts";

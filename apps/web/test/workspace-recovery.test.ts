@@ -19,13 +19,13 @@ test("each workspace remains starting until its own gateway is ready", async () 
     if (id === "slow") await gateway.promise;
   } });
   await tick();
-  expect(registry.get("slow")?.phase).toBe("starting");
-  expect(registry.get("healthy")?.phase).toBe("ready");
-  expect(registry.get("parked")).toMatchObject({ parked: true, phase: "ready" });
+  expect(registry.get("slow")?.phase.kind).toBe("provisioningPhase");
+  expect(registry.get("healthy")?.phase.kind).toBe("runningPhase");
+  expect(registry.get("parked")).toMatchObject({ parked: true, phase: { kind: "runningPhase" } });
   expect(checked.toSorted()).toEqual(["healthy", "slow"]);
   gateway.resolve();
   await recovery;
-  expect(registry.get("slow")?.phase).toBe("ready");
+  expect(registry.get("slow")?.phase.kind).toBe("runningPhase");
 });
 
 test("gateway failure waits for explicit continuation, retaining its warning until successful preparation", async () => {
@@ -38,11 +38,11 @@ test("gateway failure waits for explicit continuation, retaining its warning unt
       ...healthy, provisioning, async checkReadiness() { throw new Error("gateway unavailable"); },
     });
     await tick();
-    expect(registry.get("slow")).toMatchObject({ phase: "starting", issues: [{ kind: "readiness" }] });
+    expect(registry.get("slow")).toMatchObject({ phase: { kind: "provisioningPhase" }, issues: [{ kind: "readiness" }] });
     expect(provisioning.snapshot("slow")).toMatchObject({ status: "waiting", waiting: { stepId: "workspace.startup", retryable: true } });
     provisioning.resume("slow", "continue");
     await recovery;
-    expect(registry.get("slow")).toMatchObject({ phase: "ready", issues: [{ kind: "readiness" }] });
+    expect(registry.get("slow")).toMatchObject({ phase: { kind: "runningPhase" }, issues: [{ kind: "readiness" }] });
     expect(provisioning.snapshot("slow")?.steps.at(-1)).toMatchObject({ status: "warning", error: "gateway unavailable" });
     await recoverWorkspaces(registry, { ...healthy, provisioning });
     expect(registry.get("slow")?.issues).toBeUndefined();
@@ -59,8 +59,8 @@ test("container failure fails only that workspace; image failures remain indepen
       async setRunning(id) { if (id === "broken") throw new Error("missing mount"); },
       async imageOutdated() { throw new Error("invalid image configuration"); },
     });
-    expect(registry.get("broken")).toMatchObject({ phase: "failed", error: "missing mount" });
-    expect(registry.get("healthy")).toMatchObject({ phase: "ready", issues: [{ kind: "image" }] });
+    expect(registry.get("broken")).toMatchObject({ phase: { kind: "provisioningPhase", status: "failed", error: "missing mount" } });
+    expect(registry.get("healthy")).toMatchObject({ phase: { kind: "runningPhase" }, issues: [{ kind: "image" }] });
     expect(provisioning.snapshot("broken")?.steps).toHaveLength(1);
   } finally { log.mockRestore(); }
 });
@@ -93,14 +93,14 @@ test("retry repeats only preparation and clears the warning on success", async (
     });
     for (let attempt = 0; attempt < 2; attempt++) {
       await tick();
-      expect(registry.get("retry")).toMatchObject({ phase: "starting", issues: [{ kind: "readiness" }] });
-      expect(registry.get("other")?.phase).toBe("ready");
+      expect(registry.get("retry")).toMatchObject({ phase: { kind: "provisioningPhase" }, issues: [{ kind: "readiness" }] });
+      expect(registry.get("other")?.phase.kind).toBe("runningPhase");
       provisioning.resume("retry", "retry");
     }
     await recovery;
     expect(checks).toBe(3);
     expect(starts).toBe(1);
-    expect(registry.get("retry")).toMatchObject({ phase: "ready" });
+    expect(registry.get("retry")).toMatchObject({ phase: { kind: "runningPhase" } });
     expect(registry.get("retry")?.issues).toBeUndefined();
     expect(provisioning.snapshot("retry")?.steps.map((step) => [step.id, step.status])).toEqual([
       ["workspace.container", "done"], ["workspace.startup", "done"],
