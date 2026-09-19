@@ -2,7 +2,7 @@ import { expect, test } from "bun:test";
 
 const installer = await Bun.file(new URL("./install.sh", import.meta.url)).text();
 
-function run(options: { systemState?: "restarting" | "exited"; nonRoot?: boolean; denySudo?: boolean; mac?: boolean; wsl?: boolean; installed?: boolean; old?: boolean; pullFails?: boolean; appFails?: boolean; pendingHealth?: boolean; missingFilesystem?: boolean; loadable?: boolean } = {}, args: string[] = []) {
+function run(options: { systemState?: "restarting" | "exited"; nonRoot?: boolean; denySudo?: boolean; mac?: boolean; wsl?: boolean; installed?: boolean; old?: boolean; pullFails?: boolean; appFails?: boolean; retryUpdateRequest?: boolean; rejectUpdateRequest?: boolean; pendingHealth?: boolean; missingFilesystem?: boolean; loadable?: boolean } = {}, args: string[] = []) {
   const logPath = `/tmp/atelier-install-test-${crypto.randomUUID()}.log`;
   const mock = `
 mktemp() { echo "${logPath}"; }
@@ -32,7 +32,20 @@ docker() {
       esac ;;
     'pull '*) return ${options.pullFails ? 1 : 0} ;;
     'exec atelier-system')
+      if [[ "$*" == *3001/update-channel* ]]; then
+        if [ "${options.rejectUpdateRequest ? 1 : 0}" -eq 1 ]; then return 2; fi
+        if [ "${options.retryUpdateRequest ? 1 : 0}" -eq 1 ] && [ ! -e "${logPath}.update-attempted" ]; then
+          touch "${logPath}.update-attempted"
+          return 75
+        fi
+        touch "${logPath}.update-accepted"
+        return 0
+      fi
       if [[ "$*" == *3001/status* ]]; then
+        if [ "${options.retryUpdateRequest ? 1 : 0}" -eq 1 ] && [ ! -e "${logPath}.update-accepted" ]; then
+          printf 'failed\\nSaved app failed to start\\n\\n\\n\\n\\nOld app exited\\n'
+          return
+        fi
         if [ "${options.pendingHealth ? 1 : 0}" -eq 1 ] && [ ! -e "${logPath}.checked" ]; then
           touch "${logPath}.checked"
           printf 'starting\\nAn activity the installer has never heard of\\n42\\n'
@@ -56,7 +69,7 @@ docker() {
     );
   const result = Bun.spawnSync([process.platform === "darwin" ? "/bin/bash" : "bash", "-c", mock + script, "installer", ...args], { stdin: "ignore" });
   const log = Bun.spawnSync(["cat", logPath]).stdout.toString();
-  Bun.spawnSync(["rm", "-f", logPath, `${logPath}.checked`]);
+  Bun.spawnSync(["rm", "-f", logPath, `${logPath}.checked`, `${logPath}.update-attempted`, `${logPath}.update-accepted`]);
   return { status: result.exitCode, output: result.stdout.toString() + result.stderr.toString() + log };
 }
 
@@ -216,5 +229,35 @@ for (const action of ["open", "connect"]) {
     expect(result.status).toBe(1);
     expect(result.output).toContain("DOCKER stop --time 120 atelier-system");
     expect(result.output).not.toContain("DOCKER rm");
+  });
+}
+
+
+test("update requests a channel update before accepting a healthy saved app", () => {
+  const result = run({ installed: true }, ["--action", "update"]);
+  expect(result.status).toBe(0);
+  expect(result.output.indexOf("3001/access")).toBeLessThan(result.output.indexOf("3001/update-channel"));
+  expect(result.output.indexOf("3001/update-channel")).toBeLessThan(result.output.indexOf("3001/status"));
+});
+
+test("update retries an unavailable supervisor even when the saved app failed", () => {
+  const result = run({ installed: true, retryUpdateRequest: true }, ["--action", "update"]);
+  expect(result.status).toBe(0);
+  expect(result.output.match(/http:\/\/127\.0\.0\.1:3001\/update-channel/g)?.length).toBe(2);
+  expect(result.output).toContain("Open https://app.example/custom-path");
+});
+
+test("update fails explicitly when the supervisor rejects the update request", () => {
+  const result = run({ installed: true, rejectUpdateRequest: true }, ["--action", "update"]);
+  expect(result.status).not.toBe(0);
+  expect(result.output).toContain("Could not request the Atelier app update");
+  expect(result.output).not.toContain("Open https://");
+});
+
+for (const action of ["install", "open", "connect"]) {
+  test(`${action} does not request an app channel update`, () => {
+    const result = run({ installed: action !== "install" }, ["--action", action]);
+    expect(result.status).toBe(0);
+    expect(result.output).not.toContain("3001/update-channel");
   });
 }

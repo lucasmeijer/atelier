@@ -5,6 +5,7 @@ import { escapeHtml } from "../../../packages/shared/src/html.ts";
 import { startLocalIngress } from "./local-ingress.ts";
 import { installationStatus, type Activity } from "./installation-status.ts";
 import { PullProgress } from "./pull-progress.ts";
+import { prepareChannelUpdate } from "./channel-update.ts";
 import { Type } from "typebox";
 import { Value } from "typebox/value";
 import { installWorkspaceFirewall } from "./firewall.ts";
@@ -175,9 +176,9 @@ async function pullImage(reference: string, description: string) {
     activity = { description };
   }
 }
-async function prepareImage(reference: string, pull: boolean): Promise<string> {
+async function prepareImage(reference: string, options: { pullApp: boolean; pullDependencies: boolean }): Promise<string> {
   // Resolve the exact local image ID once. No subsequent tag lookup can change the update.
-  if (pull && !(await docker("image", "ls", "-q", reference)))
+  if (options.pullApp && !(await docker("image", "ls", "-q", reference)))
     await pullImage(reference, "Downloading Atelier");
   const image = JSON.parse(await docker("image", "inspect", reference))[0];
   const preload: unknown = JSON.parse(
@@ -188,7 +189,7 @@ async function prepareImage(reference: string, pull: boolean): Promise<string> {
   )
     throw new Error("eagerly-preload must be a JSON array of image references");
   for (const ref of preload) {
-    if (pull) await pullImage(ref, `Downloading workspace image ${ref}`);
+    if (options.pullDependencies) await pullImage(ref, `Downloading workspace image ${ref}`);
     else await docker("image", "inspect", ref);
   }
   return image.Id;
@@ -215,7 +216,9 @@ function configureRoutes(target: number): Promise<void> {
   })();
   return routing;
 }
-async function replace(reference: string, pull: boolean) {
+type Replacement = { image: string; pull: boolean } | { channel: true };
+let replacement: Replacement = { image: candidate, pull: !persisted.currentImage };
+async function replace(request: Replacement) {
   if (busy || stopping)
     throw new Error(
       "An app operation is already running or System is stopping",
@@ -224,12 +227,22 @@ async function replace(reference: string, pull: boolean) {
   recoveringHealth = false;
   failure = undefined;
   healthy = false;
-  candidate = reference;
+  replacement = request;
   phase = 0;
   try {
     await configureRoutes(3001);
     stage("Preparing Atelier");
-    const exact = await prepareImage(reference, pull);
+    const reference = "channel" in request
+      ? await prepareChannelUpdate("/data/app/update.json", {
+          pull: (reference) => pullImage(reference, "Downloading Atelier from the selected channel"),
+          inspect: (reference) => docker("image", "inspect", "--format", "{{.Id}}", reference),
+        })
+      : request.image;
+    candidate = reference;
+    const exact = await prepareImage(reference, {
+      pullApp: !("channel" in request) && request.pull,
+      pullDependencies: "channel" in request || request.pull,
+    });
     candidate = exact;
     if (stopping) return;
     stage("Stopping Atelier", 1);
@@ -445,11 +458,18 @@ const server = Bun.serve({
         return Response.redirect(request.headers.get("origin") ?? url.origin, 303);
       }
       if (url.pathname === "/retry") {
-        activeOperation = replace(candidate, !persisted.currentImage);
+        activeOperation = replace(replacement);
         return Response.redirect(
           request.headers.get("origin") ?? url.origin,
           303,
         );
+      }
+      if (url.pathname === "/update-channel") {
+        operation = "update";
+        // replace reserves busy and clears stale health/failure synchronously,
+        // before acknowledging. No app request or healthy startup is required.
+        activeOperation = replace({ channel: true });
+        return Response.json({ accepted: true }, { status: 202 });
       }
       if (url.pathname === "/update") {
         const body: unknown = await request.json().catch(() => null);
@@ -467,7 +487,7 @@ const server = Bun.serve({
         busy = true;
         let exact: string;
         try {
-          exact = await prepareImage(body.image, false);
+          exact = await prepareImage(body.image, { pullApp: false, pullDependencies: false });
         } catch (error) {
           busy = false;
           return new Response(String(error), { status: 400 });
@@ -492,7 +512,7 @@ const server = Bun.serve({
         activeOperation = (async () => {
           await Bun.sleep(1000);
           busy = false;
-          if (!stopping) await replace(exact, false);
+          if (!stopping) await replace({ image: exact, pull: false });
         })();
         return Response.json({ accepted: true }, { status: 202 });
       }
@@ -665,7 +685,7 @@ async function initialize() {
   if (stopping) return;
   if (persisted.accessMode === "localhost") await waitFor(async () => !!persisted.localPort, 60000, "installer to register the local port");
   initialized = true;
-  activeOperation = replace(candidate, !persisted.currentImage);
+  activeOperation = replace(replacement);
   void (async () => {
     while (!stopping) {
       await sleep(3000);

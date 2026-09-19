@@ -111,6 +111,7 @@ Usage: install.sh [options]
 
 Installs Atelier System, or offers actions for an existing installation.
 System replacements preserve the atelier-system volume and interrupt workspaces.
+Update also installs the newest Atelier app on the installation's selected channel.
 
   --system-image REF   System image (default: ghcr.io/lucasmeijer/atelier-system:latest)
   --app-image REF      First-install app image (default: ghcr.io/lucasmeijer/atelier:stable)
@@ -279,6 +280,56 @@ check_system_running() {
     fail "Atelier services are $state. Container logs are shown above."
   fi
 }
+update_app_channel() {
+  local start=$SECONDS code reply last_action="" current_action description
+  local -a fields
+  while true; do
+    check_system_running
+    code=0
+    docker exec "$system_name" bun -e '
+      let response;
+      try {
+        response = await fetch("http://127.0.0.1:3001/update-channel", {
+          method: "POST", signal: AbortSignal.timeout(3000),
+        });
+      } catch (error) {
+        console.error(error);
+        process.exit(75);
+      }
+      if (response.status === 202) process.exit(0);
+      if (response.status === 503 || response.status === 409) process.exit(75);
+      console.error(`System channel update: ${response.status} ${await response.text()}`);
+      process.exit(2);
+    ' >>"$log_file" 2>&1 || code=$?
+    case "$code" in
+      0) return ;;
+      75) ;;
+      *) fail "Could not request the Atelier app update. See the bootstrap log for details." ;;
+    esac
+    # Startup can fail because the saved app is broken. Only the supervisor
+    # needs to be available to accept an independent channel update.
+    description="Waiting to update Atelier on the selected channel"
+    code=0
+    reply="$(supervisor_status 2>>"$log_file")" || code=$?
+    if [ "$code" -eq 0 ]; then
+      fields=()
+      while IFS= read -r field; do fields+=("$field"); done <<<"$reply"
+      if [ "${fields[0]}" = starting ]; then description="${fields[1]}"; fi
+      current_action="${fields[4]:-}"$'\n'"${fields[5]:-}"
+      if [ "${fields[0]}" != failed ] && [ -n "${fields[4]:-}" ] && [ "$current_action" != "$last_action" ]; then
+        finish_line
+        printf '\n  %s\n' "${fields[4]}"
+        [ -z "${fields[5]:-}" ] || printf '\n  %s\n\n' "${fields[5]}"
+        last_action="$current_action"
+      fi
+    elif [ "$code" -eq 2 ]; then
+      fail "The supervisor returned an invalid status."
+    fi
+    status "$description" "$((SECONDS-start))s"
+    [ "$((SECONDS-start))" -lt 2400 ] || fail "Atelier System did not accept the app update within 40 minutes."
+    sleep 1
+  done
+}
 wait_for_system() {
   stop_on_failure=1
   local reply previous="" activity_start=$SECONDS start=$SECONDS description="Waiting for the supervisor" percent="" code pid status_file tick
@@ -406,4 +457,5 @@ if [ "$action" = install ] || [ "$action" = update ]; then
   done
   [ "$attempt" -lt 60 ] || fail "Could not configure local access"
 fi
+if [ "$action" = update ]; then update_app_channel; fi
 wait_for_system
