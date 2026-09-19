@@ -259,7 +259,9 @@ async function buildImage(refs: string[], args: string[]): Promise<void> {
   await runInherited(["docker", "buildx", "imagetools", "create", ...refs.flatMap(ref => ["--tag", ref]), ...slices]);
 }
 authenticateGhcr(options);
-const workspaceContext = await prepareDefaultWorkspaceImage();
+// Release tooling may live outside the detached checkout used as the app build context.
+// Generate its paired workspace image from that same checkout, not this script's imports.
+const workspaceContext = await prepareDefaultWorkspaceImage(process.cwd());
 const workspaceContextDir = workspaceContext.contextDir;
 process.on("exit", () => rmSync(workspaceContextDir, { recursive: true, force: true }));
 

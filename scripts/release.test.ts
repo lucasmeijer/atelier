@@ -1,8 +1,8 @@
 import { inspectImage, type Run } from "./release-support.ts";
 import { expect, test } from "bun:test";
-import { chmodSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs";
+import { chmodSync, cpSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
-import { join } from "node:path";
+import { basename, join } from "node:path";
 import { parseReleaseArgs, promoteChannels, release, verifyRevision, type ReleaseStatus } from "./release.ts";
 
 const commit = "a".repeat(40);
@@ -176,15 +176,24 @@ test("failed build removes checkout and does not promote", async () => {
 });
 
 for (const split of [false, true]) {
-test(`image build CLI stages images without channels (split=${split})`, async () => {
+test(`image build CLI pairs images from its working checkout, not its tooling checkout (split=${split})`, async () => {
   const directory = mkdtempSync(join(tmpdir(), "atelier-release-cli-test-"));
   const log = join(directory, "docker.jsonl");
   const docker = join(directory, "docker");
   writeFileSync(docker, `#!/usr/bin/env bun\nimport { appendFileSync } from 'node:fs';\nconst args = process.argv.slice(2);\nappendFileSync(${JSON.stringify(log)}, JSON.stringify(args) + '\\n');\nif (args.includes('{{json .Manifest}}')) { console.log(JSON.stringify({digest: '${digest}'})); process.exit(0); }\nif (args.includes('inspect')) process.exit(1);\n`);
   chmodSync(docker, 0o755);
   try {
+    const checkout = join(directory, "source");
+    cpSync(join(import.meta.dir, "../packages"), join(checkout, "packages"), {
+      recursive: true, filter: path => basename(path) !== "node_modules",
+    });
+    writeFileSync(join(checkout, "packages/workspace-image/runtime-image"), "example.com/release-runtime:regression-test\n");
+    const expectedContext = join(directory, "expected-context");
+    const generated = Bun.spawnSync(["bun", join(checkout, "packages/workspace-image/scripts/build-context.mjs"), expectedContext], { cwd: checkout });
+    expect(generated.exitCode).toBe(0);
+    const expectedSignature = JSON.parse(readFileSync(join(expectedContext, "metadata.json"), "utf8")).tag.split(":")[1];
     const process = Bun.spawn(["bun", join(import.meta.dir, "build-atelier-image.ts"), "--push", "--no-latest", "--tag", "sha-test", "--builder", "test-builder", "--platform", "linux/amd64,linux/arm64", ...(split ? ["--helper-context", "test-helper", "--native-platform", "linux/amd64"] : [])], {
-      cwd: join(import.meta.dir, ".."), stdin: "ignore", stdout: "pipe", stderr: "pipe",
+      cwd: checkout, stdin: "ignore", stdout: "pipe", stderr: "pipe",
       env: { ...Bun.env, PATH: `${directory}:${Bun.env.PATH}`, GH_PACKAGE_TOKEN: "test-not-a-real-credential" },
     });
     const [code, stderr] = await Promise.all([process.exited, new Response(process.stderr).text(), new Response(process.stdout).text()]);
@@ -208,7 +217,8 @@ test(`image build CLI stages images without channels (split=${split})`, async ()
     const appBuild = builds[split ? 2 : 1]!;
     expect(appBuild).toContain(`ghcr.io/lucasmeijer/atelier:sha-test${split ? "-amd64" : ""}`);
     const workspaceArg = appBuild.find(arg => arg.startsWith("ATELIER_DEFAULT_WORKSPACE_IMAGE="))!;
-    expect(workspaceArg).toEndWith(`@${digest}`);
+    expect(workspaceArg).toBe(`ATELIER_DEFAULT_WORKSPACE_IMAGE=ghcr.io/lucasmeijer/atelier-workspace:${expectedSignature}@${digest}`);
+    expect(builds[0]).toContain(`ghcr.io/lucasmeijer/atelier-workspace:${expectedSignature}${split ? "-amd64" : ""}`);
     expect(appBuild).toContain(`ATELIER_EAGERLY_PRELOAD=${JSON.stringify([workspaceArg.split("=")[1]])}`);
     if (split) {
       const merges = commands.filter(args => args.includes("imagetools") && args.includes("create"));

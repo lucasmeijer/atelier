@@ -26,12 +26,12 @@ export interface EnsureDefaultImageOptions {
 
 const root = join(import.meta.dir, "../../..");
 
-/** Always regenerate: edits to module inputs in a long-lived dev process count. */
-export async function prepareDefaultWorkspaceImage(): Promise<DefaultWorkspaceImageContext> {
+/** Always regenerate from the selected source checkout, defaulting to this installation. */
+export async function prepareDefaultWorkspaceImage(sourceRoot = root): Promise<DefaultWorkspaceImageContext> {
   const contextDir = await mkdtemp(join(tmpdir(), "atelier-workspace-image-"));
   const dispose = () => rm(contextDir, { recursive: true, force: true });
   try {
-    const { exitCode: code, stdout, stderr } = await runCommand(["bun", join(root, "packages/workspace-image/scripts/build-context.mjs"), contextDir], { cwd: root });
+    const { exitCode: code, stdout, stderr } = await runCommand(["bun", join(sourceRoot, "packages/workspace-image/scripts/build-context.mjs"), contextDir], { cwd: sourceRoot });
     if (code !== 0) throw new Error(`Could not generate workspace image: ${stderr || stdout}`);
     const metadata = parseWorkspaceImageMetadata(JSON.parse(await readFile(join(contextDir, "metadata.json"), "utf8")));
     return { contextDir, dockerfile: join(contextDir, "Dockerfile"), metadata, dispose };
