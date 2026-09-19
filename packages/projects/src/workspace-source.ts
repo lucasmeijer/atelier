@@ -125,6 +125,7 @@ async function ensureTemplate(gitUrl: string, branch: string | null, key: string
   await rm(effectiveBranchPath, { force: true });
   await rm(resolvedCommitPath, { force: true });
 
+  const branchNotFoundExitCode = 44;
   const token = discoverHostGitHubToken();
   const script = `
 set -euo pipefail
@@ -152,8 +153,12 @@ git_cmd -C "$repo_path" fetch --prune --force --tags origin
 
 if [ -n "$branch" ]; then
   effective_branch="$branch"
-  reset_ref="origin/$branch"
-  git_cmd -C "$repo_path" rev-parse --verify "$reset_ref"
+  reset_ref="refs/remotes/origin/$branch"
+  git_cmd -C "$repo_path" show-ref --verify --quiet "$reset_ref" || {
+    status=$?
+    if [ "$status" -eq 1 ]; then exit ${branchNotFoundExitCode}; fi
+    exit "$status"
+  }
   git_cmd -C "$repo_path" checkout -B "$effective_branch" "$reset_ref"
 else
   git_cmd -C "$repo_path" remote set-head origin -a
@@ -196,6 +201,9 @@ printf '%s\n' "$effective_branch" > "$effective_branch_file"
     },
   });
   await appendFile(options.logPath, result.output).catch(() => undefined);
+  if (result.exitCode === branchNotFoundExitCode) {
+    throw new AtelierCoreError("branch_not_found", `Branch "${branch}" was not found. Open Project settings and correct the branch after # in Repository, or remove it to use the default branch. Then create a new workspace.`);
+  }
   if (result.exitCode !== 0) {
     const detail = tailTerminalText(result.output) || `git provisioning failed with exit code ${result.exitCode}`;
     const trustHelp = result.output.includes("Host key verification failed") ? "\nConfigure verified server keys in Project settings → Trusted SSH servers, then retry workspace creation." : "";

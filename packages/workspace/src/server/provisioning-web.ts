@@ -33,8 +33,8 @@ function renderProvisionStep(workspaceId: string, step: WorkspaceProvisionStep, 
     : step.status === "running" && step.terminalSession
       ? `<div class="provision-terminal observable-terminal-host" data-controller="provision-terminal" data-provision-terminal-session-value="${escapeHtml(step.terminalSession)}"></div>`
       : "";
-  const output = step.output && step.status !== "running" ? `<details class="provision-output-disclosure"${step.status === "failed" ? " open" : ""}>${actionItemHtml({ kind: "single", element: { tag: "summary" }, leadingHtml: Icons.Disclosure, label: { kind: "text", text: "View output" } })}<pre class="provision-output-log provision-output" data-controller="auto-scroll">${escapeHtml(step.output)}</pre></details>` : "";
-  const error = step.error && !(step.status === "failed" && step.error === step.output) ? `<div class="${step.status === "warning" ? "provision-warning" : "provision-error"}">${escapeHtml(step.error)}</div>` : "";
+  const output = step.output && step.status !== "running" ? `<details class="provision-output-disclosure">${actionItemHtml({ kind: "single", element: { tag: "summary" }, leadingHtml: Icons.Disclosure, label: { kind: "text", text: "View output" } })}<pre class="provision-output-log provision-output" data-controller="auto-scroll">${escapeHtml(step.output)}</pre></details>` : "";
+  const error = step.error ? `<div class="${step.status === "warning" ? "provision-warning" : "provision-error"}">${escapeHtml(step.error)}</div>` : "";
   const detailText = step.status === "warning" ? "Continued despite this failure" : step.detail;
   const detail = detailText ? `<span class="r-sub provision-step-detail">${escapeHtml(detailText)}</span>` : "";
   const continueUrl = `/workspaces/${encodeURIComponent(workspaceId)}/provisioning/continue`;
@@ -64,7 +64,8 @@ export function renderWorkspaceLaunchPrompt(launchPrompt: string | undefined): s
 
 export function renderWorkspaceProvisioning(workspaceId: string, snapshot: WorkspaceProvisionSnapshot | undefined, options: { failed?: boolean; error?: string } = {}): string {
   const body = snapshot?.steps.map((step) => renderProvisionStep(workspaceId, step, snapshot.waiting)).join("") ?? "";
-  const error = snapshot?.error ?? (options.failed ? options.error : undefined);
+  const failure = snapshot?.error ?? (options.failed ? options.error : undefined);
+  const error = snapshot?.steps.some((step) => step.error === failure) ? undefined : failure;
   const progress = body || (options.failed ? "" : '<li class="status-list__item provision-step" aria-busy="true"><span class="status-list__marker"></span><div class="provision-step-content"><span class="provision-step-label">Preparing workspace</span></div></li>');
   return `<section aria-label="Workspace preparation">${error ? `<p class="provision-error">${escapeHtml(error)}</p>` : ""}${progress ? `<ol class="status-list provision-list">${progress}</ol>` : ""}</section>`;
 }

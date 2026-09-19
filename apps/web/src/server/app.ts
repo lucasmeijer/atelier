@@ -520,10 +520,14 @@ export function createWebApp(deps: WebAppDeps): WebApp {
   }
 
   function workspaceBootResidentHtml(entry: WorkspaceEntry, options: { visible?: boolean } = {}): string {
+    const projectId = isGitProjectInit(entry.init) ? entry.init.projectId : undefined;
     const deleteButton = buttonHtml({ type: "submit", variant: "danger", content: { kind: "caption", caption: "Delete workspace" } });
     const deleteAction = `<form class="workspace-boot-actions" data-action="turbo:submit-start->workspace-navigation#workspaceDeletionStarted" method="post" action="/workspaces/${encodeURIComponent(entry.id)}/delete">${deleteButton}</form>`;
-    const inner = `${renderWorkspaceProvisioning(entry.id, provisioning.snapshot(entry.id), { failed: entry.phase === "failed", error: entry.error })}${deleteAction}`;
-    const projectAttr = isGitProjectInit(entry.init) ? ` data-project-id="${escapeHtml(entry.init.projectId)}"` : "";
+    const recovery = entry.phase === "failed" && projectId
+      ? actionLinkHtml({ href: `/projects/${encodeURIComponent(projectId)}/settings?section=repository`, variant: "primary", content: { kind: "caption", caption: "Open Project settings" }, attributesHtml: 'data-turbo-stream="true"' })
+      : "";
+    const inner = `${renderWorkspaceProvisioning(entry.id, provisioning.snapshot(entry.id), { failed: entry.phase === "failed", error: entry.error })}${recovery}${deleteAction}`;
+    const projectAttr = projectId ? ` data-project-id="${escapeHtml(projectId)}"` : "";
     return `<div class="workspace-detail-resident workspace-boot ${options.visible ? "visible" : ""}" id="${workspaceResidentId(entry.id)}" data-workspace-residency-target="resident" data-workspace-id="${escapeHtml(entry.id)}"${projectAttr}><div class="main"><div class="body"><div class="workspace-boot-progress"><div class="workspace-boot-content">${inner}</div></div>${renderWorkspaceLaunchPrompt(provisioningPrompts.get(entry.id))}</div></div>${renderMobileWorkspaceBar()}</div>`;
   }
 

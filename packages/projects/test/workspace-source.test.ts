@@ -75,6 +75,25 @@ describe("workspace source preparation", () => {
     await Promise.all(tempRoots.splice(0).map((path) => rm(path, { recursive: true, force: true })));
   });
 
+  test("missing branches report a recoverable error on initial and cached preparation", async () => {
+    const fixture = await createRemote();
+    tempRoots.push(fixture.root);
+    for (const workspaceId of ["missing-first", "missing-cached"]) {
+      await expect(prepareWorkspaceSource({ workspaceId, gitUrl: fixture.remote, branch: "does-not-exist" })).rejects.toMatchObject({
+        code: "branch_not_found",
+        message: 'Branch "does-not-exist" was not found. Open Project settings and correct the branch after # in Repository, or remove it to use the default branch. Then create a new workspace.',
+      });
+    }
+    for (const branch of ["main", null]) {
+      const source = await prepareWorkspaceSource({ workspaceId: `corrected-${branch}`, gitUrl: fixture.remote, branch });
+      expect(await Bun.file(join(source.worktreePath, "file.txt")).text()).toBe("one\n");
+    }
+  });
+
+  test("repository access failures are not reported as missing branches", async () => {
+    await expect(prepareWorkspaceSource({ workspaceId: "unavailable", gitUrl: join(dataDir, "missing.git"), branch: "main" })).rejects.toMatchObject({ code: "git_error" });
+  });
+
   test("creates a standalone COW workspace checkout from a reusable template", async () => {
     const fixture = await createRemote();
     tempRoots.push(fixture.root);
