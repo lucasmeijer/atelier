@@ -218,6 +218,7 @@ export function createWorkspacePresentationController(
 
     async prepareIntendedSurfaces(): Promise<void> {
       this.normalizeState();
+      if (!this.element.closest(".workspace-detail-resident.visible")) this.applyInitialAttentionIntent();
       this.applyState({ emit: false });
       const agentFrame = this.element.querySelector<HTMLElement>(`[data-workspace-pane-role="agent"][data-workspace-pane-id="${CSS.escape(this.state.activeAgentId ?? "")}"] turbo-frame[data-agent-body-hydration][src]`);
       if (agentFrame) await frameFreshness(agentFrame).ensureFresh();
@@ -286,6 +287,7 @@ export function createWorkspacePresentationController(
       const pane = frame.closest<PresentationPane>("[data-workspace-pane-role='work']");
       if (!pane || !visiblePresentationPanes.has(pane)) return;
       visiblePresentationPanes.delete(pane);
+      pane.dataset.workspaceSurfaceVisible = "false";
       lifecycle.noLongerVisible(this.lifecycleContext(pane));
       pane.dispatchEvent(new CustomEvent("atelier:workspace-pane-hidden", { bubbles: true, detail: { role: "work", id: pane.dataset.workspacePaneId } }));
     }
@@ -440,11 +442,17 @@ export function createWorkspacePresentationController(
     }
 
     private applyInitialAttentionIntent(): void {
-      if (this.isPhone) return;
-      const selectors = [...this.element.querySelectorAll<HTMLElement>("[data-work-view-key][data-attention-sequence]")];
-      if (!selectors.length) return;
-      const latest = selectors.reduce((current, candidate) => Number(candidate.dataset.attentionSequence) > Number(current.dataset.attentionSequence) ? candidate : current);
-      this.selectWorkViewState(latest.dataset.workViewKey!, latest.dataset.workViewKind === "contextual");
+      const oldest = (selector: string) => [...this.element.querySelectorAll<HTMLElement>(selector)]
+        .sort((a, b) => Number(a.dataset.attentionSequence) - Number(b.dataset.attentionSequence))[0];
+      const agent = oldest("[data-agent-attention-id][data-attention-sequence]");
+      if (agent) {
+        this.state.activeAgentId = agent.dataset.agentAttentionId;
+        this.state.phoneDestination = "agents";
+      }
+      if (!this.isPhone) {
+        const view = oldest("[data-work-view-key][data-attention-sequence]");
+        if (view) this.selectWorkViewState(view.dataset.workViewKey!, view.dataset.workViewKind === "contextual");
+      }
       this.persist();
     }
 
@@ -586,6 +594,7 @@ export function createWorkspacePresentationController(
         return;
       }
       visiblePresentationPanes.add(pane);
+      pane.dataset.workspaceSurfaceVisible = "true";
       if (pane.dataset.workspacePaneRole === "work") {
         const frame = pane.querySelector<HTMLElement>("turbo-frame[data-work-view-hydration][src]");
         if (frame) void frameFreshness(frame).ensureFresh().then(() => this.initializeEmbeddedWorkSurface()).catch((error) => console.error("Could not hydrate Work view", error));
@@ -602,14 +611,6 @@ export function createWorkspacePresentationController(
 
     private finishVisibleWorkViewPreparation(): void {
       if (document.visibilityState !== "visible") return;
-      if (this.isPhone && this.state.activeWorkViewKey) {
-        const key = this.state.activeWorkViewKey;
-        const token = this.element.querySelector<HTMLElement>(`[data-work-view-key="${CSS.escape(key)}"]`)?.dataset.attentionSequence;
-        if (token !== undefined) {
-          const attentionTokens = JSON.stringify({ [key]: Number(token) });
-          void fetch(`/workspaces/${encodeURIComponent(this.workspaceIdValue)}/attention/acknowledge?attentionTokens=${encodeURIComponent(attentionTokens)}`, { method: "POST" });
-        }
-      }
       document.dispatchEvent(new CustomEvent("atelier:workspace-preparation-request-acknowledged", { detail: { workspaceId: this.workspaceIdValue } }));
     }
 
@@ -617,6 +618,7 @@ export function createWorkspacePresentationController(
       pane.dataset.workspaceLogicallyVisible = "false";
       if (!visiblePresentationPanes.has(pane)) return;
       visiblePresentationPanes.delete(pane);
+      pane.dataset.workspaceSurfaceVisible = "false";
       lifecycle.noLongerVisible(this.lifecycleContext(pane));
       pane.dispatchEvent(new CustomEvent("atelier:workspace-pane-hidden", { bubbles: true, detail: { role: pane.dataset.workspacePaneRole, id: pane.dataset.workspacePaneId } }));
     }
@@ -681,6 +683,8 @@ export function createWorkspacePresentationController(
 
     private viewportChanged = (): void => { this.applyState({ emit: true }); };
     private residencyVisible = (): void => {
+      this.applyInitialAttentionIntent();
+      this.applyDeepLink();
       this.persist();
       this.applyState({ emit: true });
     };
@@ -726,6 +730,16 @@ export function installWorkspacePresentationTurboStream(Turbo: TurboLike, applic
       const resident = target.closest<HTMLElement>(".workspace-detail-resident[data-workspace-id]");
       const workspaceId = resident?.dataset.workspaceId;
       if (workspaceId) document.dispatchEvent(new CustomEvent("atelier:workspace-removed", { detail: { workspaceId } }));
+    }
+  };
+  Turbo.StreamActions["prune-workspace-rows"] = function pruneWorkspaceRows(this: StreamElement): void {
+    const ids: string[] = JSON.parse(this.dataset.rowIds!);
+    for (const target of this.targetElements) for (const row of [...target.children]) if (!ids.includes(row.id)) row.remove();
+  };
+  Turbo.StreamActions["move-workspace-row"] = function moveWorkspaceRow(this: StreamElement): void {
+    for (const target of this.targetElements) {
+      const before = this.dataset.beforeId ? document.getElementById(this.dataset.beforeId) : null;
+      target.parentElement!.insertBefore(target, before);
     }
   };
   Turbo.StreamActions["workspace-pane-changed"] = function workspacePaneChanged(this: StreamElement): void {

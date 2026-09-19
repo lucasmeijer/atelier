@@ -10,7 +10,7 @@ interface WorkspaceResidencyControllerSurface {
   selectWorkspace(workspaceId: string, href: string, historyMode?: "push" | "none"): Promise<void>;
   unselectWorkspace(workspaceId: string): void;
   visibleWorkspaceId(): string | undefined;
-  oldestPreparedAttentionWorkspaceId(): string | undefined;
+  oldestAttentionWorkspaceId(): string | undefined;
 }
 
 let application: WorkspaceClientApplication;

@@ -23,7 +23,7 @@ describe("agent workspace creation through normal provisioning", () => {
     const updates: any[] = [];
     const result = await app.createWorkspaceFromAgent(configuration, "", undefined, (update) => updates.push(update));
     expect(result.status).toBe("ready");
-    expect(registry.get(result.workspaceId)?.phase).toBe("ready");
+    expect(registry.get(result.workspaceId)?.phase.kind).toBe("runningPhase");
     expect(result.settings).toEqual(configuration.settings);
     expect(result.timings.phases).toEqual([{ id: "setup", label: "Setup", status: "done", durationMs: expect.any(Number), error: undefined }]);
     expect(result.timings.totalMs).toBeGreaterThanOrEqual(5);
@@ -38,7 +38,7 @@ describe("agent workspace creation through normal provisioning", () => {
     const result = await app.createWorkspaceFromAgent(await init(), "", undefined, undefined);
     expect(result.status).toBe("failed");
     expect(result.error).toBe("build failed");
-    expect(registry.get(result.workspaceId)?.phase).toBe("failed");
+    expect(registry.get(result.workspaceId)?.phase).toMatchObject({ status: "failed", busy: false });
     expect(result.timings.phases[0]).toMatchObject({ id: "image", status: "failed", durationMs: expect.any(Number) });
   });
 
@@ -48,11 +48,11 @@ describe("agent workspace creation through normal provisioning", () => {
     } });
     const result = await app.createWorkspaceFromAgent(await init(), "", undefined, undefined);
     expect(result.status).toBe("awaiting_user");
-    expect(registry.get(result.workspaceId)?.phase).toBe("starting");
+    expect(registry.get(result.workspaceId)?.phase.kind).toBe("provisioningPhase");
     expect(result.timings.phases[0]?.error).toBe("needs input");
     app.provisioning.resume(result.workspaceId, "continue");
     await Bun.sleep(5);
-    expect(registry.get(result.workspaceId)?.phase).toBe("ready");
+    expect(registry.get(result.workspaceId)?.phase.kind).toBe("runningPhase");
   });
 
   test("cancelling the tool stops waiting without deleting or aborting the new workspace", async () => {
@@ -64,10 +64,10 @@ describe("agent workspace creation through normal provisioning", () => {
     const operation = app.createWorkspaceFromAgent(await init(), "", controller.signal, () => controller.abort());
     await expect(operation).rejects.toThrow();
     const workspace = registry.list()[0]!;
-    expect(workspace.phase).toBe("starting");
+    expect(workspace.phase.kind).toBe("provisioningPhase");
     pending.resolve();
     await Bun.sleep(5);
-    expect(registry.get(workspace.id)?.phase).toBe("ready");
+    expect(registry.get(workspace.id)?.phase.kind).toBe("runningPhase");
   });
 });
 

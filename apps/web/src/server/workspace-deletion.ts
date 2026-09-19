@@ -21,14 +21,12 @@ export function createWorkspaceDeletion(options: {
 
   function canRequest(id: string): boolean {
     const entry = requireWorkspace(id);
-    if (!entry.deletion) return entry.phase === "starting" || entry.phase === "ready" || entry.phase === "failed";
-    return entry.deletion.status === "blocked" || entry.deletion.status === "failed";
+    if (!entry.phase.deletion) return true;
+    return entry.phase.deletion.status === "blocked" || entry.phase.deletion.status === "failed";
   }
 
   function setState(id: string, state: WorkspaceDeletionState): void | Promise<void> {
-    if (state.status === "blocked") registry.markViewAttention(id, "workspace");
     registry.setDeletion(id, state);
-    if (state.status === "failed") registry.markViewAttention(id, "workspace");
     return options.changed(id, state);
   }
 
@@ -75,13 +73,13 @@ export function createWorkspaceDeletion(options: {
   async function request(id: string, input: { force?: boolean; fingerprint?: string } = {}): Promise<DeleteCurrentWorkspaceResult> {
     const entry = requireWorkspace(id);
     if (input.fingerprint !== undefined) {
-      if (entry.deletion?.status !== "blocked" || entry.deletion.fingerprint !== input.fingerprint) throw new AtelierCoreError("workspace_not_ready", "The deletion assessment is no longer current");
+      if (entry.phase.deletion?.status !== "blocked" || entry.phase.deletion.fingerprint !== input.fingerprint) throw new AtelierCoreError("workspace_not_ready", "The deletion assessment is no longer current");
       return check(id, input.fingerprint);
     }
     if (!canRequest(id)) throw new AtelierCoreError("workspace_not_ready", `workspace ${id} is not ready for deletion`);
-    if (entry.deletion?.status === "blocked" && !input.force) return { deleted: false, blocked: true, details: evidence.get(id) };
-    const retryForced = entry.deletion?.status === "failed" && entry.deletion.operation === "deleting" ? entry.deletion.forced : undefined;
-    if (input.force || (entry.phase === "failed" && !entry.deletion) || retryForced !== undefined) return schedule(id, input.force === true || retryForced === true);
+    if (entry.phase.deletion?.status === "blocked" && !input.force) return { deleted: false, blocked: true, details: evidence.get(id) };
+    const retryForced = entry.phase.deletion?.status === "failed" && entry.phase.deletion.operation === "deleting" ? entry.phase.deletion.forced : undefined;
+    if (input.force || (entry.phase.kind === "provisioningPhase" && entry.phase.status === "failed") || retryForced !== undefined) return schedule(id, input.force === true || retryForced === true);
     return check(id);
   }
 
@@ -93,16 +91,15 @@ export function createWorkspaceDeletion(options: {
     },
     cancel(id: string): boolean {
       const entry = requireWorkspace(id);
-      if (entry.deletion?.status !== "blocked" && entry.deletion?.status !== "failed") return false;
-      registry.setDeletion(id, undefined);
+      if (entry.phase.deletion?.status !== "blocked" && entry.phase.deletion?.status !== "failed") return false;
+      registry.cancelDeletion(id);
       evidence.delete(id);
-      registry.clearViewAttention(id, "workspace");
       return true;
     },
     resume(): void {
       for (const entry of registry.list()) {
-        if (entry.deletion?.status === "checking") void check(entry.id);
-        else if (entry.deletion?.status === "deleting") schedule(entry.id, entry.deletion.forced);
+        if (entry.phase.deletion?.status === "checking") void check(entry.id);
+        else if (entry.phase.deletion?.status === "deleting") schedule(entry.id, entry.phase.deletion.forced);
       }
     },
     async destroyAll(ids: readonly string[]): Promise<{ deleted: number; errors: string[] }> {

@@ -10,12 +10,12 @@ const previewTerminalTitle = "Terminal";
 const baseUrl = "http://127.0.0.1:3000";
 const repoRoot = resolve(new URL("..", import.meta.url).pathname);
 
-interface WorkspaceSummary { id: string; title: string; phase: string }
-interface WorkView { reference: { type: string; path?: string; browserId?: string; terminalId?: string; title?: string }; attention: boolean }
+interface WorkspaceSummary { id: string; title: string; phase: { kind: string; status?: string; busy: boolean } }
+interface WorkView { reference: { type: string; path?: string; browserId?: string; terminalId?: string; title?: string }; requestingAttention: boolean }
 interface WorkspaceState {
   id: string;
   title: string;
-  phase: string;
+  phase: { kind: string; status?: string; busy: boolean };
   url: string;
   agentConversations?: Array<{ id: string; title: string }>;
   workViews?: WorkView[];
@@ -47,13 +47,13 @@ async function waitForServer(server?: ReturnType<typeof Bun.spawn>): Promise<voi
 
 async function workspace(): Promise<WorkspaceState> {
   const summaries = (await api<{ workspaces: WorkspaceSummary[] }>("/workspaces")).workspaces;
-  const summary = summaries.find((candidate) => candidate.title === previewTitle && candidate.phase !== "failed")
+  const summary = summaries.find((candidate) => candidate.title === previewTitle && candidate.phase.status !== "failed")
     ?? (await post<{ workspace: WorkspaceState }>("/workspaces", { source: { type: "empty" }, title: previewTitle })).workspace;
   const deadline = Date.now() + 120_000;
   while (Date.now() < deadline) {
     const state = (await api<{ workspace: WorkspaceState }>(`/workspaces/${summary.id}`)).workspace;
-    if (state.phase === "ready") return state;
-    if (state.phase === "failed") throw new Error("preview workspace failed to start");
+    if (state.phase.kind === "runningPhase") return state;
+    if (state.phase.status === "failed") throw new Error("preview workspace failed to start");
     await Bun.sleep(500);
   }
   throw new Error("preview workspace did not become ready within 120 seconds");

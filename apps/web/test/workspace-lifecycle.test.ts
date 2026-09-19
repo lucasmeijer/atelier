@@ -37,12 +37,12 @@ describe("workspace lifecycle", () => {
 
     expect(response.status).toBe(200);
     expect(id).not.toBe("");
-    expect(registry.get(id)?.phase).toBe("starting");
+    expect(registry.get(id)?.phase.kind).toBe("provisioningPhase");
 
     provision.resolve();
-    while (registry.get(id)?.phase === "starting") await Bun.sleep(1);
-    expect(registry.get(id)?.phase).toBe("ready");
-    expect(registry.hasAttention(id)).toBe(false);
+    while (registry.get(id)?.phase.busy) await Bun.sleep(1);
+    expect(registry.get(id)?.phase.kind).toBe("runningPhase");
+    expect(registry.get(id)?.requestingAttention).toBe(false);
   });
 
   test("provisioning waits for explicit confirmation after a recoverable failure", async () => {
@@ -63,7 +63,7 @@ describe("workspace lifecycle", () => {
     await waiting.promise;
     await Bun.sleep(0);
 
-    expect(registry.get(id)?.phase).toBe("starting");
+    expect(registry.get(id)?.phase.kind).toBe("provisioningPhase");
     expect(finished).toBe(false);
 
     const retry = await app.fetch(new Request(`http://test.local/workspaces/${id}/provisioning/continue?action=retry`, {
@@ -78,9 +78,9 @@ describe("workspace lifecycle", () => {
     }));
     expect(continued.status).toBe(200);
     expect(await continued.json()).toEqual({ continued: true, stepId: "workspace.setup" });
-    while (registry.get(id)?.phase === "starting") await Bun.sleep(1);
+    while (registry.get(id)?.phase.busy) await Bun.sleep(1);
     expect(finished).toBe(true);
-    expect(registry.get(id)?.phase).toBe("ready");
+    expect(registry.get(id)?.phase.kind).toBe("runningPhase");
     expect(registry.get(id)?.issues).toEqual([{ kind: "readiness", message: "Run project setup: setup failed Continued despite this failure." }]);
 
     const repeated = await app.fetch(new Request(`http://test.local/workspaces/${id}/provisioning/continue`, {
@@ -108,9 +108,9 @@ describe("workspace lifecycle", () => {
     }));
     expect(retry.status).toBe(200);
     expect(await retry.json()).toEqual({ continued: true, stepId: "custom.prepare" });
-    while (registry.get(id)?.phase === "starting") await Bun.sleep(1);
+    while (registry.get(id)?.phase.busy) await Bun.sleep(1);
     expect(attempts).toBe(2);
-    expect(registry.get(id)).toMatchObject({ phase: "ready" });
+    expect(registry.get(id)).toMatchObject({ phase: { kind: "runningPhase" } });
     expect(registry.get(id)?.issues).toBeUndefined();
   });
 
@@ -120,11 +120,11 @@ describe("workspace lifecycle", () => {
 
     const response = await app.fetch(post("/workspaces"));
     const id = (response.headers.get("location") ?? "").match(/\/workspaces\/([^/]+)$/)?.[1] ?? "";
-    while (registry.get(id)?.phase === "starting") await Bun.sleep(1);
+    while (registry.get(id)?.phase.busy) await Bun.sleep(1);
 
-    expect(registry.get(id)?.phase).toBe("failed");
-    expect(registry.get(id)?.error).toContain("docker exploded");
-    expect(registry.hasAttention(id)).toBe(true);
+    expect(registry.get(id)?.phase).toMatchObject({ status: "failed", busy: false });
+    expect(registry.get(id)?.phase.error).toContain("docker exploded");
+    expect(registry.get(id)?.requestingAttention).toBe(true);
   });
 
   test("failed workspaces bypass deletion review", async () => {
@@ -136,7 +136,7 @@ describe("workspace lifecycle", () => {
     });
     await registry.seed([]);
     registry.add("abc", "A");
-    registry.setPhase("abc", "failed", "docker exploded");
+    registry.setProvisioningState("abc", "failed", "docker exploded");
 
     const response = await app.fetch(post("/workspaces/abc/delete"));
     while (registry.get("abc")) await Bun.sleep(1);
@@ -211,9 +211,9 @@ describe("workspace lifecycle", () => {
     const response = await app.fetch(post("/workspaces/abc/delete"));
 
     expect(response.status).toBe(200);
-    expect(registry.get("abc")?.phase).toBe("checking_delete");
-    expect(registry.get("abc")?.deletion).toMatchObject({ status: "blocked" });
-    expect(registry.hasAttention("abc")).toBe(true);
+    expect(registry.get("abc")?.phase.kind).toBe("deletingPhase");
+    expect(registry.get("abc")?.phase.deletion).toMatchObject({ status: "blocked" });
+    expect(registry.get("abc")?.requestingAttention).toBe(true);
     expect(destroyed).toBe(false);
   });
 
@@ -225,8 +225,8 @@ describe("workspace lifecycle", () => {
     const response = await app.fetch(post("/workspaces/abc/delete"));
 
     expect(response.status).toBe(200);
-    expect(registry.get("abc")?.phase).toBe("deleting");
-    expect(registry.get("abc")?.deletion).toEqual({ status: "deleting", forced: false });
+    expect(registry.get("abc")?.phase.kind).toBe("deletingPhase");
+    expect(registry.get("abc")?.phase.deletion).toEqual({ status: "deleting", forced: false });
 
     destroy.resolve();
     while (registry.get("abc")) await Bun.sleep(1);
@@ -238,11 +238,11 @@ describe("workspace lifecycle", () => {
     await registry.seed([{ id: "abc", title: "A" }]);
 
     await app.fetch(post("/workspaces/abc/delete"));
-    while (registry.get("abc")?.deletion?.status !== "failed") await Bun.sleep(1);
+    while (registry.get("abc")?.phase.deletion?.status !== "failed") await Bun.sleep(1);
 
-    expect(registry.get("abc")?.phase).toBe("failed");
-    expect(registry.get("abc")?.error).toContain("docker refused");
-    expect(registry.get("abc")?.deletion).toMatchObject({ status: "failed" });
+    expect(registry.get("abc")?.phase).toMatchObject({ kind: "deletingPhase", deletion: { status: "failed" }, busy: false });
+    expect(registry.get("abc")?.phase.deletion).toMatchObject({ error: "docker refused" });
+    expect(registry.get("abc")?.phase.deletion).toMatchObject({ status: "failed" });
   });
 
   test("park and unpark persist state and hide parked workspace details", async () => {
@@ -320,7 +320,7 @@ test("deleting a preparing workspace through JSON cancels its command before des
     method: "POST", headers: { accept: "application/json", "content-type": "application/json" }, body: JSON.stringify({ source: { type: "empty" } }),
   }));
   const id = (await create.json()).workspace.id;
-  expect(registry.get(id)?.phase).toBe("starting");
+  expect(registry.get(id)?.phase.kind).toBe("provisioningPhase");
   const response = await app.fetch(new Request(`http://test.local/workspaces/${id}/delete`, {
     method: "POST", headers: { accept: "application/json", "content-type": "application/json" }, body: JSON.stringify({ force: true }),
   }));

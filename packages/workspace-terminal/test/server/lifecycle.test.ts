@@ -62,7 +62,7 @@ test("create, attach and delete serialize together and recover after rejected op
 test("terminal socket sends final diagnostics before closing", () => scenario(`
   const terminal = await create("one");
   const { createTerminalSocketHandler } = await import(${JSON.stringify(join(import.meta.dir, "../../src/server/sockets.ts"))});
-  const handler = createTerminalSocketHandler({ setViewBusy() {} });
+  const handler = createTerminalSocketHandler();
   const { terminalViewKey } = await import(${JSON.stringify(join(import.meta.dir, "../../src/shared.ts"))});
   const connection = await handler(new URL("http://localhost/workspaces/one/views/" + encodeURIComponent(terminalViewKey(terminal.id)) + "/ws"));
   const events = [];

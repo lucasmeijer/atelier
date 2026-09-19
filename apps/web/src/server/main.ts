@@ -30,7 +30,7 @@ import { createWebApp, type WebApp } from "./app.ts";
 import { parseAssetManifest } from "./asset-manifest.ts";
 import { createCableServer, type CableSocketData } from "./cable.ts";
 import { legacyStaticFiles } from "./static-files.ts";
-import { createFileWorkspaceActivityStore, createFileWorkspaceDeletionStore, createFileWorkspaceUnreadStore, createWorkspaceRegistry } from "./workspace-registry.ts";
+import { createFileWorkspaceActivityStore, createFileWorkspaceDeletionStore, createFileWorkspaceAttentionStore, createWorkspaceRegistry } from "./workspace-registry.ts";
 import { workspaceModules } from "./workspace-modules.ts";
 
 // Explicit feature assembly; workspace-module discovery still owns routes, views and assets.
@@ -215,7 +215,7 @@ const parentOriginPublisher = await detectParentOriginPublisher(publicOriginPort
 
 const registry = createWorkspaceRegistry({
   activityStore: createFileWorkspaceActivityStore(join(runtimeContext.atelierDataDir, "view-state", "workspace-activity.json")),
-  unreadStore: createFileWorkspaceUnreadStore(join(runtimeContext.atelierDataDir, "view-state", "workspace-unread.json")),
+  attentionStore: createFileWorkspaceAttentionStore(join(runtimeContext.atelierDataDir, "view-state", "workspace-attention.json")),
   deletionStore: createFileWorkspaceDeletionStore(join(runtimeContext.atelierDataDir, "view-state", "workspace-deletions.json")),
 });
 let app: WebApp;
@@ -246,8 +246,8 @@ app = createWebApp({
   },
   async persistWorkspaceParked(id, parked) {
     await setWorkspaceParked(id, parked);
-    if (!parked) {
-      registry.setPhase(id, "starting");
+    if (!parked && registry.get(id)!.phase.kind === "runningPhase") {
+      registry.startProvisioning(id);
       resumeWorkspace(id);
     }
   },
@@ -262,7 +262,7 @@ atelierEvents.on("workspace_user_activity", ({ workspaceId }) => registry.touch(
 atelierEvents.on("workspace_title_changed", ({ workspaceId, title }) => registry.setTitle(workspaceId, title || null));
 // Discover identity and project metadata before serving. Runtime health is checked in the background.
 const persistedWorkspaces = (await listWorkspaces({ inspectImages: false })).workspaces;
-await registry.seed(persistedWorkspaces.map((workspace) => ({ ...workspace, starting: !workspace.parked })));
+await registry.seed(persistedWorkspaces.map((workspace) => ({ ...workspace, provisioning: !workspace.parked })));
 
 for (const module of workspaceModules) {
   await module.initialize?.({
@@ -555,6 +555,6 @@ function resumeWorkspace(id: string): void {
   const entry = registry.get(id);
   if (!entry) return;
   void prepareWorkspaceForUse(id, registry, workspaceStartupOperations).then(() => {
-    if (registry.get(id) === entry && !entry.deletion && !entry.parked) registry.setPhase(id, "ready");
+    if (registry.get(id) === entry && !entry.phase.deletion && !entry.parked) registry.startRunning(id);
   }).catch((error) => console.error(`Workspace startup failed for ${id}`, error));
 }

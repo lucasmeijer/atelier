@@ -381,7 +381,7 @@ describe("Agent provider app integration", () => {
       { id: "conversation-b", title: "Beta" },
       { id: "conversation-c", title: "Gamma" },
     ], async ({ app, registry, broadcasts, agent, workspaceId }) => {
-      registry.markViewAttention(workspaceId, "agent:conversation-b");
+      registry.requestSurfaceAttention(workspaceId, "agent:conversation-b");
       broadcasts.length = 0;
       const response = await app.fetch(turboPost(`/workspaces/${workspaceId}/agents/conversation-b/close`));
       const html = await response.text();
@@ -389,7 +389,7 @@ describe("Agent provider app integration", () => {
       expect(response.headers.get("content-type")).toContain("text/vnd.turbo-stream.html");
       expect(agent.closed).toEqual([{ workspaceId, conversationId: "conversation-b" }]);
       expect(agent.conversations.map(({ id }) => id)).toEqual(["conversation-a", "conversation-c"]);
-      expect(registry.attentionTokens(workspaceId)["agent:conversation-b"] !== undefined).toBe(false);
+      expect(registry.surfaceState(workspaceId, "agent:conversation-b").requestingAttention).toBe(false);
       expect(html).toContain(`<turbo-stream action="update" target="${agentNavigationDomId(workspaceId)}"`);
       expect(html).not.toContain(`id="${agentTabDomId(workspaceId, "conversation-b")}"`);
       expect(html).toContain(`<turbo-stream action="remove" target="${agentPaneSlotDomId(workspaceId, "conversation-b")}"`);
@@ -404,14 +404,14 @@ describe("Agent provider app integration", () => {
       expect(structural?.identifier).toEqual({ channel: "shell" });
       expect(structural?.html).toBe(html);
 
-      registry.markViewAttention(workspaceId, "agent:conversation-c");
+      registry.requestSurfaceAttention(workspaceId, "agent:conversation-c");
       broadcasts.length = 0;
       const jsonResponse = await app.fetch(jsonPost(`/workspaces/${workspaceId}/agents/conversation-c/close`));
       expect(await jsonResponse.json()).toEqual({
         archivedConversationId: "conversation-c",
-        agentConversations: [{ id: "conversation-a", title: "Alpha", providerId: "builtin" }],
+        agentConversations: [{ id: "conversation-a", title: "Alpha", providerId: "builtin", busy: false, requestingAttention: false }],
       });
-      expect(registry.attentionTokens(workspaceId)["agent:conversation-c"] !== undefined).toBe(false);
+      expect(registry.surfaceState(workspaceId, "agent:conversation-c").requestingAttention).toBe(false);
       expect(broadcasts.some((broadcast) => broadcast.html.includes(`target="${agentPaneSlotDomId(workspaceId, "conversation-c")}"`))).toBe(true);
 
       const lastAgent = await app.fetch(jsonPost(`/workspaces/${workspaceId}/agents/conversation-a/close`));
@@ -425,80 +425,6 @@ describe("Agent provider app integration", () => {
       expect(closeMissingWorkspace.status).toBe(404);
       expect(agent.closed).toHaveLength(3);
     });
-  });
-
-  test("Agent completion targets its conversation for automatic presentation", async () => {
-    await withTestApp([
-      { id: "conversation-a", title: "Alpha" },
-      { id: "conversation-b", title: "Beta" },
-    ], async ({ events, broadcasts, workspaceId }) => {
-      await events.emit("workspace_agent_turn_finished", { workspaceId, conversationId: "conversation-b" });
-
-      expect(broadcasts.at(-1)?.identifier).toEqual({ channel: "shell" });
-      expect(broadcasts.at(-1)?.html).toContain('action="select-agent"');
-      expect(broadcasts.at(-1)?.html).toContain('data-conversation-id="conversation-b"');
-    });
-  });
-
-  test("selecting a Workspace compare-and-clears every captured Attention occurrence", async () => {
-    await withTestApp([{ id: "conversation-a", title: "Alpha" }], async ({ app, registry, workspaceId }) => {
-      const agentToken = registry.markViewAttention(workspaceId, "agent:conversation-a")!;
-      const capturedWorkspaceToken = registry.markViewAttention(workspaceId, "workspace")!;
-      const captured = encodeURIComponent(JSON.stringify({ "agent:conversation-a": agentToken, workspace: capturedWorkspaceToken }));
-      const newerWorkspaceToken = registry.markViewAttention(workspaceId, "workspace")!;
-
-      const stale = await app.fetch(turboPost(`/workspaces/${workspaceId}/attention/acknowledge?attentionTokens=${captured}`));
-      expect(stale.status).toBe(204);
-      expect(registry.attentionTokens(workspaceId)["agent:conversation-a"] !== undefined).toBe(false);
-      expect(registry.attentionTokens(workspaceId)["workspace"] !== undefined).toBe(true);
-
-      const current = encodeURIComponent(JSON.stringify({ workspace: newerWorkspaceToken }));
-      const response = await app.fetch(turboPost(`/workspaces/${workspaceId}/attention/acknowledge?attentionTokens=${current}`));
-      expect(response.status).toBe(204);
-      expect(response.headers.get("cache-control")).toBe("no-store");
-      expect(await response.text()).toBe("");
-      expect(registry.hasAttention(workspaceId)).toBe(false);
-
-      const missingToken = await app.fetch(turboPost(`/workspaces/${workspaceId}/attention/acknowledge`));
-      expect(missingToken.status).toBe(400);
-      const missingWorkspace = await app.fetch(jsonPost(`/workspaces/missing/attention/acknowledge?attentionTokens=${current}`));
-      expect(missingWorkspace.status).toBe(404);
-    });
-  });
-
-  test("selecting a Workspace clears all Agent and Work-view Attention", async () => {
-    const reference: TestWorkViewReference = { type: "test-work", id: "review" };
-    await withTestApp(
-      [{ id: "conversation-a", title: "Alpha" }],
-      async ({ app, registry, workspaceId }) => {
-        const key = "test-work:review";
-        const otherKey = "test-work:other";
-        const resident = await app.fetch(new Request(`http://test.local/workspaces/${workspaceId}?resident=1`));
-        expect(resident.status).toBe(200);
-
-        registry.markViewAttention(workspaceId, otherKey);
-        await app.presentWorkViewFromAgent(workspaceId, reference);
-        expect(registry.attentionTokens(workspaceId)[key] !== undefined).toBe(true);
-
-        const requested = await app.fetch(turboPost(`/workspaces/${workspaceId}/work-views/${encodeURIComponent(key)}/attention/request`));
-        expect(requested.status).toBe(200);
-        expect(registry.attentionTokens(workspaceId)[key] !== undefined).toBe(true);
-        const selectedTokens = encodeURIComponent(JSON.stringify(registry.attentionTokens(workspaceId)));
-        const selected = await app.fetch(turboPost(`/workspaces/${workspaceId}/attention/acknowledge?attentionTokens=${selectedTokens}`));
-        expect(selected.status).toBe(204);
-        expect(registry.attentionTokens(workspaceId)[key] !== undefined).toBe(false);
-        expect(registry.attentionTokens(workspaceId)[otherKey] !== undefined).toBe(false);
-
-        await app.fetch(turboPost(`/workspaces/${workspaceId}/work-views/${encodeURIComponent(key)}/attention/request`));
-        const encodedReference = encodeURIComponent(JSON.stringify(reference));
-        const closed = await app.fetch(turboPost(`/workspaces/${workspaceId}/work-views/${encodedReference}/close`));
-        expect(closed.status).toBe(200);
-        expect(registry.attentionTokens(workspaceId)[key] !== undefined).toBe(false);
-        expect(registry.attentionTokens(workspaceId)[otherKey] !== undefined).toBe(false);
-      },
-      undefined,
-      [createTestWorkModule(reference)],
-    );
   });
 
   test("delayed Work reorder responses cannot overwrite the newest selector order", async () => {

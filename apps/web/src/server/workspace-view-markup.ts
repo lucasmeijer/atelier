@@ -16,6 +16,12 @@ export function barButton(label: string, action: string, iconHtml: string, attri
   });
 }
 
+/** Busy and attention are independent and share one indicator slot. */
+export function busyAttentionIndicator(state: { busy?: boolean; requestingAttention?: boolean }, attributesHtml = ""): string {
+  const label = [state.busy && "Busy", state.requestingAttention && "Requesting attention"].filter(Boolean).join("; ");
+  return `<span class="status-indicator"${label ? ` role="img" aria-label="${label}"` : ""} ${attributesHtml}>${state.busy ? '<i class="status-spinner sm" aria-hidden="true"></i>' : ""}${state.requestingAttention ? '<i class="status-dot attention" aria-hidden="true"></i>' : ""}</span>`;
+}
+
 export function fullscreenViewAttributes(key: string, title: string): string {
   return `data-controller="atelier-fullscreen" data-atelier-fullscreen-mode-value="view" data-atelier-fullscreen-view-key-value="${escapeHtml(key)}" data-atelier-fullscreen-title-value="${escapeHtml(title)}"`;
 }

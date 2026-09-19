@@ -6,10 +6,13 @@ import { Icons } from "@atelier/design-system/icons";
 import { popupHtml } from "@atelier/design-system/popup";
 import { panelHtml } from "@atelier/design-system/panel";
 import { domId, escapeHtml, turboStream } from "@atelier/shared";
-import { barButton, fullscreenViewAttributes, selectorCloseForm, behaviorTurboStream, workspacePreparationInvalidatedTurboStream, type ViewCloseAction } from "./workspace-view-markup.ts";
+import { busyAttentionIndicator, barButton, fullscreenViewAttributes, selectorCloseForm, behaviorTurboStream, workspacePreparationInvalidatedTurboStream, type ViewCloseAction } from "./workspace-view-markup.ts";
 import type { WorkspacePresentation } from "./workspace-presentation.ts";
 
 export interface AgentPaneContribution {
+  busy?: boolean;
+  requestingAttention?: boolean;
+  attentionSequence?: number;
   untitled?: boolean;
   id: string;
   providerId: string;
@@ -51,11 +54,34 @@ export function renderAgentBodyFrame(workspaceId: string, conversationId: string
   return `<turbo-frame id="${agentBodyFrameId(workspaceId, conversationId)}">${bodyHtml}</turbo-frame>`;
 }
 
+function agentStateDomId(workspaceId: string, conversationId: string): string { return domId("agent_state", workspaceId, conversationId); }
+
+function renderAgentState(workspaceId: string, conversationId: string, state: { busy?: boolean; requestingAttention?: boolean; attentionSequence?: number }): string {
+  return busyAttentionIndicator(state, `id="${agentStateDomId(workspaceId, conversationId)}" data-agent-attention-id="${escapeHtml(conversationId)}"${state.attentionSequence === undefined ? "" : ` data-attention-sequence="${state.attentionSequence}"`}`);
+}
+
+export function agentStateTurboStream(workspaceId: string, conversationId: string, state: { busy: boolean; requestingAttention: boolean; attentionSequence?: number }): string {
+  return turboStream("replace", agentStateDomId(workspaceId, conversationId), renderAgentState(workspaceId, conversationId, state));
+}
+
+function mobileAgentAttentionHtml(agents: readonly AgentPaneContribution[]): string {
+  return agents.some((agent) => agent.requestingAttention) ? '<i class="status-dot attention" aria-label="Agent requesting attention"></i>' : "";
+}
+
+export function renderMobileAgentAttention(workspaceId: string, agents: readonly AgentPaneContribution[]): string {
+  return `<span id="${domId("mobile_agent_attention", workspaceId)}">${mobileAgentAttentionHtml(agents)}</span>`;
+}
+
+export function mobileAgentAttentionTurboStream(workspaceId: string, agents: readonly AgentPaneContribution[]): string {
+  return turboStream("update", domId("mobile_agent_attention", workspaceId), mobileAgentAttentionHtml(agents));
+}
+
 function renderAgentTab(workspaceId: string, agent: AgentPaneContribution): string {
   return actionItemHtml({
     kind: "compound",
     label: { kind: "text", text: agent.title },
     leadingHtml: `<span class="fixed-shell-agent-icon">${agent.iconHtml}</span>`,
+    trailingHtml: renderAgentState(workspaceId, agent.id, agent),
     container: {  attributesHtml: `id="${agentTabDomId(workspaceId, agent.id)}"` },
     primary: { tag: "button", attributesHtml: `type="button" role="tab" aria-selected="false" tabindex="-1" data-agent-conversation-id="${escapeHtml(agent.id)}" ${fullscreenViewAttributes(agent.id, agent.title)} data-action="click->workspace-presentation#selectAgent"` },
     engagedActionsHtml: agent.close ? selectorCloseForm(agent.close) : "",
@@ -141,7 +167,7 @@ export function agentTabsTurboStream(presentation: WorkspacePresentation, option
     : presentation.agentConversations.find((agent) => agent.id === options.addedConversationId);
   if (options.addedConversationId !== undefined && !added) throw new Error(`Added Agent is missing from the presentation: ${options.addedConversationId}`);
   // Refresh choices and tabs once, without remounting existing agent bodies.
-  const streams = [agentProviderChoicesTurboStream(presentation)];
+  const streams = [agentProviderChoicesTurboStream(presentation), mobileAgentAttentionTurboStream(workspace.id, presentation.agentConversations)];
   if (added) {
     streams.push(turboStream("remove", agentEmptyId(workspace.id)));
     streams.push(turboStream("append", agentBodiesDomId(workspace.id), renderAgentPaneSlot(workspace.id, added)));

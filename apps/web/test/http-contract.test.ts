@@ -20,10 +20,10 @@ import {
 } from "./support/test-web-app.ts";
 
 const workspaceCreatedResponseSchema = Type.Object({
-  workspace: Type.Object({ id: Type.String(), url: Type.String(), phase: Type.Literal("starting") }),
+  workspace: Type.Object({ id: Type.String(), url: Type.String(), phase: Type.Object({ kind: Type.Literal("provisioningPhase"), busy: Type.Boolean() }) }),
 });
 const workspaceStatusResponseSchema = Type.Object({
-  workspace: Type.Object({ title: Type.String(), phase: Type.String(), url: Type.String() }),
+  workspace: Type.Object({ title: Type.String(), phase: Type.Object({ kind: Type.String(), busy: Type.Boolean() }), url: Type.String() }),
 });
 const projectSummarySchema = Type.Object({ id: Type.String(), name: Type.String() });
 const projectResponseSchema = Type.Object({ project: projectSummarySchema });
@@ -119,7 +119,7 @@ describe("HTTP contracts", () => {
     expect(body.workspace.url).toBe(`/workspaces/${body.workspace.id}`);
     expect(statusBody.workspace.url).toBe(body.workspace.url);
     expect(new URL(body.workspace.url, "https://demoatelier-arm.tail67e2f4.ts.net/workspaces").protocol).toBe("https:");
-    expect(statusBody.workspace).toMatchObject({ title: "Evaluation", phase: "starting" });
+    expect(statusBody.workspace).toMatchObject({ title: "Evaluation", phase: { kind: "provisioningPhase" } });
     expect(registry.get(body.workspace.id)?.init).toBeUndefined();
     expect(seen[0]?.id).toBe(body.workspace.id);
 
@@ -301,7 +301,7 @@ describe("HTTP contracts", () => {
     const browser = await app.fetch(new Request("http://test.local/workspaces"));
 
     expect(await json.json()).toEqual({
-      workspaces: [{ id: "abc12345", title: "Automation target", phase: "ready", parked: true, projectId: "project-1" }],
+      workspaces: [{ id: "abc12345", title: "Automation target", phase: { kind: "runningPhase", busy: false }, requestingAttention: false, parked: true, projectId: "project-1" }],
     });
     expect(browser.status).toBe(302);
     expect(browser.headers.get("location")).toBe("http://test.local/");
@@ -339,9 +339,6 @@ describe("HTTP contracts", () => {
         "/projects/{projectId}/environment/{variableId}/delete": {},
         "/projects/{projectId}/secrets/{secretId}/delete": {},
         "/projects/{projectId}/delete": {},
-        "/workspaces/{id}/attention/acknowledge": {
-          post: { parameters: expect.arrayContaining([expect.objectContaining({ name: "attentionTokens", in: "query", required: true })]) },
-        },
         "/workspaces/{id}/agents/{conversationId}/close": {
           post: { responses: {
             "200": { content: { "application/json": { schema: { $ref: "#/components/schemas/AgentConversationCloseResult" } } } },

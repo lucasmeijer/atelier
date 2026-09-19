@@ -87,21 +87,21 @@ Poll the same UI URL with JSON content negotiation:
 ```sh
 while :; do
   workspace=$(curl -sS -H 'Accept: application/json' "http://localhost:3000/workspaces/$id")
-  phase=$(jq -r '.workspace.phase' <<<"$workspace")
-  [ "$phase" = ready ] && break
-  [ "$phase" = failed ] && { jq . <<<"$workspace"; exit 1; }
+  phase=$(jq -r '.workspace.phase.kind' <<<"$workspace")
+  [ "$phase" = runningPhase ] && break
+  [ "$(jq -r '.workspace.phase.status' <<<"$workspace")" = failed ] && { jq . <<<"$workspace"; exit 1; }
   sleep .2
 done
 ```
 
 Existing workspaces are discovered before the server starts listening. Each active
-workspace then runs its startup checklist in the background with phase `starting`.
+workspace then runs its startup checklist in the background with phase `provisioningPhase`.
 Readiness checks the ingress and egress gateways, parent sockets, and the workspace's
 saved image preload list. Failure retains the container for repair and presents
 **Retry** and **Continue anyway**. Use
 `POST /workspaces/:id/provisioning/continue?action=retry` to retry runtime preparation,
 or omit the query parameter to explicitly bypass the failure. Bypassing makes the
-workspace `ready` while retaining its preparation warning. Until startup completes,
+workspace enter `runningPhase` while retaining its preparation warning. Until startup completes,
 the workspace shows its checklist instead of its Agents or Work views. Atelier and
 other workspaces remain available throughout.
 
@@ -111,7 +111,7 @@ run again when a workspace resumes or Atelier restarts; bypassing a failure does
 permanently disable checks. Existing workspaces keep their saved preload references
 when project settings change.
 
-A ready response advertises its `agentConversations`, typed `workViews`, and available `commands` with their `inputSchema`.
+A running-phase response advertises its `agentConversations`, typed `workViews`, and available `commands` with their `inputSchema`.
 
 ## Stage Agent conversations and Work views
 
@@ -136,9 +136,9 @@ Navigate an existing Browser Work view with `POST /workspaces/:id/browser/:brows
 
 - `POST /workspaces/:id/work-views/reorder` with `key` and `index`
 - `POST /workspaces/:id/work-views/close` with a typed `reference`
-- `POST /workspaces/:id/work-views/:key/attention/request` to reveal a Work view and request Attention
+- `POST /workspaces/:id/work-views/:key/attention/request` to request attention for a Work view without selecting it
 
-Open Work-view identity, order, and Attention are server-persistent. Active destinations, pane visibility, and Work-pane width are browser-local.
+Open Work-view identity and order are server-persistent. Workspace, agent, and view `requestingAttention` states are independent and server-persistent; each clears only when that destination becomes visible. Workspace `phase` is an object with `kind` and `busy`, plus phase-specific substates. Agent summaries include `busy` and `requestingAttention`. Active destinations, pane visibility, and Work-pane width are browser-local.
 
 The Agent `/park` message responds with a `307` redirect to the workspace park operation.
 Follow redirects while preserving the POST method and Accept header (for example, `curl -L`).

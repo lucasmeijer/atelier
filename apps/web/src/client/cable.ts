@@ -1,6 +1,6 @@
 /// <reference lib="dom" />
 
-import { decodeCableServerMessage, serializeCableIdentifier, type AtelierCableClient, type CableClientMessage, type CableIdentifier, type CableSubscription, type CableSubscriptionOptions } from "@atelier/shared";
+import { decodeCableServerMessage, serializeCableIdentifier, type WorkspaceVisibilityReport, type AtelierCableClient, type CableClientMessage, type CableIdentifier, type CableSubscription, type CableSubscriptionOptions } from "@atelier/shared";
 
 declare global {
   interface Window {
@@ -29,6 +29,7 @@ export function createAtelierCableClient(renderStreams: CableStreamRenderer): At
   let reconnectTimer: ReturnType<typeof setTimeout> | undefined;
   let attempts = 0;
   let closingForPageHide = false;
+  let visibility: WorkspaceVisibilityReport = { surfaceKeys: [] };
   let activeConnectionId: string | undefined;
 
   function cableUrl(): string {
@@ -82,6 +83,7 @@ export function createAtelierCableClient(renderStreams: CableStreamRenderer): At
       case "welcome":
         attempts = 0;
         activeConnectionId = message.connectionId;
+        sendRaw({ command: "visibility", visibility });
         resubscribeAll();
         break;
       case "confirm_subscription": {
@@ -140,6 +142,10 @@ export function createAtelierCableClient(renderStreams: CableStreamRenderer): At
   });
 
   const client: AtelierCableClient = {
+    reportVisibility(next) {
+      visibility = next;
+      sendRaw({ command: "visibility", visibility });
+    },
     subscribe(identifier, options) {
       const key = serializeCableIdentifier(identifier);
       let subscription = desired.get(key);

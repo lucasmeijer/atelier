@@ -207,6 +207,7 @@ export function createCableServer(options: CableServerOptions): CableServer {
 
   function close(ws: CableSocket): void {
     const connection = connections.get(ws);
+    if (connection) options.registry.disconnect(connection.id);
     connections.delete(ws);
     for (const attempt of connection?.attempts.values() ?? []) releaseAttempt(attempt);
   }
@@ -215,7 +216,8 @@ export function createCableServer(options: CableServerOptions): CableServer {
     if (!connections.has(ws)) return;
     try {
       const message: CableClientMessage = decodeCableClientMessage(textMessage(raw));
-      if (message.command === "subscribe") subscribe(ws, message.identifier, message.subscriptionId);
+      if (message.command === "visibility") options.registry.setVisibility(connections.get(ws)!.id, message.visibility);
+      else if (message.command === "subscribe") subscribe(ws, message.identifier, message.subscriptionId);
       else if (message.command === "unsubscribe") unsubscribe(ws, message.identifier, message.subscriptionId);
     } catch (error) {
       if (!connections.has(ws)) return;

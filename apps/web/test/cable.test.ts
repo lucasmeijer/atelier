@@ -510,15 +510,15 @@ test("cable leases share topics and reject stale generations across reconnects",
     const first = FakeWebSocket.instances[0]!;
     expect(first.url).toBe("ws://atelier.test/cable");
     first.open("connection-1");
-    const firstMessage = first.sent[0]!;
+    const firstMessage = first.sent[1]!;
     if (firstMessage.command !== "subscribe") throw new Error("expected first Cable message to subscribe");
     const firstSubscriptionId = firstMessage.subscriptionId;
-    expect(first.sent).toEqual([{ command: "subscribe", identifier, subscriptionId: firstSubscriptionId }]);
+    expect(first.sent).toEqual([{ command: "visibility", visibility: { surfaceKeys: [] } }, { command: "subscribe", identifier, subscriptionId: firstSubscriptionId }]);
     first.receive({ type: "confirm_subscription", identifier, subscriptionId: firstSubscriptionId, html: "snapshot-1" });
     expect(events).toEqual(["render:snapshot-1", "ready:first", "ready:second"]);
 
     firstLease.unsubscribe();
-    expect(first.sent).toHaveLength(1);
+    expect(first.sent).toHaveLength(2);
     first.receive({ type: "turbo_stream", identifier, subscriptionId: firstSubscriptionId, html: "live-1" });
     expect(events).toEqual(["render:snapshot-1", "ready:first", "ready:second", "render:live-1"]);
 
@@ -528,11 +528,11 @@ test("cable leases share topics and reject stale generations across reconnects",
 
     const second = FakeWebSocket.instances[1]!;
     second.open("connection-2");
-    const secondMessage = second.sent[0]!;
+    const secondMessage = second.sent[1]!;
     if (secondMessage.command !== "subscribe") throw new Error("expected second Cable message to subscribe");
     const secondSubscriptionId = secondMessage.subscriptionId;
     expect(secondSubscriptionId).not.toBe(firstSubscriptionId);
-    expect(second.sent).toEqual([{ command: "subscribe", identifier, subscriptionId: secondSubscriptionId }]);
+    expect(second.sent).toEqual([{ command: "visibility", visibility: { surfaceKeys: [] } }, { command: "subscribe", identifier, subscriptionId: secondSubscriptionId }]);
     second.receive({ type: "confirm_subscription", identifier, subscriptionId: firstSubscriptionId, html: "stale-snapshot" });
     second.receive({ type: "turbo_stream", identifier, subscriptionId: firstSubscriptionId, html: "stale-stream" });
     expect(events).toEqual(["render:snapshot-1", "ready:first", "ready:second", "render:live-1", "disconnected:second"]);
@@ -540,6 +540,7 @@ test("cable leases share topics and reject stale generations across reconnects",
     expect(events).toEqual(["render:snapshot-1", "ready:first", "ready:second", "render:live-1", "disconnected:second", "render:snapshot-2", "ready:second"]);
     secondLease.unsubscribe();
     expect(second.sent).toEqual([
+      { command: "visibility", visibility: { surfaceKeys: [] } },
       { command: "subscribe", identifier, subscriptionId: secondSubscriptionId },
       { command: "unsubscribe", identifier, subscriptionId: secondSubscriptionId },
     ]);
@@ -770,3 +771,23 @@ for (const cancellation of ["unsubscribe", "close"] as const) {
     cable.close(ws);
   });
 }
+
+test("Cable visibility acknowledges only reported surfaces and is released with its connection", async () => {
+  const registry = createWorkspaceRegistry();
+  await registry.seed([{ id: "workspace", title: null }]);
+  registry.requestSurfaceAttention("workspace", "agent:one");
+  registry.requestSurfaceAttention("workspace", "browser:one");
+  const cable = createCableServer({ registry, events: createAtelierEventBus() });
+  const ws = fakeSocket({ kind: "cable", connectionId: "visible-browser" });
+  cable.open(ws, ws.data);
+  cable.message(ws, JSON.stringify({ command: "visibility", visibility: { workspaceId: "workspace", surfaceKeys: ["agent:one"] } }));
+  expect(registry.get("workspace")!.requestingAttention).toBe(false);
+  expect(registry.surfaceState("workspace", "agent:one").requestingAttention).toBe(false);
+  expect(registry.surfaceState("workspace", "browser:one").requestingAttention).toBe(true);
+  registry.requestSurfaceAttention("workspace", "agent:one");
+  expect(registry.surfaceState("workspace", "agent:one").requestingAttention).toBe(false);
+  cable.close(ws);
+  registry.requestSurfaceAttention("workspace", "agent:one");
+  expect(registry.surfaceState("workspace", "agent:one").requestingAttention).toBe(true);
+  expect(registry.get("workspace")!.requestingAttention).toBe(true);
+});

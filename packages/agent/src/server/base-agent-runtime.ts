@@ -42,7 +42,7 @@ import {
   type ToolViewDetails,
   type ToolView,
 } from "./transcript.ts";
-import { publishWorkspaceViewBusy } from "./workspace-view-busy.ts";
+import { publishWorkspaceAgentBusy } from "./workspace-agent-busy.ts";
 
 interface LiveTextStream {
   displayedLength: number;
@@ -127,10 +127,7 @@ export abstract class BaseAgentRuntime implements WorkspaceAgentRuntime {
       this.notice("error", "The turn ended, but its push notification could not be sent.");
     });
     await this.options.events?.emit("workspace_agent_turn_finished", { workspaceId: this.workspaceId, conversationId: this.conversationId });
-    // Re-announce terminal actions after unread state is recorded. A connected,
-    // logically visible pane uses this targeted update to acknowledge that exact
-    // conversation without affecting sibling Agents.
-    this.stream(turboStream("update", ids.actions(this.ctx), renderPromptActions(this.ctx, this.isStreaming)));
+
   }
 
   get isStreaming(): boolean {
@@ -272,7 +269,7 @@ export abstract class BaseAgentRuntime implements WorkspaceAgentRuntime {
       this.stream(notificationControlTurboStream(this.ctx, this.isStreaming));
     });
     this.stream(notificationControlTurboStream(this.ctx, busy));
-    publishWorkspaceViewBusy({ workspaceId: this.workspaceId, viewKey: `agent:${this.conversationId}`, busy });
+    publishWorkspaceAgentBusy({ workspaceId: this.workspaceId, agentKey: `agent:${this.conversationId}`, busy });
     this.stream(turboStream("update", ids.actions(this.ctx), renderPromptActions(this.ctx, busy)));
   }
 

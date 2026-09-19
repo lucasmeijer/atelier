@@ -4,7 +4,7 @@ import { expect, spyOn, test } from "bun:test";
 import { RealAgentRuntime } from "../../src/server/real-agent-runtime.ts";
 import type { AgentStatsView } from "../../src/server/render-composer.ts";
 import { AgentServiceTierState } from "../../src/server/service-tier.ts";
-import { subscribeWorkspaceViewBusy } from "../../src/server/workspace-view-busy.ts";
+import { subscribeWorkspaceAgentBusy } from "../../src/server/workspace-agent-busy.ts";
 import { turnTimingEntryType } from "../../src/server/turn-timing.ts";
 import { buildTranscript, type TranscriptItem } from "../../src/server/transcript.ts";
 
@@ -288,8 +288,8 @@ test("awaited tree summarization leaves busy and emits one terminal event when n
   const runtime = runtimeFor(session, events);
   const busy: boolean[] = [];
   let finished = 0;
-  const unsubscribeBusy = subscribeWorkspaceViewBusy((event) => {
-    if (event.workspaceId === runtime.workspaceId && event.viewKey === `agent:${runtime.conversationId}`) busy.push(event.busy);
+  const unsubscribeBusy = subscribeWorkspaceAgentBusy((event) => {
+    if (event.workspaceId === runtime.workspaceId && event.agentKey === `agent:${runtime.conversationId}`) busy.push(event.busy);
   });
   events.on("workspace_agent_turn_finished", () => {
     finished += 1;
@@ -312,22 +312,22 @@ test("awaited tree summarization leaves busy and emits one terminal event when n
   }
 });
 
-test("detached rewind summarization marks a hidden Agent ready exactly once", async () => {
+test("detached rewind summarization requests attention for a hidden Agent exactly once", async () => {
   const navigation = deferred<{ editorText?: string }>();
   const { session } = fakeSession(navigation);
   const events = createAtelierEventBus();
   const runtime = runtimeFor(session, events);
   const busy: boolean[] = [];
   let hidden = false;
-  let unread = false;
+  let requestingAttention = false;
   let finished = 0;
   const terminal = deferred<void>();
-  const unsubscribeBusy = subscribeWorkspaceViewBusy((event) => {
-    if (event.workspaceId === runtime.workspaceId && event.viewKey === `agent:${runtime.conversationId}`) busy.push(event.busy);
+  const unsubscribeBusy = subscribeWorkspaceAgentBusy((event) => {
+    if (event.workspaceId === runtime.workspaceId && event.agentKey === `agent:${runtime.conversationId}`) busy.push(event.busy);
   });
   events.on("workspace_agent_turn_finished", () => {
     finished += 1;
-    if (hidden) unread = true;
+    if (hidden) requestingAttention = true;
     terminal.resolve();
   });
 
@@ -342,7 +342,7 @@ test("detached rewind summarization marks a hidden Agent ready exactly once", as
 
     expect(runtime.isStreaming).toBe(false);
     expect(busy).toEqual([true, false]);
-    expect(unread).toBe(true);
+    expect(requestingAttention).toBe(true);
     expect(finished).toBe(1);
   } finally {
     unsubscribeBusy();
@@ -376,8 +376,8 @@ test("disposing a busy closed Agent unsubscribes and suppresses delayed terminal
   const runtime = runtimeFor(session, events);
   const busy: boolean[] = [];
   let finished = 0;
-  const unsubscribeBusy = subscribeWorkspaceViewBusy((event) => {
-    if (event.workspaceId === runtime.workspaceId && event.viewKey === `agent:${runtime.conversationId}`) busy.push(event.busy);
+  const unsubscribeBusy = subscribeWorkspaceAgentBusy((event) => {
+    if (event.workspaceId === runtime.workspaceId && event.agentKey === `agent:${runtime.conversationId}`) busy.push(event.busy);
   });
   events.on("workspace_agent_turn_finished", () => {
     finished += 1;
@@ -415,8 +415,8 @@ test("dispose cancels and joins detached rewind summarization without publishing
   const busy: boolean[] = [];
   let finished = 0;
   let disposed = false;
-  const unsubscribeBusy = subscribeWorkspaceViewBusy((event) => {
-    if (event.workspaceId === runtime.workspaceId && event.viewKey === `agent:${runtime.conversationId}`) busy.push(event.busy);
+  const unsubscribeBusy = subscribeWorkspaceAgentBusy((event) => {
+    if (event.workspaceId === runtime.workspaceId && event.agentKey === `agent:${runtime.conversationId}`) busy.push(event.busy);
   });
   events.on("workspace_agent_turn_finished", () => { finished += 1; });
 
@@ -478,8 +478,8 @@ test("retry boundaries remain continuously busy and only the settled prompt beco
   const runtime = runtimeFor(session, events);
   const busy: boolean[] = [];
   let finished = 0;
-  const unsubscribeBusy = subscribeWorkspaceViewBusy((event) => {
-    if (event.workspaceId === runtime.workspaceId && event.viewKey === `agent:${runtime.conversationId}`) busy.push(event.busy);
+  const unsubscribeBusy = subscribeWorkspaceAgentBusy((event) => {
+    if (event.workspaceId === runtime.workspaceId && event.agentKey === `agent:${runtime.conversationId}`) busy.push(event.busy);
   });
   events.on("workspace_agent_turn_finished", () => { finished += 1; });
 
@@ -513,8 +513,8 @@ test("threshold compaction inside an Agent loop stays busy until the prompt sett
   const runtime = runtimeFor(session, events);
   const busy: boolean[] = [];
   let finished = 0;
-  const unsubscribe = subscribeWorkspaceViewBusy((event) => {
-    if (event.workspaceId === runtime.workspaceId && event.viewKey === `agent:${runtime.conversationId}`) busy.push(event.busy);
+  const unsubscribe = subscribeWorkspaceAgentBusy((event) => {
+    if (event.workspaceId === runtime.workspaceId && event.agentKey === `agent:${runtime.conversationId}`) busy.push(event.busy);
   });
   events.on("workspace_agent_turn_finished", () => { finished += 1; });
 
@@ -562,8 +562,8 @@ test("a settled prompt becomes ready before stats and cannot clear a newer run",
   runtime.queueStatsCompletion(() => releaseOldStats.promise);
   const busy: boolean[] = [];
   let finished = 0;
-  const unsubscribeBusy = subscribeWorkspaceViewBusy((event) => {
-    if (event.workspaceId === runtime.workspaceId && event.viewKey === `agent:${runtime.conversationId}`) busy.push(event.busy);
+  const unsubscribeBusy = subscribeWorkspaceAgentBusy((event) => {
+    if (event.workspaceId === runtime.workspaceId && event.agentKey === `agent:${runtime.conversationId}`) busy.push(event.busy);
   });
   events.on("workspace_agent_turn_finished", () => { finished += 1; });
 
@@ -596,8 +596,8 @@ test("throwing terminal stats do not suppress idle state or readiness", async ()
   runtime.queueStatsCompletion(async () => { throw new Error("stats unavailable"); });
   const busy: boolean[] = [];
   let finished = 0;
-  const unsubscribeBusy = subscribeWorkspaceViewBusy((event) => {
-    if (event.workspaceId === runtime.workspaceId && event.viewKey === `agent:${runtime.conversationId}`) busy.push(event.busy);
+  const unsubscribeBusy = subscribeWorkspaceAgentBusy((event) => {
+    if (event.workspaceId === runtime.workspaceId && event.agentKey === `agent:${runtime.conversationId}`) busy.push(event.busy);
   });
   events.on("workspace_agent_turn_finished", () => { finished += 1; });
 
@@ -621,8 +621,8 @@ test("abort succeeds even when its secondary stats refresh fails", async () => {
   const runtime = runtimeFor(session);
   runtime.queueStatsCompletion(async () => { throw new Error("stats unavailable after abort"); });
   const busy: boolean[] = [];
-  const unsubscribeBusy = subscribeWorkspaceViewBusy((event) => {
-    if (event.workspaceId === runtime.workspaceId && event.viewKey === `agent:${runtime.conversationId}`) busy.push(event.busy);
+  const unsubscribeBusy = subscribeWorkspaceAgentBusy((event) => {
+    if (event.workspaceId === runtime.workspaceId && event.agentKey === `agent:${runtime.conversationId}`) busy.push(event.busy);
   });
 
   try {
