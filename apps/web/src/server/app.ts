@@ -689,7 +689,7 @@ export function createWebApp(deps: WebAppDeps): WebApp {
         if (options.title) await setWorkspaceTitle(id, options.title);
         registry.setPhase(id, "ready");
         const launchPrompt = options.context?.agent?.initialPrompt?.trim();
-        if (!options.title && launchPrompt && options.context?.agent?.provider === "builtin" && !options.context?.agent?.initialPromptMode) {
+        if (!options.title && launchPrompt && !options.context?.agent?.initialPromptMode) {
           maybeNameWorkspaceFromPrompt(id, launchPrompt, { events: deps.events, agentModel: options.context?.agent?.model ? parseModelRef(options.context.agent.model) : undefined });
         }
         if (options.context?.agent?.initialPrompt !== undefined && !options.context.agent.initialPrompt.trim()) registry.markViewAttention(id, "workspace");
