@@ -6,7 +6,7 @@ import { Type, type Static } from "typebox";
 import { Value } from "typebox/value";
 import { isReviewDiffHighlighting, isReviewDiffOverflow, reviewCommentsPrompt, type ReviewSide } from "../model.ts";
 import { collectReviewFile, collectReviewIndex, collectReviewStats, reviewSnippet, type ReviewFile, type ReviewIndex } from "./diff.ts";
-import { renderReviewBody, renderReviewCommentUpdate, renderReviewFileDetails, renderReviewStatsFrame, renderReviewTitle, renderReviewTitleStream, reviewBodyId, reviewFileFrameId, reviewReference, reviewWorkViewPresentation } from "./render.ts";
+import { renderReviewBody, renderReviewMoreFiles, renderReviewCommentUpdate, renderReviewFileDetails, renderReviewStatsFrame, renderReviewTitle, renderReviewTitleStream, reviewBodyId, reviewFileFrameId, reviewFilePageSize, reviewReference, reviewWorkViewPresentation } from "./render.ts";
 import {
   isReviewDiffLayout,
   isReviewViewport,
@@ -140,6 +140,16 @@ export const reviewWorkspaceModule: WorkspaceModule = {
       if (match) return request.method === "GET" ? await deletionReviewCommitResponse(decodeURIComponent(match[1]!), url) : textResponse("Method not allowed", 405);
       match = url.pathname.match(/^\/workspaces\/([^/]+)\/review\/refresh$/);
       if (match) return request.method === "POST" ? await refreshedResponse(decodeURIComponent(match[1]!)) : textResponse("Method not allowed", 405);
+      match = url.pathname.match(/^\/workspaces\/([^/]+)\/review\/more-files$/);
+      if (match) {
+        if (request.method !== "GET") return textResponse("Method not allowed", 405);
+        const workspaceId = decodeURIComponent(match[1]!);
+        const offset = Number(url.searchParams.get("offset"));
+        if (!Number.isSafeInteger(offset) || offset < reviewFilePageSize || offset % reviewFilePageSize !== 0) return textResponse("Invalid review file offset", 422);
+        const { index, comments } = await current(workspaceId);
+        const { files } = await refreshStats(workspaceId, index);
+        return htmlResponse(renderReviewMoreFiles(workspaceId, index, comments, offset, files));
+      }
       match = url.pathname.match(/^\/workspaces\/([^/]+)\/review\/stats$/);
       if (match) {
         if (request.method !== "GET") return textResponse("Method not allowed", 405);

@@ -136,7 +136,7 @@ function createReviewController(Controller: StimulusControllerConstructor) {
         event.preventDefault();
         return;
       }
-      if (!current.matches("turbo-frame[data-src]")) return;
+      if (!current.matches("turbo-frame[data-src], turbo-frame[data-review-more-frame][src]")) return;
       // SAFETY: Turbo supplies newElement when morphing, but not when removing a node.
       const incoming = (event as CustomEvent<{ newElement?: Element }>).detail.newElement;
       if (!incoming) return;

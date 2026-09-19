@@ -1,3 +1,4 @@
+import { actionLinkHtml } from "@atelier/design-system/action-link";
 import { actionItemHtml, type ActionItemLabel } from "@atelier/design-system/action-item";
 import { activityButtonHtml } from "@atelier/design-system/activity-button";
 import { buttonHtml } from "@atelier/design-system/button";
@@ -293,15 +294,34 @@ function toolbar(workspaceId: string, comments: ReviewComment[], settings: Revie
   </header>`;
 }
 
+export const reviewFilePageSize = 50;
+
+export function renderReviewMoreFiles(workspaceId: string, index: ReviewIndex, comments: ReviewComment[], offset: number, stats: ReviewFileStats[]): string {
+  return `<turbo-frame id="${domId("review", workspaceId, "more_files", String(offset))}">${renderReviewFilePage(workspaceId, index, comments, offset, stats)}</turbo-frame>`;
+}
+
+function renderReviewFilePage(workspaceId: string, index: ReviewIndex, comments: ReviewComment[], offset: number, stats?: ReviewFileStats[]): string {
+  if (index.phase === "not-git") return "";
+  const nextOffset = offset + reviewFilePageSize;
+  const files = index.files.slice(offset, nextOffset).map((file) => renderFile(workspaceId, file, comments, stats?.find((entry) => entry.path === file.path))).join("");
+  const remaining = index.files.length - nextOffset;
+  if (remaining <= 0) return files;
+  const link = actionLinkHtml({
+    href: `/workspaces/${encodeURIComponent(workspaceId)}/review/more-files?offset=${nextOffset}`,
+    variant: "secondary",
+    content: { kind: "caption", caption: `<${remaining} more>` },
+  });
+  return `${files}<turbo-frame id="${domId("review", workspaceId, "more_files", String(nextOffset))}" refresh="morph" data-review-more-frame>${link}</turbo-frame>`;
+}
+
 export function renderReviewBody(workspaceId: string, index: ReviewIndex, comments: ReviewComment[], settings: ReviewSettings = defaultReviewSettings, stats?: ReviewFileStats[]): string {
   if (index.phase === "not-git") {
     return `<section id="${reviewBodyId(workspaceId)}" class="review-body review-empty" data-mobile-diff-layout="${settings.mobile}" data-desktop-diff-layout="${settings.desktop}" data-diff-highlighting="${settings.highlighting}" data-diff-overflow="${settings.overflow}" data-controller="review" data-review-workspace-id-value="${escapeHtml(workspaceId)}"><p>No git repo in /work yet</p></section>`;
   }
 
   const unanchoredComments = comments.filter((comment) => comment.outdated);
-  const renderedFiles = index.files.map((file) => renderFile(workspaceId, file, comments, stats?.find((entry) => entry.path === file.path)));
-  const content = renderedFiles.length || unanchoredComments.length
-    ? `<div class="review-files action-list" data-controller="linear-navigation" data-action="keydown->review#changeFileDisclosure">${renderedFiles.join("")}${renderUnanchoredSlot(workspaceId, unanchoredComments)}</div>`
+  const content = index.files.length || unanchoredComments.length
+    ? `<div class="review-files action-list" data-controller="linear-navigation" data-action="keydown->review#changeFileDisclosure">${renderReviewFilePage(workspaceId, index, comments, 0, stats)}${renderUnanchoredSlot(workspaceId, unanchoredComments)}</div>`
     : `<div class="review-no-changes"><p>No changes to review<br>The working tree matches HEAD.</p></div>`;
   const statsUrl = `/workspaces/${encodeURIComponent(workspaceId)}/review/stats`;
   return `<section id="${reviewBodyId(workspaceId)}" class="review-body" data-controller="review" data-review-workspace-id-value="${escapeHtml(workspaceId)}" data-mobile-diff-layout="${settings.mobile}" data-desktop-diff-layout="${settings.desktop}" data-diff-highlighting="${settings.highlighting}" data-diff-overflow="${settings.overflow}">${toolbar(workspaceId, comments, settings)}${content}<turbo-frame id="${reviewStatsFrameId(workspaceId)}" data-review-stats-frame src="${escapeHtml(statsUrl)}"></turbo-frame>${renderCommentsModel(workspaceId, comments)}</section>`;
