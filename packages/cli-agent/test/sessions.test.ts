@@ -45,7 +45,7 @@ test("creation materializes images and passes input and settings to the adapter 
   await provider.launch.prepareWorkspace("initial", { agent: settings });
   const [tab] = await list("initial");
   expect(calls).toHaveLength(4);
-  const image = "/work/.atelier-attachments/example-" + tab.id + "/0.png";
+  const image = "/tmp/atelier-attachments/example-" + tab.id + "/0.png";
   expect(calls[0][1]).toContain(image);
   expect(calls[0][2]).toEqual({ stdin: "aW1hZ2U=" });
   expect(calls[3][1]).toContain("tmux -N new-session");

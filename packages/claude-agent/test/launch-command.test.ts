@@ -26,8 +26,8 @@ const baseArgs = ["--dangerously-skip-permissions", "--settings", JSON.stringify
 test("reuses home Claude and passes initial prompt, image paths and file notes as literal arguments", async () => {
   await executable(`${home}/.claude/local/node_modules/.bin/claude`, 'printf "%s\\0" "$@"');
   const text = `--help 'quoted' $(touch ${home}/injected)\nsecond line`;
-  const notes = "[Attached file copied into the workspace at /work/.atelier-attachments/my file.txt]";
-  const image = "/work/.atelier-attachments/image 1.png";
+  const notes = "[Attached file copied into the workspace at /tmp/atelier-attachments/my file.txt]";
+  const image = "/tmp/atelier-attachments/image 1.png";
   const [code, output] = await run(claudeLaunchScript({ ...empty, text, attachmentNotes: [notes] }, [image]));
   expect(code).toBe(0);
   expect(output.split("\0").slice(0, -1)).toEqual([...baseArgs, "--", `${text}\n\n${notes}\n\nRead the attached image at ${JSON.stringify(image)}.`]);

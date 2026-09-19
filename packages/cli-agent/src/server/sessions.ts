@@ -51,7 +51,7 @@ export function createCliSessions(adapter: CliAgentAdapter) {
     starting.set(id, ready.promise);
     try {
       await adapter.prepareWorkspace?.(workspaceId);
-      const directory = `${workspaceRoot}/.atelier-attachments/${adapter.id}-${id}`;
+      const directory = `/tmp/atelier-attachments/${adapter.id}-${id}`;
       const imagePaths: string[] = [];
       for (const [index, image] of input.images.entries()) {
         const extension = Object.entries(imageMimeByExtension).find(([, mime]) => mime === image.mimeType)?.[0];

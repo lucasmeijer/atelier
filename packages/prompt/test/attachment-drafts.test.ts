@@ -46,6 +46,37 @@ describe("Agent attachment drafts", () => {
 
   });
 
+  test("delivers files into container temp storage outside the repository", async () => {
+    await dataDir();
+    const child = Bun.spawn([process.execPath, "-e", `
+      import { expect, mock } from "bun:test";
+      const workspace = await import("@atelier/workspace");
+      const calls = [];
+      mock.module("@atelier/workspace", () => ({
+        ...workspace,
+        execWorkspaceShell: async (...args) => {
+          calls.push(args);
+          return { exitCode: 0, stdout: "", stderr: "" };
+        },
+      }));
+      const { stageAttachment, deliverAttachmentDraft } = await import("@atelier/prompt/server");
+      const draftId = crypto.randomUUID();
+      const staged = await stageAttachment(draftId, new File(["contents"], "my file.txt"));
+      const delivered = await deliverAttachmentDraft("workspace-1", draftId, [staged.id]);
+      expect(delivered).toEqual({ images: [], attachmentNotes: [
+        "[Attached file copied into the workspace at /tmp/atelier-attachments/my file.txt]",
+      ] });
+      expect(calls).toEqual([["workspace-1",
+        "mkdir -p '/tmp/atelier-attachments' && base64 -d > '/tmp/atelier-attachments/my file.txt'",
+        { stdin: Buffer.from("contents").toString("base64") },
+      ]]);
+    `], { cwd: join(import.meta.dir, ".."), env: process.env, stdout: "pipe", stderr: "pipe" });
+    const [code, stdout, stderr] = await Promise.all([
+      child.exited, new Response(child.stdout).text(), new Response(child.stderr).text(),
+    ]);
+    expect({ code, stdout, stderr }).toEqual({ code: 0, stdout: "", stderr: "" });
+  });
+
   test("moves launch attachments into the new Agent composer", async () => {
     await dataDir();
     const launchDraftId = crypto.randomUUID();

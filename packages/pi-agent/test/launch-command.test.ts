@@ -27,8 +27,8 @@ const baseArgs = ["--approve", "--offline", "--tui-mode", "regular", "--session-
 test("passes initial prompt, images, file notes, provider and Pi thinking level literally", async () => {
   await executable(binary(), 'printf "%s\\0" "$@"');
   const text = `--help 'quoted' $(touch ${home}/injected)\nsecond line`;
-  const notes = "File: /work/.atelier-attachments/my file.txt";
-  const image = "/work/.atelier-attachments/image 1.png";
+  const notes = "File: /tmp/atelier-attachments/my file.txt";
+  const image = "/tmp/atelier-attachments/image 1.png";
   const [code, output] = await run(piLaunchScript({ ...empty, text, attachmentNotes: [notes] }, [image], { model: "anthropic::claude", thinkingLevel: "minimal" }));
   expect(code).toBe(0);
   expect(output.split("\0").slice(0, -1)).toEqual([...baseArgs, "--provider", "anthropic", "--model", "claude", "--thinking", "minimal", "--", `@${image}`, `${text}\n\n${notes}`]);

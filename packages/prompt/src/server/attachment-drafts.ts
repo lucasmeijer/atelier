@@ -2,7 +2,7 @@ import { createHash } from "node:crypto";
 import { mkdir, readdir, readFile, rename, rm, writeFile } from "node:fs/promises";
 import { join } from "node:path";
 import { getAtelierRuntimeContext, shellQuote } from "@atelier/core";
-import { execWorkspaceShell, workspaceRoot } from "@atelier/workspace";
+import { execWorkspaceShell } from "@atelier/workspace";
 import type { WorkspaceAgentInput } from "@atelier/shared";
 type ImageRef = WorkspaceAgentInput["images"][number];
 
@@ -152,11 +152,11 @@ export async function deliverAttachmentDraft(workspaceId: string, draftId: strin
 }
 
 async function deliverFileAttachment(workspaceId: string, staged: StagedAttachment): Promise<string> {
-  const target = `${workspaceRoot}/.atelier-attachments/${staged.name}`;
+  const target = `/tmp/atelier-attachments/${staged.name}`;
   const content = await readFile(staged.path);
   const result = await execWorkspaceShell(
     workspaceId,
-    `mkdir -p ${shellQuote(`${workspaceRoot}/.atelier-attachments`)} && base64 -d > ${shellQuote(target)}`,
+    `mkdir -p ${shellQuote(`/tmp/atelier-attachments`)} && base64 -d > ${shellQuote(target)}`,
     { stdin: content.toString("base64") },
   );
   if (result.exitCode !== 0) throw new Error(result.stderr.trim() || result.stdout.trim() || `could not copy attachment ${staged.name} into workspace`);
