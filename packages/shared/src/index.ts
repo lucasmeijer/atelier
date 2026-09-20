@@ -193,7 +193,8 @@ export const workspaceModuleModalFrameId = "workspace_module_modal_host";
 
 export interface WorkspaceModuleRouteContext {
   events?: AtelierEventBus;
-  openWorkView(workspaceId: string, reference: WorkspaceWorkViewReference): Promise<Response>;
+  /** Refresh server-owned Work-view presentation, opening the view if needed. */
+  openWorkView(workspaceId: string, reference: WorkspaceWorkViewReference, options?: { select?: boolean }): Promise<Response>;
   /** Render a full Atelier page with this server-rendered dialog body in the shared modal frame. */
   renderModalPage(dialogHtml: string): Promise<Response>;
 }

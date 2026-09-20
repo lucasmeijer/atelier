@@ -1,4 +1,3 @@
-import { setActionItemLabel } from "@atelier/design-system/action-item/client";
 /// <reference lib="dom" />
 
 import { closeBrackets, closeBracketsKeymap } from "@codemirror/autocomplete";
@@ -124,7 +123,6 @@ function createFileEditorController(Controller: WorkspaceClientControllerConstru
       // SAFETY: The files-refresh event carries EditorRefreshDetail.
       window.addEventListener("atelier:files-refresh", this.refreshRequested as EventListener, { signal });
       this.element.addEventListener("atelier:file-editor-refresh", this.refreshDisk, { signal });
-      this.updateWorkViewLabel();
       void this.load(signal).catch((error: Error) => {
         if (this.isCurrentConnection(signal)) this.showLoadError(error);
       });
@@ -159,15 +157,6 @@ function createFileEditorController(Controller: WorkspaceClientControllerConstru
 
     useTheirs(): void {
       this.draft!.accept(this.draft!.conflict!);
-    }
-
-    private updateWorkViewLabel(): void {
-      const liveNode = this.element.closest<HTMLElement>("[data-workspace-pane-id]")!;
-      const presentation = liveNode.closest<HTMLElement>(".fixed-workspace-presentation")!;
-      const selector = presentation.querySelector<HTMLElement>(`[data-work-view-reorder-key="${CSS.escape(liveNode.dataset.workspacePaneId!)}"]`)!;
-      const label = this.pathValue.split("/").pop()!;
-      setActionItemLabel(selector, label);
-      selector.querySelector<HTMLElement>("[data-atelier-fullscreen-title-value]")!.dataset.atelierFullscreenTitleValue = label;
     }
 
     private isCurrentConnection(signal: AbortSignal): boolean {

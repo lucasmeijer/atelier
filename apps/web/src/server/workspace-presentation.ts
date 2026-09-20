@@ -5,7 +5,6 @@ import { actionItemHtml } from "@atelier/design-system/action-item";
 import { actionLinkHtml } from "@atelier/design-system/action-link";
 import { buttonHtml, type ButtonVariant } from "@atelier/design-system/button";
 import { buttonGroupHtml } from "@atelier/design-system/button-group";
-import { destructiveConfirmationHtml } from "@atelier/design-system/destructive-confirmation";
 import { dialogHtml } from "@atelier/design-system/dialog";
 import { Icons } from "@atelier/design-system/icons";
 import { panelHtml } from "@atelier/design-system/panel";
@@ -433,7 +432,7 @@ export function workViewsTurboStream(workspaceId: string, workViews: readonly Wo
   if (options.openedKey !== undefined && !opened) throw new Error(`Opened Work view is missing from the presentation: ${options.openedKey}`);
   const mobileWorkViews = renderMobileWorkViews(workViews);
   const streams = [
-    turboStream("update", workViewDomId(workspaceId, "selectors"), renderWorkViewSelectors(workspaceId, workViews)),
+    turboStream("update", workViewDomId(workspaceId, "selectors"), renderWorkViewSelectors(workspaceId, workViews), { method: "morph" }),
     turboStream("update", workViewDomId(workspaceId, "mobile_destinations"), mobileWorkViews.destinations),
     turboStream("update", workViewDomId(workspaceId, "mobile_overflow"), mobileWorkViews.overflowItems),
     turboStream("update", workViewDomId(workspaceId, "mobile_closers"), workViews.map(renderMobileWorkViewCloser).join("")),

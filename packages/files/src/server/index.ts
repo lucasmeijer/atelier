@@ -52,8 +52,7 @@ export async function openFileInFiles(workspaceId: string, target: WorkspaceFile
   const view = setFilesViewFile(workspaceId, viewId, path, target);
   const updates = turboStream("replace", filesEditorFrameId(workspaceId, viewId), renderFilesEditorFrame(workspaceId, view))
     + turboStream("replace", filesTreeFrameId(workspaceId, viewId), renderLazyFilesTreeFrame(workspaceId, view));
-  if (requestedViewId !== undefined) return turboStreamResponse(updates);
-  const presentation = await openWorkView(workspaceId, { type: "files", id: viewId });
+  const presentation = await openWorkView(workspaceId, { type: "files", id: viewId }, { select: requestedViewId === undefined });
   return turboStreamResponse(`${await presentation.text()}${updates}`);
 }
 
@@ -85,14 +84,15 @@ async function uploadEndpoint(workspaceId: string, request: Request, url: URL): 
   return new Response(null, { status: 204, headers: { "cache-control": "no-store" } });
 }
 
-async function deleteEndpoint(workspaceId: string, request: Request): Promise<Response> {
+async function deleteEndpoint(workspaceId: string, request: Request, openWorkView: WorkspaceModuleRouteContext["openWorkView"]): Promise<Response> {
   const form = await request.formData();
   const viewId = String(form.get("filesView") ?? defaultFilesViewId);
   await deleteFile(workspaceId, String(form.get("path") ?? ""));
   const view = setFilesViewFile(workspaceId, viewId);
   const listing = await listFiles(workspaceId, workspaceRoot);
+  const presentation = await openWorkView(workspaceId, { type: "files", id: viewId }, { select: false });
   return turboStreamResponse(
-    turboStream("replace", filesTreeFrameId(workspaceId, viewId), renderFilesTreeFrame(workspaceId, viewId, listing.entries))
+    await presentation.text() + turboStream("replace", filesTreeFrameId(workspaceId, viewId), renderFilesTreeFrame(workspaceId, viewId, listing.entries))
     + turboStream("replace", filesEditorFrameId(workspaceId, viewId), renderFilesEditorFrame(workspaceId, view)),
   );
 }
@@ -132,7 +132,7 @@ const filesWorkspaceModule: WorkspaceModule = {
         if (!match) return undefined;
         const workspaceId = decodeURIComponent(match[1]!);
         if (match[2] === "upload") return request.method === "POST" ? await uploadEndpoint(workspaceId, request, url) : textResponse("Method not allowed", 405);
-        return request.method === "POST" ? await deleteEndpoint(workspaceId, request) : textResponse("Method not allowed", 405);
+        return request.method === "POST" ? await deleteEndpoint(workspaceId, request, context.openWorkView) : textResponse("Method not allowed", 405);
       } catch (error) {
         if (error instanceof FilesPathError || error instanceof EditableFileError) return textResponse(error.message, error.status);
         throw error;

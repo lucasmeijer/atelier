@@ -1005,11 +1005,11 @@ export function createWebApp(deps: WebAppDeps): WebApp {
     return { reference: contribution.reference, key, opened };
   }
 
-  async function openWorkspaceModuleWorkView(workspaceId: string, reference: WorkspaceWorkViewReference, request: Request): Promise<Response> {
+  async function openWorkspaceModuleWorkView(workspaceId: string, reference: WorkspaceWorkViewReference, request: Request, options: { select?: boolean } = {}): Promise<Response> {
     return await serializePresentationMutation(workspaceId, async () => {
       const { opened, key } = await openAvailableWorkView(workspaceId, reference);
-      const structural = opened ? openWorkViewTurboStream(workspaceId, await currentWorkPanePresentations(workspaceId), key) : "";
-      return turboStreamResponse(deliverShellMutation(request, structural, presentWorkViewTurboStream(workspaceId, key)));
+      const structural = workViewsTurboStream(workspaceId, await currentWorkPanePresentations(workspaceId), { openedKey: opened ? key : undefined });
+      return turboStreamResponse(deliverShellMutation(request, structural, options.select === false ? "" : presentWorkViewTurboStream(workspaceId, key)));
     });
   }
 
@@ -1238,7 +1238,7 @@ export function createWebApp(deps: WebAppDeps): WebApp {
       const moduleResponse = await moduleRoute.handle(request, url, {
         events: deps.events,
         renderModalPage: (dialogHtml) => surfacePage({ kind: "module-modal", dialogHtml }),
-        openWorkView: async (workspaceId, reference) => await openWorkspaceModuleWorkView(workspaceId, reference, request),
+        openWorkView: (workspaceId, reference, options) => openWorkspaceModuleWorkView(workspaceId, reference, request, options),
       });
       if (moduleResponse) return moduleResponse;
     }

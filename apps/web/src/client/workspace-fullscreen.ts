@@ -52,6 +52,7 @@ class AtelierFullscreenController extends Controller<HTMLElement> {
   declare readonly titleValue: string;
   declare readonly paneHeaderValue: boolean;
   private hoverTarget!: HTMLElement;
+  private fullscreenTitle?: HTMLElement;
   private iframeLoadTargets: HTMLIFrameElement[] = [];
   private readonly pointerenter = (): void => pushFullscreenHover(this);
   private readonly pointerleave = (): void => removeFullscreenHover(this);
@@ -67,6 +68,10 @@ class AtelierFullscreenController extends Controller<HTMLElement> {
     this.hoverTarget.addEventListener("pointerenter", this.pointerenter);
     this.hoverTarget.addEventListener("pointerleave", this.pointerleave);
     if (fullscreenControllerCount++ === 0) document.addEventListener("keydown", documentFullscreenKeydown, true);
+  }
+
+  titleValueChanged(): void {
+    if (this.fullscreenTitle) this.fullscreenTitle.textContent = this.titleValue;
   }
 
   disconnect(): void {
@@ -99,6 +104,7 @@ class AtelierFullscreenController extends Controller<HTMLElement> {
       target.removeAttribute("data-atelier-fullscreen-active");
       document.body.classList.remove("atelier-fullscreen-open");
       bar.remove();
+      this.fullscreenTitle = undefined;
       if (activeFullscreenSession === session) activeFullscreenSession = undefined;
       previousFocus?.focus({ preventScroll: true });
     };
@@ -129,6 +135,7 @@ class AtelierFullscreenController extends Controller<HTMLElement> {
       this.detachIframeShortcuts();
       viewer.disconnect?.();
       dialog.remove();
+      this.fullscreenTitle = undefined;
       if (activeFullscreenSession === session) activeFullscreenSession = undefined;
     }, { once: true });
     document.body.append(dialog);
@@ -147,6 +154,7 @@ class AtelierFullscreenController extends Controller<HTMLElement> {
     const title = document.createElement("strong");
     title.className = "atelier-fullscreen-title";
     title.textContent = this.titleValue;
+    this.fullscreenTitle = title;
     const close = buttonElement({ type: "button", variant: "secondary", content: { kind: "icon-only", iconHtml: Icons.Close, label: "Exit full screen" } });
     close.addEventListener("click", closeFullscreen);
     bar.append(title, close);
