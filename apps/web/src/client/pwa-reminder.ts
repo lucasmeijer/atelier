@@ -2,12 +2,15 @@ import { Controller } from "@hotwired/stimulus";
 import { setActivityButtonState } from "@atelier/design-system/activity-button/client";
 
 const quietKey = "atelier.pwa-reminder.quiet";
+// Shared across controller reconnects, but reset on a full page reload.
+const animationDeadline = performance.now() + 60_000;
 
 export class PwaReminderController extends Controller<HTMLElement> {
   static targets = ["button", "dialog", "guide"];
   declare readonly buttonTarget: HTMLButtonElement;
   declare readonly dialogTarget: HTMLDialogElement;
   declare readonly guideTargets: HTMLElement[];
+  private animationTimer: ReturnType<typeof setTimeout> | undefined;
   private readonly standalone = window.matchMedia("(display-mode: standalone), (display-mode: minimal-ui), (display-mode: window-controls-overlay)");
 
   connect(): void {
@@ -15,9 +18,11 @@ export class PwaReminderController extends Controller<HTMLElement> {
     for (const guide of this.guideTargets) guide.hidden = guide.dataset.platform !== platform;
     this.standalone.addEventListener("change", this.refresh);
     this.refresh();
+    this.animationTimer = setTimeout(this.refresh, Math.max(0, Math.ceil(animationDeadline - performance.now())));
   }
 
   disconnect(): void {
+    clearTimeout(this.animationTimer);
     this.standalone.removeEventListener("change", this.refresh);
   }
 
@@ -25,7 +30,8 @@ export class PwaReminderController extends Controller<HTMLElement> {
     const installedWindow = this.standalone.matches || ("standalone" in navigator && navigator.standalone === true);
     this.element.hidden = installedWindow;
     if (installedWindow) this.dialogTarget.close();
-    setActivityButtonState(this.buttonTarget, localStorage.getItem(quietKey) === "true" ? "initial" : "active");
+    const quiet = performance.now() >= animationDeadline || localStorage.getItem(quietKey) === "true";
+    setActivityButtonState(this.buttonTarget, quiet ? "initial" : "active");
   };
 
   open(): void { this.dialogTarget.showModal(); }
