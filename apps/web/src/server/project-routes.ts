@@ -1,4 +1,4 @@
-import { AtelierCoreError, gitHubCredentialHelperCommand, invalidArguments, readJsonObject, requestAcceptsJson, type JsonObject } from "@atelier/core";
+import { AtelierCoreError, invalidArguments, readJsonObject, requestAcceptsJson, type JsonObject } from "@atelier/core";
 import { actionItemHtml } from "@atelier/design-system/action-item";
 import { actionLinkHtml } from "@atelier/design-system/action-link";
 import { buttonHtml } from "@atelier/design-system/button";
@@ -10,7 +10,6 @@ import { Icons } from "@atelier/design-system/icons";
 import { toggleHtml } from "@atelier/design-system/toggle";
 import { transientFeedbackHtml } from "@atelier/design-system/transient-feedback";
 import { warningBannerHtml } from "@atelier/design-system/warning-banner";
-import { discoverHostGitHubToken, hasWorkspaceGitHubToken } from "@atelier/proxy-egress";
 import {
   addProject, createProjectEnvironmentVariable, createProjectSshKey, createProjectSecret,
   deleteProject, deleteProjectEnvironmentVariable, deleteProjectSecret, deleteProjectSshKey,
@@ -19,7 +18,7 @@ import {
   updateProjectEnvironmentVariable, updateProjectSecret, setProjectSecretValue, projectSecretRoutingRevision, projectSecretValueInputSchema, setProjectDockerfile, setProjectPreloadImages,
   type ProjectEnvironmentVariable, type ProjectSecretInput, type ProjectSecretSummary, type ProjectSshKeySummary, type ProjectSummary,
 } from "@atelier/projects";
-import { domId, escapeHtml, providerBrandColor, providerBrandIconHtml, turboStreamResponse } from "@atelier/shared";
+import { domId, escapeHtml, turboStreamResponse } from "@atelier/shared";
 import { Type } from "typebox";
 import { Value } from "typebox/value";
 import { GitHubRepositorySearchRateLimitError, renderGitHubRepositorySearchMenu, renderGitHubRepositorySearchRateLimitMenu, searchGitHubRepositories, shouldSearchGitHubRepositories } from "./github-repo-search.ts";
@@ -299,56 +298,6 @@ export function createProjectRoutes(deps: {
     });
   }
 
-  function isGitHubRemoteUrl(gitUrl: string): boolean {
-    return /(^|@|\/)github\.com[:/]/i.test(gitUrl.trim());
-  }
-
-  async function canReadRemoteWithConfiguredToken(gitUrl: string): Promise<boolean> {
-    const token = discoverHostGitHubToken();
-    interface GitProcessEnvironment {
-      [name: string]: string | undefined;
-    }
-    const env: GitProcessEnvironment = { ...process.env, GIT_TERMINAL_PROMPT: "0" };
-    if (token) env.GH_TOKEN = token;
-    const proc = Bun.spawn(["git", "-c", `credential.helper=${gitHubCredentialHelperCommand}`, "ls-remote", "--exit-code", gitUrl, "HEAD"], {
-      stdout: "ignore",
-      stderr: "pipe",
-      env,
-    });
-    await new Response(proc.stderr).text().catch(() => "");
-    return await proc.exited === 0;
-  }
-
-  async function githubRepoAccessProblem(project: ProjectSummary): Promise<"missing-token" | "token-denied" | undefined> {
-    if (process.env.NODE_ENV === "test" || !isGitHubRemoteUrl(project.gitUrl)) return undefined;
-    if (await canReadRemoteWithConfiguredToken(project.gitUrl).catch(() => false)) return undefined;
-    return hasWorkspaceGitHubToken() ? "token-denied" : "missing-token";
-  }
-
-  function githubRepoAccessProblemModal(project: ProjectSummary, problem: "missing-token" | "token-denied"): string {
-    const title = problem === "missing-token" ? "Connect GitHub to clone this project" : "GitHub token cannot access this project";
-    const body = problem === "missing-token"
-      ? `<p><b>${escapeHtml(project.name)}</b> looks private, and Atelier does not have a GitHub token yet.</p><p>Connect GitHub in workspace settings, then try creating this workspace again.</p>`
-      : `<p>Atelier has a GitHub token, but GitHub would not allow it to read <b>${escapeHtml(project.name)}</b>.</p><p>Reconnect GitHub with a token that has access to this project, then try again.</p>`;
-    const cancelButton = buttonHtml({ type: "submit", variant: "secondary", content: { kind: "caption", caption: "Cancel" } });
-    const settingsLink = actionLinkHtml({
-      href: "/settings?section=github",
-      variant: "primary",
-      content: { kind: "caption", caption: "Open GitHub settings" },
-      attributesHtml: 'data-turbo-frame="_top" data-turbo-stream="true"',
-    });
-    return dialogHtml({
-      element: {
-
-        attributesHtml: "data-dialog-auto-show",
-      },
-      iconHtml: `<span class="settings-provider-icon" style="--provider-color:${providerBrandColor("github")}">${providerBrandIconHtml("github", "GitHub")}</span>`,
-      titleCaption: title,
-      bodyHtml: body,
-      footerHtml: `<form method="dialog">${cancelButton}</form>${settingsLink}`,
-    });
-  }
-
   async function projectById(id: string): Promise<ProjectSummary> {
     const { projects } = await listProjects();
     const project = projects.find((candidate) => candidate.id === id);
@@ -618,8 +567,6 @@ export function createProjectRoutes(deps: {
 
   async function createProjectAgentWorkspaceEndpoint(projectId: string, request: Request): Promise<Response> {
     const project = await projectById(projectId);
-    const accessProblem = await githubRepoAccessProblem(project);
-    if (accessProblem) return turboStreamResponse(turboUpdateStream(deps.workspaceCommandModalHostId, githubRepoAccessProblemModal(project, accessProblem)));
     return await deps.createAgentWorkspace(project, request);
   }
 
