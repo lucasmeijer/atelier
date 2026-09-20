@@ -117,15 +117,18 @@ export function createObservableTerminalViewer(options: ObservableTerminalViewer
     initializing = true;
     mount.textContent = "";
     mount.classList.remove("observable-terminal-painted");
-    void initializeTerminalViewer({ ...options, theme }, mount, () => disposed).then((initialized) => {
+    const initialTheme = theme;
+    void initializeTerminalViewer({ ...options, theme: initialTheme }, mount, () => disposed).then((initialized) => {
       if (disposed) { initialized?.dispose(); return; }
       viewer = initialized!;
-      if (theme) viewer.setTheme(theme);
+      if (theme && theme !== initialTheme) viewer.setTheme(theme);
       viewer.refresh();
       if (focusRequested && document.hasFocus()) viewer.focus();
     // Browser/worker initialization can reject with arbitrary external values.
     // oxlint-disable-next-line anti-slop/no-unknown-parameters -- This is the final rendering boundary for browser initialization failures.
     }).catch((error: unknown) => {
+      viewer?.dispose();
+      viewer = undefined;
       console.error("Terminal initialization failed", error);
       if (!disposed) {
         mount.classList.add("observable-terminal-painted");
@@ -144,12 +147,14 @@ export function createObservableTerminalViewer(options: ObservableTerminalViewer
     dragPointer: (event, action, select) => viewer?.dragPointer(event, action, select),
     paste: (text) => viewer?.paste(text),
     setTheme: (value) => { theme = value; viewer?.setTheme(value); },
-    dispose: () => { disposed = true; viewer?.dispose(); mount.remove(); },
+    dispose: () => { disposed = true; viewer?.dispose(); viewer = undefined; mount.remove(); },
   };
 }
 
 async function initializeTerminalViewer(options: ObservableTerminalViewerOptions, mount: HTMLElement, isDisposed: () => boolean): Promise<ObservableTerminalViewer | undefined> {
-  const theme = options.theme ?? DEFAULT_OBSERVABLE_TERMINAL_THEME;
+  let theme = options.theme ?? DEFAULT_OBSERVABLE_TERMINAL_THEME;
+  // Validate external configuration before acquiring a terminal/worker.
+  const websocketUrl = new URL(options.websocketUrl);
   const fontSize = options.fontSize ?? (options.mode === "fixed-readonly" ? 11 : 13);
   const fontFamily = options.fontFamily ?? "JetBrains Mono, ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace";
 
@@ -168,124 +173,156 @@ async function initializeTerminalViewer(options: ObservableTerminalViewerOptions
     rows: options.rows,
   });
   if (isDisposed()) { term.dispose(); return undefined; }
-  const terminalInput = term.element.querySelector<HTMLTextAreaElement>(".gespenst__input");
-  if (terminalInput && options.mode === "fixed-readonly") terminalInput.readOnly = true;
-  if (options.mode === "fixed-readonly" && options.cols !== undefined && options.rows !== undefined) {
-    const devicePixelRatio = Math.max(1, globalThis.devicePixelRatio || 1);
-    options.host.style.width = `${term.geometry.widthPx / devicePixelRatio}px`;
-    options.host.style.height = `${term.geometry.heightPx / devicePixelRatio}px`;
-  }
-
-  const websocketUrl = new URL(options.websocketUrl);
-  let ws: WebSocket;
-  const sendInput = (data: string): void => {
-    if (ws.readyState === WebSocket.OPEN) ws.send(data);
-  };
-  const sendSize = ({ cols, rows }: { cols: number; rows: number }): void => {
-    if (ws.readyState === WebSocket.OPEN) ws.send(encodeObservableTerminalMessage({ type: "resize", cols, rows }));
-  };
-  let awaitingFirstOutput = true;
-  let disposed = false;
-  const writeOutput = (data: string | Uint8Array): void => {
-    if (!awaitingFirstOutput) {
-      term.write(data);
-      return;
+  try {
+    const terminalInput = term.element.querySelector<HTMLTextAreaElement>(".gespenst__input");
+    if (terminalInput && options.mode === "fixed-readonly") terminalInput.readOnly = true;
+    if (options.mode === "fixed-readonly" && options.cols !== undefined && options.rows !== undefined) {
+      const devicePixelRatio = Math.max(1, globalThis.devicePixelRatio || 1);
+      options.host.style.width = `${term.geometry.widthPx / devicePixelRatio}px`;
+      options.host.style.height = `${term.geometry.heightPx / devicePixelRatio}px`;
     }
-    awaitingFirstOutput = false;
-    // Keep the pane background visible until the first output has been rendered.
-    void term.writeAsync(data).then(() => {
-      if (!disposed) term.element.classList.add("observable-terminal-painted");
-    }).catch((error: Error) => {
-      if (!disposed) console.error("Could not paint initial terminal output", error);
-    });
-  };
-  const inputDecoder = new TextDecoder();
-  const connect = (): void => {
-    if (disposed || (ws && (ws.readyState === WebSocket.OPEN || ws.readyState === WebSocket.CONNECTING))) return;
-    if (ws) {
+
+    let ws: WebSocket;
+    const disconnect = (): void => {
       ws.onopen = ws.onmessage = ws.onclose = ws.onerror = null;
       ws.close();
-    }
-    if (options.mode === "interactive") {
-      websocketUrl.searchParams.set("cols", String(term.geometry.cols));
-      websocketUrl.searchParams.set("rows", String(term.geometry.rows));
-    }
-    const socket = ws = new WebSocket(websocketUrl);
-    socket.binaryType = "arraybuffer";
-    const outputDecoder = new TextDecoder();
-    socket.onopen = () => {
-      if (options.mode === "interactive") sendSize(term.geometry);
-      options.onConnect?.();
     };
-    socket.onmessage = (event: MessageEvent<string | ArrayBuffer>) => {
-      const data = event.data instanceof ArrayBuffer ? new Uint8Array(event.data) : event.data;
-      options.onOutput?.(data instanceof Uint8Array ? outputDecoder.decode(data, { stream: true }) : data);
-      writeOutput(data);
+    const sendInput = (data: string): void => {
+      if (ws.readyState === WebSocket.OPEN) ws.send(data);
     };
-    socket.onclose = () => {
-      options.onDisconnect?.();
-      const message = options.disconnectedMessage;
-      if (message) writeOutput(message);
+    const sendSize = ({ cols, rows }: { cols: number; rows: number }): void => {
+      if (ws.readyState === WebSocket.OPEN) ws.send(encodeObservableTerminalMessage({ type: "resize", cols, rows }));
     };
-    socket.onerror = () => {
-      const message = options.errorMessage;
-      if (message) writeOutput(message);
+    let awaitingFirstOutput = true;
+    let disposed = false;
+    // Gespenst rejects outstanding worker requests synchronously during dispose,
+    // and async continuations can also fail its public ensureActive check. Only
+    // these cancellations belong to teardown; other failures must remain visible.
+    // oxlint-disable-next-line anti-slop/no-unknown-parameters -- Browser/worker promises may reject with arbitrary values.
+    const reportFailure = (operation: string, error: unknown): void => {
+      if (disposed && error instanceof Error && (error.message === "Terminal disposed" || error.message === "GespenstTerminal is disposed")) return;
+      console.error(`Could not ${operation}`, error);
     };
-  };
-  connect();
-
-  term.on("error", (error) => console.error("Gespenst terminal error", error));
-
-  if (options.mode === "interactive") {
-    term.on("progress", ({ state, progress }) => {
-      if (ws.readyState === WebSocket.OPEN) {
-        ws.send(encodeObservableTerminalMessage({ type: "progress", state: terminalProgressState[state], value: progress ?? undefined }));
+    let themePending = false;
+    let themeDirty = false;
+    const updateTheme = async (): Promise<void> => {
+      if (disposed) return;
+      themeDirty = true;
+      if (themePending) return;
+      themePending = true;
+      try {
+        // Refreshes and theme changes share one queue. Never repaint with
+        // term.theme: it remains stale until the worker acknowledges a change.
+        while (themeDirty && !disposed) {
+          themeDirty = false;
+          await term.setTheme(theme);
+        }
+      } catch (error) {
+        reportFailure("update terminal theme", error);
+      } finally {
+        themePending = false;
       }
-    });
-    term.on("resize", sendSize);
-    term.on("input", ({ data }) => {
-      const text = inputDecoder.decode(data, { stream: true });
-      sendInput(options.transformInput?.(text) ?? text);
-    });
-  }
-
-  return {
-    reconnect: connect,
-    focus: () => term.focus(),
-    refresh: () => {
-      term.fit();
-      if (options.mode === "interactive") sendSize(term.geometry);
-      // Gespenst has no explicit repaint operation. Reapplying the active theme
-      // invalidates every row and repaints from its authoritative buffer.
-      void term.setTheme(term.theme);
-    },
-    sendInput,
-    getSelection: () => term.getSelection(),
-    dragPointer: (event, action, select) => {
-      const bounds = term.element.getBoundingClientRect();
-      const scale = Math.max(1, globalThis.devicePixelRatio || 1);
-      term.sendPointer({
-        action,
-        button: "left",
-        x: (event.clientX - bounds.left) * scale,
-        y: (event.clientY - bounds.top) * scale,
-        anyButtonPressed: action !== "release",
-        forceSelection: select,
-        rectangle: event.altKey,
-        // Shift chooses application mouse input, not an application modifier.
-        modifiers: (event.ctrlKey ? KeyModifiers.control : 0)
-          | (event.altKey ? KeyModifiers.alt : 0)
-          | (event.metaKey ? KeyModifiers.meta : 0),
-        timeMs: event.timeStamp,
+    };
+    const writeOutput = (data: string | Uint8Array): void => {
+      if (disposed) return;
+      if (!awaitingFirstOutput) {
+        term.write(data);
+        return;
+      }
+      awaitingFirstOutput = false;
+      // Keep the pane background visible until the first output has been rendered.
+      void term.writeAsync(data).then(() => {
+        if (!disposed) term.element.classList.add("observable-terminal-painted");
+      }).catch((error: Error) => {
+        reportFailure("paint initial terminal output", error);
       });
-    },
-    paste: (text) => term.paste(text),
-    setTheme: (nextTheme) => void term.setTheme(nextTheme),
-    dispose: () => {
-      disposed = true;
-      ws.onopen = ws.onmessage = ws.onclose = ws.onerror = null;
-      ws.close();
-      term.dispose();
-    },
-  };
+    };
+    const inputDecoder = new TextDecoder();
+    const connect = (): void => {
+      if (disposed || (ws && (ws.readyState === WebSocket.OPEN || ws.readyState === WebSocket.CONNECTING))) return;
+      if (ws) disconnect();
+      if (options.mode === "interactive") {
+        websocketUrl.searchParams.set("cols", String(term.geometry.cols));
+        websocketUrl.searchParams.set("rows", String(term.geometry.rows));
+      }
+      const socket = ws = new WebSocket(websocketUrl);
+      socket.binaryType = "arraybuffer";
+      const outputDecoder = new TextDecoder();
+      socket.onopen = () => {
+        if (options.mode === "interactive") sendSize(term.geometry);
+        options.onConnect?.();
+      };
+      socket.onmessage = (event: MessageEvent<string | ArrayBuffer>) => {
+        const data = event.data instanceof ArrayBuffer ? new Uint8Array(event.data) : event.data;
+        options.onOutput?.(data instanceof Uint8Array ? outputDecoder.decode(data, { stream: true }) : data);
+        writeOutput(data);
+      };
+      socket.onclose = () => {
+        options.onDisconnect?.();
+        const message = options.disconnectedMessage;
+        if (message) writeOutput(message);
+      };
+      socket.onerror = () => {
+        const message = options.errorMessage;
+        if (message) writeOutput(message);
+      };
+    };
+    term.on("error", (error) => console.error("Gespenst terminal error", error));
+
+    if (options.mode === "interactive") {
+      term.on("progress", ({ state, progress }) => {
+        if (ws.readyState === WebSocket.OPEN) {
+          ws.send(encodeObservableTerminalMessage({ type: "progress", state: terminalProgressState[state], value: progress ?? undefined }));
+        }
+      });
+      term.on("resize", sendSize);
+      term.on("input", ({ data }) => {
+        const text = inputDecoder.decode(data, { stream: true });
+        sendInput(options.transformInput?.(text) ?? text);
+      });
+    }
+
+    connect();
+    return {
+      reconnect: connect,
+      focus: () => term.focus(),
+      refresh: () => {
+        term.fit();
+        if (options.mode === "interactive") sendSize(term.geometry);
+        // Gespenst has no explicit repaint operation. Reapplying the active theme
+        // invalidates every row and repaints from its authoritative buffer.
+        void updateTheme();
+      },
+      sendInput,
+      getSelection: () => term.getSelection(),
+      dragPointer: (event, action, select) => {
+        const bounds = term.element.getBoundingClientRect();
+        const scale = Math.max(1, globalThis.devicePixelRatio || 1);
+        term.sendPointer({
+          action,
+          button: "left",
+          x: (event.clientX - bounds.left) * scale,
+          y: (event.clientY - bounds.top) * scale,
+          anyButtonPressed: action !== "release",
+          forceSelection: select,
+          rectangle: event.altKey,
+          // Shift chooses application mouse input, not an application modifier.
+          modifiers: (event.ctrlKey ? KeyModifiers.control : 0)
+            | (event.altKey ? KeyModifiers.alt : 0)
+            | (event.metaKey ? KeyModifiers.meta : 0),
+          timeMs: event.timeStamp,
+        });
+      },
+      paste: (text) => term.paste(text),
+      setTheme: (nextTheme) => { theme = nextTheme; void updateTheme(); },
+      dispose: () => {
+        disposed = true;
+        disconnect();
+        term.dispose();
+      },
+    };
+  } catch (error) {
+    term.dispose();
+    throw error;
+  }
 }
