@@ -4,7 +4,7 @@ import { turboStreamResponse, type WorkspaceFileTarget, type WorkspaceModuleRout
 import { renderVSCodePane, vscodeViewKey, renderVSCodeNavigationSignal, vscodeFileNavigationStream } from "./render.ts";
 import { createWorkspaceVSCodeView, deleteWorkspaceVSCodeState, deleteWorkspaceVSCodeView, listWorkspaceVSCodeViews, type WorkspaceVSCodeView } from "./workspace-vscode.ts";
 import { vscodeStaticFiles } from "./static.ts";
-import { deleteWorkspaceVSCodeProxyState, patchVSCodeWorkspaceAppResponse, resolveVSCodeWorkspaceAppBackend, vscodeAppKey } from "./proxy.ts";
+import { patchVSCodeWorkspaceAppResponse, resolveVSCodeWorkspaceAppBackend, vscodeAppKey } from "./proxy.ts";
 import { Type, type Static } from "typebox";
 import { Value } from "typebox/value";
 
@@ -63,10 +63,7 @@ export const vscodeWorkspaceModule: WorkspaceModule = {
           adaptResponse: (response, request) => patchVSCodeWorkspaceAppResponse(app, response, request),
         }
       : undefined);
-    context.onWorkspaceRemoved((workspaceId) => {
-      deleteWorkspaceVSCodeState(workspaceId);
-      deleteWorkspaceVSCodeProxyState(workspaceId);
-    });
+    context.onWorkspaceRemoved(deleteWorkspaceVSCodeState);
   },
   commands: [{
     id: "vscode.open",

@@ -1,7 +1,8 @@
-import { shellQuote, type JsonValue } from "@atelier/core";
-import { createWorkspaceMetadataState, execWorkspaceShell, workspaceRoot } from "@atelier/workspace";
+import type { JsonValue } from "@atelier/core";
+import { createWorkspaceMetadataState, execWorkspaceShell } from "@atelier/workspace";
 import { Type, type Static } from "typebox";
 import { Value } from "typebox/value";
+import { vscodeStartupScript } from "./startup.ts";
 
 const workspaceVSCodeViewSchema = Type.Object({
   title: Type.String({ pattern: "\\S" }),
@@ -50,47 +51,6 @@ export function deleteWorkspaceVSCodeState(workspaceId: string): void {
 
 export async function ensureWorkspaceVSCodeServer(workspaceId: string): Promise<void> {
   const workspaceFile = `/.atelier/vscode/workspaces/${Buffer.from(workspaceId).toString("base64url")}.code-workspace`;
-  const quotedWorkspaceFile = shellQuote(workspaceFile);
-  const result = await execWorkspaceShell(workspaceId, `
-    set -eu
-    server_pattern='[/]bin/code-server .*--port 8000|out[/]server-main\.js .*--port 8000'
-    ready_url='http://127.0.0.1:8000/'
-
-    is_ready() {
-      curl -fsS --max-time 2 "$ready_url" >/dev/null 2>&1
-    }
-
-    server_is_running() {
-      pgrep -u atelier -f "$server_pattern" >/dev/null 2>&1
-    }
-
-    start_server() {
-      mkdir -p /.atelier/vscode/workspaces
-      printf '%s\n' '{"folders":[{"path":"${workspaceRoot}"}]}' > ${quotedWorkspaceFile}
-      ATELIER_VSCODE_DEFAULT_WORKSPACE=${quotedWorkspaceFile} nohup atelier-start-vscode > /.atelier/vscode/server.log 2>&1 &
-    }
-
-    if is_ready; then
-      exit 0
-    fi
-
-    if ! server_is_running; then
-      start_server
-    fi
-
-    for _ in $(seq 1 120); do
-      if is_ready; then
-        exit 0
-      fi
-      if ! server_is_running; then
-        start_server
-      fi
-      sleep 0.5
-    done
-
-    echo "VS Code server did not become ready at $ready_url" >&2
-    tail -n 80 /.atelier/vscode/server.log
-    exit 1
-  `, { user: "atelier" });
+  const result = await execWorkspaceShell(workspaceId, vscodeStartupScript(workspaceFile), { user: "atelier" });
   if (result.exitCode !== 0) throw new Error(result.stderr.trim() || result.stdout.trim() || `could not start VS Code server for ${workspaceId}`);
 }

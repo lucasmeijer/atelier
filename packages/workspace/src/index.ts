@@ -60,7 +60,8 @@ const booleanSchema = Type.Boolean();
 const nonBlankStringSchema = Type.String({ pattern: "\\S" });
 const stringArraySchema = Type.Array(Type.String());
 export const workspaceRoot = "/work";
-export const workspaceVSCodePort = 8000;
+// Reserved for VS Code. The adapter still verifies ownership before using it.
+export const workspaceVSCodePort = 24800;
 
 export interface WorkspaceListResult { workspaces: Array<{ id: string; title: string | null; parked?: boolean; init?: WorkspaceInitInstruction; imageOutdated?: boolean }> }
 export interface WorkspaceExecResult { exitCode: number; stdout: string; stderr: string; durationMs: number }

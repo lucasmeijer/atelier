@@ -11,7 +11,6 @@ const gallerySchema = Type.Object({ resourceUrlTemplate: Type.Optional(Type.Stri
 const remoteAuthoritySchema = Type.String();
 
 export const vscodeAppKey = "vscode";
-export const vscodeContainerPort = 8000;
 
 function escapeHtmlAttribute(value: string): string {
   return value.replaceAll("&", "&amp;").replaceAll('"', "&quot;");
@@ -21,12 +20,8 @@ function unescapeHtmlAttribute(value: string): string {
   return value.replaceAll("&quot;", '"').replaceAll("&amp;", "&");
 }
 
-const serverCheckTtlMs = 30_000;
-const serverChecks = new Map<string, { promise: Promise<void>; checkedAt: number }>();
-
-export function deleteWorkspaceVSCodeProxyState(workspaceId: string): void {
-  serverChecks.delete(workspaceId);
-}
+// Coalesce concurrent checks, but never cache ownership across requests.
+const pendingServerChecks = new Map<string, Promise<void>>();
 
 type VSCodeThemeDefaults = {
   colorTheme: string;
@@ -100,18 +95,15 @@ function themeDefaultsForRequest(request: Request): VSCodeThemeDefaults | undefi
   };
 }
 
-async function ensureRecentVSCodeServer(workspaceId: string): Promise<void> {
-  const cached = serverChecks.get(workspaceId);
-  if (cached && Date.now() - cached.checkedAt < serverCheckTtlMs) {
-    await cached.promise;
-    return;
+async function ensureVSCodeServer(workspaceId: string): Promise<void> {
+  let pending = pendingServerChecks.get(workspaceId);
+  if (!pending) {
+    pending = ensureWorkspaceVSCodeServer(workspaceId).finally(() => {
+      pendingServerChecks.delete(workspaceId);
+    });
+    pendingServerChecks.set(workspaceId, pending);
   }
-  const promise = ensureWorkspaceVSCodeServer(workspaceId).catch((error) => {
-    serverChecks.delete(workspaceId);
-    throw error;
-  });
-  serverChecks.set(workspaceId, { promise, checkedAt: Date.now() });
-  await promise;
+  await pending;
 }
 
 export async function patchVSCodeWorkspaceAppResponse(app: WorkspaceAppHost, response: Response, request: Request): Promise<Response> {
@@ -182,7 +174,7 @@ export async function patchVSCodeWorkspaceAppResponse(app: WorkspaceAppHost, res
 
 export async function resolveVSCodeWorkspaceAppBackend(app: WorkspaceAppHost, requestUrl: URL): Promise<WorkspaceHttpAppBackend> {
   if (app.appKey !== vscodeAppKey) throw new Error(`unknown workspace app: ${app.appKey}`);
-  await ensureRecentVSCodeServer(app.workspaceId);
+  await ensureVSCodeServer(app.workspaceId);
   const targetUrl = new URL(requestUrl.pathname + requestUrl.search, "http://atelier.local");
   [...targetUrl.searchParams.keys()].forEach((key) => {
     if (key.startsWith("atelier")) targetUrl.searchParams.delete(key);

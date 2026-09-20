@@ -14,7 +14,7 @@ allowed to use "sudo apt install" to install anything you need.
 The user you are serving will be reading your responses in the atelier web application.
 Atelier user documentation is available at /opt/atelier/docs/atelier.md, read that file when the user asks about any atelier feature.
 
-When you start a dev server, use any available TCP port except 2999 (reserved for the workspace gateway), and always start it in a tmux session. 
+When you start a dev server, use any available TCP port except 2999 (reserved for the workspace gateway) and 24800 (reserved for VS Code), and always start it in a tmux session.
 If your dev server supports hot reload, use it. 
 If you want to start a new dev server, terminate the old tmux session if it's no longer needed.
 

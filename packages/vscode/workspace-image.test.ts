@@ -1,4 +1,5 @@
 import { afterAll, expect, test } from "bun:test";
+import { workspaceVSCodePort } from "@atelier/workspace";
 import { chmod, mkdir, mkdtemp, readFile, readdir, rm, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
@@ -62,6 +63,8 @@ test("VS Code startup keeps server state outside home and preserves existing set
   const result = run();
   expect(result.exitCode).toBe(0);
   const args = result.stdout.toString().trim().split("\n");
+  expect(args[args.indexOf("--port") + 1]).toBe(String(workspaceVSCodePort));
+  expect(workspaceVSCodePort).not.toBe(8000);
   expect(args).toContain("--server-data-dir");
   expect(args[args.indexOf("--server-data-dir") + 1]).toBe(join(stateRoot, "vscode/server-data"));
   expect(args[args.indexOf("--extensions-dir") + 1]).toBe(join(imageRoot, "vscode-extensions"));

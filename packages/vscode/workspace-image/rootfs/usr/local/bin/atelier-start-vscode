@@ -22,7 +22,7 @@ seed_file "$defaults_dir/Machine/mcp.json" "$server_data_dir/data/Machine/mcp.js
 set -- \
   --accept-server-license-terms \
   --host "${ATELIER_VSCODE_HOST:-0.0.0.0}" \
-  --port "${ATELIER_VSCODE_PORT:-8000}" \
+  --port "${ATELIER_VSCODE_PORT:-24800}" \
   --without-connection-token \
   --server-data-dir "$server_data_dir"
 
