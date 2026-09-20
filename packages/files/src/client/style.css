@@ -79,3 +79,8 @@
 @media (prefers-reduced-motion: reduce) {
   .files-editor-canvas, .files-navigator { transition-duration: 1ms; }
 }
+
+.file-conflict-comparison { display: grid; gap: 16px; min-width: 0; }
+.file-conflict-comparison p { margin: 0; }
+.file-conflict-comparison label { display: grid; gap: 8px; min-width: 0; }
+.file-conflict-comparison textarea { width: 100%; font-family: var(--font-mono); }

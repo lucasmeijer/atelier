@@ -199,7 +199,11 @@ function fileConflictDialog(): string {
     },
     iconHtml: Icons.Files,
     titleCaption: "File changed on disk",
-    bodyHtml: "Choose which version should remain.",
+    bodyHtml: `<div class="file-conflict-comparison">
+      <p>Compare both versions before choosing. Use theirs discards your edits. Use mine overwrites the file on disk. Dismiss to keep editing without resolving the conflict.</p>
+      <label>Theirs — current file on disk<textarea class="textarea" data-file-editor-target="conflictTheirs" readonly rows="10" spellcheck="false" wrap="off"></textarea></label>
+      <label>Mine — your unsaved edits<textarea class="textarea" data-file-editor-target="conflictMine" readonly rows="10" spellcheck="false" wrap="off"></textarea></label>
+    </div>`,
     footerHtml: `${useTheirsButton}${useMineButton}`,
     closeLabel: "Dismiss file conflict",
   });

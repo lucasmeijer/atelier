@@ -28,7 +28,7 @@ type EditorRefreshDetail = { workspaceId: string };
 function createFileEditorController(Controller: WorkspaceClientControllerConstructor): WorkspaceClientControllerConstructor {
   return class FileEditorController extends Controller {
     static values = { workspaceId: String, path: String, contentUrl: String, line: Number, column: Number };
-    static targets = ["host", "loading", "status", "conflict", "preview", "previewOptions", "copyButton"];
+    static targets = ["host", "loading", "status", "conflict", "conflictMine", "conflictTheirs", "preview", "previewOptions", "copyButton"];
 
     declare readonly element: HTMLElement;
     declare readonly workspaceIdValue: string;
@@ -40,6 +40,8 @@ function createFileEditorController(Controller: WorkspaceClientControllerConstru
     declare readonly loadingTarget: HTMLElement;
     declare readonly statusTarget: HTMLElement;
     declare readonly conflictTarget: HTMLDialogElement;
+    declare readonly conflictMineTarget: HTMLTextAreaElement;
+    declare readonly conflictTheirsTarget: HTMLTextAreaElement;
     declare readonly previewTarget: HTMLElement;
     declare readonly previewOptionsTarget: HTMLElement;
     declare readonly copyButtonTarget: HTMLButtonElement;
@@ -145,8 +147,14 @@ function createFileEditorController(Controller: WorkspaceClientControllerConstru
             languageExtension(this.pathValue),
             EditorState.readOnly.of(!file.writable),
             EditorView.editable.of(file.writable),
+            EditorView.domEventHandlers({
+              focus: () => { this.showRaw(); },
+            }),
             EditorView.updateListener.of((update) => {
               if (!update.docChanged) return;
+              // A response belongs to the document and editing choice that requested it.
+              if (this.applyingDisk) this.invalidatePreview();
+              else this.showRaw();
               this.copyButtonTarget.dataset.copyText = update.state.doc.toString();
               if (this.applyingDisk) return;
               this.setStatus("Saving…", "saving");
@@ -253,29 +261,32 @@ function createFileEditorController(Controller: WorkspaceClientControllerConstru
       if (this.saveTimer) clearTimeout(this.saveTimer);
       this.saveTimer = undefined;
       this.latestDisk = file;
+      this.conflictMineTarget.value = this.view!.state.doc.toString();
+      this.conflictTheirsTarget.value = file.content;
       this.setStatus("Conflict", "conflict");
       if (!this.conflictTarget.open) this.conflictTarget.showModal();
     }
 
     private async showPreview(): Promise<void> {
       const sequence = ++this.previewSequence;
+      const { signal } = this.connection;
       this.setPreviewBusy(true);
       try {
         const previewUrl = `/workspaces/${encodeURIComponent(this.workspaceIdValue)}/files-view/markdown-preview?${new URLSearchParams({ path: this.pathValue })}`;
         const response = await fetch(previewUrl, {
           method: "POST",
-          signal: this.connection.signal,
+          signal,
           headers: { "content-type": "text/plain; charset=utf-8", "accept": "text/html" },
           body: this.view!.state.doc.toString(),
         });
-        if (sequence !== this.previewSequence) return;
+        if (sequence !== this.previewSequence || !this.isCurrentConnection(signal)) return;
         if (!response.ok) throw new Error(await response.text());
         const html = await response.text();
-        if (sequence !== this.previewSequence) return;
+        if (sequence !== this.previewSequence || !this.isCurrentConnection(signal)) return;
         this.previewTarget.innerHTML = html;
         this.setPreviewVisible(true);
       } catch (error) {
-        if (sequence !== this.previewSequence) return;
+        if (sequence !== this.previewSequence || !this.isCurrentConnection(signal)) return;
         this.setPreviewVisible(false);
         this.setStatus("Unable to render", "error");
         throw error;
@@ -286,9 +297,14 @@ function createFileEditorController(Controller: WorkspaceClientControllerConstru
 
     private showRaw(): void {
       if (!this.hasPreviewTarget) return;
+      this.invalidatePreview();
+      this.setPreviewVisible(false);
+    }
+
+    private invalidatePreview(): void {
+      if (!this.hasPreviewTarget) return;
       this.previewSequence++;
       this.setPreviewBusy(false);
-      this.setPreviewVisible(false);
     }
 
     private setPreviewBusy(busy: boolean): void {
