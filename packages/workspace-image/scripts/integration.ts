@@ -71,6 +71,8 @@ try {
   await start(image, producer, true);
   await start(image, workspace, false);
   console.log("Booted with empty parent socket directory; neither Docker daemon started");
+  assert.notEqual((await exec(workspace, "findmnt", "--noheadings", "--output", "FSTYPE", "--target", "/tmp")).trim(), "tmpfs");
+  await command(["docker", "exec", "--user", "atelier", workspace, "sh", "-c", "echo tmp-persistence-ok > /tmp/persistence-marker"]);
   assert.notEqual((await command(["docker", "exec", workspace, "touch", "/data/erofs-cache/must-not-write"], false)).code, 0);
   await exec(workspace, "curl", "--fail", "--silent", "--max-time", "30", "https://example.com");
 
@@ -128,6 +130,7 @@ try {
   assert.equal(await state(workspace, "docker.service"), "inactive");
   assert.equal(await state(workspace, "containerd.service"), "inactive");
   assert.equal((await exec(workspace, "cat", "/data/persistence-marker")).trim(), "private-data");
+  assert.equal((await exec(workspace, "cat", "/tmp/persistence-marker")).trim(), "tmp-persistence-ok");
   assert.equal((await exec(workspace, "docker", "run", "--rm", "--network=none", "workspace-test:derived")).trim(), "workspace-build-ok");
   await noBaseBlobs();
   assert.equal(await hashes(), originalHashes);

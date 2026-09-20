@@ -83,7 +83,7 @@
     "set -eux; npm install -g hunkdiff@0.22.0; hunk --version",
     "curl -fsSL https://pi.dev/install.sh | sh && command -v pi && pi --version",
     "getent group docker || groupadd docker; id -u atelier >/dev/null 2>&1 || useradd --create-home --shell /bin/bash atelier; echo 'atelier ALL=(ALL) NOPASSWD:ALL' > /etc/sudoers.d/atelier; chmod 0440 /etc/sudoers.d/atelier; install -d -o atelier -g atelier /.atelier /work; usermod -aG docker atelier",
-    "systemctl mask getty@tty1.service console-getty.service; ln -sf /lib/systemd/system/multi-user.target /etc/systemd/system/default.target"
+    "systemctl mask tmp.mount getty@tty1.service console-getty.service; ln -sf /lib/systemd/system/multi-user.target /etc/systemd/system/default.target"
   ],
   "env": {
     "TERM": "xterm-256color",

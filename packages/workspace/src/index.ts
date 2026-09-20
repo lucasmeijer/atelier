@@ -287,7 +287,6 @@ export function parseRepoWorkspaceManifest(text: string, path = workspaceManifes
 
 function applySeedConfigManifest(manifest: RepoWorkspaceManifest, plan: WorkspaceDockerPlan): void {
   const runtime = getAtelierRuntimeContext();
-  // systemd mounts a fresh /tmp during boot, hiding files copied there before start.
   const entries = [
     manifest.seedPiConfig?.authJson ? { source: atelierDataPath(runtime, "pi-config", "auth.json"), staging: "/.atelier/seed-pi-auth.json", target: manifest.seedPiConfig.authJson } : undefined,
     manifest.seedPiConfig?.modelsJson ? { source: atelierDataPath(runtime, "pi-config", "models.json"), staging: "/.atelier/seed-pi-models.json", target: manifest.seedPiConfig.modelsJson } : undefined,
