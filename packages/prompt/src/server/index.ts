@@ -1,5 +1,5 @@
 export * from "./attachment-drafts.ts";
-export { renderAttachmentChip } from "./render-attachments.ts";
+export { renderAttachmentChip, renderAttachmentPicker } from "./render-attachments.ts";
 import type { WorkspaceModule } from "@atelier/shared";
 import { handleAttachmentRequest } from "./attachment-routes.ts";
 export const atelierServerModule: WorkspaceModule = {

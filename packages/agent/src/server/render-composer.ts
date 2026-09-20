@@ -7,7 +7,7 @@ import { renderTranscriptionComposerControl, transcriptionComposerController } f
 import { domId, escapeHtml, turboStream } from "./html.ts";
 import { launchComposerThinkingSettings, configuredModelOptionViews, selectAvailableConfiguredModel } from "./model-state.ts";
 import type { WorkspaceAgentConversationInfo } from "./session-store.ts";
-import { agentAttachmentDraftId, listStagedAttachments, renderAttachmentChip, type StagedAttachment } from "@atelier/prompt/server";
+import { agentAttachmentDraftId, listStagedAttachments, renderAttachmentChip, renderAttachmentPicker, type StagedAttachment } from "@atelier/prompt/server";
 import { readInitialPromptDraft } from "./initial-prompt-draft.ts";
 import { formatCost, formatTokens } from "./transcript.ts";
 import { renderWorkspaceCompletionCatalog } from "./completion-catalog.ts";
@@ -174,8 +174,9 @@ export function renderPromptActions(ctx: AgentRenderContext | undefined, busy: b
   });
 }
 
-export function renderComposerActions(sendHtml: string): string {
+function renderComposerActions(sendHtml: string): string {
   return `<div class="composer-actions">
+    ${renderAttachmentPicker()}
     <span class="spacer"></span>
     <span class="composer-send-action">${sendHtml}</span>
     <span class="composer-connect-action">${buttonHtml({ type: "button", variant: "primary", content: { kind: "caption", caption: "Connect to send" }, attributesHtml: 'data-action="agent-model-setup#open"' })}</span>

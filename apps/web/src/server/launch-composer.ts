@@ -1,4 +1,4 @@
-import { Icons } from "@atelier/design-system/icons";
+import { renderAttachmentPicker } from "@atelier/prompt/server";
 import { actionItemHtml } from "@atelier/design-system/action-item";
 import { popupHtml } from "@atelier/design-system/popup";
 import { buttonHtml } from "@atelier/design-system/button";
@@ -38,15 +38,13 @@ export async function launchComposerContent(options: { draftId: string; provider
   const { draftId } = options;
   const rowId = domId("agent_draft_attach", draftId);
   const uploadUrl = `/agent-attachment-drafts/${encodeURIComponent(draftId)}/attachments?row=${rowId}`;
-  const attach = buttonHtml({ type: "button", variant: "secondary", content: { kind: "icon-only", label: "Attach files", iconHtml: Icons.Paperclip }, attributesHtml: 'data-popular-button data-action="agent-attachments#openPicker"' });
   const send = buttonHtml({ type: "submit", variant: "primary", content: { kind: "icon-only", label: "Send prompt", iconHtml: '<svg viewBox="0 0 20 20" aria-hidden="true"><path d="M10 15V5m-4 4 4-4 4 4"/></svg>' }, attributesHtml: "data-popular-button" });
   return {
     attributesHtml: `data-controller="composer-focus agent-attachments ${transcriptionComposerController}" data-action="mousedown->composer-focus#preserveInputFocus dragover->agent-attachments#dragOver dragleave->agent-attachments#dragLeave drop->agent-attachments#drop" data-agent-attachments-upload-url-value="${escapeHtml(uploadUrl)}"`,
     formAttributesHtml: 'data-action="submit->transcription-composer#submit keydown->submit-shortcut#keydown submit->submit-shortcut#submit turbo:submit-end->launch-composer-dialog#submitted turbo:submit-end->submit-shortcut#submitted"',
     bodyHtml: `<input type="hidden" name="attachmentDraft" value="${escapeHtml(draftId)}">
       <div class="agent-attach-row" id="${rowId}" data-agent-attachments-target="row"></div>
-      <div class="composer-input-area"><textarea class="composer-input" name="text" rows="8" enterkeyhint="send" placeholder="Describe what you want the agent to do… (optional)" aria-label="Initial agent prompt" data-action="paste->agent-attachments#paste"></textarea><div class="launch-composer-input-controls">${renderTranscriptionComposerControl()}${attach}</div></div>
-      <input type="file" multiple hidden data-agent-attachments-target="file" data-action="change->agent-attachments#choose">
+      <div class="composer-input-area"><textarea class="composer-input" name="text" rows="8" enterkeyhint="send" placeholder="Describe what you want the agent to do… (optional)" aria-label="Initial agent prompt" data-action="paste->agent-attachments#paste"></textarea><div class="launch-composer-input-controls">${renderTranscriptionComposerControl()}${renderAttachmentPicker("icon-only")}</div></div>
       <div class="composer-actions"><span class="spacer"></span>${send}</div>
       <p role="status" data-agent-attachments-target="status" hidden></p>`,
     footerHtml: await renderLaunchProvider(options.provider, options.providers, options.context),

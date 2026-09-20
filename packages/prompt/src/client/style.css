@@ -5,10 +5,14 @@
 .agent-chip {
   display: inline-flex; align-items: center; gap: 6px; border: 1px solid var(--line); background: var(--bg);
   border-radius: var(--radius-control); padding: 2px 8px; font-size: var(--text-body); position: relative; overflow: hidden;
+  max-width: 100%; box-sizing: border-box;
 }
+[data-draft-image-preview] { min-width: 0; height: auto; min-height: 48px; padding-block: 4px; }
+.agent-chip-thumbnail { width: 40px; height: 40px; object-fit: contain; flex-shrink: 0; border-radius: var(--radius-control); }
 .agent-chip-ico { font-size: var(--text-body); }
-.agent-chip-name { font-weight: var(--weight-semibold); max-width: 180px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
-.agent-chip-size { color: var(--text-muted); font-size: var(--text-body); }
+.agent-chip-name { font-weight: var(--weight-semibold); }
+.agent-chip-name, [data-draft-image-preview] .button__caption { max-width: 180px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.agent-chip-size { flex-shrink: 0; white-space: nowrap; color: var(--text-muted); font-size: var(--text-body); }
 .agent-chip-prog { position: absolute; left: 0; right: 0; bottom: 0; height: 2px; background: var(--line); }
 .agent-chip-prog i { display: block; height: 100%; background: var(--accent); }
 .agent-chip.error { border-color: var(--danger); color: var(--danger); }
@@ -20,6 +24,7 @@
   padding: 12px calc(var(--composer-control-size) + 2 * var(--composer-control-inset)) 6px 16px; outline: none; background: transparent; color: var(--text-bright); min-height: max(var(--composer-controls-min-height), calc(1.5em * 2 + 21px)); max-height: var(--composer-input-max-height); display: block;
   box-sizing: border-box; overflow-y: hidden;
 }
+.agent-pane-composer .composer-input { padding-bottom: calc(var(--composer-control-size) + 2 * var(--composer-control-inset)); }
 .composer-input::placeholder { color: var(--text-muted); font: inherit; }
 .composer-selection { max-width: 170px; padding: 1px 2px; border: 1px solid transparent; border-radius: var(--radius-control); background: transparent; cursor: pointer; }
 .composer-selection:hover { border-color: var(--line-strong); background: var(--panel); color: var(--text-bright); }

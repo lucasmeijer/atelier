@@ -43,7 +43,6 @@ export const ids = {
   attachRow: (ctx: AgentRenderContext) => `${prefix(ctx)}_attach`,
   input: (ctx: AgentRenderContext) => `${prefix(ctx)}_input`,
   draftAttachRow: (draftId: string) => domId("agent_draft_attach", draftId),
-  draftChip: (draftId: string, attachmentId: string) => domId("agent_draft_chip", draftId, attachmentId),
   notices: (ctx: AgentRenderContext) => `${prefix(ctx)}_notices`,
 };
 

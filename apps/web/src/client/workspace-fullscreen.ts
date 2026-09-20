@@ -118,6 +118,7 @@ class AtelierFullscreenController extends Controller<HTMLElement> {
     const viewer = this.createViewer();
     const dialog = document.createElement("dialog");
     dialog.className = "atelier-fullscreen-dialog";
+    dialog.setAttribute("aria-label", this.titleValue || "Media preview");
     const surface = document.createElement("div");
     surface.className = "atelier-fullscreen-surface";
     let session: FullscreenSession;

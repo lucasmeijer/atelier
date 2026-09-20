@@ -1,5 +1,7 @@
 import {
   findStagedAttachment,
+  extensionOf,
+  imageMimeByExtension,
   removeAttachmentDraft,
   removeStagedAttachment,
   stageAttachment,
@@ -13,6 +15,16 @@ function matchRoute(url: URL, expression: RegExp): string[] | undefined {
 
 export const handleAttachmentRequest = async (request: Request, url: URL): Promise<Response | undefined> => {
   let params: string[] | undefined;
+  if ((params = matchRoute(url, /^\/agent-attachment-drafts\/([^/]+)\/attachments\/([^/]+)$/)) && request.method === "GET") {
+    const attachment = await findStagedAttachment(params[0], params[1]);
+    if (!attachment?.isImage) return new Response("Image not found", { status: 404 });
+    return new Response(Bun.file(attachment.path), { headers: {
+      "Content-Type": imageMimeByExtension[extensionOf(attachment.name)]!,
+      "Cache-Control": "no-store",
+      "X-Content-Type-Options": "nosniff",
+      "Content-Security-Policy": "default-src 'none'; sandbox",
+    } });
+  }
   if ((params = matchRoute(url, /^\/agent-attachment-drafts\/([^/]+)\/attachments$/)) && request.method === "POST") {
     return await uploadAttachment(params[0], request, url.searchParams.get("row") ?? undefined);
   }

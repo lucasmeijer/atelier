@@ -12,6 +12,8 @@ import {
   validDraftId,
 } from "@atelier/prompt/server";
 
+import { handleAttachmentRequest } from "../src/server/attachment-routes.ts";
+
 let dir: string | undefined;
 
 async function dataDir(): Promise<void> {
@@ -101,5 +103,36 @@ describe("Agent attachment drafts", () => {
     expect((await listStagedAttachments(draftId)).map(({ id, name }) => ({ id, name }))).toEqual([
       { id: concurrent.id, name: "second.png" },
     ]);
+  });
+});
+
+describe("Draft image reads", () => {
+  test("serves persisted image bytes without consuming the draft and stops serving removed images", async () => {
+    await dataDir();
+    const draftId = crypto.randomUUID();
+    const bytes = new Uint8Array([137, 80, 78, 71]);
+    const image = await stageAttachment(draftId, new File([bytes], "clipboard.png"));
+    const url = new URL(`http://localhost/agent-attachment-drafts/${draftId}/attachments/${image.id}`);
+    const response = (await handleAttachmentRequest(new Request(url), url))!;
+    expect(response.status).toBe(200);
+    expect(response.headers.get("Content-Type")).toBe("image/png");
+    expect(response.headers.get("Cache-Control")).toBe("no-store");
+    expect(response.headers.get("X-Content-Type-Options")).toBe("nosniff");
+    expect(response.headers.get("Content-Security-Policy")).toContain("sandbox");
+    expect(new Uint8Array(await response.arrayBuffer())).toEqual(bytes);
+    expect(await listStagedAttachments(draftId)).toHaveLength(1);
+    await removeStagedAttachments(draftId, [image.id]);
+    expect((await handleAttachmentRequest(new Request(url), url))!.status).toBe(404);
+  });
+
+  test("rejects non-images, invalid identities, and attachments from another draft", async () => {
+    await dataDir();
+    const draftId = crypto.randomUUID();
+    const text = await stageAttachment(draftId, new File(["text"], "notes.txt"));
+    const image = await stageAttachment(draftId, new File(["image"], "screen.png"));
+    for (const [draft, id] of [[draftId, text.id], [crypto.randomUUID(), image.id], ["invalid", image.id], [draftId, "invalid"]]) {
+      const url = new URL(`http://localhost/agent-attachment-drafts/${draft}/attachments/${id}`);
+      expect((await handleAttachmentRequest(new Request(url), url))!.status).toBe(404);
+    }
   });
 });
