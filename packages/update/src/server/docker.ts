@@ -64,9 +64,24 @@ export async function detectSelfUpdateRuntime(exec: DockerExec = dockerExec, con
   const image = await dockerImageInspect(container.Image, exec);
   return { currentRevision: image.Config?.Labels?.["org.opencontainers.image.revision"], currentDigest: image.RepoDigests?.find((ref) => ref.startsWith("ghcr.io/lucasmeijer/atelier@"))?.split("@")[1] ?? image.Id };
 }
+/** Docker preserves images referenced by any container, including stopped containers. */
+export async function pruneUnusedAtelierImages(exec: DockerExec = dockerExec): Promise<void> {
+  // Source alone also matches System and the shared Docker runtime. Only app
+  // images carry both source and eagerly-preload; workspace images have a signature.
+  const filters = [
+    ["label=org.opencontainers.image.source=https://github.com/lucasmeijer/atelier", "label=eagerly-preload"],
+    ["label=com.atelier.workspace-image.signature"],
+  ];
+  for (const labels of filters) {
+    const result = await exec(["image", "prune", "--all", "--force", ...labels.flatMap((label) => ["--filter", label])]);
+    if (result.code !== 0) throw new Error(result.stderr.trim() || "Could not prune unused Atelier images");
+  }
+}
+
 export interface PreparedUpdate { imageId: string; reference: string; }
 export async function prepareUpdate(reference: string, progress: (progress: PullProgress) => void, deps: {
   pull?: typeof pullImageReference; inspect?: typeof dockerImageInspect; resolve?: typeof resolveImage; exec?: DockerExec;
+  prune?: typeof pruneUnusedAtelierImages;
 } = {}): Promise<PreparedUpdate> {
   const pull = deps.pull ?? pullImageReference;
   const inspect = deps.inspect ?? dockerImageInspect;
@@ -83,6 +98,8 @@ export async function prepareUpdate(reference: string, progress: (progress: Pull
     for (const dependency of image.dependencies) await discover(dependency);
   }
   await discover(reference);
+  progress({ kind: "progress", message: "Removing unused Atelier images…" });
+  await (deps.prune ?? pruneUnusedAtelierImages)(deps.exec ?? dockerExec);
   const layers = new Map<string, { size: number; current: number }>();
   for (const image of images.values()) for (const layer of image.layers) layers.set(layer.digest, { size: layer.size, current: 0 });
   const total = [...layers.values()].reduce((sum, layer) => sum + layer.size, 0);

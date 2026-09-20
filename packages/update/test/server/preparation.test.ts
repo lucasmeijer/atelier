@@ -3,7 +3,7 @@ import { createServer } from "node:http";
 import { mkdtemp, rm } from "node:fs/promises";
 import { join } from "node:path";
 import { tmpdir } from "node:os";
-import { detectSelfUpdateRuntime, prepareUpdate, pullImageReference, type DockerImage, type PullProgress, type PullLayerProgress } from "../../src/server/docker.ts";
+import { detectSelfUpdateRuntime, prepareUpdate, pruneUnusedAtelierImages, pullImageReference, type DockerImage, type PullProgress, type PullLayerProgress } from "../../src/server/docker.ts";
 
 const app = `ghcr.io/lucasmeijer/atelier@sha256:${"a".repeat(64)}`;
 const workspace = `ghcr.io/lucasmeijer/workspace@sha256:${"b".repeat(64)}`;
@@ -17,6 +17,7 @@ test("discovers everything before pulling and weights unique layer bytes", async
   const calls: string[] = [];
   const progress: PullProgress[] = [];
   const result = await prepareUpdate(app, (event) => progress.push(event), {
+    prune: async () => { calls.push("prune"); },
     resolve: async (reference) => { calls.push(`resolve ${reference}`); return resolve(reference); },
     pull: async (reference, report) => {
       calls.push(`pull ${reference}`);
@@ -24,14 +25,15 @@ test("discovers everything before pulling and weights unique layer bytes", async
     },
     inspect: async (reference) => { calls.push(`inspect ${reference}`); return reference === app ? appImage : { Id: "sha256:workspace" }; },
   });
-  expect(calls).toEqual([`resolve ${app}`, `resolve ${workspace}`, `pull ${app}`, `pull ${workspace}`, `inspect ${app}`, `inspect ${workspace}`]);
+  expect(calls).toEqual([`resolve ${app}`, `resolve ${workspace}`, "prune", `pull ${app}`, `pull ${workspace}`, `inspect ${app}`, `inspect ${workspace}`]);
   expect(result).toEqual({ reference: app, imageId: "sha256:app" });
-  expect(progress.map((event) => event.percent)).toEqual([undefined, 0, 25, 25, 50, 99, 99, 100]);
+  expect(progress.map((event) => event.percent)).toEqual([undefined, undefined, 0, 25, 25, 50, 99, 99, 100]);
 });
 test("dependency failure never reports completion and can retry", async () => {
   let failure = true;
   const percentages: (number | undefined)[] = [];
   const deps = {
+    prune: async () => {},
     resolve,
     pull: async (reference: string) => { if (reference === workspace && failure) throw new Error("registry unavailable"); },
     inspect: async () => appImage,
@@ -44,6 +46,7 @@ test("dependency failure never reports completion and can retry", async () => {
 test("discovery failure prevents all downloads", async () => {
   const pulls: string[] = [];
   await expect(prepareUpdate(app, () => {}, {
+    prune: async () => { pulls.push("prune"); },
     resolve: async (reference) => { if (reference === workspace) throw new Error("bad dependency"); return resolve(reference); },
     pull: async (reference) => { pulls.push(reference); },
   })).rejects.toThrow("bad dependency");
@@ -52,6 +55,7 @@ test("discovery failure prevents all downloads", async () => {
 test("cached layers count once and extraction cannot regress progress", async () => {
   const percentages: number[] = [];
   await prepareUpdate(app, (event) => { if (event.percent !== undefined) percentages.push(event.percent); }, {
+    prune: async () => {},
     resolve,
     pull: async (_reference, report) => {
       report({ id: layerA.slice(7, 19), complete: true });
@@ -65,6 +69,7 @@ test("cached layers count once and extraction cannot regress progress", async ()
 test("verification failure never reports ready", async () => {
   const percentages: (number | undefined)[] = [];
   await expect(prepareUpdate(app, (event) => percentages.push(event.percent), {
+    prune: async () => {},
     resolve, pull: async () => {}, inspect: async () => { throw new Error("missing image"); },
   })).rejects.toThrow("missing image");
   expect(percentages).not.toContain(100);
@@ -110,6 +115,7 @@ test("deduplicates dependency cycles and restores mutable names only after verif
   const percentages: (number | undefined)[] = [];
   let tagFails = false;
   const deps = {
+    prune: async () => {},
     resolve: async (reference: string) => {
       calls.push(`resolve ${reference}`);
       return { reference: reference === app ? app : workspace, layers: [], dependencies: reference === app ? [alias, workspace] : [app] };
@@ -130,4 +136,35 @@ test("deduplicates dependency cycles and restores mutable names only after verif
   tagFails = true;
   await expect(prepareUpdate(app, (event) => percentages.push(event.percent), deps)).rejects.toThrow("tag failed");
   expect(percentages).not.toContain(100);
+});
+
+test("prunes only Atelier app and workspace images using Docker's unused-image protection", async () => {
+  const calls: string[][] = [];
+  await pruneUnusedAtelierImages(async (args) => {
+    calls.push(args);
+    return { code: 0, stdout: "", stderr: "" };
+  });
+  expect(calls).toEqual([
+    ["image", "prune", "--all", "--force", "--filter", "label=org.opencontainers.image.source=https://github.com/lucasmeijer/atelier", "--filter", "label=eagerly-preload"],
+    ["image", "prune", "--all", "--force", "--filter", "label=com.atelier.workspace-image.signature"],
+  ]);
+});
+
+test("preparation stops before downloading when either prune fails", async () => {
+  for (const failAt of [1, 2]) {
+    let prunes = 0;
+    const pulls: string[] = [];
+    await expect(prepareUpdate(app, () => {}, {
+      resolve,
+      exec: async () => ({ code: ++prunes === failAt ? 1 : 0, stdout: "", stderr: "prune failed" }),
+      pull: async (reference) => { pulls.push(reference); },
+    })).rejects.toThrow("prune failed");
+    expect(prunes).toBe(failAt);
+    expect(pulls).toEqual([]);
+  }
+});
+
+test("prune failure without stderr still explains the failed operation", async () => {
+  await expect(pruneUnusedAtelierImages(async () => ({ code: 1, stdout: "", stderr: "" })))
+    .rejects.toThrow("Could not prune unused Atelier images");
 });
