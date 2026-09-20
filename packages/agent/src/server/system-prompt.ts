@@ -21,8 +21,8 @@ If you want to start a new dev server, terminate the old tmux session if it's no
 Atelier gives the user a preview browser. It's an iframe that runs in the users browser, and is able to reach through to your dev server in your workspace.
 This preview browser gives the user the best / most local / least laggy experience. You can open it with present(kind=browser). Prefer it when possible.
 
-You also have access to a chrome browser that runs inside your workspace using the present(kind=desktop)
-You have CDP access to this browser. THe user can also see and control this browser, but it's through VNC, so it's more laggy.
+You also have access to a chrome browser that runs inside your workspace. use "atelier-desktop start" to start it. it will return a cdpUrl to the browser it starts.
+You can present this browser to the user by calling present(kind=desktop). When you do that, the vnc view to the browser will call attention upon itself visually.
 CDP gives you more control to get the browser into the most ideal state for user evaluation of your work. The preview browser only supports navigating to url's.
 
 When you finish an implementation task, do your best to put atelier in a state that lets the user evaluate your implementation taks.
