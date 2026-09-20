@@ -46,7 +46,7 @@ function createFileEditorController(Controller: WorkspaceClientControllerConstru
     declare readonly hasPreviewTarget: boolean;
 
     private view?: EditorView;
-    private connection = new AbortController();
+    private connection!: AbortController;
     private previewSequence = 0;
     private revision = "";
     private savedContent = "";
@@ -59,19 +59,23 @@ function createFileEditorController(Controller: WorkspaceClientControllerConstru
       this.connection = new AbortController();
       const { signal } = this.connection;
       this.loadingTarget.hidden = false;
+      this.loadingTarget.classList.remove("is-error");
+      this.loadingTarget.querySelector("span")!.textContent = "Loading file…";
+      this.copyButtonTarget.disabled = true;
+      this.copyButtonTarget.dataset.copyText = "";
+      this.setStatus("Loading…", "");
+      this.showRaw();
       // SAFETY: The server-rendered DOM and connected controller contract establish this element shape.
-      window.addEventListener("atelier:files-refresh", this.refreshRequested as EventListener);
+      window.addEventListener("atelier:files-refresh", this.refreshRequested as EventListener, { signal });
       this.updateWorkViewLabel();
       void this.load(signal).catch((error: Error) => {
-        if (!signal.aborted) this.showLoadError(error);
+        if (this.isCurrentConnection(signal)) this.showLoadError(error);
       });
     }
 
     disconnect(): void {
-      // SAFETY: The server-rendered DOM and connected controller contract establish this element shape.
-      window.removeEventListener("atelier:files-refresh", this.refreshRequested as EventListener);
-      if (this.saveTimer) clearTimeout(this.saveTimer);
       this.connection.abort();
+      if (this.saveTimer) clearTimeout(this.saveTimer);
       this.previewSequence++;
       this.saveSequence++;
       this.saveTimer = undefined;
@@ -111,9 +115,15 @@ function createFileEditorController(Controller: WorkspaceClientControllerConstru
       selector.querySelector<HTMLElement>("[data-atelier-fullscreen-title-value]")!.dataset.atelierFullscreenTitleValue = label;
     }
 
+    private isCurrentConnection(signal: AbortSignal): boolean {
+      // Disconnect aborts this connection's signal, even across reconnects.
+      // DOM removal can precede Stimulus delivering disconnect().
+      return !signal.aborted && this.element.isConnected;
+    }
+
     private async load(signal: AbortSignal): Promise<void> {
       const file = await this.fetchFile(signal);
-      if (signal.aborted) return;
+      if (!this.isCurrentConnection(signal)) return;
       this.revision = file.revision;
       this.savedContent = file.content;
       this.loadingTarget.hidden = true;
@@ -157,14 +167,14 @@ function createFileEditorController(Controller: WorkspaceClientControllerConstru
       if (detail.workspaceId !== this.workspaceIdValue) return;
       const { signal } = this.connection;
       void this.checkDisk(signal).catch((error: Error) => {
-        if (!signal.aborted) throw error;
+        if (this.isCurrentConnection(signal)) throw error;
       });
     };
 
     private async checkDisk(signal: AbortSignal): Promise<void> {
       if (!this.view) return;
       const latest = await this.fetchFile(signal);
-      if (signal.aborted) return;
+      if (!this.isCurrentConnection(signal)) return;
       if (latest.revision === this.revision) return;
       if (this.view.state.doc.toString() !== this.savedContent) {
         this.showConflict(latest);
@@ -291,7 +301,7 @@ function createFileEditorController(Controller: WorkspaceClientControllerConstru
     }
 
     private showLoadError(error: Error): void {
-      this.loadingTarget.textContent = error.message;
+      this.loadingTarget.querySelector("span")!.textContent = error.message;
       this.loadingTarget.classList.add("is-error");
       this.setStatus("Unable to open", "error");
     }
