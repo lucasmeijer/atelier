@@ -475,7 +475,7 @@ export async function createWorkspace(options: { id: string; events: AtelierEven
     await run.step("workspace.source", "Prepare workspace source", async () => {
       await writeWorkspaceInit(getAtelierRuntimeContext(), id, init);
       await events.emit("workspace_source_prepare", { workspaceId: id, init, context, workHostPath: source.worktreePath, workContainerPath: workspaceRoot });
-    });
+    }, "retry");
     const activePlan = await run.step("workspace.plan", "Prepare workspace container plan", async () => {
       const labels = { [workspaceTypeLabel]: "workspace", [namespaceLabel]: namespace(), [workspaceIdLabel]: id } satisfies Record<string, string>;
       const activePlan = baseWorkspacePlan(labels);

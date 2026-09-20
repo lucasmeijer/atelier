@@ -17,7 +17,7 @@ export interface WorkspaceProvisionStep extends WorkspaceProvisionProgress {
 export interface WorkspaceProvisionSnapshot {
   status: "running" | "waiting" | "done" | "failed" | "cancelled";
   steps: WorkspaceProvisionStep[];
-  waiting?: { stepId: string; retryable: boolean };
+  waiting?: { stepId: string; retryable: boolean; continuable: boolean };
   totalMs?: number;
   error?: string;
 }
@@ -52,7 +52,7 @@ interface ProvisioningState {
   startedAt: number;
   totalMs?: number;
   error?: string;
-  pending?: { stepId: string; retryable: boolean; resolve(action: "retry" | "continue"): void };
+  pending?: { stepId: string; retryable: boolean; continuable: boolean; resolve(action: "retry" | "continue"): void };
 }
 
 /** Owns execution order, progress, and recovery. Consumers render snapshots, not event patches. */
@@ -79,12 +79,13 @@ export function createWorkspaceProvisioning(options: { events?: AtelierEventBus;
       const run = runs.get(id);
       if (!run) return undefined;
       const { pending, startedAt, controller: _controller, settled: _settled, ...state } = run;
-      return structuredClone({ ...state, totalMs: state.totalMs ?? Math.round(performance.now() - startedAt), status: pending ? "waiting" : state.status, waiting: pending && { stepId: pending.stepId, retryable: pending.retryable } });
+      return structuredClone({ ...state, totalMs: state.totalMs ?? Math.round(performance.now() - startedAt), status: pending ? "waiting" : state.status, waiting: pending && { stepId: pending.stepId, retryable: pending.retryable, continuable: pending.continuable } });
     },
     resume(id, action) {
       const run = runs.get(id);
       if (!run?.pending) throw new AtelierCoreError("workspace_not_ready", `workspace ${id} is not waiting for provisioning confirmation`);
       const pending = run.pending;
+      if (action === "continue" && !pending.continuable) throw invalidArguments("This step must succeed before continuing");
       if (action === "retry" && !pending.retryable) throw invalidArguments("This step does not support retry");
       run.pending = undefined;
       pending.resolve(action);
@@ -145,7 +146,7 @@ export function createWorkspaceProvisioning(options: { events?: AtelierEventBus;
                   throw error;
                 }
                 const pending = Promise.withResolvers<"retry" | "continue">();
-                state.pending = { stepId: id, retryable: recovery === "retry-or-continue", resolve: pending.resolve };
+                state.pending = { stepId: id, retryable: recovery !== "continue", continuable: recovery !== "retry", resolve: pending.resolve };
                 changed();
                 const action = await pending.promise;
                 checkCancelled();

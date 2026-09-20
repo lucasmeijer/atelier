@@ -207,3 +207,21 @@ test("cancel waits for operation cleanup and prevents the next step", async () =
   expect(next).toBe(false);
   expect(await completed).toMatchObject({ message: "workspace cancel provisioning cancelled" });
 });
+
+test("required source preparation can retry but cannot be skipped", async () => {
+  const waiting = Promise.withResolvers<void>();
+  const provisioning = createWorkspaceProvisioning({ onChange(id) {
+    if (provisioning.snapshot(id)?.waiting) waiting.resolve();
+  } });
+  let attempts = 0;
+  const finished = provisioning.run("source", (run) => run.step("workspace.source", "Prepare source", () => {
+    if (++attempts === 1) throw new Error("Permission denied (publickey)");
+  }, "retry"));
+  await waiting.promise;
+  expect(provisioning.snapshot("source")?.waiting).toEqual({ stepId: "workspace.source", retryable: true, continuable: false });
+  expect(() => provisioning.resume("source", "continue")).toThrow("must succeed");
+  provisioning.resume("source", "retry");
+  await finished;
+  expect(attempts).toBe(2);
+  expect(provisioning.snapshot("source")?.status).toBe("done");
+});

@@ -494,10 +494,15 @@ export function createWebApp(deps: WebAppDeps): WebApp {
     const failed = entry.phase.kind === "provisioningPhase" && entry.phase.status === "failed";
     const sourceFailure = snapshot?.steps.find((step) => step.id === "workspace.source" && step.status === "failed");
     const needsSshKey = !!sourceFailure?.error && isSshAuthenticationFailure(sourceFailure.error);
-    const recovery = failed && projectId
-      ? `${needsSshKey ? "<p>SSH authentication failed. An SSH key with access to this repository may resolve this. Add it to this project, then create a new workspace.</p>" : ""}${actionLinkHtml({ href: `/projects/${encodeURIComponent(projectId)}/settings?section=${needsSshKey ? "ssh-keys" : "repository"}`, variant: "primary", content: { kind: "caption", caption: needsSshKey ? "Add project SSH key" : "Open Project settings" }, attributesHtml: 'data-turbo-stream="true"' })}`
+    const recoveryActions = (failed || sourceFailure) && projectId
+      ? actionLinkHtml({ href: `/projects/${encodeURIComponent(projectId)}/settings?section=${needsSshKey ? "ssh-keys" : "repository"}`, variant: "primary", content: { kind: "caption", caption: needsSshKey ? "Add project SSH key" : "Open Project settings" }, attributesHtml: 'data-turbo-stream="true"' })
       : "";
-    const inner = `${renderWorkspaceProvisioning(entry.id, snapshot, { failed, error: entry.phase.error })}${recovery}${deleteAction}`;
+    const recovery = sourceFailure ? {
+      stepId: sourceFailure.id,
+      description: needsSshKey ? "SSH authentication failed. An SSH key with access to this repository may resolve this. Add it to this project, then retry." : undefined,
+      actionsHtml: recoveryActions,
+    } : undefined;
+    const inner = `${renderWorkspaceProvisioning(entry.id, snapshot, { failed, error: entry.phase.error, recovery })}${sourceFailure ? "" : recoveryActions}${deleteAction}`;
     const projectAttr = projectId ? ` data-project-id="${escapeHtml(projectId)}"` : "";
     return `<div class="workspace-detail-resident workspace-boot ${options.visible ? "visible" : ""}" id="${workspaceResidentId(entry.id)}" data-workspace-residency-target="resident" data-workspace-id="${escapeHtml(entry.id)}"${projectAttr}><div class="main"><div class="body"><div class="workspace-boot-progress"><div class="workspace-boot-content">${inner}</div></div>${renderWorkspaceLaunchPrompt(provisioningPrompts.get(entry.id))}</div></div>${renderMobileWorkspaceBar()}</div>`;
   }

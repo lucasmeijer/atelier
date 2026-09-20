@@ -255,7 +255,7 @@ export type WorkspaceServerAppResolver = (
   requestUrl: URL,
 ) => Promise<WorkspaceAppBackend | undefined> | WorkspaceAppBackend | undefined;
 
-export type WorkspaceProvisionRecovery = "continue" | "retry-or-continue";
+export type WorkspaceProvisionRecovery = "continue" | "retry" | "retry-or-continue";
 
 export interface WorkspaceServerProvisioningHook {
   id: string;
