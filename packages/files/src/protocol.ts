@@ -2,6 +2,8 @@ import type { JsonValue } from "@atelier/core";
 import { Type, type Static } from "typebox";
 import { Value } from "typebox/value";
 
+// Content is verbatim UTF-8 text, not newline-normalized editor text.
+// Both reads (including conflicts) and saves preserve separators and BOMs.
 const editableFileSchema = Type.Object({
   content: Type.String(),
   revision: Type.String(),

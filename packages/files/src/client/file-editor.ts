@@ -11,7 +11,56 @@ import { tags } from "@lezer/highlight";
 import { setToggleValue, type ToggleChangeEvent } from "@atelier/design-system/toggle/client";
 import { CableTopics, type CableSubscription, type WorkspaceClientApplication, type WorkspaceClientControllerConstructor } from "@atelier/shared";
 import { parseEditableFileResponse, parseFileSaveResponse, type EditableFileResponse } from "../protocol.ts";
+import { FileDraft } from "../file-draft.ts";
+import { editorText, editFileText, type FileTextChange } from "../editable-text.ts";
 import { languageExtension } from "./editor-language.ts";
+
+// Retain drafts and in-flight writes across Turbo frame replacements.
+const drafts = new Map<string, FileDraft>();
+const backupErrors = new WeakMap<FileDraft, string>();
+
+function fileDraft(url: string, file: EditableFileResponse): FileDraft {
+  const existing = drafts.get(url);
+  if (existing) {
+    existing.changedOnDisk(file);
+    return existing;
+  }
+  const key = `atelier:file-draft:${url}`;
+  const stored = localStorage.getItem(key);
+  let base = file;
+  let content = file.content;
+  if (stored) {
+    const value = JSON.parse(stored);
+    base = parseEditableFileResponse(value.base);
+    content = parseEditableFileResponse(value.draft).content;
+  }
+  const draft = new FileDraft(base, async (request) => {
+    const response = await fetch(url, {
+      method: "PUT",
+      headers: { "content-type": "application/json", "accept": "application/json" },
+      body: JSON.stringify(request),
+    });
+    if (response.status === 409) return { conflict: parseEditableFileResponse(await response.json()) };
+    if (!response.ok) throw new Error(await response.text());
+    return parseFileSaveResponse(await response.json());
+  });
+  draft.edit(content);
+  draft.listeners.add(() => {
+    try {
+      if (draft.dirty) {
+        const base = { content: draft.savedContent, revision: draft.revision, writable: file.writable };
+        localStorage.setItem(key, JSON.stringify({ base, draft: { ...base, content: draft.content } }));
+      } else localStorage.removeItem(key);
+      backupErrors.delete(draft);
+    } catch (error) {
+      // Storage quotas and browser privacy settings must not prevent disk saves.
+      backupErrors.set(draft, `Draft backup failed: ${error instanceof Error ? error.message : String(error)}. Keep this tab open until saved.`);
+    }
+  });
+  drafts.set(url, draft);
+  draft.changedOnDisk(file);
+  return draft;
+}
 
 const editorHighlightStyle = HighlightStyle.define([
   { tag: [tags.keyword, tags.operatorKeyword, tags.modifier], color: "var(--editor-keyword)" },
@@ -50,9 +99,7 @@ function createFileEditorController(Controller: WorkspaceClientControllerConstru
     private view?: EditorView;
     private connection!: AbortController;
     private previewSequence = 0;
-    private revision = "";
-    private savedContent = "";
-    private latestDisk?: EditableFileResponse;
+    private draft?: FileDraft;
     private saveTimer?: ReturnType<typeof setTimeout>;
     private applyingDisk = false;
     private saveSequence = 0;
@@ -68,7 +115,13 @@ function createFileEditorController(Controller: WorkspaceClientControllerConstru
       this.copyButtonTarget.dataset.copyText = "";
       this.setStatus("Loading…", "");
       this.showRaw();
-      // SAFETY: The server-rendered DOM and connected controller contract establish this element shape.
+      window.addEventListener("beforeunload", (event) => {
+        if ([...drafts.values()].some((draft) => draft.dirty)) {
+          event.preventDefault();
+          event.returnValue = "";
+        }
+      }, { signal });
+      // SAFETY: The files-refresh event carries EditorRefreshDetail.
       window.addEventListener("atelier:files-refresh", this.refreshRequested as EventListener, { signal });
       this.element.addEventListener("atelier:file-editor-refresh", this.refreshDisk, { signal });
       this.updateWorkViewLabel();
@@ -81,17 +134,19 @@ function createFileEditorController(Controller: WorkspaceClientControllerConstru
       this.connection.abort();
       if (this.saveTimer) clearTimeout(this.saveTimer);
       this.previewSequence++;
-      this.saveSequence++;
+      this.draft?.listeners.delete(this.renderDraft);
+      const draft = this.draft;
+      if (draft) void draft.flush().then(() => {
+        if (!draft.dirty && draft.listeners.size === 1 && drafts.get(this.contentUrlValue) === draft) drafts.delete(this.contentUrlValue);
+      });
       this.saveTimer = undefined;
       this.view?.destroy();
       this.view = undefined;
       this.conflictTarget.close();
-      this.latestDisk = undefined;
     }
 
-    async useMine(): Promise<void> {
-      this.conflictTarget.close();
-      await this.save(true);
+    useMine(): Promise<void> {
+      return this.save(true);
     }
 
     async selectPreviewMode(event: ToggleChangeEvent): Promise<void> {
@@ -103,11 +158,7 @@ function createFileEditorController(Controller: WorkspaceClientControllerConstru
     }
 
     useTheirs(): void {
-      const latest = this.latestDisk!;
-      this.conflictTarget.close();
-      this.applyDisk(latest);
-      this.setStatus("Updated", "");
-      this.refreshVisiblePreview();
+      this.draft!.accept(this.draft!.conflict!);
     }
 
     private updateWorkViewLabel(): void {
@@ -128,13 +179,12 @@ function createFileEditorController(Controller: WorkspaceClientControllerConstru
     private async load(signal: AbortSignal): Promise<void> {
       const file = await this.fetchFile(signal);
       if (!this.isCurrentConnection(signal)) return;
-      this.revision = file.revision;
-      this.savedContent = file.content;
+      this.draft = fileDraft(this.contentUrlValue, file);
       this.loadingTarget.hidden = true;
       this.view = new EditorView({
         parent: this.hostTarget,
         state: EditorState.create({
-          doc: file.content,
+          doc: editorText(this.draft.content),
           extensions: [
             history(),
             drawSelection(),
@@ -153,21 +203,28 @@ function createFileEditorController(Controller: WorkspaceClientControllerConstru
             EditorView.updateListener.of((update) => {
               if (!update.docChanged) return;
               // A response belongs to the document and editing choice that requested it.
-              if (this.applyingDisk) this.invalidatePreview();
-              else this.showRaw();
-              this.copyButtonTarget.dataset.copyText = update.state.doc.toString();
-              if (this.applyingDisk) return;
-              this.setStatus("Saving…", "saving");
+              if (this.applyingDisk) {
+                this.invalidatePreview();
+                return;
+              }
+              this.showRaw();
+              const changes: FileTextChange[] = [];
+              update.changes.iterChanges((from, to, _fromB, _toB, inserted) => {
+                changes.push({ from, to, insert: inserted.toString() });
+              });
+              this.draft!.edit(editFileText(this.draft!.content, changes));
               if (this.saveTimer) clearTimeout(this.saveTimer);
-              this.saveTimer = setTimeout(() => void this.save(false), 500);
+              this.saveTimer = setTimeout(() => void this.save(), 500);
             }),
             keymap.of([...closeBracketsKeymap, ...defaultKeymap, ...searchKeymap, ...historyKeymap, indentWithTab]),
           ],
         }),
       });
-      this.copyButtonTarget.dataset.copyText = file.content;
+      this.draft.listeners.add(this.renderDraft);
+      this.renderDraft();
+      if (this.draft.dirty && !this.draft.conflict) void this.save();
       this.copyButtonTarget.disabled = false;
-      this.setStatus(file.writable ? "" : "Read only", "");
+      if (!file.writable) this.setStatus("Read only", "");
       this.jumpTo(this.lineValue, this.columnValue);
       if (this.hasPreviewTarget && this.lineValue < 1) await this.showPreview();
     }
@@ -189,82 +246,55 @@ function createFileEditorController(Controller: WorkspaceClientControllerConstru
       if (!this.view) return;
       const sequence = ++this.diskSequence;
       const saveSequence = this.saveSequence;
-      const revision = this.revision;
+      const revision = this.draft!.revision;
       const latest = await this.fetchFile(signal);
-      if (!this.isCurrentConnection(signal) || sequence !== this.diskSequence || saveSequence !== this.saveSequence || revision !== this.revision) return;
-      if (latest.revision === this.revision) {
-        if (this.view.state.doc.toString() === this.savedContent) this.setStatus(latest.writable ? "Up to date" : "Read only", "");
+      if (!this.isCurrentConnection(signal) || sequence !== this.diskSequence || saveSequence !== this.saveSequence || revision !== this.draft!.revision) return;
+      if (latest.revision === this.draft!.revision) {
+        if (!this.draft!.dirty && !this.draft!.saving) this.setStatus(latest.writable ? "Up to date" : "Read only", "");
         return;
       }
-      if (this.view.state.doc.toString() !== this.savedContent) {
-        this.showConflict(latest);
-        return;
-      }
-      this.applyDisk(latest);
-      this.setStatus(latest.writable ? "Updated" : "Read only", "");
-      this.refreshVisiblePreview();
+      this.draft!.changedOnDisk(latest);
     }
 
-    private async save(force: boolean): Promise<void> {
-      if (!this.view) return;
+    private save(force = false): Promise<void> {
       if (this.saveTimer) clearTimeout(this.saveTimer);
       this.saveTimer = undefined;
-      const content = this.view.state.doc.toString();
-      if (!force && content === this.savedContent) {
-        this.setStatus("", "");
-        return;
-      }
-      const sequence = ++this.saveSequence;
-      this.setStatus("Saving…", "saving");
-      const response = await fetch(this.contentUrlValue, {
-        method: "PUT",
-        headers: { "content-type": "application/json", "accept": "application/json" },
-        body: JSON.stringify({ content, revision: this.revision, force }),
-      });
-      if (sequence !== this.saveSequence) return;
-      if (response.status === 409) {
-        const latest = parseEditableFileResponse(await response.json());
-        if (sequence !== this.saveSequence) return;
-        this.showConflict(latest);
-        return;
-      }
-      if (!response.ok) {
-        const message = await response.text();
-        if (sequence !== this.saveSequence) return;
-        this.setStatus(message, "error");
-        return;
-      }
-      const result = parseFileSaveResponse(await response.json());
-      if (sequence !== this.saveSequence) return;
-      this.revision = result.revision;
-      this.savedContent = content;
-      this.setStatus("Saved", "saved");
+      this.saveSequence++;
+      return this.draft!.flush(force);
     }
+
+    private readonly renderDraft = (): void => {
+      if (!this.view || !this.isCurrentConnection(this.connection.signal)) return;
+      const draft = this.draft!;
+      const content = editorText(draft.content);
+      if (this.view.state.doc.toString() !== content) {
+        this.applyingDisk = true;
+        this.view.dispatch({ changes: { from: 0, to: this.view.state.doc.length, insert: content } });
+        this.applyingDisk = false;
+        if (this.hasPreviewTarget && !this.previewTarget.hidden) void this.showPreview();
+      }
+      this.copyButtonTarget.dataset.copyText = draft.content;
+      if (draft.conflict) {
+        if (this.saveTimer) clearTimeout(this.saveTimer);
+        this.saveTimer = undefined;
+        this.conflictMineTarget.value = draft.content;
+        this.conflictTheirsTarget.value = draft.conflict.content;
+        this.setStatus("Conflict", "conflict");
+        if (!this.conflictTarget.open) this.conflictTarget.showModal();
+        return;
+      }
+      this.conflictTarget.close();
+      const backupError = backupErrors.get(draft);
+      if (draft.error) this.setStatus(`Not saved: ${draft.error}. Draft retained; edit or reopen to retry.`, "error");
+      else if (backupError) this.setStatus(backupError, "error");
+      else if (draft.dirty || draft.saving) this.setStatus("Saving…", "saving");
+      else this.setStatus("Saved", "saved");
+    };
 
     private async fetchFile(signal: AbortSignal): Promise<EditableFileResponse> {
       const response = await fetch(this.contentUrlValue, { signal, headers: { "accept": "application/json" } });
       if (!response.ok) throw new Error(await response.text());
       return parseEditableFileResponse(await response.json());
-    }
-
-    private applyDisk(file: EditableFileResponse): void {
-      const view = this.view!;
-      this.applyingDisk = true;
-      view.dispatch({ changes: { from: 0, to: view.state.doc.length, insert: file.content } });
-      this.applyingDisk = false;
-      this.revision = file.revision;
-      this.savedContent = file.content;
-      this.latestDisk = undefined;
-    }
-
-    private showConflict(file: EditableFileResponse): void {
-      if (this.saveTimer) clearTimeout(this.saveTimer);
-      this.saveTimer = undefined;
-      this.latestDisk = file;
-      this.conflictMineTarget.value = this.view!.state.doc.toString();
-      this.conflictTheirsTarget.value = file.content;
-      this.setStatus("Conflict", "conflict");
-      if (!this.conflictTarget.open) this.conflictTarget.showModal();
     }
 
     private async showPreview(): Promise<void> {
@@ -315,10 +345,6 @@ function createFileEditorController(Controller: WorkspaceClientControllerConstru
       this.previewTarget.hidden = !visible;
       this.hostTarget.hidden = visible;
       setToggleValue(this.previewOptionsTarget, visible ? "preview" : "edit");
-    }
-
-    private refreshVisiblePreview(): void {
-      if (this.hasPreviewTarget && !this.previewTarget.hidden) void this.showPreview();
     }
 
     private jumpTo(line: number, column = 1): void {

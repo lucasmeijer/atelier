@@ -1,14 +1,9 @@
 import { createHash } from "node:crypto";
 import { posix } from "node:path";
 import { execWorkspaceCommand, execWorkspaceCommandBuffer, workspaceRoot } from "@atelier/workspace";
+import type { EditableFileResponse } from "../protocol.ts";
 
 export const maxEditableFileBytes = 2_000_000;
-
-export interface EditableFile {
-  content: string;
-  revision: string;
-  writable: boolean;
-}
 
 export class EditableFileError extends Error {
   constructor(message: string, readonly status: number) {
@@ -35,7 +30,7 @@ async function editableTarget(workspaceId: string, inputPath: string | null): Pr
   return posix.join(directory, posix.basename(requested));
 }
 
-export async function readEditableFile(workspaceId: string, inputPath: string | null): Promise<EditableFile> {
+export async function readEditableFile(workspaceId: string, inputPath: string | null): Promise<EditableFileResponse> {
   const path = await editableTarget(workspaceId, inputPath);
   const script = `if ! test -e "$1"; then exit 44; fi
 if test -L "$1" || ! test -f "$1"; then exit 45; fi
@@ -54,7 +49,7 @@ cat -- "$1"`;
   if (bytes.includes(0)) throw new EditableFileError("Only text files can be edited", 415);
   let content: string;
   try {
-    content = new TextDecoder("utf-8", { fatal: true }).decode(bytes);
+    content = new TextDecoder("utf-8", { fatal: true, ignoreBOM: true }).decode(bytes);
   } catch {
     throw new EditableFileError("Only UTF-8 text files can be edited", 415);
   }
