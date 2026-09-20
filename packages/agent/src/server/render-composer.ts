@@ -113,7 +113,7 @@ function renderAgentPaneComposer(options: AgentComposerRenderOptions): string {
             <div class="agent-attach-row" id="${ids.attachRow(ctx)}" data-agent-attachments-target="row">${options.attachments.map((attachment) => renderAttachmentChip(attachment, draftId)).join("")}</div>
             <div class="composer-input-area">
               ${renderAgentPanePromptInput(ctx, options.initialText ?? "")}
-              ${renderTranscriptionComposerControl()}
+              <div class="composer-input-controls">${renderTranscriptionComposerControl()}${renderAttachmentPicker("icon-only")}</div>
             </div>
             ${renderComposerActions(actions)}
           </form>
@@ -176,7 +176,6 @@ export function renderPromptActions(ctx: AgentRenderContext | undefined, busy: b
 
 function renderComposerActions(sendHtml: string): string {
   return `<div class="composer-actions">
-    ${renderAttachmentPicker()}
     <span class="spacer"></span>
     <span class="composer-send-action">${sendHtml}</span>
     <span class="composer-connect-action">${buttonHtml({ type: "button", variant: "primary", content: { kind: "caption", caption: "Connect to send" }, attributesHtml: 'data-action="agent-model-setup#open"' })}</span>

@@ -44,7 +44,7 @@ export async function launchComposerContent(options: { draftId: string; provider
     formAttributesHtml: 'data-action="submit->transcription-composer#submit keydown->submit-shortcut#keydown submit->submit-shortcut#submit turbo:submit-end->launch-composer-dialog#submitted turbo:submit-end->submit-shortcut#submitted"',
     bodyHtml: `<input type="hidden" name="attachmentDraft" value="${escapeHtml(draftId)}">
       <div class="agent-attach-row" id="${rowId}" data-agent-attachments-target="row"></div>
-      <div class="composer-input-area"><textarea class="composer-input" name="text" rows="8" enterkeyhint="send" placeholder="Describe what you want the agent to do… (optional)" aria-label="Initial agent prompt" data-action="paste->agent-attachments#paste"></textarea><div class="launch-composer-input-controls">${renderTranscriptionComposerControl()}${renderAttachmentPicker("icon-only")}</div></div>
+      <div class="composer-input-area"><textarea class="composer-input" name="text" rows="8" enterkeyhint="send" placeholder="Describe what you want the agent to do… (optional)" aria-label="Initial agent prompt" data-action="paste->agent-attachments#paste"></textarea><div class="composer-input-controls">${renderTranscriptionComposerControl()}${renderAttachmentPicker("icon-only")}</div></div>
       <div class="composer-actions"><span class="spacer"></span>${send}</div>
       <p role="status" data-agent-attachments-target="status" hidden></p>`,
     footerHtml: await renderLaunchProvider(options.provider, options.providers, options.context),
