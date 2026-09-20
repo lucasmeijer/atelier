@@ -321,6 +321,7 @@ export interface WorkspaceServerModuleContext {
   registry: {
     setAgentBusy(workspaceId: string, agentKey: string, busy: boolean): void;
     requestSurfaceAttention(workspaceId: string, surfaceKey: string): void;
+    requestAttention(workspaceId: string): void;
   };
   globalSidebarContributions: GlobalSidebarContributionRegistry;
   /** Add a Work view without selecting it or requesting attention. */

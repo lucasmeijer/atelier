@@ -15,7 +15,7 @@ function context() {
     broadcasts,
     ctx: {
       events: createAtelierEventBus(),
-      registry: { setAgentBusy: () => {}, requestSurfaceAttention: () => undefined },
+      registry: { setAgentBusy: () => {}, requestSurfaceAttention: () => undefined, requestAttention: () => undefined },
       globalSidebarContributions: { set: (_id: string, html?: string, options?: { broadcastHtml?: string }) => {
         sidebar.push(html ?? "");
         broadcasts.push(options?.broadcastHtml ?? "");

@@ -296,7 +296,6 @@ export function createWorkspaceRegistry(options: WorkspaceRegistryOptions = {}):
       unpark(entry);
       (attention.surfaces[id] ??= {})[key] = { sequence: attention.nextSequence++ };
       persistAttention();
-      if (entry.phase.kind === "runningPhase") requestAttention(id);
       callbacks.rowChanged?.(entry, { viewKey: key });
     },
     requestAttention,

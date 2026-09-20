@@ -189,6 +189,7 @@ export const agentWorkspaceModule: WorkspaceModule = {
     registerSessionShareMountEvents(events);
     events.on("workspace_agent_turn_finished", async ({ workspaceId, conversationId }) => {
       context.registry.requestSurfaceAttention(workspaceId, agentConversationKey(conversationId));
+      context.registry.requestAttention(workspaceId);
       context.broadcastWorkspace(workspaceId, await renderAgentCompletionCatalogTurboStream(workspaceId));
     });
     context.registerSocketHandler(createAgentTermSocketSession);

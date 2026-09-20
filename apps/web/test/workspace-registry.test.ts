@@ -60,10 +60,29 @@ describe("phase-owned workspace activity", () => {
 });
 
 describe("independent attention and visibility", () => {
+  test("surface attention stays local whether agents are busy or idle", async () => {
+    const { registry } = await setup();
+    registry.setAgentBusy("a", "agent:first", true);
+    registry.requestSurfaceAttention("a", "browser:first");
+    expect(registry.surfaceState("a", "browser:first").requestingAttention).toBe(true);
+    expect(registry.get("a")!.requestingAttention).toBe(false);
+    registry.setAgentBusy("a", "agent:first", false);
+    expect(registry.get("a")!.requestingAttention).toBe(false);
+    registry.requestSurfaceAttention("a", "terminal:first");
+    registry.requestSurfaceAttention("a", "agent:first");
+    expect(registry.get("a")!.requestingAttention).toBe(false);
+    registry.requestAttention("a");
+    const attentionAt = registry.get("a")!.attentionAt;
+    expect(registry.get("a")!.requestingAttention).toBe(true);
+    registry.requestSurfaceAttention("a", "browser:second");
+    expect(registry.get("a")!.attentionAt).toBe(attentionAt);
+  });
   test("workspace visibility clears only workspace attention, not its agents or views", async () => {
     const { registry } = await setup();
     registry.requestSurfaceAttention("a", "agent:first");
     registry.requestSurfaceAttention("a", "browser:first");
+    registry.requestAttention("a");
+    expect(registry.get("a")!.requestingAttention).toBe(true);
     registry.setVisibility("browser", { workspaceId: "a", surfaceKeys: [] });
     expect(registry.get("a")!.requestingAttention).toBe(false);
     expect(registry.agentState("a", "agent:first").requestingAttention).toBe(true);
@@ -84,7 +103,7 @@ describe("independent attention and visibility", () => {
     registry.setVisibility("browser", { workspaceId: "b", surfaceKeys: [] });
     expect(registry.get("a")!.requestingAttention).toBe(false);
     registry.requestSurfaceAttention("a", "agent:third");
-    expect(registry.get("a")!.requestingAttention).toBe(true);
+    expect(registry.get("a")!.requestingAttention).toBe(false);
   });
   test("visibility is the union of live browser connections, released on disconnect", async () => {
     const { registry } = await setup();
@@ -98,16 +117,19 @@ describe("independent attention and visibility", () => {
     expect(registry.get("a")!.requestingAttention).toBe(false);
     registry.disconnect("two");
     registry.requestSurfaceAttention("a", "browser:first");
-    expect(registry.get("a")!.requestingAttention).toBe(true);
+    expect(registry.surfaceState("a", "browser:first").requestingAttention).toBe(true);
+    expect(registry.get("a")!.requestingAttention).toBe(false);
   });
   test("repeat requests keep oldest-first ordering, including busy workspaces", async () => {
     const { registry } = await setup();
     registry.requestSurfaceAttention("b", "agent:first");
+    registry.requestAttention("b");
     const first = registry.surfaceState("b", "agent:first").attentionSequence;
     const attentionAt = registry.get("b")!.attentionAt;
     registry.setAgentBusy("b", "agent:first", true);
     registry.requestAttention("a");
     registry.requestSurfaceAttention("b", "agent:first");
+    registry.requestAttention("b");
     registry.touch("a");
     expect(registry.surfaceState("b", "agent:first").attentionSequence).toBe(first);
     expect(registry.get("b")!.attentionAt).toBe(attentionAt);
@@ -116,6 +138,7 @@ describe("independent attention and visibility", () => {
     registry.setVisibility("browser", { workspaceId: "b", surfaceKeys: ["agent:first"] });
     registry.disconnect("browser");
     registry.requestSurfaceAttention("b", "agent:first");
+    registry.requestAttention("b");
     expect(registry.surfaceState("b", "agent:first").attentionSequence).toBeGreaterThan(first!);
     expect(registry.oldestAttentionWorkspace()?.id).toBe("a");
   });
