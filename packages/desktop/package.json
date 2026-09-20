@@ -12,7 +12,7 @@
     "@atelier/design-system": "workspace:*",
     "@atelier/shared": "workspace:*",
     "@atelier/workspace": "workspace:*",
-    "@hotwired/stimulus": "3.2.2",
+    "@hotwired/stimulus": "github:hotwired/dev-builds#339df548999c34d440e04c24b59ad9dc57ce3eb1",
     "@novnc/novnc": "1.7.0",
     "typebox": "^1.0.57"
   }

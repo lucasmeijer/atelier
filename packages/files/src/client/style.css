@@ -14,7 +14,7 @@
 .file-editor-loading { position: absolute; inset: 0; display: flex; align-items: center; justify-content: center; gap: 8px; color: var(--text); }
 .file-editor-loading.is-error { color: var(--danger); }
 .file-editor-preview { min-height: 0; overflow: auto; padding: 16px max(24px, calc((100% - 760px) / 2)) 60px; color: var(--text-bright); font: var(--text-body)/var(--leading-standard) var(--font-sans); }
-.file-editor-preview[hidden], .file-editor-host[hidden] { display: none; }
+.file-editor-loading[hidden], .file-editor-preview[hidden], .file-editor-host[hidden] { display: none; }
 .file-editor-preview > :first-child { margin-top: 0; }
 .file-editor-preview > :last-child { margin-bottom: 0; }
 .file-editor-host .cm-editor { height: 100%; color: var(--text-bright); background: var(--bg); font: var(--text-code)/var(--leading-standard) var(--font-mono); }

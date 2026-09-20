@@ -46,6 +46,7 @@ function createFileEditorController(Controller: WorkspaceClientControllerConstru
     declare readonly hasPreviewTarget: boolean;
 
     private view?: EditorView;
+    private connection = new AbortController();
     private previewSequence = 0;
     private revision = "";
     private savedContent = "";
@@ -55,17 +56,29 @@ function createFileEditorController(Controller: WorkspaceClientControllerConstru
     private saveSequence = 0;
 
     connect(): void {
+      this.connection = new AbortController();
+      const { signal } = this.connection;
+      this.loadingTarget.hidden = false;
       // SAFETY: The server-rendered DOM and connected controller contract establish this element shape.
       window.addEventListener("atelier:files-refresh", this.refreshRequested as EventListener);
       this.updateWorkViewLabel();
-      void this.load().catch((error: Error) => this.showLoadError(error));
+      void this.load(signal).catch((error: Error) => {
+        if (!signal.aborted) this.showLoadError(error);
+      });
     }
 
     disconnect(): void {
       // SAFETY: The server-rendered DOM and connected controller contract establish this element shape.
       window.removeEventListener("atelier:files-refresh", this.refreshRequested as EventListener);
       if (this.saveTimer) clearTimeout(this.saveTimer);
+      this.connection.abort();
+      this.previewSequence++;
+      this.saveSequence++;
+      this.saveTimer = undefined;
       this.view?.destroy();
+      this.view = undefined;
+      this.conflictTarget.close();
+      this.latestDisk = undefined;
     }
 
     async useMine(): Promise<void> {
@@ -98,11 +111,12 @@ function createFileEditorController(Controller: WorkspaceClientControllerConstru
       selector.querySelector<HTMLElement>("[data-atelier-fullscreen-title-value]")!.dataset.atelierFullscreenTitleValue = label;
     }
 
-    private async load(): Promise<void> {
-      const file = await this.fetchFile();
+    private async load(signal: AbortSignal): Promise<void> {
+      const file = await this.fetchFile(signal);
+      if (signal.aborted) return;
       this.revision = file.revision;
       this.savedContent = file.content;
-      this.loadingTarget.remove();
+      this.loadingTarget.hidden = true;
       this.view = new EditorView({
         parent: this.hostTarget,
         state: EditorState.create({
@@ -141,12 +155,16 @@ function createFileEditorController(Controller: WorkspaceClientControllerConstru
     private readonly refreshRequested = (event: CustomEvent<EditorRefreshDetail>): void => {
       const detail = event.detail;
       if (detail.workspaceId !== this.workspaceIdValue) return;
-      void this.checkDisk();
+      const { signal } = this.connection;
+      void this.checkDisk(signal).catch((error: Error) => {
+        if (!signal.aborted) throw error;
+      });
     };
 
-    private async checkDisk(): Promise<void> {
+    private async checkDisk(signal: AbortSignal): Promise<void> {
       if (!this.view) return;
-      const latest = await this.fetchFile();
+      const latest = await this.fetchFile(signal);
+      if (signal.aborted) return;
       if (latest.revision === this.revision) return;
       if (this.view.state.doc.toString() !== this.savedContent) {
         this.showConflict(latest);
@@ -175,21 +193,26 @@ function createFileEditorController(Controller: WorkspaceClientControllerConstru
       });
       if (sequence !== this.saveSequence) return;
       if (response.status === 409) {
-        this.showConflict(parseEditableFileResponse(await response.json()));
+        const latest = parseEditableFileResponse(await response.json());
+        if (sequence !== this.saveSequence) return;
+        this.showConflict(latest);
         return;
       }
       if (!response.ok) {
-        this.setStatus(await response.text(), "error");
+        const message = await response.text();
+        if (sequence !== this.saveSequence) return;
+        this.setStatus(message, "error");
         return;
       }
       const result = parseFileSaveResponse(await response.json());
+      if (sequence !== this.saveSequence) return;
       this.revision = result.revision;
       this.savedContent = content;
       this.setStatus("Saved", "saved");
     }
 
-    private async fetchFile(): Promise<EditableFileResponse> {
-      const response = await fetch(this.contentUrlValue, { headers: { "accept": "application/json" } });
+    private async fetchFile(signal: AbortSignal): Promise<EditableFileResponse> {
+      const response = await fetch(this.contentUrlValue, { signal, headers: { "accept": "application/json" } });
       if (!response.ok) throw new Error(await response.text());
       return parseEditableFileResponse(await response.json());
     }
@@ -217,6 +240,7 @@ function createFileEditorController(Controller: WorkspaceClientControllerConstru
         const previewUrl = `/workspaces/${encodeURIComponent(this.workspaceIdValue)}/files-view/markdown-preview?${new URLSearchParams({ path: this.pathValue })}`;
         const response = await fetch(previewUrl, {
           method: "POST",
+          signal: this.connection.signal,
           headers: { "content-type": "text/plain; charset=utf-8", "accept": "text/html" },
           body: this.view!.state.doc.toString(),
         });

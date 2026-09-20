@@ -42,7 +42,7 @@
         "@atelier/workspace": "workspace:*",
         "@atelier/workspace-terminal": "workspace:*",
         "@gespenst/core": "catalog:",
-        "@hotwired/stimulus": "3.2.2",
+        "@hotwired/stimulus": "github:hotwired/dev-builds#339df548999c34d440e04c24b59ad9dc57ce3eb1",
         "@hotwired/turbo": "8.0.13",
         "typebox": "^1.0.57",
       },
@@ -101,12 +101,14 @@
     "packages/cli-agent": {
       "name": "@atelier/cli-agent",
       "dependencies": {
+        "@atelier/agent": "workspace:*",
         "@atelier/core": "workspace:*",
         "@atelier/design-system": "workspace:*",
         "@atelier/llm": "workspace:*",
         "@atelier/observable-terminal": "workspace:*",
         "@atelier/prompt": "workspace:*",
         "@atelier/shared": "workspace:*",
+        "@atelier/transcription": "workspace:*",
         "@atelier/workspace": "workspace:*",
         "typebox": "^1.0.57",
       },
@@ -114,7 +116,6 @@
     "packages/codex-agent": {
       "name": "@atelier/codex-agent",
       "dependencies": {
-        "@atelier/agent": "workspace:*",
         "@atelier/cli-agent": "workspace:*",
         "@atelier/core": "workspace:*",
         "@atelier/llm": "workspace:*",
@@ -134,7 +135,7 @@
         "@atelier/shared": "workspace:*",
         "@atelier/syntax": "workspace:*",
         "@fontsource/jetbrains-mono": "5.2.8",
-        "@hotwired/stimulus": "3.2.2",
+        "@hotwired/stimulus": "github:hotwired/dev-builds#339df548999c34d440e04c24b59ad9dc57ce3eb1",
       },
     },
     "packages/desktop": {
@@ -145,7 +146,7 @@
         "@atelier/design-system": "workspace:*",
         "@atelier/shared": "workspace:*",
         "@atelier/workspace": "workspace:*",
-        "@hotwired/stimulus": "3.2.2",
+        "@hotwired/stimulus": "github:hotwired/dev-builds#339df548999c34d440e04c24b59ad9dc57ce3eb1",
         "@novnc/novnc": "1.7.0",
         "typebox": "^1.0.57",
       },
@@ -187,7 +188,7 @@
         "@atelier/observable-terminal": "workspace:*",
         "@atelier/proxy-ingress": "workspace:*",
         "@atelier/shared": "workspace:*",
-        "@hotwired/stimulus": "3.2.2",
+        "@hotwired/stimulus": "github:hotwired/dev-builds#339df548999c34d440e04c24b59ad9dc57ce3eb1",
         "typebox": "^1.0.57",
       },
     },
@@ -623,7 +624,7 @@
 
     "@hono/node-server": ["@hono/node-server@2.1.1", "", { "peerDependencies": { "hono": "^4" } }, "sha512-ELuehkj5VCBdgEw9zs+ivkKwyzzUCSQuE96YmiPvn1ECBoZCczbFXJLeEGMTYjphP6gydh4pHMqEYPVMYUVgQg=="],
 
-    "@hotwired/stimulus": ["@hotwired/stimulus@3.2.2", "", {}, "sha512-eGeIqNOQpXoPAIP7tC1+1Yc1yl1xnwYqg+3mzqxyrbE5pg5YFBZcA6YoTiByJB6DKAEsiWtl6tjTJS4IYtbB7A=="],
+    "@hotwired/stimulus": ["@hotwired/stimulus@github:hotwired/dev-builds#339df54", {}, "hotwired-dev-builds-339df54", "sha512-mHNF9l1AaFMwHph9F+E6H9/MOtt8gIPSyNKMJELZOfYlh9rdmfmgXu6+EmC1NfjcA0tc6u+xn8PDoOjSzc9SGw=="],
 
     "@hotwired/turbo": ["@hotwired/turbo@8.0.13", "", {}, "sha512-M7qXUqcGab6G5PKOiwhgbByTtrPgKPFCTMNQ52QhzUEXEqmp0/ApEguUesh/FPiUjrmFec+3lq98KsWnYY2C7g=="],
 
@@ -1242,6 +1243,12 @@
     "zod-to-json-schema": ["zod-to-json-schema@3.25.2", "", { "peerDependencies": { "zod": "^3.25.28 || ^4" } }, "sha512-O/PgfnpT1xKSDeQYSCfRI5Gy3hPf91mKVDuYLUHZJMiDFptvP41MSnWofm8dnCm0256ZNfZIM7DSzuSMAFnjHA=="],
 
     "zwitch": ["zwitch@2.0.4", "", {}, "sha512-bXE4cR/kVZhKZX/RjPEflHaKVhUVl85noU3v6b8apfQEc1x4A+zBxjZ4lN8LqGd6WZ3dl98pY4o717VFmoPp+A=="],
+
+    "@atelier/desktop/@hotwired/stimulus": ["@hotwired/stimulus@github:hotwired/dev-builds#339df54", {}, "hotwired-dev-builds-339df54", "sha512-mHNF9l1AaFMwHph9F+E6H9/MOtt8gIPSyNKMJELZOfYlh9rdmfmgXu6+EmC1NfjcA0tc6u+xn8PDoOjSzc9SGw=="],
+
+    "@atelier/host/@hotwired/stimulus": ["@hotwired/stimulus@github:hotwired/dev-builds#339df54", {}, "hotwired-dev-builds-339df54", "sha512-mHNF9l1AaFMwHph9F+E6H9/MOtt8gIPSyNKMJELZOfYlh9rdmfmgXu6+EmC1NfjcA0tc6u+xn8PDoOjSzc9SGw=="],
+
+    "@atelier/web/@hotwired/stimulus": ["@hotwired/stimulus@github:hotwired/dev-builds#339df54", {}, "hotwired-dev-builds-339df54", "sha512-mHNF9l1AaFMwHph9F+E6H9/MOtt8gIPSyNKMJELZOfYlh9rdmfmgXu6+EmC1NfjcA0tc6u+xn8PDoOjSzc9SGw=="],
 
     "@aws-sdk/credential-provider-http/@smithy/node-http-handler": ["@smithy/node-http-handler@4.7.7", "", { "dependencies": { "@smithy/core": "^3.24.6", "@smithy/types": "^4.14.3", "tslib": "^2.6.2" } }, "sha512-ZAFvHXrEk6K180EVhmZVg8GU5pUH5BSFqRs27JW3j1qEFx9YyYwWFx17x/MHcjALYimGAji7qEOlF1++be+G5A=="],
 
