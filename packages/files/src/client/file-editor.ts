@@ -54,6 +54,7 @@ function createFileEditorController(Controller: WorkspaceClientControllerConstru
     private saveTimer?: ReturnType<typeof setTimeout>;
     private applyingDisk = false;
     private saveSequence = 0;
+    private diskSequence = 0;
 
     connect(): void {
       this.connection = new AbortController();
@@ -67,6 +68,7 @@ function createFileEditorController(Controller: WorkspaceClientControllerConstru
       this.showRaw();
       // SAFETY: The server-rendered DOM and connected controller contract establish this element shape.
       window.addEventListener("atelier:files-refresh", this.refreshRequested as EventListener, { signal });
+      this.element.addEventListener("atelier:file-editor-refresh", this.refreshDisk, { signal });
       this.updateWorkViewLabel();
       void this.load(signal).catch((error: Error) => {
         if (this.isCurrentConnection(signal)) this.showLoadError(error);
@@ -165,17 +167,27 @@ function createFileEditorController(Controller: WorkspaceClientControllerConstru
     private readonly refreshRequested = (event: CustomEvent<EditorRefreshDetail>): void => {
       const detail = event.detail;
       if (detail.workspaceId !== this.workspaceIdValue) return;
+      this.refreshDisk();
+    };
+
+    private readonly refreshDisk = (): void => {
       const { signal } = this.connection;
       void this.checkDisk(signal).catch((error: Error) => {
-        if (this.isCurrentConnection(signal)) throw error;
+        if (this.isCurrentConnection(signal)) this.setStatus(`Refresh failed: ${error.message}`, "error");
       });
     };
 
     private async checkDisk(signal: AbortSignal): Promise<void> {
       if (!this.view) return;
+      const sequence = ++this.diskSequence;
+      const saveSequence = this.saveSequence;
+      const revision = this.revision;
       const latest = await this.fetchFile(signal);
-      if (!this.isCurrentConnection(signal)) return;
-      if (latest.revision === this.revision) return;
+      if (!this.isCurrentConnection(signal) || sequence !== this.diskSequence || saveSequence !== this.saveSequence || revision !== this.revision) return;
+      if (latest.revision === this.revision) {
+        if (this.view.state.doc.toString() === this.savedContent) this.setStatus(latest.writable ? "Up to date" : "Read only", "");
+        return;
+      }
       if (this.view.state.doc.toString() !== this.savedContent) {
         this.showConflict(latest);
         return;
@@ -238,6 +250,8 @@ function createFileEditorController(Controller: WorkspaceClientControllerConstru
     }
 
     private showConflict(file: EditableFileResponse): void {
+      if (this.saveTimer) clearTimeout(this.saveTimer);
+      this.saveTimer = undefined;
       this.latestDisk = file;
       this.setStatus("Conflict", "conflict");
       if (!this.conflictTarget.open) this.conflictTarget.showModal();

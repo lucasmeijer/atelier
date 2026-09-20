@@ -213,6 +213,25 @@ function createFilesViewController(Controller: WorkspaceClientControllerConstruc
   return class FilesViewController extends Controller {
     declare readonly element: HTMLElement;
 
+    private pane!: HTMLElement;
+
+    connect(): void {
+      this.pane = this.element.closest<HTMLElement>("[data-workspace-pane-id]")!;
+      this.pane.addEventListener("atelier:workspace-pane-visible", this.becameVisible);
+    }
+
+    disconnect(): void {
+      this.pane.removeEventListener("atelier:workspace-pane-visible", this.becameVisible);
+    }
+
+    private readonly becameVisible = (): void => { this.refresh(); };
+
+    refresh(): void {
+      // Submit the current filter into its Turbo Frame; never replace the editor.
+      this.element.querySelector<HTMLFormElement>(".files-filter")?.requestSubmit();
+      this.element.querySelector<HTMLElement>('[data-controller="file-editor"]')?.dispatchEvent(new Event("atelier:file-editor-refresh"));
+    }
+
     expand(): void {
       this.element.classList.add("is-files-pane-open");
     }
