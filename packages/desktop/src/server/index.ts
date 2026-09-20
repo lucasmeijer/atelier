@@ -14,7 +14,7 @@ const referenceSchema = Type.Object({ type: Type.Literal("desktop") }, { additio
 const stateSchema = Type.Object({ open: Type.Boolean() });
 const views = createWorkspaceMetadataState("desktop-view.json", (value) => Value.Parse(stateSchema, value), () => ({ open: false }));
 const presentation: WorkspaceWorkViewPresentation = {
-  sourceKey: "desktop", label: "Desktop", reference, kind: "resource", iconHtml: Icons.Workspace,
+  sourceKey: "desktop", label: "Desktop", reference, kind: "resource", iconHtml: Icons.Desktop,
   availability: { phase: "live" },
 };
 
@@ -62,7 +62,7 @@ export const atelierServerModule: WorkspaceModule = {
   attachToWorkspace({ workspaceId }) {
     return {
       workViews: views.read(workspaceId).open ? [presentation] : [],
-      commands: [{ id: "desktop.start", label: "Open Desktop", description: "Start or reuse the workspace's Xvfb display and Chromium, and open Desktop.", scope: "workspace", surfaces: { ui: { placement: "work-launcher", iconHtml: Icons.Workspace, label: "Desktop" } } }],
+      commands: [{ id: "desktop.start", label: "Open Desktop", description: "Start or reuse the workspace's Xvfb display and Chromium, and open Desktop.", scope: "workspace", surfaces: { ui: { placement: "work-launcher", iconHtml: Icons.Desktop, label: "Desktop" } } }],
     };
   },
 };
