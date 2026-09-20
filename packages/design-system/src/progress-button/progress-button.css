@@ -11,11 +11,11 @@
   stroke-dasharray: var(--button-progress) 100;
   transition: stroke-dasharray 150ms linear;
 }
-.progress-button[data-progress-kind="indeterminate"] .progress-button__perimeter rect {
+.progress-button[data-progress-state="in-progress"][data-progress-kind="indeterminate"] .progress-button__perimeter rect {
   stroke-dasharray: 18 82;
   animation: perimeter-button-orbit 900ms linear infinite;
 }
 @media (prefers-reduced-motion: reduce) {
-  .progress-button[data-progress-kind="indeterminate"] .progress-button__perimeter rect { animation: none; stroke-dasharray: 40 60; }
+  .progress-button[data-progress-state="in-progress"][data-progress-kind="indeterminate"] .progress-button__perimeter rect { animation: none; stroke-dasharray: 40 60; }
   .button .progress-button__perimeter rect { transition: none; }
 }

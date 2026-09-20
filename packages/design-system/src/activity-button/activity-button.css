@@ -5,6 +5,8 @@
 .button .activity-button__indicator rect {
   stroke: currentColor;
   stroke-dasharray: 18 82;
+}
+.activity-button[data-activity-state="active"] .activity-button__indicator rect {
   animation: perimeter-button-orbit 900ms linear infinite;
 }
 @media (prefers-reduced-motion: reduce) {

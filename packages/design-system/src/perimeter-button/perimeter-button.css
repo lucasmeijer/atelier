@@ -33,7 +33,10 @@
   height: calc(100% + 2px);
   overflow: visible;
   pointer-events: none;
+  visibility: hidden;
 }
+.activity-button[data-activity-state="active"] > .activity-button__indicator,
+.progress-button[data-progress-state="in-progress"] > .progress-button__perimeter { visibility: visible; }
 :is(.button.activity-button > .activity-button__indicator, .button.progress-button > .progress-button__perimeter) rect {
   x: 1px;
   y: 1px;
@@ -62,5 +65,5 @@
     .activity-button[data-activity-state="active"] [data-activity-content="active"],
     .progress-button[data-progress-state="in-progress"] [data-progress-content="in-progress"] { opacity: 0; transform: translateY(3px); }
   }
-  :is(.activity-button__indicator, .progress-button__perimeter) { transition: opacity var(--motion-exit) ease-out; }
+  :is(.activity-button__indicator, .progress-button__perimeter) { transition: opacity var(--motion-exit) ease-out, visibility var(--motion-exit) linear; }
 }

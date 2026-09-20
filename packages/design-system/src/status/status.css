@@ -7,6 +7,9 @@
   border-radius: var(--radius-round);
   animation: activity-spinner-spin 750ms linear infinite;
 }
+/* Alternate button content still participates in sizing while hidden.
+   Pause its spinner without hiding decorative aria-hidden indicators globally. */
+:is(.activity-button__content, .progress-button__content)[aria-hidden="true"] .activity-spinner { animation-play-state: paused; }
 @keyframes activity-spinner-spin { to { transform: rotate(1turn); } }
 
 /* A compact semantic state marker for captions, controls, and standalone status. */
