@@ -64,7 +64,15 @@ class LiveSurfaceController extends Controller<HTMLElement> {
         this.element.dispatchEvent(new CustomEvent("live:ready", { bubbles: true }));
       },
       onDisconnected: () => { this.ready = false; },
-      onRejected: reason => { this.pending?.reject(new Error(reason)); this.pending = undefined; },
+      onRejected: reason => {
+        const pending = this.pending;
+        const subscription = this.subscription;
+        this.pending = undefined;
+        this.subscription = undefined;
+        this.ready = false;
+        pending?.reject(new Error(reason));
+        subscription?.unsubscribe();
+      },
     });
     return pending.promise;
   }

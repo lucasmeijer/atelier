@@ -16,7 +16,7 @@ type SubscriptionLease = CableSubscription & {
 type DesiredSubscription = {
   identifier: CableIdentifier;
   leases: Set<SubscriptionLease>;
-  ready: boolean;
+  status: "pending" | "ready" | "rejected";
   subscriptionId?: string;
 };
 
@@ -49,7 +49,7 @@ export function createAtelierCableClient(renderStreams: CableStreamRenderer): At
 
   function subscribeOnWire(subscription: DesiredSubscription): void {
     const subscriptionId = crypto.randomUUID();
-    subscription.ready = false;
+    subscription.status = "pending";
     subscription.subscriptionId = subscriptionId;
     changed();
     sendRaw({ command: "subscribe", identifier: subscription.identifier, subscriptionId });
@@ -75,10 +75,10 @@ export function createAtelierCableClient(renderStreams: CableStreamRenderer): At
 
   function markSubscriptionsDisconnected(notify: boolean): void {
     for (const subscription of desired.values()) {
-      if (notify && subscription.ready) {
+      if (notify && subscription.status === "ready") {
         for (const lease of subscription.leases) lease.options?.onDisconnected?.();
       }
-      subscription.ready = false;
+      subscription.status = "pending";
       subscription.subscriptionId = undefined;
     }
   }
@@ -99,8 +99,8 @@ export function createAtelierCableClient(renderStreams: CableStreamRenderer): At
         const isCurrent = () => matchingSubscription(message.identifier, message.subscriptionId) === subscription;
         const applied = () => {
           if (!isCurrent()) return;
-          subscription.ready = true;
-          if ([...desired.values()].every(item => item.ready)) recovering = false;
+          subscription.status = "ready";
+          if ([...desired.values()].every(item => item.status !== "pending")) recovering = false;
           changed();
           for (const lease of subscription.leases) lease.options?.onReady?.();
         };
@@ -111,8 +111,12 @@ export function createAtelierCableClient(renderStreams: CableStreamRenderer): At
       case "reject_subscription":
         const rejected = matchingSubscription(message.identifier, message.subscriptionId);
         if (rejected) {
+          rejected.status = "rejected";
+          rejected.subscriptionId = undefined;
           console.error("Cable subscription rejected", message);
           for (const lease of rejected.leases) lease.options?.onRejected?.(message.reason);
+          if ([...desired.values()].every(item => item.status !== "pending")) recovering = false;
+          changed();
         }
         break;
       case "turbo_stream": {
@@ -168,11 +172,13 @@ export function createAtelierCableClient(renderStreams: CableStreamRenderer): At
       const key = serializeCableIdentifier(identifier);
       let subscription = desired.get(key);
       if (!subscription) {
-        subscription = { identifier, leases: new Set(), ready: false };
+        subscription = { identifier, leases: new Set(), status: "pending" };
         desired.set(key, subscription);
         closingForPageHide = false;
         connect();
         if (socket?.readyState === WebSocket.OPEN) subscribeOnWire(subscription);
+      } else if (subscription.status === "rejected" && socket?.readyState === WebSocket.OPEN) {
+        subscribeOnWire(subscription);
       }
 
       const lease: SubscriptionLease = {
@@ -181,7 +187,7 @@ export function createAtelierCableClient(renderStreams: CableStreamRenderer): At
           if (!subscription.leases.delete(lease) || subscription.leases.size > 0) return;
           if (desired.get(key) !== subscription) return;
           desired.delete(key);
-          if ([...desired.values()].every(item => item.ready)) recovering = false;
+          if ([...desired.values()].every(item => item.status !== "pending")) recovering = false;
           changed();
           if (subscription.subscriptionId) {
             sendRaw({ command: "unsubscribe", identifier: subscription.identifier, subscriptionId: subscription.subscriptionId });
@@ -189,8 +195,8 @@ export function createAtelierCableClient(renderStreams: CableStreamRenderer): At
         },
       };
       subscription.leases.add(lease);
-      if (subscription.ready) requestAnimationFrame(() => {
-        if (subscription.leases.has(lease) && desired.get(key) === subscription && subscription.ready) lease.options?.onReady?.();
+      if (subscription.status === "ready") requestAnimationFrame(() => {
+        if (subscription.leases.has(lease) && desired.get(key) === subscription && subscription.status === "ready") lease.options?.onReady?.();
       });
       return lease;
     },

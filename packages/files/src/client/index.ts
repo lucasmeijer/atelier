@@ -211,7 +211,9 @@ type FilesTreeFrame = HTMLElement & {
 
 function createFilesViewController(Controller: WorkspaceClientControllerConstructor): WorkspaceClientControllerConstructor {
   return class FilesViewController extends Controller {
+    static values = { selectedPath: String };
     declare readonly element: HTMLElement;
+    declare readonly selectedPathValue: string;
 
     private pane!: HTMLElement;
 
@@ -224,6 +226,21 @@ function createFilesViewController(Controller: WorkspaceClientControllerConstruc
       this.pane.removeEventListener("atelier:workspace-pane-visible", this.becameVisible);
     }
 
+    preservePaneState(event: Event & { detail: { attributeName: string } }): void {
+      if (event.target === this.element && event.detail.attributeName === "class") event.preventDefault();
+    }
+
+    selectedPathValueChanged(): void {
+      this.updateSelection();
+    }
+
+    updateSelection(): void {
+      for (const row of this.element.querySelectorAll<HTMLElement>("[data-files-path]")) {
+        if (row.dataset.filesPath === this.selectedPathValue) row.setAttribute("aria-selected", "true");
+        else row.removeAttribute("aria-selected");
+      }
+    }
+
     private readonly becameVisible = (): void => { this.refresh(); };
 
     refresh(): void {
@@ -234,6 +251,7 @@ function createFilesViewController(Controller: WorkspaceClientControllerConstruc
 
     expand(): void {
       this.element.classList.add("is-files-pane-open");
+      this.element.querySelector<FilesTreeFrame>(".files-frame")!.loading = "eager";
     }
 
     collapse(): void {
@@ -247,7 +265,6 @@ function createFilesViewController(Controller: WorkspaceClientControllerConstruc
     async focusFilter(): Promise<void> {
       this.expand();
       const frame = this.element.querySelector<FilesTreeFrame>(".files-frame")!;
-      frame.loading = "eager";
       await frame.loaded;
       this.element.querySelector<HTMLInputElement>(".files-filter input[type='search']")!.focus();
     }

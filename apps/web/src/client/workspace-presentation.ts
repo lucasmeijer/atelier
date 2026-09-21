@@ -47,7 +47,6 @@ interface TurboLike {
   StreamActions: Record<string, (this: StreamElement) => void | Promise<void>>;
 }
 
-const appliedWorkIntents = new Map<string, string>();
 const navigationIntents = new Map<string, { agent?: string; work?: string }>();
 
 const visiblePresentationPanes = new WeakSet<HTMLElement>();
@@ -100,6 +99,7 @@ export function createWorkspacePresentationController(
     private draggedWorkKey?: string;
 
     connect(): void {
+      const initialUrl = new URL(location.href);
       this.state = this.restoreState();
       this.media = window.matchMedia(phoneLayoutMediaQuery);
       this.media.addEventListener("change", this.viewportChanged);
@@ -114,8 +114,8 @@ export function createWorkspacePresentationController(
       });
       this.sizeObserver.observe(this.element);
       this.acceptWorkIntent();
-      this.applyDeepLink();
       this.normalizeState();
+      this.applyDeepLink(initialUrl);
       this.applyState({ emit: true });
     }
 
@@ -161,8 +161,9 @@ export function createWorkspacePresentationController(
 
     private acceptWorkIntent(): void {
       const { key, revision } = this.workIntentValue;
-      if (!key || !revision || appliedWorkIntents.get(this.workspaceIdValue) === revision) return;
-      appliedWorkIntents.set(this.workspaceIdValue, revision);
+      const storageKey = `atelier:work-presentation:${this.workspaceIdValue}`;
+      if (!key || !revision || sessionStorage.getItem(storageKey) === revision) return;
+      sessionStorage.setItem(storageKey, revision);
       navigationIntents.set(this.workspaceIdValue, { ...navigationIntents.get(this.workspaceIdValue), work: key });
     }
 
@@ -343,8 +344,7 @@ export function createWorkspacePresentationController(
       this.persist();
     }
 
-    private applyDeepLink(): void {
-      const url = new URL(window.location.href);
+    private applyDeepLink(url = new URL(location.href)): void {
       if (!url.pathname.endsWith(`/workspaces/${encodeURIComponent(this.workspaceIdValue)}`)) return;
       const agentId = url.searchParams.get("agent");
       const workViewKey = url.searchParams.get("workView");
@@ -357,6 +357,8 @@ export function createWorkspacePresentationController(
       if (workViewKey) {
         const workView = this.element.querySelector<HTMLElement>(`[data-work-view-key="${CSS.escape(workViewKey)}"]`);
         if (!workView) return;
+        const intent = navigationIntents.get(this.workspaceIdValue);
+        if (intent) delete intent.work;
         this.selectWorkViewState(workViewKey, workView.dataset.workViewKind === "contextual");
       }
       if (agentId || workViewKey) this.persist();

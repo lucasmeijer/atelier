@@ -6,8 +6,8 @@ import { Type, type Static } from "typebox";
 import { Value } from "typebox/value";
 import { isReviewDiffHighlighting, isReviewDiffOverflow, reviewCommentsPrompt, type ReviewSide } from "../model.ts";
 import { clearDeletionReview, deletionReviewCommitResponse, deletionReviewFileResponse, reviewDeletionReview } from "./deletion.ts";
-import { collectReviewFile, collectReviewIndex, collectReviewStats, reviewSnippet, type ReviewIndex } from "./diff.ts";
-import { renderReviewBody, renderReviewFileContent, renderReviewMoreFiles, renderReviewTitle, reviewFileFrameId, reviewFilePageSize, reviewReference, reviewWorkViewPresentation } from "./render.ts";
+import { collectReviewFile, collectReviewIndex, collectReviewStats, reviewSnippet, type ReviewFileStats, type ReviewIndex } from "./diff.ts";
+import { renderReviewBody, renderReviewFileContent, renderReviewFilePage, renderReviewMoreFiles, renderReviewTitle, reviewFileFrameId, reviewFilePageSize, reviewPageId, reviewReference, reviewWorkViewPresentation } from "./render.ts";
 import {
   isReviewDiffLayout,
   isReviewViewport,
@@ -19,7 +19,7 @@ import { addReviewComment, deleteReviewComments, deleteReviewState, listReviewCo
 const reviewReferenceSchema = Type.Object({ type: Type.Literal("review") });
 type ReviewReference = Static<typeof reviewReferenceSchema>;
 const indexes = new Map<string, ReviewIndex>();
-const reviewTitles = new Map<string, string>();
+const stats = new WeakMap<ReviewIndex, Promise<ReviewFileStats[]>>();
 
 function textResponse(message: string, status: number): Response {
   return new Response(message, { status, headers: { "content-type": "text/plain; charset=utf-8", "cache-control": "no-store" } });
@@ -40,11 +40,14 @@ async function current(workspaceId: string): Promise<{ index: ReviewIndex; comme
   return index ? { index, comments: listReviewComments(workspaceId) } : await refresh(workspaceId);
 }
 
-async function refreshStats(workspaceId: string, index: ReviewIndex) {
-  const files = await collectReviewStats(workspaceWorkHostPath(workspaceId), index);
-  const title = index.phase === "ready" ? renderReviewTitle(files) : reviewWorkViewPresentation.label;
-  reviewTitles.set(workspaceId, title);
-  return files;
+function currentStats(workspaceId: string, index: ReviewIndex): Promise<ReviewFileStats[]> {
+  let pending = stats.get(index);
+  if (!pending) {
+    pending = collectReviewStats(workspaceWorkHostPath(workspaceId), index);
+    stats.set(index, pending);
+    void pending.catch(() => stats.delete(index));
+  }
+  return pending;
 }
 
 async function refreshedResponse(workspaceId: string): Promise<Response> {
@@ -92,6 +95,12 @@ export const reviewWorkspaceModule: WorkspaceModule = {
     return [{ target: reviewFileFrameId(workspaceId, key), html: file
       ? await renderReviewFileContent(workspaceId, file, remapReviewFileComments(workspaceId, file))
       : '<p role="note">This change is no longer available.</p>' }];
+  } }, { name: "review-page", async load({ workspaceId, key }) {
+    const offset = Number(key);
+    if (!Number.isSafeInteger(offset) || offset < reviewFilePageSize || offset % reviewFilePageSize !== 0) throw new Error("Invalid review file offset");
+    const { index, comments } = await current(workspaceId);
+    const files = await currentStats(workspaceId, index);
+    return [{ target: reviewPageId(workspaceId, offset), html: renderReviewFilePage(workspaceId, index, comments, offset, files) }];
   } }],
   deletionReview: reviewDeletionReview,
   workViews: [{
@@ -103,7 +112,7 @@ export const reviewWorkspaceModule: WorkspaceModule = {
     identity: (_reference: ReviewReference) => "workspace",
     async render({ workspaceId }) {
       const { index, comments } = await current(workspaceId);
-      const files = await refreshStats(workspaceId, index);
+      const files = await currentStats(workspaceId, index);
       return renderReviewBody(workspaceId, index, comments, await readReviewSettings(), files);
     },
   }],
@@ -145,7 +154,7 @@ export const reviewWorkspaceModule: WorkspaceModule = {
         const offset = Number(url.searchParams.get("offset"));
         if (!Number.isSafeInteger(offset) || offset < reviewFilePageSize || offset % reviewFilePageSize !== 0) return textResponse("Invalid review file offset", 422);
         const { index, comments } = await current(workspaceId);
-        const files = await refreshStats(workspaceId, index);
+        const files = await currentStats(workspaceId, index);
         return htmlResponse(renderReviewMoreFiles(workspaceId, index, comments, offset, files));
       }
       match = url.pathname.match(/^\/workspaces\/([^/]+)\/review\/comments$/);
@@ -186,13 +195,14 @@ export const reviewWorkspaceModule: WorkspaceModule = {
     });
     context.onWorkspaceRemoved((workspaceId) => {
       indexes.delete(workspaceId);
-      reviewTitles.delete(workspaceId);
       deleteReviewState(workspaceId);
       clearDeletionReview(workspaceId);
     });
   },
-  attachToWorkspace({ workspaceId }) {
-    const workView = { ...reviewWorkViewPresentation, label: reviewTitles.get(workspaceId) ?? reviewWorkViewPresentation.label };
+  async attachToWorkspace({ workspaceId }) {
+    const { index } = await current(workspaceId);
+    const files = await currentStats(workspaceId, index);
+    const workView = { ...reviewWorkViewPresentation, label: index.phase === "ready" ? renderReviewTitle(files) : reviewWorkViewPresentation.label };
     return {
       workViews: [workView],
       commands: [{ id: "review.open", label: "Review", description: "Show Review. New workspaces include it by default; use this command to reopen it after closing.", scope: "workspace", surfaces: { ui: { placement: "work-launcher", iconHtml: Icons.Review, label: "Review" } } }],

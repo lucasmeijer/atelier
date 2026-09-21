@@ -123,7 +123,7 @@ function renderEntryRow(workspaceId: string, viewId: string, entry: FileEntry, e
     element: {
       tag: destination ? "a" : "div",
 
-      attributesHtml: `role="treeitem" tabindex="-1" data-kind="${entry.kind}"${destination ? ` ${destination}` : ""}${directoryAttributes}${selectedAttribute}`,
+      attributesHtml: `role="treeitem" tabindex="-1" data-kind="${entry.kind}" data-files-path="${escapeHtml(entry.path)}"${destination ? ` ${destination}` : ""}${directoryAttributes}${selectedAttribute}`,
     },
   });
 }
@@ -157,7 +157,7 @@ export function renderFilesTreeFrame(workspaceId: string, viewId: string, entrie
     content: { kind: "caption", caption: "Cancel" },
     attributesHtml: 'data-action="files#cancel"',
   });
-  return `<turbo-frame id="${filesTreeFrameId(workspaceId, viewId)}" class="files-frame">
+  return `<turbo-frame id="${filesTreeFrameId(workspaceId, viewId)}" data-turbo-permanent class="files-frame">
     <div class="files-browser" data-controller="files" data-files-path-value="${escapeHtml(workspaceRoot)}" data-files-upload-url-value="/workspaces/${encodeURIComponent(workspaceId)}/file-browser/upload" data-action="dragenter->files#dragEnter dragover->files#dragOver dragleave->files#dragLeave drop->files#drop keydown->files#keydown">
       <form class="managed-list__filter files-filter" method="get" action="/workspaces/${encodeURIComponent(workspaceId)}/files" data-controller="server-filter" data-action="input->server-filter#submit" data-turbo-frame="${resultsFrameId}">
         <input type="hidden" name="filesView" value="${escapeHtml(viewId)}">
@@ -172,7 +172,7 @@ export function renderFilesTreeFrame(workspaceId: string, viewId: string, entrie
 
 function renderLazyFilesTreeFrame(workspaceId: string, view: FilesView): string {
   const query = new URLSearchParams({ filesView: view.id });
-  return `<turbo-frame id="${filesTreeFrameId(workspaceId, view.id)}" class="files-frame" src="/workspaces/${encodeURIComponent(workspaceId)}/files?${query}" loading="lazy"><div class="files-loading"><span class="status-spinner"></span> Loading files…</div></turbo-frame>`;
+  return `<turbo-frame id="${filesTreeFrameId(workspaceId, view.id)}" data-turbo-permanent class="files-frame" src="/workspaces/${encodeURIComponent(workspaceId)}/files?${query}" loading="lazy"><div class="files-loading"><span class="status-spinner"></span> Loading files…</div></turbo-frame>`;
 }
 
 function fileConflictDialog(): string {
@@ -249,7 +249,7 @@ export function filesWorkViewPresentation(view: FilesView): WorkspaceWorkViewPre
 }
 
 export function renderFilesWorkViewBody(workspaceId: string, view: FilesView): string {
-  return `<section class="work-view-pane files-work-view"><div class="files-workbench${view.path ? "" : " is-files-pane-open"}" data-controller="files-view">
+  return `<section class="work-view-pane files-work-view"><div class="files-workbench${view.path ? "" : " is-files-pane-open"}" data-controller="files-view" data-files-view-selected-path-value="${escapeHtml(view.path ?? "")}" data-action="turbo:frame-load->files-view#updateSelection turbo:before-morph-attribute->files-view#preservePaneState">
     <div class="files-editor-canvas">${renderFilesEditorFrame(workspaceId, view)}</div>
     <aside class="files-navigator" aria-label="Files"><header class="files-navigator-header work-view-toolbar"><span class="files-navigator-path">${escapeHtml(workspaceRoot)}</span>${refreshButton()}${filesPaneToggle("collapse")}</header>${renderLazyFilesTreeFrame(workspaceId, view)}</aside>
   </div></section>`;

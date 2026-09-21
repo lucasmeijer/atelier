@@ -271,11 +271,15 @@ function toolbar(workspaceId: string, comments: ReviewComment[], settings: Revie
 
 export const reviewFilePageSize = 50;
 
-export function renderReviewMoreFiles(workspaceId: string, index: ReviewIndex, comments: ReviewComment[], offset: number, stats: ReviewFileStats[]): string {
-  return `<turbo-frame id="${domId("review", workspaceId, "more_files", String(offset))}">${renderReviewFilePage(workspaceId, index, comments, offset, stats)}</turbo-frame>`;
+export function reviewPageId(workspaceId: string, offset: number): string {
+  return domId("review", workspaceId, "page_content", String(offset));
 }
 
-function renderReviewFilePage(workspaceId: string, index: ReviewIndex, comments: ReviewComment[], offset: number, stats?: ReviewFileStats[]): string {
+export function renderReviewMoreFiles(workspaceId: string, index: ReviewIndex, comments: ReviewComment[], offset: number, stats: ReviewFileStats[]): string {
+  return `<turbo-frame id="${domId("review", workspaceId, "more_files", String(offset))}"><div id="${reviewPageId(workspaceId, offset)}" data-controller="live-surface" data-live-surface-workspace-value="${escapeHtml(workspaceId)}" data-live-surface-kind-value="review-page" data-live-surface-key-value="${offset}" data-live-surface-eager-value="true">${renderReviewFilePage(workspaceId, index, comments, offset, stats)}</div></turbo-frame>`;
+}
+
+export function renderReviewFilePage(workspaceId: string, index: ReviewIndex, comments: ReviewComment[], offset: number, stats?: ReviewFileStats[]): string {
   if (index.phase === "not-git") return "";
   const nextOffset = offset + reviewFilePageSize;
   const files = index.files.slice(offset, nextOffset).map((file) => renderFile(workspaceId, file, comments, stats?.find((entry) => entry.path === file.path))).join("");
