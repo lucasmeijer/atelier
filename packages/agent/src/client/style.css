@@ -6,7 +6,7 @@
 .agent-pane {
   --agent-inline-gutter: 2.5rem;
   --agent-inline-gutter: clamp(.75rem, 4cqi, 2.5rem);
-  height: 100%; min-height: 0; display: grid; grid-template-rows: auto minmax(0, 1fr) auto;
+  height: 100%; min-height: 0; display: grid; grid-template-rows: minmax(0, 1fr) auto;
   background: var(--bg); position: relative; container-type: inline-size;
 }
 .agent-transcript {
@@ -332,4 +332,4 @@
 .agent-inherited-explanation { margin: 0 0 16px; color: var(--text-muted); }
 .agent-inherited-content > .agent-item + .agent-item { margin-top: 12px; }
 
-.agent-body-controls { display:flex; justify-content:flex-end; padding:4px 12px; }
+.agent-body-controls { position: absolute; z-index: 3; top: 4px; right: 12px; }

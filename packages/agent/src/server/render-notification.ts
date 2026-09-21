@@ -21,11 +21,12 @@ export function renderNotificationFeedback(workspaceId: string, conversationId: 
 }
 
 export function renderNotificationControl(ctx: AgentRenderContext, busy: boolean): string {
+  if (!busy) return `<span id="${notificationControlId(ctx)}" hidden></span>`;
   const turn = currentNotificationTurn(ctx);
-  const armed = busy && (turn?.armed ?? false);
-  const label = !busy ? "Notifications are available while the agent is working" : armed ? "Cancel notification for this turn" : "Notify when this turn finishes";
+  const armed = turn?.armed ?? false;
+  const label = armed ? "Cancel notification for this turn" : "Notify when this turn finishes";
   return `<span id="${notificationControlId(ctx)}">${buttonHtml({
-    type: "button", variant: armed ? "primary" : "secondary", disabled: !busy || !turn,
+    type: "button", variant: armed ? "primary" : "secondary", disabled: !turn,
     content: { kind: "icon-only", iconHtml: Icons.Bell, label },
     attributesHtml: `aria-pressed="${armed}" data-action="click->agent-notifications#toggle" data-notification-url="${escapeHtml(agentPath(ctx, "/notification"))}" data-notification-turn="${turn?.id ?? ""}" data-notification-armed="${armed}"`,
   })}</span>`;
