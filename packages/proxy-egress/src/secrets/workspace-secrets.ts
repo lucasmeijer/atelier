@@ -1,6 +1,7 @@
 import { clearWorkspaceGitHubToken as clearStoredWorkspaceGitHubToken, discoverHostGitHubToken, hasWorkspaceGitHubToken as hasStoredWorkspaceGitHubToken, setWorkspaceGitHubToken as setStoredWorkspaceGitHubToken } from "@atelier/core";
 import { isGitProjectInit, revealProjectSecrets, onProjectStoreChanged, projectSecretPlaceholder, projectSecretHosts } from "@atelier/projects";
 import { getWorkspaceInit, type WorkspaceInitInstruction } from "@atelier/workspace";
+import { isWorkspaceDestinationAllowed } from "./workspace-destinations.ts";
 import { createHttpHooks, type RequestTransformHttpHooks, type SecretDefinition } from "./placeholder-hooks.ts";
 
 export const githubTokenEnvVar = "GH_TOKEN";
@@ -87,7 +88,8 @@ export function forgetWorkspaceSecretContext(workspaceId: string): void {
 function buildContext(workspaceId: string, secrets: Record<string, SecretDefinition>): WorkspaceSecretContext {
   const hooks = createHttpHooks({
     allowedHosts: ["*"],
-    blockInternalRanges: true,
+    blockInternalRanges: false,
+    isIpAllowed: ({ ip }) => isWorkspaceDestinationAllowed(ip),
     replaceSecretsInPath: true,
     replaceSecretsInQuery: false,
     secrets,

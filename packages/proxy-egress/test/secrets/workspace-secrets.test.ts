@@ -113,10 +113,13 @@ describe("workspace secrets", () => {
     expect((await load()).env.TOKEN).toBeUndefined();
   });
 
-  test("egress cannot bypass workspace isolation to reach management, LAN or tailnet addresses", async () => {
+  test("egress permits LAN and tailnet destinations but still blocks loopback and link-local", async () => {
     const context = await createWorkspaceSecretContext("test-workspace");
-    for (const ip of ["127.0.0.1", "172.17.0.1", "192.168.1.1", "169.254.169.254", "100.64.0.1", "::1", "fd00::1"]) {
+    for (const ip of ["127.0.0.1", "169.254.169.254", "::1"]) {
       expect(await context.hooks.isIpAllowed!({ hostname: "destination.example", ip, family: ip.includes(":") ? 6 : 4, port: 443, protocol: "https" })).toBe(false);
+    }
+    for (const ip of ["10.200.0.2", "192.168.1.1", "100.64.0.1", "fd00::1", "fd7a:115c:a1e0::2"]) {
+      expect(await context.hooks.isIpAllowed!({ hostname: "destination.example", ip, family: ip.includes(":") ? 6 : 4, port: 443, protocol: "https" })).toBe(true);
     }
     expect(await context.hooks.isIpAllowed!({ hostname: "example.com", ip: "93.184.215.14", family: 4, port: 443, protocol: "https" })).toBe(true);
   });

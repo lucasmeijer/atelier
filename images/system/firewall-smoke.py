@@ -85,7 +85,7 @@ try:
   for ip in (peer['IPAddress'],peer['GlobalIPv6Address']):query(worker,f'http://[{ip}]:8080' if ':' in ip else f'http://{ip}:8080',False)
   for ip in ('10.200.0.2','100.64.0.2','fd99::2','fd7a:115c:a1e0::2'):
    url=f'http://[{ip}]:8080' if ':' in ip else f'http://{ip}:8080'
-   assert sysquery(url)=='external';query(worker,url,False)
+   assert sysquery(url)=='external';assert query(worker,url)=='external'
   assert sysquery(f'http://{info["IPAddress"]}:8080')==worker
   assert sysquery(f'http://[{info["GlobalIPv6Address"]}]:8080')==worker
   result=inner('exec',worker,'bun','-e','console.log(await(await fetch("http://parent",{unix:"/run/atelier-parent/parent.sock"})).text())').stdout.decode().strip()
@@ -93,7 +93,7 @@ try:
   assert drops()>start,'denials must hit Atelier rules, not merely Docker bridge isolation'
  checks(a,ai,bi);checks(b,bi,ai)
  c,ci=create_worker(3);checks(c,ci,ai);assert policy()==before
- print('PASS IPv4/IPv6 public egress, DNS/NAT, gateway replies, Unix sockets; System/peer/private/tailnet blocked; third bridge automatically isolated',flush=True)
+ print('PASS IPv4/IPv6 public egress, DNS/NAT, gateway replies, Unix sockets; private/tailnet allowed; System/peer blocked; third bridge automatically isolated',flush=True)
  # A daemon failure causes supervised System restart; rules reinstall before children start.
  started=json.loads(docker('inspect',name).stdout)[0]['State']['StartedAt']
  system('bun','-e','for(const p of new Bun.Glob("/proc/[0-9]*/comm").scanSync()){if((await Bun.file(p).text()).trim()==="dockerd")process.kill(Number(p.split("/")[2]),"SIGTERM")}',check=False)
