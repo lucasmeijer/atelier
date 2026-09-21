@@ -49,3 +49,30 @@ test("invalidation supersedes an in-flight read without starting a concurrent re
   await pending;
   expect(values).toEqual([2]);
 });
+
+test("a refresh queued by publication starts a new read rather than joining a finished worker", async () => {
+  const values: number[] = [];
+  let calls = 0;
+  let trailing: Promise<void> | undefined;
+  const refresh = createPublishedRefresh(async () => ++calls, value => {
+    values.push(value);
+    if (value === 1) queueMicrotask(() => { trailing = refresh.refresh(); });
+  });
+  await refresh.refresh();
+  await trailing;
+  expect(calls).toBe(2);
+  expect(values).toEqual([1, 2]);
+});
+
+test("a synchronous loader failure releases ownership for the next request", async () => {
+  let fail = true;
+  const values: number[] = [];
+  const refresh = createPublishedRefresh(() => {
+    if (fail) throw new Error("read failed synchronously");
+    return Promise.resolve(2);
+  }, value => values.push(value));
+  await expect(refresh.refresh()).rejects.toThrow("read failed synchronously");
+  fail = false;
+  await refresh.refresh();
+  expect(values).toEqual([2]);
+});

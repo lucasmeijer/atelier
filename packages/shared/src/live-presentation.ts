@@ -105,17 +105,26 @@ export function createPublishedRefresh<T>(load: () => Promise<T>, publish: (valu
     refresh(): Promise<void> {
       if (disposed) throw new Error("Published refresh is disposed");
       generation++;
-      if (!pending) pending = (async () => {
-        for (;;) {
-          const started = generation;
-          const value = await load();
-          if (disposed) return;
-          if (started !== generation) continue;
-          publish(value);
-          if (started === generation) return;
+      if (pending) return pending;
+      const completion = Promise.withResolvers<void>();
+      pending = completion.promise;
+      void (async () => {
+        try {
+          for (;;) {
+            const started = generation;
+            const value = await load();
+            if (disposed) return;
+            if (started !== generation) continue;
+            publish(value);
+            if (started === generation) return;
+          }
+        } finally {
+          // Release ownership in the worker's final synchronous step, not in a
+          // later promise reaction that could swallow a new refresh request.
+          pending = undefined;
         }
-      })().finally(() => { pending = undefined; });
-      return pending;
+      })().then(completion.resolve, completion.reject);
+      return completion.promise;
     },
     dispose(): void { disposed = true; generation++; },
   };

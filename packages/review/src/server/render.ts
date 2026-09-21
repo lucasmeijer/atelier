@@ -1,3 +1,4 @@
+import { createHash } from "node:crypto";
 import { actionLinkHtml } from "@atelier/design-system/action-link";
 import { actionItemHtml, type ActionItemLabel } from "@atelier/design-system/action-item";
 import { activityButtonHtml } from "@atelier/design-system/activity-button";
@@ -289,7 +290,9 @@ function renderReviewFilePage(workspaceId: string, index: ReviewIndex, comments:
     variant: "secondary",
     content: { kind: "caption", caption: `<${remaining} more>` },
   });
-  return `${files}<turbo-frame id="${domId("review", workspaceId, "more_files", String(nextOffset))}" refresh="morph" data-review-more-frame>${link}</turbo-frame>`;
+  const pageIdentity = createHash("sha256").update(JSON.stringify(index.files)).digest("hex");
+  const pageId = domId("review", workspaceId, "page", String(nextOffset), pageIdentity);
+  return `${files}<div id="${pageId}" data-turbo-permanent><turbo-frame id="${domId("review", workspaceId, "more_files", String(nextOffset))}" refresh="morph" data-review-more-frame>${link}</turbo-frame></div>`;
 }
 
 export function renderReviewBody(workspaceId: string, index: ReviewIndex, comments: ReviewComment[], settings: ReviewSettings = defaultReviewSettings, stats?: ReviewFileStats[]): string {

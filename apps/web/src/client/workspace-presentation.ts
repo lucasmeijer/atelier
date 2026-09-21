@@ -422,6 +422,7 @@ export function createWorkspacePresentationController(
       const afterSet = new Set(after);
       this.element.querySelectorAll<PresentationPane>("[data-workspace-pane-role]").forEach((pane) => {
         pane.dataset.workspaceLogicallyVisible = String(afterSet.has(pane));
+        pane.dataset.workspaceSurfaceVisible = String(visiblePresentationPanes.has(pane));
       });
       if (options.emit) this.emitVisibilityChanges(before, after);
       if (options.focus && document.hasFocus()) this.focusActiveSurface();
@@ -485,9 +486,9 @@ export function createWorkspacePresentationController(
     }
 
     private emitVisible(pane: PresentationPane): void {
+      pane.dataset.workspaceSurfaceVisible = "true";
       if (visiblePresentationPanes.has(pane)) return;
       visiblePresentationPanes.add(pane);
-      pane.dataset.workspaceSurfaceVisible = "true";
       pane.querySelectorAll<HTMLIFrameElement>('[data-controller~="workspace-app-frame"]').forEach((frame) => {
         // SAFETY: The server-rendered DOM and connected controller contract establish this element shape.
         const controller = application.getControllerForElementAndIdentifier(frame, "workspace-app-frame") as { becomeVisible?(): void } | null;
@@ -499,9 +500,9 @@ export function createWorkspacePresentationController(
 
     private emitHidden(pane: PresentationPane): void {
       pane.dataset.workspaceLogicallyVisible = "false";
+      pane.dataset.workspaceSurfaceVisible = "false";
       if (!visiblePresentationPanes.has(pane)) return;
       visiblePresentationPanes.delete(pane);
-      pane.dataset.workspaceSurfaceVisible = "false";
       lifecycle.noLongerVisible(this.lifecycleContext(pane));
       pane.dispatchEvent(new CustomEvent("atelier:workspace-pane-hidden", { bubbles: true, detail: { role: pane.dataset.workspacePaneRole, id: pane.dataset.workspacePaneId } }));
     }
