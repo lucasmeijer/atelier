@@ -49,6 +49,27 @@ describe("Agent session titles", () => {
     expect(harness.emitted).toEqual(["agent:session-specific-name"]);
   });
 
+  test("automatically names an unnamed tab in an already named workspace", async () => {
+    const harness = titleHarness(false);
+
+    await harness.setTitle(agent(), "first-prompt-name", { events: harness.events, onlyIfUnnamed: true });
+
+    expect(harness.conversation().title).toBe("first-prompt-name");
+    expect(harness.workspaceTitles).toEqual([]);
+    expect(harness.emitted).toEqual(["agent:first-prompt-name"]);
+  });
+
+  test("automatic naming preserves a manual title applied while the model responds", async () => {
+    const harness = titleHarness(false);
+    const original = harness.conversation();
+    await harness.setTitle(original, "my-name", { events: harness.events });
+
+    await harness.setTitle(original, "ai-name", { events: harness.events, onlyIfUnnamed: true });
+
+    expect(harness.conversation().title).toBe("my-name");
+    expect(harness.emitted).toEqual(["agent:my-name"]);
+  });
+
   test("renames a Workspace when its name matches the previous Agent title", async () => {
     const harness = titleHarness(false, "shared-name", true);
 
