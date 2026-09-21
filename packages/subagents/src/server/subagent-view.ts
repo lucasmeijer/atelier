@@ -23,8 +23,8 @@ export const subagentsWorkViewAdapter: WorkspaceModuleWorkViewAdapter = {
   },
   identity: () => "workspace",
   render({ workspaceId }) {
-    return `<section class="subagents-view" data-controller="subagents" data-subagents-workspace-id-value="${h(workspaceId)}" data-subagents-url-value="/workspaces/${h(workspaceId)}/subagents" data-action="atelier:workspace-agent-selected@document->subagents#sync atelier:workspace-pane-visible@document->subagents#sync atelier:workspace-pane-hidden@document->subagents#sync visibilitychange@document->subagents#sync turbo:frame-load->subagents#loaded toggle->subagents#toggle:capture">
-      <div class="subagents-scroll"><turbo-frame id="subagents-content-${h(workspaceId)}" data-turbo-permanent data-subagents-target="frame" refresh="morph"></turbo-frame></div>
+    return `<section class="subagents-view" data-controller="subagents" data-subagents-workspace-id-value="${h(workspaceId)}" data-action="atelier:workspace-agent-selected@document->subagents#sync atelier:workspace-pane-visible@document->subagents#sync atelier:workspace-pane-hidden@document->subagents#sync visibilitychange@document->subagents#sync toggle->subagents#toggle:capture">
+      <div class="subagents-scroll"><div id="subagents-content-${h(workspaceId)}" data-turbo-permanent></div></div>
     </section>`;
   },
 };
@@ -54,7 +54,7 @@ function summaryHtml(agent: SubagentRecord, agents: SubagentRecord[]): string {
 function branchHtml(workspaceId: string, agent: SubagentRecord, agents: SubagentRecord[], open: Set<string>): string {
   return `<details id="subagent-${h(agent.id)}" class="subagent-branch" data-subagent-id="${h(agent.id)}" data-subagents-target="branch"${open.has(agent.id) ? " open" : ""}>
     ${summaryHtml(agent, agents)}
-    <div class="subagent-branch-body"><turbo-frame id="subagent-transcript-${h(agent.id)}" data-subagent-transcript data-turbo-permanent><div id="${ids.transcript({ workspaceId, conversationId: agent.id })}" class="agent-transcript" data-turbo-permanent></div></turbo-frame>${childrenHtml(workspaceId, agent.id, agents, open)}</div>
+    <div class="subagent-branch-body"><div id="${ids.transcript({ workspaceId, conversationId: agent.id })}" class="agent-transcript" data-turbo-permanent></div>${childrenHtml(workspaceId, agent.id, agents, open)}</div>
   </details>`;
 }
 function childrenHtml(workspaceId: string, parentId: string, agents: SubagentRecord[], open: Set<string>): string {
@@ -67,7 +67,7 @@ function renderSubagentTree(workspaceId: string, rootId: string, agents: Subagen
   return childrenHtml(workspaceId, rootId, agents, open) + emptyHtml(workspaceId, agents.length === 0);
 }
 
-/** Snapshot first, then only changed tree rows. Existing transcript DOM is never replaced by status updates. */
+/** Publish the tree while preserving independently subscribed child transcripts. */
 export async function subscribeSubagentTree(workspaceId: string, rootId: string, listener: (html: string) => void, events?: AtelierEventBus): Promise<AgentLivePresentationSubscription> {
   const roots = await listWorkspaceAgentConversations(workspaceId);
   if (!roots.some((root) => root.conversationId === rootId)) throw new Error("Subagent root not found");

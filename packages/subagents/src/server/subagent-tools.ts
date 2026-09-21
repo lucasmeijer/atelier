@@ -40,7 +40,7 @@ export function createSubagentTools(workspaceId: string, caller: string, events?
       const agents = [{ agent_name: "/root", agent_status: rootAgentStatus(workspaceId, coordinator.rootId(caller)) }, ...coordinator.list(caller).filter((agent) => agent.status !== "closed").map((agent) => ({ agent_name: agentPath(coordinator.state, agent.id), agent_status: codexStatus(agent) }))];
       return { agents: agents.filter((agent) => !prefix || agent.agent_name === prefix || agent.agent_name.startsWith(`${prefix}/`)).sort((a, b) => a.agent_name.localeCompare(b.agent_name)) };
     }),
-    tool("wait_agent", object({ timeout_ms: Type.Optional(Type.Number({ description: "Timeout in milliseconds. Defaults to 30000, min 10000, max 3600000." })) }), async (params, signal, callId) => {
+    tool("wait_agent", object({ timeout_ms: Type.Optional(Type.Number({ description: "Timeout in milliseconds. Defaults to 30000, min 10000, max 3600000." })) }), async (params, signal) => {
       if (params.timeout_ms !== undefined && !Number.isSafeInteger(params.timeout_ms)) throw new Error("timeout_ms must be an integer.");
       const timeout = Math.max(10000, params.timeout_ms ?? 30000);
       const result = await (await runtime()).wait(caller, timeout, signal);

@@ -27,7 +27,6 @@ class Runtime extends BaseAgentRuntime {
   failure(text: string) { this.liveNote(text, "error"); }
   finish() { this.finishLivePresentation("completed"); }
   branch(id: string) { this.resetTurnSubscriptions(id); }
-  refresh() { return this.refreshTranscript(); }
   get subscribers() { return this.turnSubscriberCount; }
   get targets() {
     const commentary = commentaryContext(this.ctx);

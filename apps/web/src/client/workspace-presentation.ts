@@ -4,7 +4,7 @@ import { workspaceAgentSelectionEvent } from "@atelier/shared";
 import { phoneLayoutMediaQuery, type WorkspaceClientApplication, type WorkspaceClientControllerConstructor, type WorkspaceClientSurfaceVisibilityContext } from "@atelier/shared";
 import { Type, type Static } from "typebox";
 import { Value } from "typebox/value";
-import { liveSurfaceReady, prepareLiveSurface, selectLiveSurface } from "./live-surface.ts";
+import { prepareLiveSurface, selectLiveSurface } from "./live-surface.ts";
 import { residencyController } from "./workspace-controller-registry.ts";
 
 type PresentationPane = HTMLElement & { dataset: DOMStringMap & { workspacePaneRole?: string; workspacePaneId?: string; workspaceLogicallyVisible?: string } };
@@ -168,8 +168,7 @@ export function createWorkspacePresentationController(
 
     intendedSurfacesReady(): boolean {
       const pane = this.element.querySelector<HTMLElement>(`[data-workspace-pane-role="agent"][data-workspace-pane-id="${CSS.escape(this.state.activeAgentId ?? "")}"]`);
-      const resident = this.element.closest<HTMLElement>(".workspace-detail-resident")!;
-      return liveSurfaceReady(resident) && !pane?.querySelector('[data-agent-presentation-ready="false"]');
+      return !pane?.querySelector('[data-agent-presentation-ready="false"]');
     }
 
     presentationChanged(): void {
@@ -475,10 +474,9 @@ export function createWorkspacePresentationController(
     }
 
     private emitVisibilityChanges(before: PresentationPane[], after: PresentationPane[]): void {
-      const beforeSet = new Set(before);
       const afterSet = new Set(after);
       before.filter((pane) => !afterSet.has(pane)).forEach((pane) => this.emitHidden(pane));
-      after.filter((pane) => !beforeSet.has(pane) || !visiblePresentationPanes.has(pane)).forEach((pane) => this.emitVisible(pane));
+      after.forEach((pane) => this.emitVisible(pane));
     }
 
     private lifecycleContext(pane: PresentationPane): WorkspaceClientSurfaceVisibilityContext {

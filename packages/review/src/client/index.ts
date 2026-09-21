@@ -24,10 +24,6 @@ type AnnotationMetadata = ({ kind: "comment" } & ReviewCommentModel) | DraftMode
 type DiffModel = { fileDiff: FileDiffMetadata; comments: ReviewCommentModel[] };
 type FileDiffConstructor = typeof import("@pierre/diffs")["FileDiff"];
 
-declare global {
-  interface Window { Turbo?: { renderStreamMessage(html: string): void } }
-}
-
 function annotation(comment: ReviewCommentModel): DiffLineAnnotation<AnnotationMetadata> {
   return { side: comment.side, lineNumber: comment.startLine, metadata: { kind: "comment", ...comment } };
 }
@@ -130,7 +126,6 @@ function createReviewController(Controller: StimulusControllerConstructor) {
         event.preventDefault();
         return;
       }
-
     };
     private readonly beforeMorphAttribute = (event: Event): void => {
       // SAFETY: Turbo before-morph-attribute supplies the changed attribute name.
@@ -190,10 +185,7 @@ function createReviewController(Controller: StimulusControllerConstructor) {
       this.refreshing = true;
       try {
         const url = `/workspaces/${encodeURIComponent(this.workspaceIdValue)}/review/refresh`;
-        const response = await fetch(url, { method: "POST", headers: { Accept: "text/vnd.turbo-stream.html" } });
-        if (!response.ok) throw new Error(await response.text());
-        const stream = await response.text();
-        if (this.element.isConnected && stream) window.Turbo?.renderStreamMessage(stream);
+        await this.post(url);
       } finally {
         this.refreshing = false;
       }
@@ -591,16 +583,17 @@ function createReviewController(Controller: StimulusControllerConstructor) {
       const endpoint = draft.commentId
         ? `/workspaces/${encodeURIComponent(this.workspaceIdValue)}/review/comments/${encodeURIComponent(draft.commentId)}/update`
         : `/workspaces/${encodeURIComponent(this.workspaceIdValue)}/review/comments`;
-      const response = await fetch(endpoint, { method: "POST", body: data, headers: { Accept: "text/vnd.turbo-stream.html" } });
-      if (!response.ok) throw new Error(await response.text());
+      await this.post(endpoint, data);
       this.clearDraft();
-      window.Turbo?.renderStreamMessage(await response.text());
     }
 
     private async deleteComment(id: string): Promise<void> {
-      const response = await fetch(`/workspaces/${encodeURIComponent(this.workspaceIdValue)}/review/comments/${encodeURIComponent(id)}/delete`, { method: "POST", headers: { Accept: "text/vnd.turbo-stream.html" } });
+      await this.post(`/workspaces/${encodeURIComponent(this.workspaceIdValue)}/review/comments/${encodeURIComponent(id)}/delete`);
+    }
+
+    private async post(url: string, body?: FormData): Promise<void> {
+      const response = await fetch(url, { method: "POST", body, headers: { Accept: "text/vnd.turbo-stream.html" } });
       if (!response.ok) throw new Error(await response.text());
-      window.Turbo?.renderStreamMessage(await response.text());
     }
 
     copyCommentsToComposer(): void {

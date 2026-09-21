@@ -39,7 +39,6 @@ export interface CableServerOptions {
 export interface CableConnectionStats {
   sockets: number;
   subscriptions: Record<string, number>;
-  upstreams: Record<string, number>;
 }
 
 export interface CableServer {
@@ -71,7 +70,6 @@ export function createCableServer(options: CableServerOptions): CableServer {
   const channelFor = (identifier: CableIdentifier) => channels.get(identifier.channel === "module" ? identifier.name : identifier.channel);
   const logError = options.logError ?? ((message: string) => console.error(message));
   const connections = new Map<CableSocket, { id: string; attempts: Map<string, SocketSubscriptionAttempt> }>();
-  const attemptsByIdentifier = new Map<string, Set<SocketSubscriptionAttempt>>();
   const heartbeat = setInterval(() => {
     const time = Date.now();
     for (const ws of connections.keys()) send(ws, { type: "ping", time });
@@ -93,10 +91,6 @@ export function createCableServer(options: CableServerOptions): CableServer {
     const unsubscribe = attempt.unsubscribe;
     attempt.unsubscribe = undefined;
     unsubscribe?.();
-
-    const attempts = attemptsByIdentifier.get(attempt.key);
-    attempts?.delete(attempt);
-    if (attempts?.size === 0) attemptsByIdentifier.delete(attempt.key);
 
     const socketAttempts = connections.get(attempt.ws)?.attempts;
     if (socketAttempts?.get(attempt.key) === attempt) socketAttempts.delete(attempt.key);
@@ -157,9 +151,6 @@ export function createCableServer(options: CableServerOptions): CableServer {
         return;
       }
     }
-    let attempts = attemptsByIdentifier.get(key);
-    if (!attempts) attemptsByIdentifier.set(key, attempts = new Set());
-    attempts.add(attempt);
     void initializeChannelAttempt(attempt);
   }
 
@@ -206,12 +197,10 @@ export function createCableServer(options: CableServerOptions): CableServer {
     close,
     stats() {
       const subscriptions: Record<string, number> = {};
-      for (const [key, set] of attemptsByIdentifier) subscriptions[key] = set.size;
-      const upstreams: Record<string, number> = {};
-      for (const [key, attempts] of attemptsByIdentifier) {
-        upstreams[key] = attempts.size;
+      for (const connection of connections.values()) {
+        for (const key of connection.attempts.keys()) subscriptions[key] = (subscriptions[key] ?? 0) + 1;
       }
-      return { sockets: connections.size, subscriptions, upstreams };
+      return { sockets: connections.size, subscriptions };
     },
   };
 }

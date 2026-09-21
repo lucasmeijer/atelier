@@ -1,23 +1,21 @@
 import { isWorkspacePaneVisible, type WorkspaceClientApplication, type WorkspaceClientControllerConstructor } from "@atelier/shared";
-type EditorPosition = { line: number; column: number };
 type EditorRefreshDetail = { workspaceId: string };
 
 function createFileEditorNavigationController(Controller: WorkspaceClientControllerConstructor): WorkspaceClientControllerConstructor {
   return class FileEditorNavigationController extends Controller {
     static values = { editor: String, request: String, line: Number, column: Number };
     declare readonly editorValue: string;
+    declare readonly requestValue: string;
     declare readonly lineValue: number;
     declare readonly columnValue: number;
     requestValueChanged(): void {
-      // Let the child controller connect before delivering the initial position.
+      // Deliver the position after the permanent editor has been restored.
       queueMicrotask(() => {
         const editor = document.getElementById(this.editorValue);
         if (!editor) return; // The surface may have been removed before this callback.
         editor.dataset.fileEditorLineValue = String(this.lineValue);
         editor.dataset.fileEditorColumnValue = String(this.columnValue);
-        editor.dispatchEvent(new CustomEvent<EditorPosition>("atelier:file-editor-position", {
-          detail: { line: this.lineValue, column: this.columnValue },
-        }));
+        editor.dataset.fileEditorPositionRequestValue = this.requestValue;
       });
     }
   };

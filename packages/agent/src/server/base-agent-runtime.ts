@@ -149,7 +149,6 @@ export abstract class BaseAgentRuntime implements WorkspaceAgentRuntime {
       this.notice("error", "The turn ended, but its push notification could not be sent.");
     });
     await this.options.events?.emit("workspace_agent_turn_finished", { workspaceId: this.workspaceId, conversationId: this.conversationId });
-
   }
 
   get isStreaming(): boolean {
@@ -167,7 +166,6 @@ export abstract class BaseAgentRuntime implements WorkspaceAgentRuntime {
       subscription.unsubscribe();
       this.liveSubscriberCount -= 1;
       if (this.liveSubscriberCount === 0 && this.turnSubscriberCount === 0) {
-
         this.cancelToolArgsFlush();
       }
     };
@@ -203,7 +201,6 @@ export abstract class BaseAgentRuntime implements WorkspaceAgentRuntime {
         ownedChannel.subscriptions.delete(owned);
         if (ownedChannel.subscriptions.size === 0 && this.turnPresentations.get(turnId) === ownedChannel) this.turnPresentations.delete(turnId);
         if (this.liveSubscriberCount === 0 && this.turnSubscriberCount === 0) {
-
           this.cancelToolArgsFlush();
         }
       },
@@ -229,8 +226,6 @@ export abstract class BaseAgentRuntime implements WorkspaceAgentRuntime {
     return (item.type === "user" && !item.steering) || item.type === "error" || item.type === "note" || (item.type === "text" && item.final);
   }
 
-  /** Commentary goes to both the lazy full turn and the always-visible projection. */
-
   protected livePendingUser(key: string, text: string, images: SessionImageRef[] = []): void {
     const item: Extract<TranscriptItem, { type: "user" }> = { type: "user", key, text, images, timestamp: Date.now(), pending: true };
     this.pendingUsers.set(key, item);
@@ -252,8 +247,6 @@ export abstract class BaseAgentRuntime implements WorkspaceAgentRuntime {
     this.livePresentation.dispose();
     this.footerRefresh.dispose();
     this.completionCatalogRefresh.dispose();
-    this.textRendering.clear();
-    this.transcriptRendering.clear();
     this.resetTurnSubscriptions(this.ctx.branchId ?? "");
     finishNotificationTurn(this.ctx);
     this.cancelToolArgsFlush();
@@ -296,7 +289,6 @@ export abstract class BaseAgentRuntime implements WorkspaceAgentRuntime {
     if (user) {
       const item: TranscriptItem = { type: "user", timestamp: now, key: entryId, rewindEntryId: entryId, text: user.text, images: user.images };
       live.items.push(item);
-      this.invalidatePresentation();
     }
     this.invalidatePresentation();
   }
@@ -307,8 +299,7 @@ export abstract class BaseAgentRuntime implements WorkspaceAgentRuntime {
     live.working.inputEntryIds!.push(entryId);
     live.items.push(item);
     if (pendingKey) this.liveConsumePendingUser(pendingKey);
-    this.appendLiveItem(item);
-    this.invalidatePresentation();
+    this.publishLiveItem(item);
   }
 
   protected liveEnsure(): LiveState {
@@ -328,7 +319,10 @@ export abstract class BaseAgentRuntime implements WorkspaceAgentRuntime {
     return [...user, this.liveWorkingSection(live), ...trailing];
   }
 
-  private appendLiveItem(item: TranscriptItem, _options: { live?: boolean; open?: boolean } = {}): void { item.timestamp ??= Date.now(); this.invalidatePresentation(); }
+  private publishLiveItem(item: TranscriptItem): void {
+    item.timestamp ??= Date.now();
+    this.invalidatePresentation();
+  }
 
   private openTextItem(): Extract<TranscriptItem, { type: "text" }> | undefined {
     const live = this.live;
@@ -381,7 +375,6 @@ export abstract class BaseAgentRuntime implements WorkspaceAgentRuntime {
     if (live.open?.kind === "text") {
       const item = live.items[live.open.index];
       if (item?.type === "text" && !item.final) {
-
         item.final = true;
         this.invalidatePresentation();
       }
@@ -405,14 +398,13 @@ export abstract class BaseAgentRuntime implements WorkspaceAgentRuntime {
       live.items.push(item);
       live.open = { index, kind: "text", contentIndex };
       live.messageTextIndices.set(contentIndex, index);
-      this.appendLiveItem(item, { live: true });
+      this.publishLiveItem(item);
     }
     const item = live.items[live.open.index];
     if (item?.type !== "text") return;
     item.text += text;
     // Publication is coalesced; snapshots always read the latest source.
     this.invalidatePresentation();
-
   }
 
   protected liveTextEnd(contentIndex: number): void {
@@ -430,7 +422,7 @@ export abstract class BaseAgentRuntime implements WorkspaceAgentRuntime {
       const item: TranscriptItem = { type: "thinking", key: this.liveKey(live, index, "thinking"), text: "", live: true };
       live.items.push(item);
       live.open = { index, kind: "thinking" };
-      this.appendLiveItem(item, { live: true, open: true });
+      this.publishLiveItem(item);
     }
     const item = live.items[live.open.index];
     if (item?.type !== "thinking") return;
@@ -450,7 +442,7 @@ export abstract class BaseAgentRuntime implements WorkspaceAgentRuntime {
     const item: TranscriptItem = { type: "tool", key, tool };
     live.items.push(item);
     live.open = { index, kind: "toolargs" };
-    this.appendLiveItem(item, { live: true, open: true });
+    this.publishLiveItem(item);
     return index;
   }
 
@@ -507,7 +499,7 @@ export abstract class BaseAgentRuntime implements WorkspaceAgentRuntime {
       // Every later detail URL then uses the same identity as persisted history.
       this.invalidatePresentation();
     } else {
-      this.appendLiveItem(item, { live: true, open: true });
+      this.publishLiveItem(item);
     }
   }
 
@@ -564,7 +556,7 @@ export abstract class BaseAgentRuntime implements WorkspaceAgentRuntime {
       ? { type: "error", key: this.liveKey(live, live.items.length, "error"), text }
       : { type: "note", key: this.liveKey(live, live.items.length, "note"), text, tone };
     live.items.push(item);
-    this.appendLiveItem(item, { live: true });
+    this.publishLiveItem(item);
   }
 
   protected liveAssistantFailure(): void {
@@ -574,9 +566,8 @@ export abstract class BaseAgentRuntime implements WorkspaceAgentRuntime {
     for (const index of live.messageTextIndices.values()) {
       const item = live.items[index];
       if (item?.type !== "text" || !item.final) continue;
-      this.invalidatePresentation();
       item.final = false;
-      this.appendLiveItem(item);
+      this.publishLiveItem(item);
     }
     live.finalStarted = false;
   }
@@ -605,7 +596,7 @@ export abstract class BaseAgentRuntime implements WorkspaceAgentRuntime {
     const item: TranscriptItem = { type: "text", key: this.liveKey(live, index, "final"), text, final: true };
     live.finalStarted = true;
     live.items.push(item);
-    this.appendLiveItem(item);
+    this.publishLiveItem(item);
   }
 
   protected liveCacheMiss(miss: CacheMiss): void {
@@ -614,22 +605,18 @@ export abstract class BaseAgentRuntime implements WorkspaceAgentRuntime {
     const live = this.liveEnsure();
     const item: TranscriptItem = { type: "note", key: this.liveKey(live, live.items.length, "cache-miss"), text, tone: "warning" };
     live.items.push(item);
-    this.appendLiveItem(item);
+    this.publishLiveItem(item);
   }
 
   /** End the live model synchronously; terminal lifecycle must not wait on stats I/O. */
   protected finishLivePresentation(outcome: "completed" | "stopped" = "stopped"): void {
     this.cancelToolArgsFlush();
-    // Supersede any paced tail with one canonical full-source render before the
-    // live state (and its renderer session) is discarded.
     this.finishOpenText(Boolean(this.openTextItem()?.final));
 
     if (this.live) {
       for (const timer of this.live.terminalTimers.values()) clearTimeout(timer);
       if (outcome === "completed") this.live.working.completedAt = Date.now();
       else this.live.working.stoppedAt = Date.now();
-      this.invalidatePresentation();
-      this.invalidatePresentation();
     }
     this.live = undefined;
     this.textRendering.clear();
@@ -639,9 +626,6 @@ export abstract class BaseAgentRuntime implements WorkspaceAgentRuntime {
 
   protected decorateTranscript(items: TranscriptItem[]): TranscriptItem[] { return items; }
 
-  /** Contribution changes invalidate the same canonical presentation. */
-  protected refreshContributedRows(): void { this.invalidatePresentation(); }
-
   private itemsForDisplay(): TranscriptItem[] {
     let items = this.canonicalItems();
     const live = this.live;
@@ -650,8 +634,6 @@ export abstract class BaseAgentRuntime implements WorkspaceAgentRuntime {
     if (index >= 0) items = items.slice(0, index);
     return [...this.decorateTranscript([...items, ...this.liveItemsForDisplay(live)]), ...this.pendingUsers.values()];
   }
-
-  protected async refreshTranscript(): Promise<void> { this.invalidatePresentation(); }
 
   protected async refreshStats(): Promise<void> { await this.footerRefresh.refresh(); }
 

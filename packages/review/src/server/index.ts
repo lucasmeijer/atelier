@@ -1,4 +1,3 @@
-import { renderReviewFileContent } from "./render.ts";
 import type { JsonValue } from "@atelier/core";
 import { Icons } from "@atelier/design-system/icons";
 import { turboStreamResponse, type WorkspaceModule } from "@atelier/shared";
@@ -8,7 +7,7 @@ import { Value } from "typebox/value";
 import { isReviewDiffHighlighting, isReviewDiffOverflow, reviewCommentsPrompt, type ReviewSide } from "../model.ts";
 import { clearDeletionReview, deletionReviewCommitResponse, deletionReviewFileResponse, reviewDeletionReview } from "./deletion.ts";
 import { collectReviewFile, collectReviewIndex, collectReviewStats, reviewSnippet, type ReviewIndex } from "./diff.ts";
-import { renderReviewBody, renderReviewFileDetails, renderReviewMoreFiles, renderReviewTitle, reviewFileFrameId, reviewFilePageSize, reviewReference, reviewWorkViewPresentation } from "./render.ts";
+import { renderReviewBody, renderReviewFileContent, renderReviewMoreFiles, renderReviewTitle, reviewFileFrameId, reviewFilePageSize, reviewReference, reviewWorkViewPresentation } from "./render.ts";
 import {
   isReviewDiffLayout,
   isReviewViewport,
@@ -45,7 +44,7 @@ async function refreshStats(workspaceId: string, index: ReviewIndex) {
   const files = await collectReviewStats(workspaceWorkHostPath(workspaceId), index);
   const title = index.phase === "ready" ? renderReviewTitle(files) : reviewWorkViewPresentation.label;
   reviewTitles.set(workspaceId, title);
-  return { files, title };
+  return files;
 }
 
 async function refreshedResponse(workspaceId: string): Promise<Response> {
@@ -104,7 +103,7 @@ export const reviewWorkspaceModule: WorkspaceModule = {
     identity: (_reference: ReviewReference) => "workspace",
     async render({ workspaceId }) {
       const { index, comments } = await current(workspaceId);
-      const { files } = await refreshStats(workspaceId, index);
+      const files = await refreshStats(workspaceId, index);
       return renderReviewBody(workspaceId, index, comments, await readReviewSettings(), files);
     },
   }],
@@ -146,18 +145,8 @@ export const reviewWorkspaceModule: WorkspaceModule = {
         const offset = Number(url.searchParams.get("offset"));
         if (!Number.isSafeInteger(offset) || offset < reviewFilePageSize || offset % reviewFilePageSize !== 0) return textResponse("Invalid review file offset", 422);
         const { index, comments } = await current(workspaceId);
-        const { files } = await refreshStats(workspaceId, index);
+        const files = await refreshStats(workspaceId, index);
         return htmlResponse(renderReviewMoreFiles(workspaceId, index, comments, offset, files));
-      }
-      match = url.pathname.match(/^\/workspaces\/([^/]+)\/review\/files\/([^/]+)$/);
-      if (match) {
-        if (request.method !== "GET") return textResponse("Method not allowed", 405);
-        const workspaceId = decodeURIComponent(match[1]!);
-        const path = decodeURIComponent(match[2]!);
-        const file = await collectReviewFile(workspaceWorkHostPath(workspaceId), path);
-        if (!file) return htmlResponse(`<turbo-frame id="${reviewFileFrameId(workspaceId, path)}"><div class="review-file-unavailable" role="note">This change is no longer available. Refresh Review to update the file list.</div></turbo-frame>`);
-        const comments = remapReviewFileComments(workspaceId, file);
-        return htmlResponse(await renderReviewFileDetails(workspaceId, file, comments));
       }
       match = url.pathname.match(/^\/workspaces\/([^/]+)\/review\/comments$/);
       if (match) return request.method === "POST" ? await createComment(decodeURIComponent(match[1]!), request) : textResponse("Method not allowed", 405);

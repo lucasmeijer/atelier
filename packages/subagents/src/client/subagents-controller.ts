@@ -1,16 +1,13 @@
 import { CableTopics, selectedWorkspaceAgent, type CableSubscription, type WorkspaceClientControllerConstructor } from "@atelier/shared";
 import { Type } from "typebox";
 import { Value } from "typebox/value";
-type Frame = HTMLElement & { src: string };
 
 export function createSubagentsController(Controller: WorkspaceClientControllerConstructor) {
   return class extends Controller {
-    static targets = ["frame", "branch"];
-    static values = { url: String, workspaceId: String };
+    static targets = ["branch"];
+    static values = { workspaceId: String };
     declare readonly element: HTMLElement;
-    declare readonly frameTarget: Frame;
     declare readonly branchTargets: HTMLDetailsElement[];
-    declare readonly urlValue: string;
     declare readonly workspaceIdValue: string;
     private parentId?: string;
     private tree?: CableSubscription;
@@ -18,7 +15,7 @@ export function createSubagentsController(Controller: WorkspaceClientControllerC
     private expanded = new Set<string>();
     private reveal?: string;
     private message?: string;
-    private get storageKey(): string { return `atelier:subagents:${this.urlValue}:${this.parentId}`; }
+    private get storageKey(): string { return `atelier:subagents:/workspaces/${this.workspaceIdValue}/subagents:${this.parentId}`; }
 
     connect(): void { this.sync(); }
     disconnect(): void { this.stop(); }

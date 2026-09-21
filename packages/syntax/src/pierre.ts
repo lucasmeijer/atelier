@@ -1,6 +1,5 @@
 import { registerCustomCSSVariableTheme } from "@pierre/diffs";
-
-const atelierPierreTheme = "atelier";
+import { atelierPierreTheme } from "./diff-options.ts";
 
 registerCustomCSSVariableTheme(atelierPierreTheme, {
   foreground: "var(--text-bright)", background: "transparent",

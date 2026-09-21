@@ -592,7 +592,7 @@ test.each([
   const navigation = deferred<{ editorText?: string }>();
   const { session, emit } = fakeSession(navigation);
   const events = createAtelierEventBus();
-  const runtime = runtimeFor(session, events);
+  runtimeFor(session, events);
   let finished = 0;
   events.on("workspace_agent_turn_finished", () => { finished += 1; });
 

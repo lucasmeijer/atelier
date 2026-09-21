@@ -71,13 +71,11 @@ const editorHighlightStyle = HighlightStyle.define([
   { tag: [tags.typeName, tags.className, tags.tagName], color: "var(--editor-type)" },
 ]);
 
-type EditorPosition = { line: number; column: number };
-
 type EditorRefreshDetail = { workspaceId: string };
 
 export function createFileEditorController(Controller: WorkspaceClientControllerConstructor): WorkspaceClientControllerConstructor {
   return class FileEditorController extends Controller {
-    static values = { workspaceId: String, path: String, contentUrl: String, line: Number, column: Number };
+    static values = { workspaceId: String, path: String, contentUrl: String, line: Number, column: Number, positionRequest: String };
     static targets = ["host", "loading", "status", "conflict", "conflictMine", "conflictTheirs", "preview", "previewOptions", "copyButton"];
 
     declare readonly element: HTMLElement;
@@ -105,7 +103,6 @@ export function createFileEditorController(Controller: WorkspaceClientController
     private applyingDisk = false;
     private saveSequence = 0;
     private diskSequence = 0;
-    private requestedPosition?: EditorPosition;
 
     connect(): void {
       this.connection = new AbortController();
@@ -126,7 +123,6 @@ export function createFileEditorController(Controller: WorkspaceClientController
       // SAFETY: The files-refresh event carries EditorRefreshDetail.
       window.addEventListener("atelier:files-refresh", this.refreshRequested as EventListener, { signal });
       this.element.addEventListener("atelier:file-editor-refresh", this.refreshDisk, { signal });
-      this.element.addEventListener("atelier:file-editor-position", this.positionRequested, { signal });
       void this.load(signal).catch((error: Error) => {
         if (this.isCurrentConnection(signal)) this.showLoadError(error);
       });
@@ -218,9 +214,8 @@ export function createFileEditorController(Controller: WorkspaceClientController
       if (this.draft.dirty && !this.draft.conflict) void this.save();
       this.copyButtonTarget.disabled = false;
       if (!file.writable) this.setStatus("Read only", "");
-      const position = this.requestedPosition ?? { line: this.lineValue, column: this.columnValue };
-      this.jumpTo(position.line, position.column);
-      if (this.hasPreviewTarget && position.line < 1) await this.showPreview();
+      this.jumpTo(this.lineValue, this.columnValue);
+      if (this.hasPreviewTarget && this.lineValue < 1) await this.showPreview();
     }
 
     private readonly refreshRequested = (event: CustomEvent<EditorRefreshDetail>): void => {
@@ -341,11 +336,9 @@ export function createFileEditorController(Controller: WorkspaceClientController
       setToggleValue(this.previewOptionsTarget, visible ? "preview" : "edit");
     }
 
-    private readonly positionRequested = (event: Event): void => {
-      // SAFETY: The navigation controller emits this event with an EditorPosition payload.
-      this.requestedPosition = (event as CustomEvent<EditorPosition>).detail;
-      this.jumpTo(this.requestedPosition.line, this.requestedPosition.column);
-    };
+    positionRequestValueChanged(): void {
+      this.jumpTo(this.lineValue, this.columnValue);
+    }
 
     private jumpTo(line: number, column = 1): void {
       if (!this.view || line < 1) return;

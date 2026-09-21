@@ -6,11 +6,11 @@ export async function languageExtension(path: string): Promise<Extension> {
   if (["js", "mjs", "cjs", "jsx", "ts", "mts", "cts", "tsx"].includes(extension)) return (await import("@codemirror/lang-javascript")).javascript({ typescript: ["ts", "mts", "cts", "tsx"].includes(extension), jsx: ["jsx", "tsx"].includes(extension) });
   if (["json", "jsonc"].includes(extension)) return (await import("@codemirror/lang-json")).json();
   if (["html", "htm"].includes(extension)) return (await import("@codemirror/lang-html")).html();
-  if (["css"].includes(extension)) return (await import("@codemirror/lang-css")).css();
+  if (extension === "css") return (await import("@codemirror/lang-css")).css();
   if (["md", "markdown"].includes(extension)) return (await import("@codemirror/lang-markdown")).markdown();
-  if (["py"].includes(extension)) return (await import("@codemirror/lang-python")).python();
-  if (["rs"].includes(extension)) return (await import("@codemirror/lang-rust")).rust();
-  if (["java"].includes(extension)) return (await import("@codemirror/lang-java")).java();
+  if (extension === "py") return (await import("@codemirror/lang-python")).python();
+  if (extension === "rs") return (await import("@codemirror/lang-rust")).rust();
+  if (extension === "java") return (await import("@codemirror/lang-java")).java();
   if (["c", "h", "cc", "cpp", "cxx", "hpp"].includes(extension)) return (await import("@codemirror/lang-cpp")).cpp();
   const shader = shaderLanguageFromExtension(extension);
   if (shader) return (await import("./shader-language.ts")).shaderLanguage(shader);

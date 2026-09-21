@@ -127,20 +127,10 @@ export function createWebApp(deps: WebAppDeps): WebApp {
   });
   const serializePresentationMutation = createKeyedOperationQueue();
 
-  function commandResult(request: Request, originHtml = ""): string {
-    invalidatePresentation();
-    const workspaceId = new URL(request.url).pathname.match(/^\/workspaces\/([^/]+)/)?.[1];
-    for (const [key, surface] of surfaces) {
-      const [id] = JSON.parse(key);
-      if (id === workspaceId) surface.invalidate();
-    }
-    return requestAcceptsJson(request) && !wantsTurboStream(request) ? "" : originHtml;
-  }
-
   const workPresentationIntents = new Map<string, { key: string; revision: string }>();
   type SurfaceState = { kind: "workspace"; presentation: FixedWorkspacePresentation }
     | { kind: "regions"; regions: readonly LiveRegion[] };
-  const surfaces = new Map<string, ReturnType<typeof createLiveResource<SurfaceState>>>();
+  const surfaces = new Map<string, { workspaceId: string; kind: string; resource: ReturnType<typeof createLiveResource<SurfaceState>> }>();
   const reportPresentationError = (error: Error) => logError(
     `Could not refresh live state: ${error instanceof Error ? error.message : String(error)}`,
   );
@@ -155,7 +145,14 @@ export function createWebApp(deps: WebAppDeps): WebApp {
 
   function invalidatePresentation(): void {
     shell.invalidate();
-    for (const [key, surface] of surfaces) if (JSON.parse(key)[1] === "workspace") surface.invalidate();
+    for (const { kind, resource } of surfaces.values()) if (kind === "workspace") resource.invalidate();
+  }
+
+  function invalidateWorkspace(workspaceId?: string): void {
+    invalidatePresentation();
+    for (const surface of surfaces.values()) {
+      if (surface.kind !== "workspace" && surface.workspaceId === workspaceId) surface.resource.invalidate();
+    }
   }
 
   function surfaceFor(identifier: CableIdentifier) {
@@ -166,9 +163,9 @@ export function createWebApp(deps: WebAppDeps): WebApp {
     const contributed = workspaceModules.flatMap(module => module.liveSurfaces ?? []).find(surface => surface.name === kind);
     if (kind !== "workspace" && !contributed) throw new Error("Unknown surface kind");
     const cacheKey = JSON.stringify([workspaceId, kind, key, params.agent ?? "", params.work ?? ""]);
-    let resource = surfaces.get(cacheKey);
-    if (!resource) {
-      resource = createLiveResource<SurfaceState>(async () => {
+    let surface = surfaces.get(cacheKey);
+    if (!surface) {
+      const resource = createLiveResource<SurfaceState>(async () => {
         const entry = requireWorkspace(workspaceId);
         if (contributed) return { kind: "regions", regions: await contributed.load({ workspaceId, key }) };
         if (entry.phase.kind === "runningPhase" && !entry.phase.deletion) {
@@ -179,9 +176,10 @@ export function createWebApp(deps: WebAppDeps): WebApp {
       }, state => state.kind === "workspace"
         ? workspaceRegions(state.presentation)
         : state.regions, reportPresentationError);
-      surfaces.set(cacheKey, resource);
+      surface = { workspaceId, kind, resource };
+      surfaces.set(cacheKey, surface);
     }
-    return resource;
+    return surface.resource;
   }
 
   async function subscribeSurface(identifier: CableIdentifier, listener: (html: string) => void) {
@@ -263,7 +261,7 @@ export function createWebApp(deps: WebAppDeps): WebApp {
       workPresentationIntents.delete(id);
       provisioningPrompts.delete(id);
       provisioning.delete(id);
-      for (const [key, surface] of surfaces) if (JSON.parse(key)[0] === id) { surface.dispose(); surfaces.delete(key); }
+      for (const [key, surface] of surfaces) if (surface.workspaceId === id) { surface.resource.dispose(); surfaces.delete(key); }
       invalidatePresentation();
       for (const handler of deps.workspaceRemovedHandlers ?? []) void handler(id);
     },
@@ -461,10 +459,6 @@ export function createWebApp(deps: WebAppDeps): WebApp {
     await presentationStore.dismissWarning(id, kind, warning.state);
     invalidatePresentation();
     return requestAcceptsJson(request) ? jsonResponse({ dismissed: true }) : turboStreamResponse("");
-  }
-
-  async function fixedWorkspacePresentation(workspaceId: string): Promise<FixedWorkspacePresentation> {
-    return (await workspacePresentationBundle(workspaceId)).presentation;
   }
 
   function workspaceRegions(presentation: FixedWorkspacePresentation): readonly LiveRegion[] {
@@ -972,14 +966,16 @@ export function createWebApp(deps: WebAppDeps): WebApp {
     const attachments = await attachWorkspaceModules(workspaceId);
     const contribution = attachments.flatMap((attachment) => attachment.workViews ?? []).find((view) => workViewKey(view.reference) === key);
     if (!contribution) throw new AtelierCoreError("work_view_not_found", `Work view is not available: ${key}`);
-    const { opened } = await presentationStore.openWorkView(workspaceId, contribution.reference);
-    return { reference: contribution.reference, key, opened };
+    await presentationStore.openWorkView(workspaceId, contribution.reference);
+    return { reference: contribution.reference, key };
   }
 
   async function openWorkspaceModuleWorkView(workspaceId: string, reference: WorkspaceWorkViewReference, request: Request, options: { select?: boolean } = {}): Promise<Response> {
     return await serializePresentationMutation(workspaceId, async () => {
       const { key } = await openAvailableWorkView(workspaceId, reference);
-      return turboStreamResponse(commandResult(request, options.select === false ? "" : presentWorkViewTurboStream(workspaceId, key)));
+      // Navigation GETs can open a view too; they do not pass through the POST invalidation path.
+      invalidateWorkspace(workspaceId);
+      return turboStreamResponse(options.select === false || (requestAcceptsJson(request) && !wantsTurboStream(request)) ? "" : presentWorkViewTurboStream(workspaceId, key));
     });
   }
 
@@ -990,14 +986,13 @@ export function createWebApp(deps: WebAppDeps): WebApp {
       ({ reference: createdWorkView } = await openAvailableWorkView(workspaceId, result.createdWorkView));
     }
     const origin = `${result.createdAgentConversationId ? selectAgentTurboStream(workspaceId, result.createdAgentConversationId) : ""}${createdWorkView ? presentWorkViewTurboStream(workspaceId, workViewKey(createdWorkView)) : ""}${result.streamHtml ?? ""}`;
-    const responseStream = commandResult(request, origin);
     if (requestAcceptsJson(request) && !wantsTurboStream(request)) {
       const command: WorkspaceCommandResponse = { id: commandId };
       if (createdWorkView) command.workView = createdWorkView;
       if (result.createdAgentConversationId) command.agentConversationId = result.createdAgentConversationId;
       return jsonResponse({ command, workViews: workViewSummaries(workspaceId, await presentationStore.listWorkViews(workspaceId)) });
     }
-    return turboStreamResponse(responseStream);
+    return turboStreamResponse(origin);
   }
 
   async function closeWorkView(workspaceId: string, reference: WorkspaceWorkViewReference): Promise<void> {
@@ -1014,15 +1009,10 @@ export function createWebApp(deps: WebAppDeps): WebApp {
     if (!adapter) throw new AtelierCoreError("work_view_reference_invalid", `unknown Work view type: ${reference.type}`);
     const parsed = adapter.parseReference(reference);
     const before = await presentationStore.listWorkViews(workspaceId);
-    const closedKey = workViewKey(parsed);
-    const closedIndex = before.findIndex((view) => workViewKey(view.reference) === closedKey);
-    const open = closedIndex >= 0;
-    if (!open) throw new AtelierCoreError("work_view_not_found", `Work view is not open: ${workViewKey(parsed)}`);
+    if (!before.some(view => workViewKey(view.reference) === workViewKey(parsed))) throw new AtelierCoreError("work_view_not_found", `Work view is not open: ${workViewKey(parsed)}`);
     await closeWorkView(workspaceId, parsed);
-    const storedWorkViews = await presentationStore.listWorkViews(workspaceId);
-    const responseStream = commandResult(request);
-    if (requestAcceptsJson(request) && !wantsTurboStream(request)) return jsonResponse({ closed: parsed, workViews: workViewSummaries(workspaceId, storedWorkViews) });
-    return turboStreamResponse(responseStream);
+    if (requestAcceptsJson(request) && !wantsTurboStream(request)) return jsonResponse({ closed: parsed, workViews: workViewSummaries(workspaceId, await presentationStore.listWorkViews(workspaceId)) });
+    return turboStreamResponse("");
   }
 
   async function reorderWorkViewEndpoint(workspaceId: string, request: Request): Promise<Response> {
@@ -1030,10 +1020,8 @@ export function createWebApp(deps: WebAppDeps): WebApp {
     const stored = (await presentationStore.listWorkViews(workspaceId)).find((view) => workViewKey(view.reference) === body.key);
     if (!stored) throw new AtelierCoreError("work_view_not_found", `Work view is not open: ${body.key}`);
     await presentationStore.reorderWorkView(workspaceId, stored.reference, body.index);
-    const storedWorkViews = await presentationStore.listWorkViews(workspaceId);
-    const responseStream = commandResult(request);
-    if (requestAcceptsJson(request) && !wantsTurboStream(request)) return jsonResponse({ workViews: workViewSummaries(workspaceId, storedWorkViews) });
-    return turboStreamResponse(responseStream);
+    if (requestAcceptsJson(request) && !wantsTurboStream(request)) return jsonResponse({ workViews: workViewSummaries(workspaceId, await presentationStore.listWorkViews(workspaceId)) });
+    return turboStreamResponse("");
   }
 
   async function closeWorkViewJsonEndpoint(workspaceId: string, request: Request): Promise<Response> {
@@ -1063,26 +1051,25 @@ export function createWebApp(deps: WebAppDeps): WebApp {
     if (!stored) throw new AtelierCoreError("work_view_not_found", `Work view is not open: ${key}`);
     registry.setParked(workspaceId, false);
     registry.requestSurfaceAttention(workspaceId, key);
-    const responseStream = commandResult(request);
-    return requestAcceptsJson(request) && !wantsTurboStream(request) ? jsonResponse({ attention: stored.reference }) : turboStreamResponse(responseStream);
+    return requestAcceptsJson(request) && !wantsTurboStream(request) ? jsonResponse({ attention: stored.reference }) : turboStreamResponse("");
   }
 
   async function closeAgentConversationEndpoint(workspaceId: string, conversationId: string, request: Request): Promise<Response> {
     requireWorkspace(workspaceId);
     const before = await agentTabs.list({ workspaceId });
-    const closedIndex = before.findIndex((agent) => agent.id === conversationId);
-    if (closedIndex < 0) throw new AtelierCoreError("agent_conversation_not_found", `Agent conversation not found: ${conversationId}`);
+    if (!before.some(agent => agent.id === conversationId)) throw new AtelierCoreError("agent_conversation_not_found", `Agent conversation not found: ${conversationId}`);
     await agentTabs.close({ workspaceId, conversationId });
     registry.clearSurfaceAttention(workspaceId, `agent:${conversationId}`);
-    const presentation = await fixedWorkspacePresentation(workspaceId);
-    const responseStream = commandResult(request);
-    if (requestAcceptsJson(request) && !wantsTurboStream(request)) return jsonResponse({ archivedConversationId: conversationId, agentConversations: presentation.agentConversations.map(({ id, title, providerId, busy, requestingAttention }) => ({ id, title, providerId, busy, requestingAttention })) });
-    return turboStreamResponse(responseStream);
+    if (requestAcceptsJson(request) && !wantsTurboStream(request)) {
+      const agents = await agentPaneContributions(workspaceId);
+      return jsonResponse({ archivedConversationId: conversationId, agentConversations: agents.map(({ id, title, providerId, busy, requestingAttention }) => ({ id, title, providerId, busy, requestingAttention })) });
+    }
+    return turboStreamResponse("");
   }
 
   async function renderModelPickerUpdates(request: Request): Promise<string> {
     const launchUpdates = (await Promise.all(agentProviders.map(provider => provider.launch.refreshConfiguration?.(launchComposerSettingsFrameId)))).join("");
-    return commandResult(request, launchUpdates);
+    return requestAcceptsJson(request) && !wantsTurboStream(request) ? "" : launchUpdates;
   }
 
   function openOldestAttentionWorkspaceEndpoint(): Response {
@@ -1233,13 +1220,7 @@ export function createWebApp(deps: WebAppDeps): WebApp {
   return {
     subscribeShell: listener => shell.subscribe(listener),
     subscribeSurface,
-    invalidateWorkspace(workspaceId) {
-      invalidatePresentation();
-      for (const [key, surface] of surfaces) {
-        const [id] = JSON.parse(key);
-        if (id === workspaceId) surface.invalidate();
-      }
-    },
+    invalidateWorkspace,
     deleteCurrentWorkspaceFromAgent,
     resumeWorkspaceDeletions: deletion.resume,
     provisioning,
@@ -1271,12 +1252,7 @@ export function createWebApp(deps: WebAppDeps): WebApp {
       try {
         const result = await route(request);
         if (request.method !== "GET" && request.method !== "HEAD") {
-          invalidatePresentation();
-          const workspaceId = new URL(request.url).pathname.match(/^\/workspaces\/([^/]+)/)?.[1];
-          for (const [key, surface] of surfaces) {
-            const [id] = JSON.parse(key);
-            if (id === workspaceId) surface.invalidate();
-          }
+          invalidateWorkspace(new URL(request.url).pathname.match(/^\/workspaces\/([^/]+)/)?.[1]);
         }
         return result;
       } catch (thrown) {

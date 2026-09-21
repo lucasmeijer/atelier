@@ -12,11 +12,11 @@ import { posix } from "node:path";
 import type { FileEntry } from "./files.ts";
 import { defaultFilesViewId, filesDiskGeneration, filesNavigationRequest, type FilesView } from "./state.ts";
 
-export function filesTreeFrameId(workspaceId: string, viewId: string): string {
+function filesTreeFrameId(workspaceId: string, viewId: string): string {
   return domId("workspace", workspaceId, "files", viewId, "tree");
 }
 
-export function filesEditorFrameId(workspaceId: string, viewId: string): string {
+function filesEditorFrameId(workspaceId: string, viewId: string): string {
   return domId("workspace", workspaceId, "files", viewId, "editor");
 }
 
@@ -28,12 +28,8 @@ export function filesDirectoryFrameId(workspaceId: string, viewId: string, path:
   return `files_directory_${Buffer.from(`${workspaceId}\0${viewId}\0${path}`).toString("base64url")}`;
 }
 
-export function filesRefreshSignalId(workspaceId: string): string {
-  return domId("files_refresh_signal", workspaceId);
-}
-
 export function renderFilesRefreshSignal(workspaceId: string): string {
-  return `<span id="${filesRefreshSignalId(workspaceId)}" data-controller="files-refresh-signal" data-files-refresh-signal-generation-value="${filesDiskGeneration(workspaceId)}" data-files-refresh-signal-workspace-id-value="${escapeHtml(workspaceId)}" hidden></span>`;
+  return `<span id="${domId("files_refresh_signal", workspaceId)}" data-controller="files-refresh-signal" data-files-refresh-signal-generation-value="${filesDiskGeneration(workspaceId)}" data-files-refresh-signal-workspace-id-value="${escapeHtml(workspaceId)}" hidden></span>`;
 }
 
 function filesPaneToggle(action: "expand" | "collapse"): string {
@@ -174,7 +170,7 @@ export function renderFilesTreeFrame(workspaceId: string, viewId: string, entrie
   </turbo-frame>`;
 }
 
-export function renderLazyFilesTreeFrame(workspaceId: string, view: FilesView): string {
+function renderLazyFilesTreeFrame(workspaceId: string, view: FilesView): string {
   const query = new URLSearchParams({ filesView: view.id });
   return `<turbo-frame id="${filesTreeFrameId(workspaceId, view.id)}" class="files-frame" src="/workspaces/${encodeURIComponent(workspaceId)}/files?${query}" loading="lazy"><div class="files-loading"><span class="status-spinner"></span> Loading files…</div></turbo-frame>`;
 }

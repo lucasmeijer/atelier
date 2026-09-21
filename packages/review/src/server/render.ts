@@ -154,10 +154,6 @@ export async function renderReviewFileContent(workspaceId: string, file: ReviewF
   return `<div class="review-file-diff">${body}</div>`;
 }
 
-export async function renderReviewFileDetails(workspaceId: string, file: ReviewFile, comments: ReviewComment[]): Promise<string> {
-  return `<turbo-frame id="${reviewFileFrameId(workspaceId, file.path)}">${await renderReviewFileContent(workspaceId, file, comments)}</turbo-frame>`;
-}
-
 export async function renderReadOnlyReviewFile(frameId: string, file: ReviewFile): Promise<string> {
   const model = `<script type="application/json" data-turbo-eval="false" data-review-model>${jsonForHtml(diffModel(file, []))}</script>`;
   const body = file.kind === "text" ? await renderTextFile(file, [], "deletion-review", model) : renderSpecialFile(file);

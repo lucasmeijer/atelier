@@ -173,3 +173,23 @@ for (const operation of ["createWorkView", "presentWorkViewFromAgent"] as const)
     }, undefined, [module]);
   });
 }
+
+test("a workspace command refreshes each contributed live resource once", async () => {
+  let loads = 0;
+  await withTestApp([], async ({ app, workspaceId }) => {
+    await app.fetch(new Request(`http://test.local/workspaces/${workspaceId}`, { headers: { accept: "application/json" } }));
+    const subscription = await app.subscribeSurface({ channel: "module", name: "surface", workspaceId, params: { kind: "test-resource" } }, () => {});
+    expect(loads).toBe(1);
+    const response = await app.fetch(new Request(`http://test.local/workspaces/${workspaceId}/commands/test.update`, {
+      method: "POST", headers: { accept: "application/json", "content-type": "application/json" }, body: "{}",
+    }));
+    expect(response.status).toBe(200);
+    await Bun.sleep(0);
+    expect(loads).toBe(2);
+    subscription.unsubscribe();
+  }, undefined, [{
+    id: "test-updates",
+    commands: [{ id: "test.update", execute: () => ({}) }],
+    liveSurfaces: [{ name: "test-resource", async load() { loads++; return []; } }],
+  }]);
+});

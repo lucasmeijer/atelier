@@ -13,9 +13,7 @@ class LiveSurfaceController extends Controller<HTMLElement> {
   declare agentValue: string;
   declare workValue: string;
   private subscription?: CableSubscription;
-  private pending?: Promise<void>;
-  private resolve?: () => void;
-  private reject?: (error: Error) => void;
+  private pending?: ReturnType<typeof Promise.withResolvers<void>>;
   ready = false;
 
   connect(): void {
@@ -25,20 +23,20 @@ class LiveSurfaceController extends Controller<HTMLElement> {
 
   disconnect(): void {
     mounts.delete(this.element);
-    this.subscription?.unsubscribe();
-    this.subscription = undefined;
-    this.resolve?.();
-    this.pending = undefined;
-    this.ready = false;
+    this.stop();
   }
 
   release(): void {
-    this.resolve?.();
+    this.stop();
+    this.element.replaceChildren();
+  }
+
+  private stop(): void {
     this.subscription?.unsubscribe();
     this.subscription = undefined;
     this.ready = false;
+    this.pending?.resolve();
     this.pending = undefined;
-    this.element.replaceChildren();
   }
 
   select(agent: string, work: string): void {
@@ -46,33 +44,29 @@ class LiveSurfaceController extends Controller<HTMLElement> {
     this.agentValue = agent;
     this.workValue = work;
     if (!this.subscription) return;
-    this.subscription.unsubscribe();
-    this.subscription = undefined;
-    this.ready = false;
-    this.resolve?.();
-    this.pending = undefined;
+    this.stop();
     void this.ensureReady();
   }
 
   ensureReady(): Promise<void> {
     if (this.ready) return Promise.resolve();
-    if (this.pending) return this.pending;
-    this.pending = new Promise((resolve, reject) => { this.resolve = resolve; this.reject = reject; });
-    if (this.subscription) return this.pending;
+    if (this.pending) return this.pending.promise;
+    const pending = this.pending = Promise.withResolvers<void>();
+    if (this.subscription) return pending.promise;
     const identifier = this.kindValue === "workspace"
       ? CableTopics.module("surface", this.workspaceValue, { kind: this.kindValue, key: this.keyValue, agent: this.agentValue, work: this.workValue })
       : CableTopics.module("surface", this.workspaceValue, { kind: this.kindValue, key: this.keyValue });
     this.subscription = window.AtelierCable!.subscribe(identifier, {
       onReady: () => {
         this.ready = true;
-        this.resolve?.();
+        this.pending?.resolve();
         this.pending = undefined;
         this.element.dispatchEvent(new CustomEvent("live:ready", { bubbles: true }));
       },
       onDisconnected: () => { this.ready = false; },
-      onRejected: reason => { this.reject?.(new Error(reason)); this.pending = undefined; },
+      onRejected: reason => { this.pending?.reject(new Error(reason)); this.pending = undefined; },
     });
-    return this.pending!;
+    return pending.promise;
   }
 }
 

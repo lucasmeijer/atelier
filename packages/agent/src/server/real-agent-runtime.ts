@@ -85,7 +85,7 @@ export class RealAgentRuntime extends BaseAgentRuntime {
       void this.refreshStats().catch((error) => console.error("Could not refresh Agent costs", normalizedPromiseError(error)));
     });
 
-    this.unsubscribeTranscript = this.delegation.transcript?.subscribe(() => this.refreshContributedRows());
+    this.unsubscribeTranscript = this.delegation.transcript?.subscribe(() => this.invalidatePresentation());
   }
 
   private detachContributions(): void {
@@ -409,7 +409,7 @@ export class RealAgentRuntime extends BaseAgentRuntime {
         // prompt busy until agent_settled, independent of willRetry.
         if (!event.willRetry && !this.turnTiming) this.setBusy(false);
         if (event.reason === "manual" && !event.willRetry) await this.emitTurnFinished();
-        await this.refreshTranscript();
+        this.invalidatePresentation();
         await this.refreshStats();
         const notice = terminalCompactionNotice(event);
         if (notice) this.notice(notice.level, notice.message);
@@ -655,15 +655,13 @@ export class RealAgentRuntime extends BaseAgentRuntime {
       this.serviceTiers.reload();
       if (options.summarize) {
         await this.finishBranchSummary();
-        void (async () => {
-          await this.refreshTranscript();
-          await this.refreshStats();
-        })().catch((error) => {
+        this.invalidatePresentation();
+        void this.refreshStats().catch((error) => {
           console.error("Could not refresh Agent after tree summarization", normalizedPromiseError(error));
         });
         return result.editorText ?? "";
       }
-      await this.refreshTranscript();
+      this.invalidatePresentation();
       await this.refreshStats();
       return result.editorText ?? "";
     } finally {
@@ -705,10 +703,8 @@ export class RealAgentRuntime extends BaseAgentRuntime {
           this.finishLivePresentation();
           await this.finishBranchSummary();
         }
-        void (async () => {
-          await this.refreshTranscript();
-          await this.refreshStats();
-        })().catch((error) => {
+        this.invalidatePresentation();
+        void this.refreshStats().catch((error) => {
           console.error("Could not refresh Agent after rewind summarization", normalizedPromiseError(error));
         });
       }
@@ -734,7 +730,7 @@ export class RealAgentRuntime extends BaseAgentRuntime {
       await this.session.navigateTree(target, { summarize: false });
       this.selectBranch();
       this.serviceTiers.reload();
-      await this.refreshTranscript();
+      this.invalidatePresentation();
       await this.refreshStats();
     })());
   }
