@@ -24,7 +24,7 @@ export const subagentsWorkViewAdapter: WorkspaceModuleWorkViewAdapter = {
   identity: () => "workspace",
   render({ workspaceId }) {
     return `<section class="subagents-view" data-controller="subagents" data-subagents-workspace-id-value="${h(workspaceId)}" data-subagents-url-value="/workspaces/${h(workspaceId)}/subagents" data-action="atelier:workspace-agent-selected@document->subagents#sync atelier:workspace-pane-visible@document->subagents#sync atelier:workspace-pane-hidden@document->subagents#sync visibilitychange@document->subagents#sync turbo:frame-load->subagents#loaded toggle->subagents#toggle:capture">
-      <div class="subagents-scroll"><turbo-frame id="subagents-content-${h(workspaceId)}" data-subagents-target="frame" refresh="morph"></turbo-frame></div>
+      <div class="subagents-scroll"><turbo-frame id="subagents-content-${h(workspaceId)}" data-turbo-permanent data-subagents-target="frame" refresh="morph"></turbo-frame></div>
     </section>`;
   },
 };
@@ -43,7 +43,7 @@ export const handleSubagentRequest: AgentRouteHandler = async (request, url, opt
   const open = new Set(url.searchParams.getAll("open"));
   let revealed = agents.find((agent) => agent.id === url.searchParams.get("reveal"));
   while (revealed) { open.add(revealed.id); revealed = agents.find((agent) => agent.id === revealed!.parentId); }
-  return new Response(`<turbo-frame id="subagents-content-${h(workspaceId)}" refresh="morph">${renderSubagentTree(workspaceId, parent.conversationId, agents, open)}</turbo-frame>`, { headers: { "content-type": "text/html; charset=utf-8" } });
+  return new Response(`<turbo-frame id="subagents-content-${h(workspaceId)}" data-turbo-permanent refresh="morph">${renderSubagentTree(workspaceId, parent.conversationId, agents, open)}</turbo-frame>`, { headers: { "content-type": "text/html; charset=utf-8" } });
 };
 
 function childrenId(workspaceId: string, parentId: string): string { return `subagent-children-${workspaceId}-${parentId}`; }
