@@ -64,7 +64,10 @@ export function createAgentPaneController(Controller: StimulusControllerConstruc
       this.element.dataset.agentPresentationReady = "true";
       void this.revealTranscriptTarget();
       this.setReconnecting(false);
-      if (this.connectionShouldRun()) this.startAgentTerminals();
+      if (this.connectionShouldRun()) {
+        this.setTurnConnectionActive(true);
+        this.startAgentTerminals();
+      }
       this.element.dispatchEvent(new CustomEvent("live:ready", { bubbles: true }));
       this.navigation.snapshotReady(this.sendStopTarget.dataset.agentBusy === "true");
     };
@@ -104,7 +107,6 @@ export function createAgentPaneController(Controller: StimulusControllerConstruc
       this.updateSendStopButton();
       this.connected = true;
       this.element.dataset.agentPresentationReady = "false";
-      this.subscribe();
       if (isWorkspacePaneVisible(this.element)) this.becomeVisible();
     }
 
@@ -154,12 +156,9 @@ export function createAgentPaneController(Controller: StimulusControllerConstruc
     private reconcileConnection(): void {
       requestAnimationFrame(() => this.autosize());
       if (!this.connectionShouldRun()) {
-        this.setTurnConnectionActive(false);
-        this.stopAgentTerminals();
+        this.stopConnection();
         return;
       }
-      this.setTurnConnectionActive(true);
-      this.startAgentTerminals();
       if (!this.cableSubscription) this.subscribe();
     }
 
@@ -187,6 +186,7 @@ export function createAgentPaneController(Controller: StimulusControllerConstruc
     }
 
     private subscribe(): void {
+      this.element.dataset.agentPresentationReady = "false";
       if (this.hasBeenReady) this.setReconnecting(true);
       this.cableSubscription = window.AtelierCable?.subscribe(
         CableTopics.agent(this.workspaceIdValue, this.conversationIdValue),
@@ -200,6 +200,7 @@ export function createAgentPaneController(Controller: StimulusControllerConstruc
     }
 
     private stopConnection(): void {
+      this.element.dataset.agentPresentationReady = "false";
       this.setTurnConnectionActive(false);
       this.setReconnecting(false);
       this.cableSubscription?.unsubscribe();

@@ -169,7 +169,10 @@ export function createWorkspacePresentationController(
 
     intendedSurfacesReady(): boolean {
       const pane = this.element.querySelector<HTMLElement>(`[data-workspace-pane-role="agent"][data-workspace-pane-id="${CSS.escape(this.state.activeAgentId ?? "")}"]`);
-      return !pane?.querySelector('[data-agent-presentation-ready="false"]');
+      // Hidden panes already have server-rendered content; only visible agents
+      // need an active transcript subscription to finish preparation.
+      return !pane || !visiblePresentationPanes.has(pane) || document.hidden
+        || !pane.querySelector('[data-agent-presentation-ready="false"]');
     }
 
     presentationChanged(): void {
