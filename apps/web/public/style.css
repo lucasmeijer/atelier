@@ -295,9 +295,8 @@ turbo-frame { display: contents; }
 .fixed-shell-agent-conversations { flex: 0 1 auto; }
 .fixed-shell-work-pane .tab-strip { flex: 1; align-self: stretch; }
 .fixed-shell-agent-conversations::-webkit-scrollbar { display: none; }
-.fixed-shell-agent-pane-icon, .fixed-shell-agent-icon { width: 16px; height: 16px; flex: 0 0 auto; display: grid; place-items: center; color: var(--text); }
-.fixed-shell-agent-pane-icon { color: var(--text-bright); }
-.fixed-shell-agent-pane-icon svg, .fixed-shell-agent-icon svg { width: 16px; height: 16px; }
+.fixed-shell-agent-icon { width: 16px; height: 16px; flex: 0 0 auto; display: grid; place-items: center; color: var(--text); }
+.fixed-shell-agent-icon svg { width: 16px; height: 16px; }
 .fixed-shell-agent-bodies, .fixed-shell-work-bodies { position: relative; height: 100%; min-height: 0; overflow: hidden; }
 .fixed-shell-surface { position: absolute; inset: 0; display: none; min-width: 0; min-height: 0; overflow: auto; }
 .fixed-shell-surface:focus { outline: none; }
