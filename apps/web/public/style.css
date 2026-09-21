@@ -284,17 +284,20 @@ turbo-frame { display: contents; }
 .workspace-warning-stack:not(:empty) { display: grid; gap: 8px; margin-bottom: 8px; max-height: 40vh; overflow: auto; }
 .fixed-shell-agent-pane { min-width: 380px; flex: 0 0 var(--fixed-agent-width); }
 .fixed-workspace-presentation:not(.is-work-pane-open) .fixed-shell-agent-pane { flex: 1; }
-.fixed-shell-agent-navigation { min-width: 0; flex: 1; align-self: stretch; display: flex; align-items: center; gap: 8px; }
+.fixed-shell-agent-header-scroll, .fixed-shell-agent-navigation { flex: 1; align-self: stretch; display: flex; align-items: center; gap: 8px; }
+.fixed-shell-agent-header-scroll { min-width: 0; overflow-x: auto; overscroll-behavior-x: contain; scrollbar-width: none; }
+.fixed-shell-agent-header-scroll::-webkit-scrollbar { display: none; }
 .fixed-shell-agent-navigation > .popup-menu-anchor { flex: 0 0 auto; }
 .fixed-shell-agent-actions { flex: 0 0 auto; }
 .fixed-shell-park-workspace, .fixed-shell-delete-workspace { display: flex; flex: 0 0 auto; margin: 0; }
 .fixed-shell-workspace-title { min-width: 0; flex: 0 1 auto; display: flex; align-items: center; gap: 8px; }
 .fixed-shell-workspace-title strong { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font: 400 var(--text-body)/var(--leading-standard) var(--font-sans); }
 .fixed-shell-workspace-title small { color: var(--text); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
-.fixed-shell-agent-conversations { min-width: 0; display: flex; align-self: stretch; align-items: center; gap: 4px; overflow-x: auto; scrollbar-width: none; }
-.fixed-shell-agent-conversations { flex: 0 1 auto; }
+.fixed-shell-agent-conversations { display: flex; align-self: stretch; align-items: center; gap: 4px; }
+/* Short titles stay content-sized; long titles shrink from 18rem to the
+   tappable minimum before the whole header scrolls, including swipes on tabs. */
+.fixed-shell-agent-tab { display: grid; flex: 0 1 18rem; min-width: 9.5rem; max-width: max-content; user-select: none; -webkit-user-select: none; }
 .fixed-shell-work-pane .tab-strip { flex: 1; align-self: stretch; }
-.fixed-shell-agent-conversations::-webkit-scrollbar { display: none; }
 .fixed-shell-agent-icon { width: 16px; height: 16px; flex: 0 0 auto; display: grid; place-items: center; color: var(--text); }
 .fixed-shell-agent-icon svg { width: 16px; height: 16px; }
 .fixed-shell-agent-bodies, .fixed-shell-work-bodies { position: relative; height: 100%; min-height: 0; overflow: hidden; }

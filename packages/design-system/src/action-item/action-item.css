@@ -47,4 +47,6 @@
 .action-item__icon svg { width: 16px; height: 16px; }
 .action-item__description { display: block; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; color: var(--text-muted); }
 .action-item__metadata { display: flex; align-items: center; gap: 6px; flex: 0 0 auto; }
+/* A hidden update target must not reserve a metadata slot or its flex gap. */
+.action-item__metadata:has(> [hidden]:only-child) { display: none; }
 .action-item.is-danger { color: var(--danger); }

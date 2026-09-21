@@ -474,14 +474,14 @@ export const entries: CatalogueEntry[] = [
     title: "Action item",
     when: "Rows in menus, navigation, trees and action lists. Use compound when a row has separately actionable trailing controls.",
     contract:
-      "Choose native buttons or anchors for actions. Caller owns roles, href/type, selection and integration attributes. Never nest buttons. Single rows retain their content spacing with primary: false, without gaining primary-action styling. Labels and descriptions are plain text. leadingHtml and trailingHtml fill bounded icon/status and metadata slots; neither can replace the label anatomy. tone: danger is the semantic destructive treatment. Long labels reveal on engagement.",
+      "Choose native buttons or anchors for actions. Caller owns roles, href/type, selection and integration attributes. Never nest buttons. Single rows retain their content spacing with primary: false, without gaining primary-action styling. Labels and descriptions are plain text. leadingHtml and trailingHtml fill bounded icon/status and metadata slots; neither can replace the label anatomy. A sole hidden element in trailingHtml collapses the metadata slot and its gap while preserving the element as a server-update target. tone: danger is the semantic destructive treatment. Long labels reveal on engagement.",
     imports: {
       "action-item": "actionItemHtml",
       "copy-button": "copyButtonHtml",
     },
     examples: [
       {
-        title: "Single · semantic · disabled · compound long label",
+        title: "Single · semantic · disabled · compound long label with hidden status",
         render: () =>
           '<div class="action-list">' +
           actionItemHtml({
@@ -513,6 +513,7 @@ export const entries: CatalogueEntry[] = [
               kind: "text",
               text: "A very long record name that needs to remain readable inside a narrow container",
             },
+            trailingHtml: '<span hidden><span class="status-indicator"></span></span>',
             engagedActionsHtml: copyButtonHtml({
               label: "Copy record name",
               copyText: "Long record name",
