@@ -576,7 +576,7 @@ button.settings-link:disabled { opacity: .45; cursor: default; filter: none; }
 .fixed-shell-agent-pane > .panel, .fixed-shell-work-pane > .panel { flex: 1; min-height: 0; }
 
 #fixed_shell_atelier_next_attention { position: relative; }
-#fixed_shell_atelier_next_attention:disabled .status-dot { display: none; }
+#fixed_shell_atelier_next_attention:not([data-preloaded-attention]) .status-dot { display: none; }
 
 /* Installation help composes shared dialog and controls. */
 .pwa-reminder-body { display: grid; gap: 16px; }

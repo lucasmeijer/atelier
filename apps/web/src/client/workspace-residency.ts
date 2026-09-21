@@ -162,7 +162,8 @@ class WorkspaceResidencyController extends Controller<HTMLElement> {
   }
 
   oldestAttentionWorkspaceId(): string | undefined {
-    return this.attentionWorkspaces()[0]?.workspaceId;
+    const workspaces = this.attentionWorkspaces();
+    return (workspaces.find(({ workspaceId }) => this.prepared.has(workspaceId)) ?? workspaces[0])?.workspaceId;
   }
 
   private syncWorkspaceRows(): void {
@@ -171,7 +172,11 @@ class WorkspaceResidencyController extends Controller<HTMLElement> {
       entry.dataset.workspacePreloadState = this.prepared.has(id) ? "preloaded" : this.operations.has(id) ? "preloading" : "none";
     });
     const button = document.querySelector<HTMLButtonElement>("#fixed_shell_atelier_next_attention");
-    if (button) button.disabled = this.oldestAttentionWorkspaceId() === undefined;
+    if (button) {
+      const workspaces = this.attentionWorkspaces();
+      button.disabled = workspaces.length === 0;
+      button.toggleAttribute("data-preloaded-attention", workspaces.some(({ workspaceId }) => this.prepared.has(workspaceId)));
+    }
   }
 
   private syncCloseWorkspacePaneButton(): void {
