@@ -1,8 +1,7 @@
-import { Controller } from "@hotwired/stimulus";
 import { recentWorkspaceProjectStorageKey } from "@atelier/shared";
-import { cableRequestHeaders } from "./workspace-cable.ts";
-import { markActiveWorkspaceRow } from "./workspace-presentation.ts";
+import { Controller } from "@hotwired/stimulus";
 import { registerWorkspaceControllers, residencyController } from "./workspace-controller-registry.ts";
+import { markActiveWorkspaceRow } from "./workspace-presentation.ts";
 
 class EmptyWorkspaceOnboardingController extends Controller<HTMLElement> {
   static targets = ["origin", "svg", "path"];
@@ -166,7 +165,7 @@ class WorkspaceNavigationController extends Controller<HTMLElement> {
     try {
       const response = await fetch(form.action, {
         method: "POST",
-        headers: cableRequestHeaders({ Accept: "text/vnd.turbo-stream.html" }),
+        headers: { Accept: "text/vnd.turbo-stream.html" },
       });
       if (!response.ok) throw new Error(`Could not update parked workspace: HTTP ${response.status}`);
       const html = await response.text();

@@ -1,6 +1,3 @@
-import { tabHtml, tabStripHtml } from "@atelier/design-system/tab-strip";
-import { renderMobileAgentAttention, renderAgentPane, type AgentPaneContribution } from "./agent-pane.ts";
-import { busyAttentionIndicator, barButton, fullscreenViewAttributes, selectorCloseForm, behaviorTurboStream, workspacePreparationInvalidatedTurboStream, type ViewCloseAction } from "./workspace-view-markup.ts";
 import { actionItemHtml } from "@atelier/design-system/action-item";
 import { actionLinkHtml } from "@atelier/design-system/action-link";
 import { buttonHtml, type ButtonVariant } from "@atelier/design-system/button";
@@ -9,10 +6,13 @@ import { dialogHtml } from "@atelier/design-system/dialog";
 import { Icons } from "@atelier/design-system/icons";
 import { panelHtml } from "@atelier/design-system/panel";
 import { popupHtml } from "@atelier/design-system/popup";
+import { tabHtml, tabStripHtml } from "@atelier/design-system/tab-strip";
 import { domId, escapeHtml, turboStream, workspaceWorkViewLabelDomId } from "@atelier/shared";
-import { renderPwaReminder } from "./pwa-reminder.ts";
+import { renderAgentPane, renderMobileAgentAttention, type AgentPaneContribution } from "./agent-pane.ts";
 import { atelierEasterEggHtml } from "./atelier-easter-egg.ts";
+import { renderPwaReminder } from "./pwa-reminder.ts";
 import type { WorkspaceDeletionState } from "./workspace-registry.ts";
+import { barButton, behaviorTurboStream, busyAttentionIndicator, fullscreenViewAttributes, selectorCloseForm, type ViewCloseAction } from "./workspace-view-markup.ts";
 
 export type WorkViewAvailability =
   | { phase: "opening"; detail?: string }
@@ -41,7 +41,6 @@ export interface WorkspacePaneProject {
   lastWorkspaceCreatedAt?: number;
 }
 
-
 export interface WorkPaneContribution {
   iconHtml?: string;
   /** Stable, type-native serialized identity supplied by the resource adapter. */
@@ -51,9 +50,7 @@ export interface WorkPaneContribution {
   requestingAttention?: boolean;
   attentionSequence?: number;
   availability: WorkViewAvailability;
-  /** Inline bodies are reserved for shell-level fixtures; module attachments use bodyUrl. */
   bodyHtml?: string;
-  bodyUrl?: string;
   sourceKey?: string;
   actionsHtml?: string;
   close?: ViewCloseAction;
@@ -73,6 +70,7 @@ export function workspacePaneOnboardingState(presentation: WorkspacePanePresenta
 }
 
 export interface WorkspacePresentation {
+  initialSelection?: { agent?: string; workView?: string };
   workspace: Pick<WorkspacePaneEntry, "id" | "title">;
   agentConversations: readonly AgentPaneContribution[];
   agentProviders: readonly { id: string; label: string; iconHtml: string }[];
@@ -80,8 +78,8 @@ export interface WorkspacePresentation {
   commands?: readonly { id: string; label: string; description?: string; scope: string; iconHtml?: string; placement?: "work-launcher" | "agent-action"; binding?: string }[];
   overlayHtml?: readonly string[];
   warningsHtml?: string;
+  workPresentationIntent?: { key: string; revision: string };
 }
-
 
 function closeForm(close: ViewCloseAction, buttonHtml: string): string {
   return `<form data-turbo="true" method="post" action="${escapeHtml(close.action)}" data-close-label="${escapeHtml(close.label)}" data-action="submit->workspace-presentation#confirmClose">${buttonHtml}</form>`;
@@ -246,21 +244,17 @@ function renderWorkViewSelectors(workspaceId: string, views: readonly WorkPaneCo
   return views.map((view) => renderWorkViewSelector(workspaceId, view)).join("");
 }
 
-function renderWorkViewPane(workspaceId: string, view: WorkPaneContribution): string {
-  const body = view.bodyHtml ?? (view.bodyUrl
-    ? `<turbo-frame id="${workViewBodyFrameId(workspaceId, view.key)}" src="${escapeHtml(view.bodyUrl)}" loading="lazy" data-work-view-hydration data-action="turbo:before-frame-render->workspace-presentation#workBodyWillRender turbo:frame-render->workspace-presentation#bodyRendered turbo:frame-missing->workspace-presentation#bodyMissing turbo:frame-load->workspace-presentation#workBodyLoaded"><div class="work-view-hydration-loading" role="status" aria-label="Loading ${escapeHtml(view.label)}"><span class="status-spinner" aria-hidden="true"></span></div></turbo-frame>`
-    : "");
+export function workContentId(workspaceId: string, key: string): string {
+  return domId("work_content", workspaceId, key);
+}
+
+function renderWorkViewPane(workspaceId: string, view: WorkPaneContribution, active: boolean): string {
+  const body = view.bodyHtml ?? "";
   const source = view.sourceKey ? ` data-source-work-view-key="${escapeHtml(view.sourceKey)}"` : "";
-  return `<section id="${workViewPaneDomId(workspaceId, view.key)}" class="fixed-shell-surface" data-workspace-pane-role="work" data-workspace-pane-id="${escapeHtml(view.key)}" data-atelier-fullscreen-view-key="${escapeHtml(view.sourceKey ?? view.key)}" data-workspace-logically-visible="false"${source} tabindex="-1"><div id="${workViewAvailabilityDomId(workspaceId, view.key)}">${renderAvailability(view)}</div><div id="${workViewActionsDomId(workspaceId, view.key)}" class="fixed-shell-work-actions">${view.actionsHtml ?? ""}</div><div class="fixed-shell-live-body">${body}</div></section>`;
+  return `<section id="${workViewPaneDomId(workspaceId, view.key)}" class="fixed-shell-surface${active ? " is-active" : ""}" data-workspace-pane-role="work" data-workspace-pane-id="${escapeHtml(view.key)}" data-atelier-fullscreen-view-key="${escapeHtml(view.sourceKey ?? view.key)}" data-workspace-logically-visible="false"${source} tabindex="-1"><div id="${workViewAvailabilityDomId(workspaceId, view.key)}">${renderAvailability(view)}</div><div id="${workViewActionsDomId(workspaceId, view.key)}" class="fixed-shell-work-actions">${view.actionsHtml ?? ""}</div><div class="fixed-shell-live-body" id="${workContentId(workspaceId, view.key)}" data-turbo-permanent>${body}</div></section>`;
 }
 
-export function workViewBodyFrameId(workspaceId: string, key: string): string {
-  return domId("work_view_body", workspaceId, key);
-}
 
-export function renderWorkViewBodyFrame(workspaceId: string, key: string, bodyHtml: string): string {
-  return `<turbo-frame id="${workViewBodyFrameId(workspaceId, key)}">${bodyHtml}</turbo-frame>`;
-}
 
 function workViewDomId(workspaceId: string, part: string): string {
   return workspaceRegionDomId(workspaceId, part);
@@ -294,7 +288,7 @@ function renderWorkLauncherCommand(command: NonNullable<WorkspacePresentation["c
 
 function renderWorkPane(presentation: WorkspacePresentation): string {
   const selectors = renderWorkViewSelectors(presentation.workspace.id, presentation.workViews);
-  const panes = presentation.workViews.map((view) => renderWorkViewPane(presentation.workspace.id, view)).join("");
+  const panes = presentation.workViews.map((view) => renderWorkViewPane(presentation.workspace.id, view, view.key === presentation.initialSelection?.workView)).join("");
   const workCommands = (presentation.commands ?? []).filter((command) => command.placement === "work-launcher");
   const addMenuId = workViewDomId(presentation.workspace.id, "add_menu");
   const addMenu = workCommands.length ? popupHtml({
@@ -407,7 +401,7 @@ export function renderWorkspaceDeletionPresentation(workspaceId: string, deletio
 
 export function renderWorkspacePresentation(presentation: WorkspacePresentation): string {
   const id = workspacePresentationDomId(presentation.workspace.id);
-  return `<div id="${id}" class="fixed-workspace-presentation" data-controller="workspace-presentation" data-workspace-presentation-workspace-id-value="${escapeHtml(presentation.workspace.id)}" data-workspace-id="${escapeHtml(presentation.workspace.id)}" data-workspace-commands="${escapeHtml(JSON.stringify(presentation.commands ?? []))}">
+  return `<div id="${id}" class="fixed-workspace-presentation${presentation.initialSelection?.workView ? " is-work-pane-open" : ""}" data-controller="workspace-presentation" data-phone-destination="${presentation.initialSelection?.workView ? `work:${escapeHtml(presentation.initialSelection.workView)}` : "agents"}" data-workspace-presentation-work-intent-value="${escapeHtml(JSON.stringify(presentation.workPresentationIntent ?? {}))}" data-workspace-presentation-workspace-id-value="${escapeHtml(presentation.workspace.id)}" data-workspace-id="${escapeHtml(presentation.workspace.id)}" data-workspace-commands="${escapeHtml(JSON.stringify(presentation.commands ?? []))}">
     <div class="fixed-shell-main">${renderAgentPane(presentation)}${renderWorkPane(presentation)}</div>
     ${renderWorkspaceBar(presentation)}
     ${(presentation.overlayHtml ?? []).join("")}
@@ -418,93 +412,11 @@ export function presentWorkViewTurboStream(workspaceId: string, key: string): st
   return behaviorTurboStream("present-work-view", workspaceId, { "work-view-key": key });
 }
 
-
-export interface WorkViewsTurboStreamOptions {
-  openedKey?: string;
-  removedKey?: string;
-  successorKey?: string;
-  selectKey?: string;
-  intendSelection?: boolean;
-}
-
-export function workViewsTurboStream(workspaceId: string, workViews: readonly WorkPaneContribution[], options: WorkViewsTurboStreamOptions = {}): string {
-  const opened = options.openedKey === undefined ? undefined : workViews.find((view) => view.key === options.openedKey);
-  if (options.openedKey !== undefined && !opened) throw new Error(`Opened Work view is missing from the presentation: ${options.openedKey}`);
-  const mobileWorkViews = renderMobileWorkViews(workViews);
-  const streams = [
-    turboStream("update", workViewDomId(workspaceId, "selectors"), renderWorkViewSelectors(workspaceId, workViews), { method: "morph" }),
-    turboStream("update", workViewDomId(workspaceId, "mobile_destinations"), mobileWorkViews.destinations),
-    turboStream("update", workViewDomId(workspaceId, "mobile_overflow"), mobileWorkViews.overflowItems),
-    turboStream("update", workViewDomId(workspaceId, "mobile_closers"), workViews.map(renderMobileWorkViewCloser).join("")),
-    turboStream("update", workViewDomId(workspaceId, "mobile_more_attention"), mobileMoreAttentionHtml),
-    ...workViews.flatMap((view) => [
-      turboStream("update", workViewAvailabilityDomId(workspaceId, view.key), renderAvailability(view)),
-      turboStream("update", workViewActionsDomId(workspaceId, view.key), view.actionsHtml ?? ""),
-    ]),
+export function workspacePaneCollectionsRegions(presentation: WorkspacePanePresentation): import("@atelier/shared").LiveRegion[] {
+  return [
+    { target: workspacePaneScrollDomId, html: workspaceRows(presentation).map(row => row.html).join("") },
+    { target: workspaceProjectsPaneDomId, html: renderProjectsPane(presentation), action: "replace" },
   ];
-  if (opened) {
-    streams.push(turboStream("remove", workViewDomId(workspaceId, "empty")));
-    streams.push(turboStream("append", workViewDomId(workspaceId, "bodies"), renderWorkViewPane(workspaceId, opened)));
-  }
-  if (options.removedKey) streams.push(turboStream("remove", workViewPaneDomId(workspaceId, options.removedKey)));
-  if (workViews.length === 0) {
-    streams.push(turboStream("append", workViewDomId(workspaceId, "bodies"), `<div id="${workViewDomId(workspaceId, "empty")}" class="fixed-shell-empty-work empty-state">Open Files, a file, terminal, or browser to work alongside the Agent.</div>`));
-  } else {
-    streams.push(turboStream("remove", workViewDomId(workspaceId, "empty")));
-  }
-  if (options.selectKey) {
-    streams.push(options.intendSelection
-      ? behaviorTurboStream("intend-work-view", workspaceId, { "work-view-key": options.selectKey })
-      : presentWorkViewTurboStream(workspaceId, options.selectKey));
-  }
-  if (options.removedKey) {
-    streams.push(behaviorTurboStream("select-work-view-successor", workspaceId, { "closed-work-view-key": options.removedKey, "successor-work-view-key": options.successorKey }));
-  }
-  streams.push(workspacePreparationInvalidatedTurboStream(workspaceId));
-  return streams.join("");
-}
-
-export function openWorkViewTurboStream(workspaceId: string, workViews: readonly WorkPaneContribution[], openedKey: string): string {
-  return workViewsTurboStream(workspaceId, workViews, { openedKey });
-}
-
-export function removeWorkspaceResidentTurboStream(workspaceId: string): string {
-  return `<turbo-stream action="remove-workspace-resident" target="${escapeHtml(workspacePresentationDomId(workspaceId))}"></turbo-stream>`;
-}
-
-export function workspacePaneCollectionsTurboStream(presentation: WorkspacePanePresentation, previous?: WorkspacePanePresentation): string {
-  const rows = workspaceRows(presentation);
-  const before = new Map(previous ? workspaceRows(previous).map((row) => [row.id, row.html]) : []);
-  const streams: string[] = [];
-  // Reconnection reconciles membership without remounting the list or its controller.
-  if (!previous) streams.push(`<turbo-stream action="prune-workspace-rows" target="${workspacePaneScrollDomId}" data-row-ids="${escapeHtml(JSON.stringify(rows.map((row) => row.id)))}"></turbo-stream>`);
-  for (const id of before.keys()) if (!rows.some((row) => row.id === id)) streams.push(turboStream("remove", id));
-  for (const row of rows) {
-    if (before.get(row.id) === row.html) continue;
-    streams.push(previous && before.has(row.id) ? turboStream("replace", row.id, row.html) : turboStream("append", workspacePaneScrollDomId, row.html));
-  }
-  // Keep the longest already-ordered subsequence. Only displaced rows move;
-  // attention changes usually move exactly the row whose state changed.
-  const positions = new Map([...before.keys()].map((id, index) => [id, index]));
-  const chains: string[][] = [];
-  for (const row of rows) {
-    const position = positions.get(row.id);
-    if (position === undefined) continue;
-    let predecessor: string[] = [];
-    for (const chain of chains) {
-      if (positions.get(chain.at(-1)!)! < position && chain.length > predecessor.length) predecessor = chain;
-    }
-    chains.push([...predecessor, row.id]);
-  }
-  const stable = new Set(chains.sort((a, b) => b.length - a.length)[0] ?? []);
-  for (let index = rows.length - 1; index >= 0; index--) {
-    if (previous && stable.has(rows[index]!.id)) continue;
-    streams.push(`<turbo-stream action="move-workspace-row" target="${rows[index]!.id}" data-before-id="${rows[index + 1]?.id ?? ""}"></turbo-stream>`);
-  }
-  const projects = renderProjectsPane(presentation);
-  if (!previous || projects !== renderProjectsPane(previous)) streams.push(turboStream("replace", workspaceProjectsPaneDomId, projects));
-  streams.push('<turbo-stream action="workspace-pane-changed" targets="[data-workspace-pane-collections]"></turbo-stream>');
-  return streams.join("");
 }
 
 export function renderWorkspaceParkConfirmation(id: string, title: string): string {

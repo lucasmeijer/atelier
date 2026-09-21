@@ -1,8 +1,8 @@
 import { requestAcceptsJson } from "@atelier/core";
-import { notificationControlTurboStream, notificationFeedbackId, notificationFrameId, renderNotificationControl, renderNotificationFeedback } from "./render-notification.ts";
 import { Type } from "typebox";
 import { Value } from "typebox/value";
 import { turboStream, turboStreamResponse } from "./html.ts";
+import { notificationFeedbackId, notificationFrameId, renderNotificationControl, renderNotificationFeedback } from "./render-notification.ts";
 import { matchRoute, requireAgentRuntime, type AgentRouteHandler } from "./route-support.ts";
 import { currentNotificationTurn, setTurnNotification } from "./turn-notifications.ts";
 import { parsePushSubscription, pushPublicKey } from "./web-push.ts";
@@ -25,8 +25,7 @@ export const handleNotificationRequest: AgentRouteHandler = async (request, url,
   if (request.method === "GET") return new Response(`<turbo-frame id="${notificationFrameId(ctx)}">${renderNotificationControl(ctx, runtime.isStreaming)}</turbo-frame>`, { headers: { "content-type": "text/html; charset=utf-8", "cache-control": "no-store" } });
   const reply = (message: string, status = 200): Response => requestAcceptsJson(request)
     ? Response.json(status < 400 ? { ...state(), message } : { error: { code: status === 409 ? "turn_ended" : "invalid_arguments", message } }, { status })
-    : turboStreamResponse(notificationControlTurboStream(ctx, runtime.isStreaming)
-      + turboStream("replace", notificationFeedbackId(ctx.workspaceId, ctx.conversationId), renderNotificationFeedback(ctx.workspaceId, ctx.conversationId, message, status >= 400)), { status });
+    : turboStreamResponse(turboStream("replace", notificationFeedbackId(ctx.workspaceId, ctx.conversationId), renderNotificationFeedback(ctx.workspaceId, ctx.conversationId, message, status >= 400)), { status });
   let input;
   let subscription;
   try {

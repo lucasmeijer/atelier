@@ -1,5 +1,7 @@
 import { setActivityButtonState } from "@atelier/design-system/activity-button/client";
-import { CableTopics, composerSubmitKey, focusLikelyOpensSoftwareKeyboard, setTextInputValue, type CableSubscription, type WorkspaceClientApplication as StimulusApplication, type WorkspaceClientControllerConstructor as StimulusControllerConstructor, type WorkspaceClientHooks } from "@atelier/shared";
+import { CableTopics, isWorkspacePaneVisible, composerSubmitKey, focusLikelyOpensSoftwareKeyboard, setTextInputValue, type CableSubscription, type WorkspaceClientApplication as StimulusApplication, type WorkspaceClientControllerConstructor as StimulusControllerConstructor, type WorkspaceClientHooks } from "@atelier/shared";
+import { Type } from "typebox";
+import { Value } from "typebox/value";
 import { agentComposerPrimaryAction, agentComposerTextStorageKey, PromptHistoryNavigator } from "./composer-state.ts";
 import { TranscriptNavigation } from "./transcript-navigation.ts";
 
@@ -46,8 +48,6 @@ export function createAgentPaneController(Controller: StimulusControllerConstruc
     private cableSubscription?: CableSubscription;
     private hasBeenReady = false;
     private composerMutationObserver?: MutationObserver;
-    private reconnectingStatus?: HTMLElement;
-    private reconnectingStatusTimer?: ReturnType<typeof setTimeout>;
     private connected = false;
     private composerRevision = 0;
     private submittedComposer?: { revision: number; attachmentIds: string[] };
@@ -61,12 +61,15 @@ export function createAgentPaneController(Controller: StimulusControllerConstruc
     };
     private readonly cableReady = (): void => {
       this.hasBeenReady = true;
+      this.element.dataset.agentPresentationReady = "true";
       void this.revealTranscriptTarget();
       this.setReconnecting(false);
-      this.startAgentTerminals();
+      if (this.connectionShouldRun()) this.startAgentTerminals();
+      this.element.dispatchEvent(new CustomEvent("live:ready", { bubbles: true }));
       this.navigation.snapshotReady(this.sendStopTarget.dataset.agentBusy === "true");
     };
     private readonly cableDisconnected = (): void => {
+      this.element.dataset.agentPresentationReady = "false";
       if (this.cableSubscription) this.setReconnecting(true);
     };
     private relinquishSoftwareKeyboardFocus(): void {
@@ -100,6 +103,9 @@ export function createAgentPaneController(Controller: StimulusControllerConstruc
       if (promptDraft !== null) this.inputTarget.value = promptDraft;
       this.updateSendStopButton();
       this.connected = true;
+      this.element.dataset.agentPresentationReady = "false";
+      this.subscribe();
+      if (isWorkspacePaneVisible(this.element)) this.becomeVisible();
     }
 
     disconnect(): void {
@@ -148,7 +154,8 @@ export function createAgentPaneController(Controller: StimulusControllerConstruc
     private reconcileConnection(): void {
       requestAnimationFrame(() => this.autosize());
       if (!this.connectionShouldRun()) {
-        this.stopConnection();
+        this.setTurnConnectionActive(false);
+        this.stopAgentTerminals();
         return;
       }
       this.setTurnConnectionActive(true);
@@ -162,9 +169,16 @@ export function createAgentPaneController(Controller: StimulusControllerConstruc
       const message = params.get("agentTarget");
       if (params.get("agent") !== this.conversationIdValue || !message || message === this.revealedTranscriptTarget) return;
       this.revealedTranscriptTarget = message;
-      const response = await fetch(`/workspaces/${encodeURIComponent(this.workspaceIdValue)}/agents/${encodeURIComponent(this.conversationIdValue)}/reveal/${encodeURIComponent(message)}`, { headers: { Accept: "text/vnd.turbo-stream.html" } });
+      const response = await fetch(`/workspaces/${encodeURIComponent(this.workspaceIdValue)}/agents/${encodeURIComponent(this.conversationIdValue)}/reveal/${encodeURIComponent(message)}`, { headers: { Accept: "application/json" } });
       if (!response.ok) throw new Error(`Could not reveal transcript target: ${response.status}`);
-      window.Turbo!.renderStreamMessage(await response.text());
+      const { turnId } = Value.Parse(Type.Object({ turnId: Type.Union([Type.String(), Type.Null()]) }), await response.json());
+      if (turnId !== null) {
+        const turn = this.transcriptTarget.querySelector<HTMLDetailsElement>(`[data-agent-turn-turn-id-value="${CSS.escape(turnId)}"]`);
+        if (turn) {
+          turn.dataset.agentTurnRevealValue = message;
+          turn.open = true;
+        }
+      }
       requestAnimationFrame(() => {
         const target = this.transcriptTarget.querySelector<HTMLElement>(`[data-transcript-anchor="${CSS.escape(message)}"], [data-transcript-key="${CSS.escape(message)}"]`);
         if (!target) return;
@@ -194,25 +208,7 @@ export function createAgentPaneController(Controller: StimulusControllerConstruc
     }
 
     private setReconnecting(reconnecting: boolean): void {
-      this.element.classList.toggle("agent-pane-reconnecting", reconnecting);
       this.transcriptTarget.setAttribute("aria-busy", String(reconnecting));
-      if (!reconnecting) {
-        clearTimeout(this.reconnectingStatusTimer);
-        this.reconnectingStatusTimer = undefined;
-        this.reconnectingStatus?.remove();
-        this.reconnectingStatus = undefined;
-        return;
-      }
-      if (this.reconnectingStatus || this.reconnectingStatusTimer) return;
-      this.reconnectingStatusTimer = setTimeout(() => {
-        this.reconnectingStatusTimer = undefined;
-        const status = document.createElement("div");
-        status.className = "agent-reconnecting-status";
-        status.role = "status";
-        status.textContent = "Reconnecting…";
-        this.element.append(status);
-        this.reconnectingStatus = status;
-      }, 500);
     }
 
     private startAgentTerminals(): void {
@@ -341,7 +337,6 @@ export function createAgentPaneController(Controller: StimulusControllerConstruc
     }
   };
 }
-
 
 export function findAgentPaneController(application: StimulusApplication, pane: HTMLElement): AgentPaneControllerInstance | null {
   const agentPane = pane.matches('[data-controller~="agent-pane"]')

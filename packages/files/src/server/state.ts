@@ -13,6 +13,8 @@ const filesViewsSchema = Type.Array(filesViewSchema);
 
 export type FilesView = Static<typeof filesViewSchema>;
 export const defaultFilesViewId = "workspace";
+const navigationRequests = new Map<string, string>();
+export function filesNavigationRequest(workspaceId: string, id: string): string { return navigationRequests.get(`${workspaceId}:${id}`) ?? ""; }
 
 function parseFilesViews(value: JsonValue): FilesView[] {
   if (!Value.Check(filesViewsSchema, value)) throw new Error("invalid persisted Files Work views");
@@ -42,6 +44,7 @@ export function filesView(workspaceId: string, id: string): FilesView {
 export function setFilesViewFile(workspaceId: string, id: string, path?: string, position: { line?: number; column?: number } = {}): FilesView {
   const views = listFilesViews(workspaceId);
   const view = requireFilesView(views, id);
+  navigationRequests.set(`${workspaceId}:${id}`, crypto.randomUUID());
   view.path = path;
   view.line = position.line;
   view.column = position.column;
@@ -58,9 +61,16 @@ export function createFilesView(workspaceId: string): FilesView {
 }
 
 export function closeFilesView(workspaceId: string, id: string): void {
+  navigationRequests.delete(`${workspaceId}:${id}`);
   filesViews.write(workspaceId, filesViews.read(workspaceId).filter((view) => view.id !== id));
 }
 
 export function deleteFilesViewState(workspaceId: string): void {
+  diskGenerations.delete(workspaceId);
+  for (const key of navigationRequests.keys()) if (key.startsWith(`${workspaceId}:`)) navigationRequests.delete(key);
   filesViews.delete(workspaceId);
 }
+
+const diskGenerations = new Map<string, number>();
+export function filesDiskGeneration(workspaceId: string): number { return diskGenerations.get(workspaceId) ?? 0; }
+export function filesDiskChanged(workspaceId: string): void { diskGenerations.set(workspaceId, filesDiskGeneration(workspaceId) + 1); }

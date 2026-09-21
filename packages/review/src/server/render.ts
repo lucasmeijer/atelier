@@ -7,7 +7,7 @@ import { copyButtonHtml } from "@atelier/design-system/copy-button";
 import { Icons } from "@atelier/design-system/icons";
 import { toggleHtml } from "@atelier/design-system/toggle";
 import { preloadDiffHTML } from "@pierre/diffs/ssr";
-import { domId, escapeHtml, turboStream, workspaceWorkViewLabelDomId, type WorkspaceWorkViewPresentation } from "@atelier/shared";
+import { domId, escapeHtml, type WorkspaceWorkViewPresentation } from "@atelier/shared";
 import type { ReviewFile, ReviewFileStats, ReviewFileSummary, ReviewIndex } from "./diff.ts";
 import { defaultReviewSettings, reviewCommentsPrompt, type ReviewCommentModel, type ReviewSettings } from "../model.ts";
 import { reviewDiffOptions, reviewViewKey } from "../pierre.ts";
@@ -100,10 +100,6 @@ function reviewFileStatsId(workspaceId: string, path: string): string {
   return domId("review", workspaceId, "stats", path);
 }
 
-function reviewStatsFrameId(workspaceId: string): string {
-  return domId("review", workspaceId, "stats_frame");
-}
-
 function formatFileSize(bytes: number): string {
   if (bytes < 1024) return `${bytes} B`;
   const units = ["KiB", "MiB", "GiB", "TiB"];
@@ -134,25 +130,14 @@ export function renderReviewTitle(files: ReviewFileStats[]): string {
   return `Review +${totals.additions} −${totals.deletions}`;
 }
 
-export function renderReviewTitleStream(workspaceId: string, title: string): string {
-  return turboStream("update", workspaceWorkViewLabelDomId(workspaceId, reviewViewKey), escapeHtml(title));
-}
-
-export function renderReviewStatsFrame(workspaceId: string, files: ReviewFileStats[]): string {
-  const titleStream = renderReviewTitleStream(workspaceId, renderReviewTitle(files));
-  const fileStreams = files.map((file) => `<turbo-stream action="replace" target="${reviewFileStatsId(workspaceId, file.path)}"><template>${renderGitStats(workspaceId, file, file)}</template></turbo-stream>`).join("");
-  return `<turbo-frame id="${reviewStatsFrameId(workspaceId)}">${titleStream}${fileStreams}</turbo-frame>`;
-}
-
 function renderFile(workspaceId: string, file: ReviewFileSummary, comments: ReviewComment[], stats?: ReviewFileStats): string {
   const fileComments = anchoredCommentsFor(comments, file.path);
   const frameId = reviewFileFrameId(workspaceId, file.path);
-  const detailUrl = `/workspaces/${encodeURIComponent(workspaceId)}/review/files/${encodeURIComponent(file.path)}`;
   const label = `${file.previousPath ? `${file.previousPath} → ` : ""}${file.path}`;
   const summary = renderFileSummary({ kind: "text", text: label }, `<span id="${reviewFileCommentCountId(workspaceId, file.path)}">${renderCommentCount(fileComments.length)}</span>${renderGitStats(workspaceId, file, stats)}`, file.path);
   return `<details id="${frameId}_disclosure" class="review-file" data-review-target="file" data-review-path="${escapeHtml(file.path)}" data-review-change="${file.change}" data-review-comments="${fileComments.length}" data-action="pointerenter->review#requestFile pointerdown->review#requestFile focusin->review#requestFile focusin->review#selectFile focusout->review#deselectFile toggle->review#requestFile">
     ${summary}
-    <turbo-frame id="${frameId}" refresh="morph" data-src="${escapeHtml(detailUrl)}"><div class="review-file-loading" role="status"><span class="status-spinner" aria-hidden="true"></span> Loading changes…</div></turbo-frame>
+    <div id="${frameId}" data-turbo-permanent data-controller="live-surface" data-live-surface-workspace-value="${escapeHtml(workspaceId)}" data-live-surface-kind-value="review-file" data-live-surface-key-value="${escapeHtml(file.path)}" data-action="live:activate->live-surface#ensureReady"><div class="review-file-loading" role="status"><span class="status-spinner" aria-hidden="true"></span> Loading changes…</div></div>
   </details>`;
 }
 
@@ -160,23 +145,16 @@ function renderCommentsModel(workspaceId: string, comments: ReviewComment[]): st
   return `<script id="${reviewCommentsModelId(workspaceId)}" type="application/json" data-review-comments>${jsonForHtml(comments.map(commentModel))}</script>`;
 }
 
-export async function renderReviewFileDetails(workspaceId: string, file: ReviewFile, comments: ReviewComment[]): Promise<string> {
+export async function renderReviewFileContent(workspaceId: string, file: ReviewFile, comments: ReviewComment[]): Promise<string> {
   const fileComments = anchoredCommentsFor(comments, file.path);
-  const unanchoredComments = comments.filter((comment) => comment.outdated);
-  const globalUpdates = turboStream("replace", reviewUnanchoredId(workspaceId), renderUnanchoredSlot(workspaceId, unanchoredComments))
-    + turboStream("replace", reviewCommentsModelId(workspaceId), renderCommentsModel(workspaceId, comments));
   const body = file.kind === "text"
     ? await renderTextFile(file, fileComments, "review", renderDiffModel(workspaceId, file, fileComments))
     : renderSpecialFile(file);
-  return `<turbo-frame id="${reviewFileFrameId(workspaceId, file.path)}">${globalUpdates}<div class="review-file-diff">${body}</div></turbo-frame>`;
+  return `<div class="review-file-diff">${body}</div>`;
 }
 
-export function renderReviewCommentUpdate(workspaceId: string, file: ReviewFile, comments: ReviewComment[]): string {
-  const fileComments = anchoredCommentsFor(comments, file.path);
-  return turboStream("replace", reviewDiffModelId(workspaceId, file.path), renderDiffModel(workspaceId, file, fileComments))
-    + turboStream("update", reviewFileCommentCountId(workspaceId, file.path), renderCommentCount(fileComments.length))
-    + turboStream("replace", reviewCommentsModelId(workspaceId), renderCommentsModel(workspaceId, comments))
-    + turboStream("replace", reviewCommentControlsId(workspaceId), renderReviewCommentControls(workspaceId, comments));
+export async function renderReviewFileDetails(workspaceId: string, file: ReviewFile, comments: ReviewComment[]): Promise<string> {
+  return `<turbo-frame id="${reviewFileFrameId(workspaceId, file.path)}">${await renderReviewFileContent(workspaceId, file, comments)}</turbo-frame>`;
 }
 
 export async function renderReadOnlyReviewFile(frameId: string, file: ReviewFile): Promise<string> {
@@ -323,8 +301,7 @@ export function renderReviewBody(workspaceId: string, index: ReviewIndex, commen
   const content = index.files.length || unanchoredComments.length
     ? `<div class="review-files action-list" data-controller="linear-navigation" data-action="keydown->review#changeFileDisclosure">${renderReviewFilePage(workspaceId, index, comments, 0, stats)}${renderUnanchoredSlot(workspaceId, unanchoredComments)}</div>`
     : `<div class="review-no-changes"><p>No changes to review<br>The working tree matches HEAD.</p></div>`;
-  const statsUrl = `/workspaces/${encodeURIComponent(workspaceId)}/review/stats`;
-  return `<section id="${reviewBodyId(workspaceId)}" class="review-body" data-controller="review" data-review-workspace-id-value="${escapeHtml(workspaceId)}" data-mobile-diff-layout="${settings.mobile}" data-desktop-diff-layout="${settings.desktop}" data-diff-highlighting="${settings.highlighting}" data-diff-overflow="${settings.overflow}">${toolbar(workspaceId, comments, settings)}${content}<turbo-frame id="${reviewStatsFrameId(workspaceId)}" data-review-stats-frame src="${escapeHtml(statsUrl)}"></turbo-frame>${renderCommentsModel(workspaceId, comments)}</section>`;
+  return `<section id="${reviewBodyId(workspaceId)}" class="review-body" data-controller="review" data-review-workspace-id-value="${escapeHtml(workspaceId)}" data-mobile-diff-layout="${settings.mobile}" data-desktop-diff-layout="${settings.desktop}" data-diff-highlighting="${settings.highlighting}" data-diff-overflow="${settings.overflow}">${toolbar(workspaceId, comments, settings)}${content}${renderCommentsModel(workspaceId, comments)}</section>`;
 }
 
 export const reviewWorkViewPresentation: WorkspaceWorkViewPresentation = {

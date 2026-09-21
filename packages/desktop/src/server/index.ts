@@ -1,7 +1,7 @@
 import { registerWorkspacePresenter } from "@atelier/agent/server";
 import { buttonHtml } from "@atelier/design-system/button";
 import { Icons } from "@atelier/design-system/icons";
-import { escapeHtml, type WorkspaceModule, type WorkspaceWorkViewPresentation } from "@atelier/shared";
+import { domId, escapeHtml, type WorkspaceModule, type WorkspaceWorkViewPresentation } from "@atelier/shared";
 import { createWorkspaceMetadataState, workspacePortBackend } from "@atelier/workspace";
 import { Type } from "typebox";
 import { Value } from "typebox/value";
@@ -29,7 +29,7 @@ export const atelierServerModule: WorkspaceModule = {
       const fullscreen = buttonHtml({ type: "button", variant: "secondary", content: { kind: "caption", caption: "Fullscreen" }, attributesHtml: 'data-desktop-pane-target="fullscreen" data-action="desktop-pane#toggleFullscreen" aria-pressed="false"' });
       const statuses = [["connecting", "Connecting", "running"], ["connected", "Connected", "success"], ["disconnected", "Disconnected · reconnecting", "warning"], ["starting", "Starting desktop", "running"], ["stopped", "Desktop stopped", ""], ["failed", "Desktop failed", "danger"]]
         .map(([phase, label, tone]) => `<span data-desktop-pane-target="status" data-phase="${phase}"${phase === "connecting" ? "" : " hidden"}><i class="status-dot ${tone}" aria-hidden="true"></i>${label}</span>`).join("");
-      return `<section class="work-view-pane" data-work-view-source="desktop"><div class="desktop-pane" data-controller="desktop-pane" data-action="message@window->desktop-pane#receive fullscreenchange@document->desktop-pane#fullscreenChanged"><div class="desktop-toolbar"><div class="desktop-connection" role="status" aria-live="polite">${statuses}<span class="desktop-status-detail" data-desktop-pane-target="detail"></span></div>${fullscreen}</div><iframe class="desktop-frame" title="Workspace desktop" data-desktop-pane-target="frame" data-action="load->desktop-pane#loaded desktop:navigating->desktop-pane#reset" data-controller="workspace-app-frame" data-workspace-app-frame-workspace-id-value="${escapeHtml(workspaceId)}" data-workspace-app-frame-app-key-value="desktop"></iframe></div></section>`;
+      return `<section id="${domId("desktop_view", workspaceId)}" data-turbo-permanent class="work-view-pane" data-work-view-source="desktop"><div class="desktop-pane" data-controller="desktop-pane" data-action="message@window->desktop-pane#receive fullscreenchange@document->desktop-pane#fullscreenChanged"><div class="desktop-toolbar"><div class="desktop-connection" role="status" aria-live="polite">${statuses}<span class="desktop-status-detail" data-desktop-pane-target="detail"></span></div>${fullscreen}</div><iframe class="desktop-frame" title="Workspace desktop" data-desktop-pane-target="frame" data-action="load->desktop-pane#loaded desktop:navigating->desktop-pane#reset" data-controller="workspace-app-frame" data-workspace-app-frame-workspace-id-value="${escapeHtml(workspaceId)}" data-workspace-app-frame-app-key-value="desktop"></iframe></div></section>`;
     },
     close: ({ workspaceId }) => views.write(workspaceId, { open: false }),
   }],

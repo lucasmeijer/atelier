@@ -1,6 +1,6 @@
 import type { WorkspaceClientControllerConstructor as StimulusControllerConstructor } from "@atelier/shared";
 
-const rendererPromise = import("beautiful-mermaid").then(({ renderMermaidSVG }) => renderMermaidSVG);
+let rendererPromise: Promise<typeof import("beautiful-mermaid")["renderMermaidSVG"]> | undefined;
 
 function withoutRemoteFontImports(svg: string): string {
   return svg.replace(/^\s*@import url\([^\n]+\);\s*$/gm, "");
@@ -12,19 +12,26 @@ export function createAgentMermaidController(Controller: StimulusControllerConst
     declare readonly diagramTarget: HTMLElement;
     declare readonly sourceTarget: HTMLElement;
     private connected = false;
+    private observer?: IntersectionObserver;
 
     connect(): void {
       this.connected = true;
-      void this.render(this.sourceTarget.textContent ?? "");
+      this.observer = new IntersectionObserver(entries => {
+        if (!entries.some(entry => entry.isIntersecting)) return;
+        this.observer!.disconnect();
+        void this.render(this.sourceTarget.textContent ?? "");
+      });
+      this.observer.observe(this.element);
     }
 
     disconnect(): void {
       this.connected = false;
+      this.observer?.disconnect();
     }
 
     private async render(source: string): Promise<void> {
       try {
-        const renderMermaidSVG = await rendererPromise;
+        const renderMermaidSVG = await (rendererPromise ??= import("beautiful-mermaid").then(module => module.renderMermaidSVG));
         const svgHtml = withoutRemoteFontImports(renderMermaidSVG(source, {
           bg: "var(--atelier-mermaid-bg)",
           fg: "var(--atelier-mermaid-fg)",

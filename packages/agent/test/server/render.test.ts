@@ -18,7 +18,7 @@ const firstEditModel = (html: string): Array<{ name: string; hunks: Array<{ coll
 describe("transcript rendering", () => {
   test("server-rendered panes and routes use immutable conversation identity", async () => {
     const stats = { contextPercent: null, compactAvailable: false, inputTokens: 0, outputTokens: 0, cost: 0, modelName: undefined, thinkingLevel: "off", thinkingLevels: [], models: [] };
-    const html = await renderAgentPane(ctx, agent, { transcriptHtml: "ready", busy: false, stats });
+    const html = await renderAgentPane(ctx, agent, { transcriptHtml: "", busy: false, stats });
     expect(html).toContain(`data-agent-pane-conversation-id-value="${agent.conversationId}"`);
     expect(html).toContain(`/agents/${agent.conversationId}/messages`);
     expect(html).not.toContain("data-agent-pane-label-value");
@@ -56,7 +56,6 @@ describe("transcript rendering", () => {
     const html = renderTranscriptItem(ctx, { type: "working", key: "worked", startedAt: 1000, completedAt: 3500, items: [] });
     expect(html).toBe("");
   });
-
 
   test("live assistant text uses stable and mutable server-rendered Markdown targets", () => {
     const html = renderTranscriptItem(ctx, { type: "text", key: "stream", text: "First **bold** paragraph.\n\nTrailing *emphasis*", final: false, live: true });

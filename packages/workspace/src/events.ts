@@ -39,9 +39,6 @@ export interface WorkspaceAgentConversationTitleChangedEvent {
 export interface WorkspaceAgentViewInvalidatedEvent {
   workspaceId: string;
   conversationId: string;
-  exceptConnectionId?: string;
-  /** Narrow authoritative mutation for retained visible panes. */
-  html?: string;
 }
 
 export interface WorkspaceAgentPromptPreparingEvent {

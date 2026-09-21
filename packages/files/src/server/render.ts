@@ -1,4 +1,3 @@
-import { posix } from "node:path";
 import { actionItemHtml } from "@atelier/design-system/action-item";
 import { actionLinkHtml } from "@atelier/design-system/action-link";
 import { buttonHtml } from "@atelier/design-system/button";
@@ -9,8 +8,9 @@ import { Icons } from "@atelier/design-system/icons";
 import { toggleHtml } from "@atelier/design-system/toggle";
 import { domId, escapeHtml, workspaceFileOpenUrl, workspaceProxyUrl, type WorkspaceWorkViewPresentation } from "@atelier/shared";
 import { workspaceRoot } from "@atelier/workspace";
+import { posix } from "node:path";
 import type { FileEntry } from "./files.ts";
-import { defaultFilesViewId, type FilesView } from "./state.ts";
+import { defaultFilesViewId, filesDiskGeneration, filesNavigationRequest, type FilesView } from "./state.ts";
 
 export function filesTreeFrameId(workspaceId: string, viewId: string): string {
   return domId("workspace", workspaceId, "files", viewId, "tree");
@@ -33,7 +33,7 @@ export function filesRefreshSignalId(workspaceId: string): string {
 }
 
 export function renderFilesRefreshSignal(workspaceId: string): string {
-  return `<span id="${filesRefreshSignalId(workspaceId)}" data-controller="files-refresh-signal" data-files-refresh-signal-workspace-id-value="${escapeHtml(workspaceId)}" hidden></span>`;
+  return `<span id="${filesRefreshSignalId(workspaceId)}" data-controller="files-refresh-signal" data-files-refresh-signal-generation-value="${filesDiskGeneration(workspaceId)}" data-files-refresh-signal-workspace-id-value="${escapeHtml(workspaceId)}" hidden></span>`;
 }
 
 function filesPaneToggle(action: "expand" | "collapse"): string {
@@ -232,7 +232,8 @@ export function renderFilesEditorFrame(workspaceId: string, view: FilesView): st
   if (!view.path) return `<turbo-frame id="${frameId}" class="files-editor-frame"><section class="file-editor-pane files-editor-empty"><header class="file-editor-toolbar work-view-toolbar"><span class="file-editor-path">Choose a file</span>${filesPaneToggle("expand")}</header><p>Select a file to view or edit. Drop files into the Files pane to upload, or create them in Terminal and choose Refresh.</p></section></turbo-frame>`;
   const contentUrl = `/workspaces/${encodeURIComponent(workspaceId)}/files-view/content?${new URLSearchParams({ path: view.path })}`;
   const markdown = /\.(?:md|markdown)$/i.test(view.path);
-  return `<turbo-frame id="${frameId}" class="files-editor-frame"><section class="file-editor-pane" data-controller="file-editor" data-file-editor-workspace-id-value="${escapeHtml(workspaceId)}" data-file-editor-path-value="${escapeHtml(view.path)}" data-file-editor-content-url-value="${escapeHtml(contentUrl)}" data-file-editor-line-value="${view.line ?? 0}" data-file-editor-column-value="${view.column ?? 0}">
+  const editorId = `${frameId}_${Bun.hash(view.path).toString(16)}`;
+  return `<turbo-frame id="${frameId}" class="files-editor-frame" data-controller="file-editor-navigation" data-file-editor-navigation-editor-value="${escapeHtml(editorId)}" data-file-editor-navigation-request-value="${filesNavigationRequest(workspaceId, view.id)}" data-file-editor-navigation-line-value="${view.line ?? 0}" data-file-editor-navigation-column-value="${view.column ?? 0}"><section class="file-editor-pane" id="${escapeHtml(editorId)}" data-turbo-permanent data-controller="file-editor" data-file-editor-workspace-id-value="${escapeHtml(workspaceId)}" data-file-editor-path-value="${escapeHtml(view.path)}" data-file-editor-content-url-value="${escapeHtml(contentUrl)}" data-file-editor-line-value="${view.line ?? 0}" data-file-editor-column-value="${view.column ?? 0}">
     <header class="file-editor-toolbar work-view-toolbar"><span class="file-editor-path" title="${escapeHtml(view.path)}">${escapeHtml(view.path)}</span><span class="file-editor-toolbar-actions">${markdown ? markdownDisplayToggle() : ""}<span class="file-editor-status" data-file-editor-target="status">Loading…</span>${refreshButton()}${selectedFileActions(workspaceId, view)}${filesPaneToggle("expand")}</span></header>
     <div class="file-editor-host" data-file-editor-target="host"><div class="file-editor-loading" data-file-editor-target="loading" role="status"><i class="status-spinner sm" aria-hidden="true"></i><span>Loading file…</span></div></div>
     ${markdown ? `<div class="file-editor-preview markdown" data-file-editor-target="preview" hidden></div>` : ""}

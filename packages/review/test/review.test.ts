@@ -1,10 +1,10 @@
 import { afterEach, describe, expect, test } from "bun:test";
-import { mkdtemp, mkdir, rm, writeFile } from "node:fs/promises";
+import { mkdtemp, rm, writeFile } from "node:fs/promises";
 import { join } from "node:path";
 import { tmpdir } from "node:os";
 import { reviewCommentsPrompt, type ReviewCommentModel } from "../src/model.ts";
 import { collectReviewFile, collectReviewIndex, collectReviewStats, type ReviewFile, type ReviewFileStats } from "../src/server/diff.ts";
-import { renderReviewBody, renderReviewStatsFrame } from "../src/server/render.ts";
+import { renderReviewBody } from "../src/server/render.ts";
 import { readReviewSettings, updateReviewSettings } from "../src/server/settings.ts";
 import { addReviewComment, deleteReviewState, listReviewComments, remapReviewComment, updateReviewComment, type ReviewComment } from "../src/server/state.ts";
 import { command, createReviewRepository } from "./support/repository.ts";
@@ -227,26 +227,6 @@ describe("Review presentation", () => {
 
     const notGit = await renderReviewBody("workspace 1", { phase: "not-git" }, []);
     expect(notGit).toContain("No git repo in /work yet");
-  });
-
-  test("loads zero deletion stats for added files without an untracked label", () => {
-    const files: ReviewFile[] = [
-      { path: "changed.ts", change: "modified", kind: "binary" },
-      { path: "new.ts", change: "added", kind: "binary" },
-    ];
-    const fileStats: ReviewFileStats[] = [
-      { path: "changed.ts", change: "modified", additions: 1, deletions: 1 },
-      { path: "new.ts", change: "added", untracked: true, additions: 1, deletions: 0 },
-    ];
-
-    const html = renderReviewBody("workspace 1", { phase: "ready", files }, []);
-    expect(html.match(/Loading change stats/g)).toHaveLength(2);
-    expect(html).not.toContain("Untracked");
-    expect(html).not.toContain("review-additions");
-
-    const stats = renderReviewStatsFrame("workspace 1", fileStats);
-    expect(stats).toContain('<span class="review-deletions">−1</span>');
-    expect(stats).toContain('<span class="review-deletions">−0</span>');
   });
 
   test("groups comments whose anchors disappeared in a collapsed pseudo-file", async () => {

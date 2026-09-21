@@ -1,6 +1,6 @@
+import { atelierName, escapeHtml, type WorkspaceModule } from "@atelier/shared";
 import { randomUUID } from "node:crypto";
 import { existsSync, readFileSync } from "node:fs";
-import { atelierName, escapeHtml, type WorkspaceModule } from "@atelier/shared";
 import { parseAssetManifest, type AssetManifest } from "./asset-manifest.ts";
 
 export function createPageLayout(options: { devReload?: boolean; workspaceModules: readonly WorkspaceModule[] }): (body: string) => string {
@@ -70,7 +70,7 @@ ${options.devReload ? `
 ${moduleStylesHtml()}
 <script type="module" src="${assetPath("/workspace.js")}"></script>
 </head>
-<body id="body" data-controller="cable-shell${options.devReload ? " dev-reload" : ""}"${options.devReload ? ` data-dev-reload-url-value="/__atelier_dev_reload"` : ""}>${body}
+<body id="body" data-controller="cable-shell${options.devReload ? " dev-reload" : ""}"${options.devReload ? ` data-dev-reload-url-value="/__atelier_dev_reload"` : ""}><div id="live-connection-status" role="status" class="live-connection-status"><span class="status-spinner" aria-hidden="true"></span> Reconnecting… Updates are paused.</div>${body}
 </body>
 </html>`;
   };

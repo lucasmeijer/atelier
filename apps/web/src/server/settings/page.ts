@@ -47,6 +47,7 @@ export type WorkspaceCleanupResult = { deleted: number; errors: string[] };
 
 function renderForceDeleteWorkspaces(result?: WorkspaceCleanupResult): string {
   const confirmation = destructiveConfirmationHtml({
+    id: "delete_all_workspaces",
     trigger: { type: "button", variant: "danger", content: { kind: "caption", caption: "Delete all workspaces" } },
     confirmCaption: "Delete all workspaces",
     cancelCaption: "Cancel",
@@ -65,6 +66,7 @@ function renderForceDeleteWorkspaces(result?: WorkspaceCleanupResult): string {
 
 function renderResetSettings(): string {
   const confirmation = destructiveConfirmationHtml({
+    id: "delete_all_settings",
     trigger: { type: "button", variant: "danger", content: { kind: "caption", caption: "Delete all settings" } },
     confirmCaption: "Delete all settings",
     cancelCaption: "Cancel",

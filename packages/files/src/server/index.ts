@@ -1,15 +1,15 @@
-import { Icons } from "@atelier/design-system/icons";
 import type { JsonValue } from "@atelier/core";
+import { Icons } from "@atelier/design-system/icons";
 import { renderMarkdown } from "@atelier/markdown";
-import { turboStream, turboStreamResponse, parseWorkspaceFileTarget, type WorkspaceFileTarget, type WorkspaceModule, type WorkspaceModuleRouteContext } from "@atelier/shared";
+import { parseWorkspaceFileTarget, type WorkspaceFileTarget, type WorkspaceModule, type WorkspaceModuleRouteContext } from "@atelier/shared";
 import { workspaceRoot } from "@atelier/workspace";
 import { Type, type Static } from "typebox";
 import { Value } from "typebox/value";
 import { fileSaveRequestSchema, type FileSaveRequest } from "../protocol.ts";
 import { EditableFileError, readEditableFile, requestedEditableFilePath, writeEditableFile } from "./editable-file.ts";
 import { deleteFile, FilesPathError, getDirectoryEntry, listFiles, searchFiles, uploadFile } from "./files.ts";
-import { filesEditorFrameId, filesRefreshSignalId, filesTreeFrameId, renderFilesDirectoryFrame, renderFilesEditorFrame, renderFilesRefreshSignal, renderFilesTreeFrame, renderFilesTreeResultsFrame, filesWorkViewPresentation, renderFilesWorkViewBody, renderLazyFilesTreeFrame } from "./render.ts";
-import { closeFilesView, createFilesView, defaultFilesViewId, deleteFilesViewState, filesView, listFilesViews, setFilesViewFile } from "./state.ts";
+import { filesWorkViewPresentation, renderFilesDirectoryFrame, renderFilesRefreshSignal, renderFilesTreeFrame, renderFilesTreeResultsFrame, renderFilesWorkViewBody } from "./render.ts";
+import { closeFilesView, createFilesView, defaultFilesViewId, deleteFilesViewState, filesDiskChanged, filesView, listFilesViews, setFilesViewFile } from "./state.ts";
 
 const filesWorkViewReferenceSchema = Type.Object({ type: Type.Literal("files"), id: Type.String() });
 type FilesWorkViewReference = Static<typeof filesWorkViewReferenceSchema>;
@@ -49,11 +49,8 @@ async function filesEndpoint(workspaceId: string, url: URL): Promise<Response> {
 export async function openFileInFiles(workspaceId: string, target: WorkspaceFileTarget, openWorkView: WorkspaceModuleRouteContext["openWorkView"], requestedViewId?: string): Promise<Response> {
   const path = requestedEditableFilePath(target.path);
   const viewId = requestedViewId ?? defaultFilesViewId;
-  const view = setFilesViewFile(workspaceId, viewId, path, target);
-  const updates = turboStream("replace", filesEditorFrameId(workspaceId, viewId), renderFilesEditorFrame(workspaceId, view))
-    + turboStream("replace", filesTreeFrameId(workspaceId, viewId), renderLazyFilesTreeFrame(workspaceId, view));
-  const presentation = await openWorkView(workspaceId, { type: "files", id: viewId }, { select: requestedViewId === undefined });
-  return turboStreamResponse(`${await presentation.text()}${updates}`);
+  setFilesViewFile(workspaceId, viewId, path, target);
+  return await openWorkView(workspaceId, { type: "files", id: viewId }, { select: requestedViewId === undefined });
 }
 
 async function markdownPreviewEndpoint(workspaceId: string, request: Request, url: URL): Promise<Response> {
@@ -71,7 +68,9 @@ async function fileContentEndpoint(workspaceId: string, request: Request, url: U
   if (!Value.Check(fileSaveRequestSchema, body)) return textResponse("Invalid file save", 422);
   const save: FileSaveRequest = body;
   try {
-    return jsonResponse({ revision: await writeEditableFile(workspaceId, path, save.content, save.revision, save.force === true) });
+    const revision = await writeEditableFile(workspaceId, path, save.content, save.revision, save.force === true);
+    filesDiskChanged(workspaceId);
+    return jsonResponse({ revision });
   } catch (error) {
     if (error instanceof EditableFileError && error.status === 409) return jsonResponse(await readEditableFile(workspaceId, path), 409);
     throw error;
@@ -81,6 +80,7 @@ async function fileContentEndpoint(workspaceId: string, request: Request, url: U
 async function uploadEndpoint(workspaceId: string, request: Request, url: URL): Promise<Response> {
   const content = new Uint8Array(await request.arrayBuffer());
   await uploadFile(workspaceId, url.searchParams.get("destination"), url.searchParams.get("name"), url.searchParams.get("overwrite") === "1", content);
+  filesDiskChanged(workspaceId);
   return new Response(null, { status: 204, headers: { "cache-control": "no-store" } });
 }
 
@@ -88,13 +88,9 @@ async function deleteEndpoint(workspaceId: string, request: Request, openWorkVie
   const form = await request.formData();
   const viewId = String(form.get("filesView") ?? defaultFilesViewId);
   await deleteFile(workspaceId, String(form.get("path") ?? ""));
-  const view = setFilesViewFile(workspaceId, viewId);
-  const listing = await listFiles(workspaceId, workspaceRoot);
-  const presentation = await openWorkView(workspaceId, { type: "files", id: viewId }, { select: false });
-  return turboStreamResponse(
-    await presentation.text() + turboStream("replace", filesTreeFrameId(workspaceId, viewId), renderFilesTreeFrame(workspaceId, viewId, listing.entries))
-    + turboStream("replace", filesEditorFrameId(workspaceId, viewId), renderFilesEditorFrame(workspaceId, view)),
-  );
+  filesDiskChanged(workspaceId);
+  setFilesViewFile(workspaceId, viewId);
+  return await openWorkView(workspaceId, { type: "files", id: viewId }, { select: false });
 }
 
 const filesWorkspaceModule: WorkspaceModule = {
@@ -142,7 +138,8 @@ const filesWorkspaceModule: WorkspaceModule = {
   initialize(context) {
     context.events.on("workspace_agent_turn_finished", ({ workspaceId }) => {
       if (!listFilesViews(workspaceId).some((view) => view.path)) return;
-      context.broadcastWorkspace(workspaceId, turboStream("replace", filesRefreshSignalId(workspaceId), renderFilesRefreshSignal(workspaceId)));
+      filesDiskChanged(workspaceId);
+      context.invalidateWorkspace(workspaceId);
     });
     context.onWorkspaceRemoved((workspaceId) => deleteFilesViewState(workspaceId));
   },

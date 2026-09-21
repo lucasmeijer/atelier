@@ -65,3 +65,9 @@ export async function refreshConfiguredAgentRuntimes(): Promise<void> {
     await (await pending).refreshModelConfiguration();
   }));
 }
+
+/** Skills and templates are workspace-wide, including other mounted conversations. */
+export async function refreshWorkspaceCompletionCatalogs(workspaceId: string): Promise<void> {
+  const matching = [...runtimes.entries()].filter(([key]) => key.startsWith(`${workspaceId}\u0000`));
+  await Promise.all(matching.map(async ([, pending]) => (await pending).refreshCompletionCatalog()));
+}

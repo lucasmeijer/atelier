@@ -1,19 +1,16 @@
-import { ids } from "@atelier/agent/server";
-import type { SubagentRecord } from "./subagent-runtime.ts";
-import type { AgentLivePresentationSubscription } from "@atelier/agent/server";
+import type { AgentLivePresentationSubscription, AgentRouteHandler } from "@atelier/agent/server";
+import { escapeHtml as h, ids, listWorkspaceAgentConversations } from "@atelier/agent/server";
 import type { AtelierEventBus } from "@atelier/core";
-import { Icons } from "@atelier/design-system/icons";
-import { Type } from "typebox";
-import { Value } from "typebox/value";
 import { requestAcceptsJson, type JsonValue } from "@atelier/core";
 import { actionItemHtml } from "@atelier/design-system/action-item";
+import { Icons } from "@atelier/design-system/icons";
 import type { WorkspaceModuleWorkViewAdapter, WorkspaceWorkViewPresentation } from "@atelier/shared";
-import { escapeHtml as h, turboStream } from "@atelier/agent/server";
-import { getSubagents, subagentConversation, subscribeSubagentChanges } from "./subagents.ts";
+import { createLivePresentation } from "@atelier/shared";
+import { Type } from "typebox";
+import { Value } from "typebox/value";
 import { agentPath } from "./subagent-protocol.ts";
-import { getWorkspaceAgentRuntime } from "@atelier/agent/server";
-import { listWorkspaceAgentConversations } from "@atelier/agent/server";
-import type { AgentRouteHandler } from "@atelier/agent/server";
+import type { SubagentRecord } from "./subagent-runtime.ts";
+import { getSubagents, subscribeSubagentChanges } from "./subagents.ts";
 
 export const subagentsWorkView: WorkspaceWorkViewPresentation = {
   reference: { type: "subagents" }, sourceKey: "subagents", label: "Subagents", kind: "contextual", iconHtml: Icons.Subagents, availability: { phase: "live" }, initiallyOpen: false,
@@ -33,7 +30,7 @@ export const subagentsWorkViewAdapter: WorkspaceModuleWorkViewAdapter = {
 };
 
 export const handleSubagentRequest: AgentRouteHandler = async (request, url, options) => {
-  const match = url.pathname.match(/^\/workspaces\/([^/]+)\/subagents(?:\/([^/]+)\/transcript)?$/);
+  const match = url.pathname.match(/^\/workspaces\/([^/]+)\/subagents$/);
   if (!match || request.method !== "GET") return undefined;
   const workspaceId = decodeURIComponent(match[1]!);
   const conversations = await listWorkspaceAgentConversations(workspaceId);
@@ -42,19 +39,12 @@ export const handleSubagentRequest: AgentRouteHandler = async (request, url, opt
   if (!parent) return new Response("Agent not found", { status: 404 });
   const coordinator = await getSubagents(workspaceId, options.events);
   const agents = coordinator.list(parent.conversationId);
-  if (match[2]) {
-    const child = agents.find((agent) => agent.id === decodeURIComponent(match[2]!));
-    if (!child) return new Response("Subagent not found in selected tree", { status: 404 });
-    const runtime = await getWorkspaceAgentRuntime(await subagentConversation(workspaceId, child), { events: options.events });
-    return new Response(`<turbo-frame id="subagent-transcript-${h(child.id)}" refresh="morph"><div id="${ids.transcript({ workspaceId, conversationId: child.id })}" class="agent-transcript">${(await runtime.paneState(url.searchParams.get("message") ?? undefined)).transcriptHtml}</div></turbo-frame>`, { headers: { "content-type": "text/html; charset=utf-8" } });
-  }
   if (requestAcceptsJson(request)) return Response.json({ parent: { id: parentId, title: parent.title }, agents, messages: coordinator.state.messages.filter((message) => message.to === parentId || message.from === parentId || agents.some((agent) => agent.id === message.to || agent.id === message.from)) });
   const open = new Set(url.searchParams.getAll("open"));
   let revealed = agents.find((agent) => agent.id === url.searchParams.get("reveal"));
   while (revealed) { open.add(revealed.id); revealed = agents.find((agent) => agent.id === revealed!.parentId); }
   return new Response(`<turbo-frame id="subagents-content-${h(workspaceId)}" refresh="morph">${renderSubagentTree(workspaceId, parent.conversationId, agents, open)}</turbo-frame>`, { headers: { "content-type": "text/html; charset=utf-8" } });
 };
-
 
 function childrenId(workspaceId: string, parentId: string): string { return `subagent-children-${workspaceId}-${parentId}`; }
 function summaryHtml(agent: SubagentRecord, agents: SubagentRecord[]): string {
@@ -64,7 +54,7 @@ function summaryHtml(agent: SubagentRecord, agents: SubagentRecord[]): string {
 function branchHtml(workspaceId: string, agent: SubagentRecord, agents: SubagentRecord[], open: Set<string>): string {
   return `<details id="subagent-${h(agent.id)}" class="subagent-branch" data-subagent-id="${h(agent.id)}" data-subagents-target="branch"${open.has(agent.id) ? " open" : ""}>
     ${summaryHtml(agent, agents)}
-    <div class="subagent-branch-body"><turbo-frame id="subagent-transcript-${h(agent.id)}" data-subagent-transcript><div id="${ids.transcript({ workspaceId, conversationId: agent.id })}" class="agent-transcript"></div></turbo-frame>${childrenHtml(workspaceId, agent.id, agents, open)}</div>
+    <div class="subagent-branch-body"><turbo-frame id="subagent-transcript-${h(agent.id)}" data-subagent-transcript data-turbo-permanent><div id="${ids.transcript({ workspaceId, conversationId: agent.id })}" class="agent-transcript" data-turbo-permanent></div></turbo-frame>${childrenHtml(workspaceId, agent.id, agents, open)}</div>
   </details>`;
 }
 function childrenHtml(workspaceId: string, parentId: string, agents: SubagentRecord[], open: Set<string>): string {
@@ -82,23 +72,13 @@ export async function subscribeSubagentTree(workspaceId: string, rootId: string,
   const roots = await listWorkspaceAgentConversations(workspaceId);
   if (!roots.some((root) => root.conversationId === rootId)) throw new Error("Subagent root not found");
   const coordinator = await getSubagents(workspaceId, events);
-  let previous = structuredClone(coordinator.list(rootId));
-  const unsubscribe = subscribeSubagentChanges((changedWorkspace) => {
-    if (changedWorkspace !== workspaceId) return;
-    const current = structuredClone(coordinator.list(rootId));
-    let html = "";
-    for (const agent of previous) if (!current.some((candidate) => candidate.id === agent.id)) html += turboStream("remove", `subagent-${agent.id}`, "");
-    for (const agent of current) {
-      const before = previous.find((candidate) => candidate.id === agent.id);
-      if (!before) {
-        // Parent appends include their new descendants, so each branch is inserted once.
-        if (agent.parentId === rootId || previous.some((candidate) => candidate.id === agent.parentId)) html += turboStream("append", childrenId(workspaceId, agent.parentId), branchHtml(workspaceId, agent, current, new Set()));
-      } else if (summaryHtml(before, previous) !== summaryHtml(agent, current)) html += turboStream("replace", `subagent-summary-${agent.id}`, summaryHtml(agent, current));
-    }
-    if (!previous.length !== !current.length) html += turboStream("replace", `subagents-empty-${workspaceId}`, emptyHtml(workspaceId, current.length === 0));
-    previous = current;
-    if (html) listener(html);
+  const presentation = createLivePresentation(() => [{
+    target: `subagents-content-${workspaceId}`,
+    html: renderSubagentTree(workspaceId, rootId, coordinator.list(rootId)),
+  }]);
+  const stopChanges = subscribeSubagentChanges(changedWorkspace => {
+    if (changedWorkspace === workspaceId) presentation.invalidate();
   });
-  listener(turboStream("update", `subagents-content-${workspaceId}`, renderSubagentTree(workspaceId, rootId, previous)));
-  return { ready: Promise.resolve(), unsubscribe };
+  const subscription = presentation.subscribe(listener);
+  return { unsubscribe() { stopChanges(); subscription.unsubscribe(); presentation.dispose(); } };
 }

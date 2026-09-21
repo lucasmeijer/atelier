@@ -1,29 +1,28 @@
+import { AtelierCoreError, createKeyedOperationQueue, dockerHostAtelierDataPath, getAtelierRuntimeContext, type AtelierEventBus } from "@atelier/core";
 import { Icons } from "@atelier/design-system/icons";
-import { nativeAgentLaunch } from "./launch.ts";
-import { untitledAgentConversationTitle, archiveWorkspaceAgentConversation, createNextWorkspaceAgentConversation, listWorkspaceAgentConversations, sessionShareDir, sessionShareKeyForInit, sessionShareMountPath, type WorkspaceAgentConversationInfo } from "./session-store.ts";
-import { handleUsageRequest, renderUsagePaneAction } from "./usage-web.ts";
-import { usageOpenApiPaths } from "./usage-openapi.ts";
-import { resolveAgentConversation } from "./delegation.ts";
 import type { WorkspaceAgentTabProvider, WorkspaceCommandContribution, WorkspaceModule } from "@atelier/shared";
+import type { WorkspaceDockerMount, WorkspaceInitInstruction } from "@atelier/workspace";
+import { mkdir } from "node:fs/promises";
+import { registerAgentEvents } from "./agent-events.ts";
+import { createAgentTermSocketSession } from "./bash-tmux.ts";
+import { resolveAgentConversation } from "./delegation.ts";
+import { removeWorkspaceInitialPromptDrafts } from "./initial-prompt-draft.ts";
+import { nativeAgentLaunch } from "./launch.ts";
+import { resolveNewWorkspaceAgentModel } from "./model-state.ts";
+import { renderAgentPane } from "./render-composer.ts";
+import { agentConversationKey } from "./render-context.ts";
+import { handleAgentRequest } from "./routes.ts";
+import { refreshWorkspaceCompletionCatalogs, closeWorkspaceAgentConversation, getWorkspaceAgentRuntime, restoreWorkspaceAgentRuntime, subscribeWorkspaceAgentBusy } from "./runtime.ts";
+import { archiveWorkspaceAgentConversation, createNextWorkspaceAgentConversation, listWorkspaceAgentConversations, sessionShareDir, sessionShareKeyForInit, sessionShareMountPath, untitledAgentConversationTitle, type WorkspaceAgentConversationInfo } from "./session-store.ts";
+import { agentStaticFiles } from "./static.ts";
 import {
   createDeleteCurrentWorkspaceTool,
   registerWorkspaceAgentTool,
 } from "./tools.ts";
-import { createAgentTermSocketSession } from "./bash-tmux.ts";
-import { getWorkspaceAgentRuntime, closeWorkspaceAgentConversation, restoreWorkspaceAgentRuntime, subscribeWorkspaceAgentBusy } from "./runtime.ts";
-import { registerAgentEvents } from "./agent-events.ts";
-import { handleAgentRequest } from "./routes.ts";
+import { usageOpenApiPaths } from "./usage-openapi.ts";
+import { handleUsageRequest, renderUsagePaneAction } from "./usage-web.ts";
 import { workspaceFileEndpoint } from "./workspace-files.ts";
 import { resolveWorkspacePortProxyBackend } from "./workspace-proxy.ts";
-import { renderWorkspaceCompletionCatalog } from "./completion-catalog.ts";
-import { agentConversationKey } from "./render-context.ts";
-import { renderAgentCompletionCatalogTurboStream, renderAgentPane } from "./render-composer.ts";
-import { resolveNewWorkspaceAgentModel } from "./model-state.ts";
-import { createKeyedOperationQueue, dockerHostAtelierDataPath, getAtelierRuntimeContext, AtelierCoreError, type AtelierEventBus } from "@atelier/core";
-import { agentStaticFiles } from "./static.ts";
-import { mkdir } from "node:fs/promises";
-import { removeWorkspaceInitialPromptDrafts } from "./initial-prompt-draft.ts";
-import type { WorkspaceDockerMount, WorkspaceInitInstruction } from "@atelier/workspace";
 
 let agentEvents: AtelierEventBus | undefined;
 
@@ -70,7 +69,7 @@ export const workspaceAgentTabProvider = createWorkspaceAgentTabProvider({
     const runtime = await getWorkspaceAgentRuntime(conversation, { events: agentEvents });
     const [state, completionCatalog] = await Promise.all([
       runtime.paneState(),
-      renderWorkspaceCompletionCatalog(conversation.workspaceId),
+      runtime.refreshCompletionCatalog(),
     ]);
     return await renderAgentPane(
       { workspaceId: conversation.workspaceId, conversationId: conversation.conversationId },
@@ -164,9 +163,9 @@ export const agentWorkspaceModule: WorkspaceModule = {
     },
     ...usageOpenApiPaths,
     "/workspaces/{id}/agents/{conversationId}/reveal/{target}": { get: {
-      summary: "Reveal a transcript item by stable key or contributed anchor",
+      summary: "Resolve the enclosing turn for a transcript navigation target",
       parameters: ["id", "conversationId", "target"].map((name) => ({ name, in: "path", required: true, schema: { type: "string" } })),
-      responses: { "200": { description: "Server-rendered transcript with the target's lazy ancestors expanded", content: { "text/vnd.turbo-stream.html": { schema: { type: "string" } } } } },
+      responses: { "200": { description: "Enclosing turn identity for browser-local navigation", content: { "application/json": { schema: { type: "object", properties: { turnId: { type: ["string", "null"] } } } } } } },
     } },
   },
   routes: [{ handle: handleUsageRequest }, {
@@ -190,7 +189,8 @@ export const agentWorkspaceModule: WorkspaceModule = {
     events.on("workspace_agent_turn_finished", async ({ workspaceId, conversationId }) => {
       context.registry.requestSurfaceAttention(workspaceId, agentConversationKey(conversationId));
       context.registry.requestAttention(workspaceId);
-      context.broadcastWorkspace(workspaceId, await renderAgentCompletionCatalogTurboStream(workspaceId));
+      context.invalidateWorkspace(workspaceId);
+      await refreshWorkspaceCompletionCatalogs(workspaceId);
     });
     context.registerSocketHandler(createAgentTermSocketSession);
     context.registerWorkspaceAppResolver(async (app, requestUrl) => {

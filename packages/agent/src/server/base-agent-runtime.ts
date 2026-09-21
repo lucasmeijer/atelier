@@ -1,25 +1,19 @@
-import { finishNotificationTurn, startNotificationTurn } from "./turn-notifications.ts";
-import { sendTurnNotification } from "./web-push.ts";
-import { notificationControlTurboStream } from "./render-notification.ts";
 import { AtelierCoreError, type JsonObject } from "@atelier/core";
 import { StreamingMarkdownRenderer } from "@atelier/markdown";
+import { createLivePresentation, createPublishedRefresh } from "@atelier/shared";
 import { Type } from "typebox";
 import { Value } from "typebox/value";
+import { renderWorkspaceCompletionCatalog } from "./completion-catalog.ts";
 import { significantCacheMissNotice, type CacheMiss } from "./cache-miss.ts";
-import { escapeHtml, turboStream } from "./html.ts";
-import { createSnapshotFirstLivePresentation } from "./live-presentation.ts";
-import { renderNotice } from "./render-notice.ts";
 import { renderAgentPaneComposerFooter, renderPromptActions, type AgentPaneState, type AgentStatsView } from "./render-composer.ts";
-import { commentaryContext, ids, type AgentRenderContext } from "./render-context.ts";
-import { renderActiveToolContent, toolPresentation } from "./render-tool.ts";
+import { ids, type AgentRenderContext } from "./render-context.ts";
+import { LiveTranscriptRenderer } from "./render-live-transcript.ts";
+import { renderNotice } from "./render-notice.ts";
+import { notificationControlId, renderNotificationControl } from "./render-notification.ts";
 import {
   renderModelContextDetailFrame,
-  renderTranscript,
-  renderTranscriptItem,
   renderTranscriptItemDetailFrame,
-  renderWorkingSummary,
-  renderWorkingContent,
-  type AgentModelContextView,
+  type AgentModelContextView
 } from "./render-transcript.ts";
 import type {
   AgentLivePresentationListener,
@@ -33,29 +27,18 @@ import type { AgentServiceTier } from "./service-tier.ts";
 import type { WorkspaceAgentConversationInfo } from "./session-store.ts";
 import type { TreeFilterMode } from "./session-tree.ts";
 import {
-  isBashTool,
   findTranscriptItem,
+  isBashTool,
   toolDetailsIndicateError,
   type SessionImageRef,
+  type ToolView,
+  type ToolViewDetails,
   type TranscriptItem,
   type WorkingTranscriptItem,
-  type ToolViewDetails,
-  type ToolView,
 } from "./transcript.ts";
+import { finishNotificationTurn, startNotificationTurn } from "./turn-notifications.ts";
+import { sendTurnNotification } from "./web-push.ts";
 import { publishWorkspaceAgentBusy } from "./workspace-agent-busy.ts";
-
-interface LiveTextStream {
-  displayedLength: number;
-  renderer: StreamingMarkdownRenderer;
-  timer?: ReturnType<typeof setTimeout>;
-}
-
-interface ContributedRow {
-  html: string;
-  parent: string;
-  next?: string;
-  turnId?: string;
-}
 
 interface LiveState {
   items: TranscriptItem[];
@@ -65,7 +48,6 @@ interface LiveState {
   messageTextIndices: Map<number, number>;
   userEntryId: string;
   open?: { index: number; kind: "text"; contentIndex: number } | { index: number; kind: "thinking" | "toolargs" };
-  textStream?: LiveTextStream;
   toolIndexByCallId: Map<string, number>;
   terminalTimers: Map<string, ReturnType<typeof setTimeout>>;
 }
@@ -100,15 +82,55 @@ export abstract class BaseAgentRuntime implements WorkspaceAgentRuntime {
   private disposed = false;
   private readonly pendingUsers = new Map<string, Extract<TranscriptItem, { type: "user" }>>();
   private readonly turnPresentations = new Map<string, {
-    presentation: ReturnType<typeof createSnapshotFirstLivePresentation>;
+    presentation: ReturnType<typeof createLivePresentation>;
     subscriptions: Set<AgentLivePresentationSubscription>;
   }>();
   private toolArgsFlushTimer?: ReturnType<typeof setTimeout>;
   protected liveSubscriberCount = 0;
-  private readonly livePresentation = createSnapshotFirstLivePresentation((publishToExisting) => {
-    this.alignTextStreamForSnapshot(publishToExisting, "live");
-    return this.captureAuthoritativePresentationUpdate();
+
+  private completionCatalogHtml = "";
+  private readonly completionCatalogRefresh = createPublishedRefresh(
+    () => renderWorkspaceCompletionCatalog(this.workspaceId),
+    html => { this.completionCatalogHtml = html; this.livePresentation.invalidate(); },
+  );
+  private footer: AgentStatsView = { contextPercent: null, compactAvailable: false, inputTokens: 0, outputTokens: 0, cost: 0, modelName: undefined, thinkingLevel: "", thinkingLevels: [], models: [] };
+  private readonly transcriptRendering = new LiveTranscriptRenderer();
+  private readonly notices: string[] = [];
+  private readonly textRendering = new Map<string, { source: string; renderer: StreamingMarkdownRenderer; stableHtml: string; tailHtml: string }>();
+  private readonly footerRefresh = createPublishedRefresh(() => this.statsView(), footer => {
+    this.footer = footer;
+    this.livePresentation.invalidate();
   });
+  private readonly livePresentation = createLivePresentation(() => [
+    this.transcriptRendering.renderTranscript(this.renderContext(), this.itemsForDisplay(), this.modelContext(), this.notices.join("")),
+    { target: notificationControlId(this.ctx), html: renderNotificationControl(this.ctx, this.isStreaming), action: "replace" },
+    { target: ids.actions(this.ctx), html: renderPromptActions(this.ctx, this.isStreaming) },
+    { target: ids.completionCatalog(this.ctx), html: this.completionCatalogHtml },
+    { target: ids.stats(this.ctx), html: renderAgentPaneComposerFooter(this.ctx, this.footer) },
+  ], liveContentFlushIntervalMs);
+
+  private renderContext(): AgentRenderContext {
+    return { ...this.ctx, streamingText: (key, source) => {
+      let cached = this.textRendering.get(key);
+      if (!cached || !source.startsWith(cached.source)) {
+        cached = { source: "", renderer: new StreamingMarkdownRenderer(this.workspaceId), stableHtml: "", tailHtml: "" };
+        this.textRendering.set(key, cached);
+      }
+      if (source !== cached.source) {
+        const update = cached.renderer.render(source);
+        cached.stableHtml += update.stableHtmlAddition;
+        cached.tailHtml = update.tailHtml;
+        cached.source = source;
+      }
+      return cached;
+    } };
+  }
+
+  protected invalidatePresentation(): void {
+    if (this.disposed) return;
+    this.livePresentation.invalidate();
+    for (const channel of this.turnPresentations.values()) channel.presentation.invalidate();
+  }
 
   constructor(agent: WorkspaceAgentConversationInfo, protected readonly options: WorkspaceAgentRuntimeOptions = {}) {
     this.workspaceId = agent.workspaceId;
@@ -136,8 +158,8 @@ export abstract class BaseAgentRuntime implements WorkspaceAgentRuntime {
 
   subscribeLivePresentation(listener: AgentLivePresentationListener): AgentLivePresentationSubscription {
     this.assertActive();
-    this.liveSubscriberCount += 1;
     const subscription = this.livePresentation.subscribe(listener);
+    this.liveSubscriberCount += 1;
     let active = true;
     const unsubscribe = (): void => {
       if (!active) return;
@@ -145,15 +167,11 @@ export abstract class BaseAgentRuntime implements WorkspaceAgentRuntime {
       subscription.unsubscribe();
       this.liveSubscriberCount -= 1;
       if (this.liveSubscriberCount === 0 && this.turnSubscriberCount === 0) {
-        this.cancelTextFlush();
+
         this.cancelToolArgsFlush();
       }
     };
-    const ready = subscription.ready.catch((error) => {
-      unsubscribe();
-      throw error;
-    });
-    return { ready, unsubscribe };
+    return { unsubscribe };
   }
 
   /** A turn channel exists only while a browser has explicitly opened its disclosure. */
@@ -166,13 +184,11 @@ export abstract class BaseAgentRuntime implements WorkspaceAgentRuntime {
     if (!channel) {
       channel = {
         subscriptions: new Set(),
-        presentation: createSnapshotFirstLivePresentation((publishToExisting) => {
-          if (this.live?.working.key === turnId && !this.openTextItem()?.final) this.alignTextStreamForSnapshot(publishToExisting, "turn");
+        presentation: createLivePresentation(() => {
           const turn = findTranscriptItem(this.itemsForDisplay(), turnId);
-          if (turn?.type !== "working") throw new Error(`Unknown turn: ${turnId}`);
-          const html = turboStream("update", ids.workingItems(this.ctx, turnId), renderWorkingContent(this.ctx, turn, { live: turn.live }));
-          return async () => html;
-        }),
+          if (turn?.type !== "working") return [];
+          return [this.transcriptRendering.renderTurn(this.renderContext(), turn)];
+        }, liveContentFlushIntervalMs),
       };
       this.turnPresentations.set(turnId, channel);
     }
@@ -180,7 +196,6 @@ export abstract class BaseAgentRuntime implements WorkspaceAgentRuntime {
     const subscription = channel.presentation.subscribe(listener);
     let active = true;
     const owned: AgentLivePresentationSubscription = {
-      ready: subscription.ready.catch((error) => { owned.unsubscribe(); throw error; }),
       unsubscribe: () => {
         if (!active) return;
         active = false;
@@ -188,7 +203,7 @@ export abstract class BaseAgentRuntime implements WorkspaceAgentRuntime {
         ownedChannel.subscriptions.delete(owned);
         if (ownedChannel.subscriptions.size === 0 && this.turnPresentations.get(turnId) === ownedChannel) this.turnPresentations.delete(turnId);
         if (this.liveSubscriberCount === 0 && this.turnSubscriberCount === 0) {
-          this.cancelTextFlush();
+
           this.cancelToolArgsFlush();
         }
       },
@@ -202,15 +217,12 @@ export abstract class BaseAgentRuntime implements WorkspaceAgentRuntime {
       for (const subscription of [...channel.subscriptions]) subscription.unsubscribe();
     }
     this.ctx.branchId = branchId;
+    this.textRendering.clear();
+    this.transcriptRendering.clear();
   }
 
   protected get turnSubscriberCount(): number {
     return this.live ? this.turnPresentations.get(this.live.working.key)?.subscriptions.size ?? 0 : 0;
-  }
-
-  private streamTurn(html?: string, kind?: "paced-text", turnId = this.live?.working.key): void {
-    if (this.disposed || !turnId) return;
-    this.turnPresentations.get(turnId)?.presentation.publish(html, kind ? { kind } : undefined);
   }
 
   private itemIsOutside(item: TranscriptItem): boolean {
@@ -218,35 +230,16 @@ export abstract class BaseAgentRuntime implements WorkspaceAgentRuntime {
   }
 
   /** Commentary goes to both the lazy full turn and the always-visible projection. */
-  private streamItem(item: TranscriptItem, render?: (ctx: AgentRenderContext) => string, kind?: "paced-text"): void {
-    if (this.disposed) return;
-    const options = kind ? { kind } : undefined;
-    if (this.itemIsOutside(item)) this.livePresentation.publish(render?.(this.ctx), options);
-    else {
-      this.streamTurn(render?.(this.ctx), kind);
-      if (item.type === "text") this.livePresentation.publish(render?.(commentaryContext(this.ctx)), options);
-    }
-  }
 
   protected livePendingUser(key: string, text: string, images: SessionImageRef[] = []): void {
     const item: Extract<TranscriptItem, { type: "user" }> = { type: "user", key, text, images, timestamp: Date.now(), pending: true };
     this.pendingUsers.set(key, item);
-    this.stream(turboStream("append", ids.transcript(this.ctx), renderTranscriptItem(this.ctx, item)));
+    this.invalidatePresentation();
   }
 
   protected liveConsumePendingUser(key: string): void {
     this.pendingUsers.delete(key);
-    this.stream(turboStream("remove", ids.item(this.ctx, key)));
-  }
-
-  protected stream(html: string): void {
-    if (this.disposed) return;
-    this.livePresentation.publish(html);
-  }
-
-  protected async streamRendered(render: () => Promise<string>): Promise<void> {
-    if (this.disposed) return;
-    await this.livePresentation.publishRendered(render);
+    this.invalidatePresentation();
   }
 
   protected assertActive(): void {
@@ -256,6 +249,11 @@ export abstract class BaseAgentRuntime implements WorkspaceAgentRuntime {
   protected markDisposed(): boolean {
     if (this.disposed) return false;
     this.disposed = true;
+    this.livePresentation.dispose();
+    this.footerRefresh.dispose();
+    this.completionCatalogRefresh.dispose();
+    this.textRendering.clear();
+    this.transcriptRendering.clear();
     this.resetTurnSubscriptions(this.ctx.branchId ?? "");
     finishNotificationTurn(this.ctx);
     this.cancelToolArgsFlush();
@@ -266,15 +264,15 @@ export abstract class BaseAgentRuntime implements WorkspaceAgentRuntime {
     if (this.announcedBusy === busy) return;
     this.announcedBusy = busy;
     if (busy) startNotificationTurn(this.ctx, () => {
-      this.stream(notificationControlTurboStream(this.ctx, this.isStreaming));
+      this.invalidatePresentation();
     });
-    this.stream(notificationControlTurboStream(this.ctx, busy));
+    this.invalidatePresentation();
     publishWorkspaceAgentBusy({ workspaceId: this.workspaceId, agentKey: `agent:${this.conversationId}`, busy });
-    this.stream(turboStream("update", ids.actions(this.ctx), renderPromptActions(this.ctx, busy)));
   }
 
   protected notice(level: "info" | "error", message: string): void {
-    this.livePresentation.publish(turboStream("append", ids.notices(this.ctx), renderNotice(level, message)), { kind: "ephemeral" });
+    this.notices.push(renderNotice(level, message));
+    this.invalidatePresentation();
   }
 
   // ---- live transcript streaming ----------------------------------------
@@ -298,9 +296,9 @@ export abstract class BaseAgentRuntime implements WorkspaceAgentRuntime {
     if (user) {
       const item: TranscriptItem = { type: "user", timestamp: now, key: entryId, rewindEntryId: entryId, text: user.text, images: user.images };
       live.items.push(item);
-      this.stream(turboStream("append", ids.transcript(this.ctx), renderTranscriptItem(this.ctx, item, { live: true })));
+      this.invalidatePresentation();
     }
-    this.stream(turboStream("append", ids.transcript(this.ctx), this.renderLiveWorkingSection(live)));
+    this.invalidatePresentation();
   }
 
   protected liveSteeringUser(entryId: string, user: { text: string; images: SessionImageRef[] }, pendingKey?: string): void {
@@ -310,8 +308,7 @@ export abstract class BaseAgentRuntime implements WorkspaceAgentRuntime {
     live.items.push(item);
     if (pendingKey) this.liveConsumePendingUser(pendingKey);
     this.appendLiveItem(item);
-    const section = this.decorateTranscript([this.liveWorkingSection(live)]).find((item) => item.type === "working")!;
-    this.stream(turboStream("replace", ids.itemSummaryContent(this.ctx, section.key), renderWorkingSummary(this.ctx, section), { method: "morph" }));
+    this.invalidatePresentation();
   }
 
   protected liveEnsure(): LiveState {
@@ -325,24 +322,13 @@ export abstract class BaseAgentRuntime implements WorkspaceAgentRuntime {
     return { ...live.working, timing: this.liveTiming(), items: [...live.innerNotices, ...live.items.filter((item) => !this.itemIsOutside(item))] };
   }
 
-  private renderLiveWorkingSection(live: LiveState): string {
-    const item = findTranscriptItem(this.itemsForDisplay(), live.working.key)!;
-    return renderTranscriptItem(this.ctx, item);
-  }
-
   protected liveItemsForDisplay(live: LiveState): TranscriptItem[] {
     const user = live.items.filter((item) => item.key === live.userEntryId);
     const trailing = live.items.filter((item) => item.key !== live.userEntryId && this.itemIsOutside(item));
     return [...user, this.liveWorkingSection(live), ...trailing];
   }
 
-  private appendLiveItem(item: TranscriptItem, options: { live?: boolean; open?: boolean } = {}): void {
-    item.timestamp ??= Date.now();
-    this.streamItem(item, (ctx) => {
-      const target = this.itemIsOutside(item) ? ids.transcript(ctx) : ids.workingItems(ctx, this.live!.working.key);
-      return turboStream("append", target, renderTranscriptItem(ctx, item, options));
-    });
-  }
+  private appendLiveItem(item: TranscriptItem, _options: { live?: boolean; open?: boolean } = {}): void { item.timestamp ??= Date.now(); this.invalidatePresentation(); }
 
   private openTextItem(): Extract<TranscriptItem, { type: "text" }> | undefined {
     const live = this.live;
@@ -351,89 +337,15 @@ export abstract class BaseAgentRuntime implements WorkspaceAgentRuntime {
     return item?.type === "text" ? item : undefined;
   }
 
-  private cancelTextFlush(): void {
-    const streamState = this.live?.textStream;
-    if (streamState?.timer) clearTimeout(streamState.timer);
-    if (streamState) streamState.timer = undefined;
-  }
-
-  /** Bring existing listeners to the exact full-text boundary captured for a joining subscriber. */
-  private alignTextStreamForSnapshot(publishToExisting: (html: string) => void, source: "live" | "turn"): void {
-    const item = this.openTextItem();
-    const streamState = this.live?.textStream;
-    if (!item || !streamState) return;
-    this.cancelTextFlush();
-    // Always replace for existing listeners. A paced update can already have
-    // advanced the shared renderer while its ordered delivery is still queued
-    // behind this snapshot, so displayedLength alone cannot prove that every
-    // listener has observed it.
-    // Both projections share the Markdown renderer's stable-text boundary.
-    // Joining either channel must advance the other before further deltas.
-    const replacement = (ctx: AgentRenderContext): string => turboStream("replace", ids.item(ctx, item.key), renderTranscriptItem(ctx, item, { live: true }));
-    if (item.final) publishToExisting(replacement(this.ctx));
-    else if (source === "live") {
-      publishToExisting(replacement(commentaryContext(this.ctx)));
-      this.streamTurn(replacement(this.ctx));
-    } else {
-      publishToExisting(replacement(this.ctx));
-      this.stream(replacement(commentaryContext(this.ctx)));
-    }
-    streamState.renderer.sync(item.text);
-    streamState.displayedLength = item.text.length;
-  }
-
-  private scheduleTextFlush(): void {
-    const streamState = this.live?.textStream;
-    if (!streamState || streamState.timer || this.liveSubscriberCount + this.turnSubscriberCount === 0) return;
-    streamState.timer = setTimeout(() => {
-      streamState.timer = undefined;
-      this.flushText();
-    }, liveContentFlushIntervalMs);
-  }
-
-  private flushText(): void {
-    const item = this.openTextItem();
-    const streamState = this.live?.textStream;
-    if (!item || !streamState) return;
-    if (item.text.length === streamState.displayedLength) return;
-    const update = streamState.renderer.render(item.text);
-    streamState.displayedLength = item.text.length;
-    this.streamItem(item, (ctx) => {
-      const stable = update.stableHtmlAddition
-        ? turboStream("append", ids.itemTextStable(ctx, item.key), update.stableHtmlAddition)
-        : "";
-      return stable + turboStream("update", ids.itemTextTail(ctx, item.key), update.tailHtml);
-    }, "paced-text");
-  }
-
-  private releaseTextStream(): void {
-    this.cancelTextFlush();
-    if (this.live) this.live.textStream = undefined;
-  }
-
-  protected streamActiveToolContent(item: Extract<TranscriptItem, { type: "tool" }>, morphDetail = true): void {
-    if (this.turnSubscriberCount === 0) {
-      this.streamTurn();
-      return;
-    }
-    const content = renderActiveToolContent(this.ctx, item.key, item.tool);
-    const status = turboStream("update", ids.itemSummaryStatus(this.ctx, item.key), content.status);
-    const summary = turboStream("update", ids.itemSummaryContent(this.ctx, item.key), content.summary);
-    // Preserve the tool body across deltas to avoid WebKit flashing while following the bottom.
-    const detail = content.detail === undefined ? "" : turboStream("update", ids.detailFrame(this.ctx, item.key), content.detail, morphDetail ? { method: "morph" } : {});
-    const metadata = turboStream("update", ids.itemSummaryMetadata(this.ctx, item.key), content.metadata);
-    this.streamTurn(status + summary + metadata + detail);
-  }
-
   private finishOpenText(final = false): void {
     const live = this.live;
     if (!live?.open || live.open.kind !== "text") return;
     const item = live.items[live.open.index];
-    this.releaseTextStream();
+
     if (item?.type === "text") {
       item.live = false;
       item.final = final;
-      this.streamItem(item, (ctx) => turboStream("replace", ids.item(ctx, item.key), renderTranscriptItem(ctx, item)));
+      this.invalidatePresentation();
     }
     live.open = undefined;
   }
@@ -444,7 +356,7 @@ export abstract class BaseAgentRuntime implements WorkspaceAgentRuntime {
     const item = live.items[live.open.index];
     if (item?.type === "thinking") {
       item.live = false;
-      this.streamTurn(turboStream("replace", ids.item(this.ctx, item.key), renderTranscriptItem(this.ctx, item, { open: true })));
+      this.invalidatePresentation();
     }
     live.open = undefined;
   }
@@ -469,12 +381,9 @@ export abstract class BaseAgentRuntime implements WorkspaceAgentRuntime {
     if (live.open?.kind === "text") {
       const item = live.items[live.open.index];
       if (item?.type === "text" && !item.final) {
-        this.releaseTextStream();
-        this.streamItem(item, (ctx) => turboStream("remove", ids.item(ctx, item.key)));
+
         item.final = true;
-        live.textStream = { displayedLength: item.text.length, renderer: new StreamingMarkdownRenderer(this.workspaceId) };
-        live.textStream.renderer.sync(item.text);
-        this.stream(turboStream("append", ids.transcript(this.ctx), renderTranscriptItem(this.ctx, item, { live: true })));
+        this.invalidatePresentation();
       }
     }
   }
@@ -496,16 +405,14 @@ export abstract class BaseAgentRuntime implements WorkspaceAgentRuntime {
       live.items.push(item);
       live.open = { index, kind: "text", contentIndex };
       live.messageTextIndices.set(contentIndex, index);
-      live.textStream = { displayedLength: 0, renderer: new StreamingMarkdownRenderer(this.workspaceId) };
       this.appendLiveItem(item, { live: true });
     }
     const item = live.items[live.open.index];
     if (item?.type !== "text") return;
     item.text += text;
-    // Authoritative text changes immediately even though its visible update is paced.
-    // Invalidate any in-flight snapshot so it cannot straddle this change.
-    this.streamItem(item, undefined, "paced-text");
-    this.scheduleTextFlush();
+    // Publication is coalesced; snapshots always read the latest source.
+    this.invalidatePresentation();
+
   }
 
   protected liveTextEnd(contentIndex: number): void {
@@ -528,7 +435,7 @@ export abstract class BaseAgentRuntime implements WorkspaceAgentRuntime {
     const item = live.items[live.open.index];
     if (item?.type !== "thinking") return;
     item.text += text;
-    this.streamTurn(turboStream("update", ids.itemText(this.ctx, item.key), escapeHtml(item.text)));
+    this.invalidatePresentation();
   }
 
   protected liveToolStreamStart(name: string): number {
@@ -553,8 +460,7 @@ export abstract class BaseAgentRuntime implements WorkspaceAgentRuntime {
     const item = live.items[live.open.index];
     if (item?.type !== "tool") return;
     item.tool.argsStream = (item.tool.argsStream ?? "") + text;
-    // The authoritative prefix changes immediately. Only rendering is coalesced.
-    this.streamTurn();
+    // The authoritative prefix changes immediately. Expensive argument rendering is paced.
     if (this.turnSubscriberCount === 0 || this.toolArgsFlushTimer) return;
     // An already scheduled flush may finish at the fast cadence; subsequent flushes
     // use the accumulated UTF-8 argument size, without postponing work on every delta.
@@ -563,7 +469,7 @@ export abstract class BaseAgentRuntime implements WorkspaceAgentRuntime {
       : liveContentFlushIntervalMs;
     this.toolArgsFlushTimer = setTimeout(() => {
       this.toolArgsFlushTimer = undefined;
-      this.streamActiveToolContent(item);
+      for (const channel of this.turnPresentations.values()) channel.presentation.flush();
     }, intervalMs);
   }
 
@@ -587,7 +493,6 @@ export abstract class BaseAgentRuntime implements WorkspaceAgentRuntime {
     live.open = undefined;
     const item = live.items[index];
     if (item?.type !== "tool") return;
-    const previousKey = item.key;
     item.key = `tool:${callId}`;
     item.tool.callId = callId;
     item.tool.name = name;
@@ -600,7 +505,7 @@ export abstract class BaseAgentRuntime implements WorkspaceAgentRuntime {
     if (streamedIndex !== undefined) {
       // Replace the provisional argument row as soon as Pi supplies its call ID.
       // Every later detail URL then uses the same identity as persisted history.
-      this.streamTurn(turboStream("replace", ids.item(this.ctx, previousKey), renderTranscriptItem(this.ctx, item, { live: true, open: true })));
+      this.invalidatePresentation();
     } else {
       this.appendLiveItem(item, { live: true, open: true });
     }
@@ -624,13 +529,13 @@ export abstract class BaseAgentRuntime implements WorkspaceAgentRuntime {
         const revisit = current?.items[index];
         if (!current || revisit?.type !== "tool" || revisit.tool.status !== "running") return;
         revisit.tool.terminalVisible = true;
-        this.streamActiveToolContent(revisit);
+        this.invalidatePresentation();
       }, terminalRevealMs);
       live.terminalTimers.set(callId, timer);
     }
     if (update.outputText !== undefined) item.tool.resultText = update.outputText;
     if (update.details !== undefined) item.tool.details = update.details;
-    this.streamTurn();
+    this.invalidatePresentation();
   }
 
   protected liveToolEnd(callId: string, resultText: string, isError: boolean, details?: ToolViewDetails): void {
@@ -642,7 +547,6 @@ export abstract class BaseAgentRuntime implements WorkspaceAgentRuntime {
     live.terminalTimers.delete(callId);
     const item = live.items[index];
     if (item?.type !== "tool") return;
-    const wasShowingDetail = toolPresentation(item.tool).showsDetail;
     const completedAt = Date.now();
     item.tool.durationMs = item.tool.startedAt ? completedAt - item.tool.startedAt : undefined;
     item.tool.status = isError || toolDetailsIndicateError(details) ? "error" : "ok";
@@ -650,15 +554,7 @@ export abstract class BaseAgentRuntime implements WorkspaceAgentRuntime {
     item.tool.details = details;
     item.tool.tmuxSession = undefined;
     item.tool.terminalVisible = undefined;
-    const presentation = toolPresentation(item.tool);
-    if (wasShowingDetail !== presentation.showsDetail) {
-      this.streamTurn(turboStream("replace", ids.item(this.ctx, item.key), renderTranscriptItem(this.ctx, item, { live: true, open: presentation.autoOpenOnReveal })));
-    } else {
-      // A completed Bash command can replace shell-only streamed markup with a
-      // mixed-language syntax tree. Rebuild that detail once; other tools and
-      // active output updates retain the non-flashing morph path.
-      this.streamActiveToolContent(item, !isBashTool(item.tool.name));
-    }
+    this.invalidatePresentation();
   }
 
   protected liveNote(text: string, tone: "system" | "summary" | "error"): void {
@@ -678,7 +574,7 @@ export abstract class BaseAgentRuntime implements WorkspaceAgentRuntime {
     for (const index of live.messageTextIndices.values()) {
       const item = live.items[index];
       if (item?.type !== "text" || !item.final) continue;
-      this.stream(turboStream("remove", ids.item(this.ctx, item.key)));
+      this.invalidatePresentation();
       item.final = false;
       this.appendLiveItem(item);
     }
@@ -690,20 +586,17 @@ export abstract class BaseAgentRuntime implements WorkspaceAgentRuntime {
     this.closeOpenItem();
     const item: TranscriptItem = { type: "error", key: this.liveKey(live, live.innerNotices.length, "retry"), text };
     live.innerNotices.push(item);
-    this.streamTurn(turboStream("append", ids.workingItems(this.ctx, live.working.key), renderTranscriptItem(this.ctx, item)));
+    this.invalidatePresentation();
   }
 
   protected liveFinal(text: string, contentIndexes?: number[]): void {
     const live = this.live;
     if (!live) return;
-    this.releaseTextStream();
+
     live.open = undefined;
     const selected = new Set(contentIndexes ?? live.messageTextIndices.keys());
     const removeIndices = new Set([...live.messageTextIndices].filter(([contentIndex]) => selected.has(contentIndex)).map(([, index]) => index));
-    for (const index of removeIndices) {
-      const item = live.items[index]!;
-      this.streamItem(item, (ctx) => turboStream("remove", ids.item(ctx, item.key)));
-    }
+
     live.items = live.items.filter((_, index) => !removeIndices.has(index));
     // All tools in this assistant message have completed before a final answer.
     live.toolIndexByCallId.clear();
@@ -730,74 +623,24 @@ export abstract class BaseAgentRuntime implements WorkspaceAgentRuntime {
     // Supersede any paced tail with one canonical full-source render before the
     // live state (and its renderer session) is discarded.
     this.finishOpenText(Boolean(this.openTextItem()?.final));
-    this.releaseTextStream();
+
     if (this.live) {
       for (const timer of this.live.terminalTimers.values()) clearTimeout(timer);
       if (outcome === "completed") this.live.working.completedAt = Date.now();
       else this.live.working.stoppedAt = Date.now();
-      const turn = this.decorateTranscript([this.liveWorkingSection(this.live)]).find((item) => item.type === "working")!;
-      this.stream(turboStream("replace", ids.itemSummaryContent(this.ctx, turn.key), renderWorkingSummary(this.ctx, turn), { method: "morph" }));
-      this.streamTurn(turboStream("update", ids.workingItems(this.ctx, turn.key), renderWorkingContent(this.ctx, turn)));
+      this.invalidatePresentation();
+      this.invalidatePresentation();
     }
     this.live = undefined;
+    this.textRendering.clear();
+    this.transcriptRendering.clear();
+    this.invalidatePresentation();
   }
 
   protected decorateTranscript(items: TranscriptItem[]): TranscriptItem[] { return items; }
 
-  private contributions = { rows: new Map<string, ContributedRow>(), summaries: new Map<string, string>() };
-
-  private contributionsForDisplay() {
-    const rows = new Map<string, ContributedRow>();
-    const summaries = new Map<string, string>();
-    const visit = (items: TranscriptItem[], parent: string, turnId?: string) => {
-      for (const [index, item] of items.entries()) {
-        if (item.type === "working") {
-          summaries.set(ids.itemSummaryContent(this.ctx, item.key), renderWorkingSummary(this.ctx, item));
-          visit(item.items, ids.workingItems(this.ctx, item.key), item.key);
-        }
-        if (item.type !== "extension") continue;
-        rows.set(ids.item(this.ctx, item.key), {
-          html: renderTranscriptItem(this.ctx, item), parent, turnId,
-          next: items[index + 1] ? ids.item(this.ctx, items[index + 1]!.key) : undefined,
-        });
-      }
-    };
-    visit(this.itemsForDisplay(), ids.transcript(this.ctx));
-    return { rows, summaries };
-  }
-
-  protected captureContributedRows(): void {
-    this.contributions = this.contributionsForDisplay();
-  }
-
-  /** Reconcile contributed rows and run summaries without replacing host text/tool streams. */
-  protected refreshContributedRows(): void {
-    const current = this.contributionsForDisplay();
-    const updates = new Map<string | undefined, string>();
-    const append = (turnId: string | undefined, html: string): void => { updates.set(turnId, (updates.get(turnId) ?? "") + html); };
-    for (const [id, previous] of this.contributions.rows) {
-      if (!current.rows.has(id)) append(previous.turnId, turboStream("remove", id));
-    }
-    // Insert backwards so a new row's next sibling already exists.
-    for (const [id, item] of [...current.rows].reverse()) {
-      const previous = this.contributions.rows.get(id);
-      const moved = previous !== undefined && (previous.parent !== item.parent || previous.next !== item.next);
-      if (previous?.html === item.html && !moved) continue;
-      if (moved) append(previous.turnId, turboStream("remove", id));
-      if (previous === undefined) append(item.turnId, turboStream("remove", id));
-      append(item.turnId, previous !== undefined && !moved
-        ? turboStream("replace", id, item.html)
-        : item.next ? turboStream("before", item.next, item.html) : turboStream("append", item.parent, item.html));
-    }
-    for (const [id, html] of current.summaries) {
-      if (this.contributions.summaries.get(id) !== html) append(undefined, turboStream("replace", id, html, { method: "morph" }));
-    }
-    this.contributions = current;
-    for (const [turnId, html] of updates) {
-      if (turnId) this.streamTurn(html, undefined, turnId);
-      else this.stream(html);
-    }
-  }
+  /** Contribution changes invalidate the same canonical presentation. */
+  protected refreshContributedRows(): void { this.invalidatePresentation(); }
 
   private itemsForDisplay(): TranscriptItem[] {
     let items = this.canonicalItems();
@@ -808,44 +651,25 @@ export abstract class BaseAgentRuntime implements WorkspaceAgentRuntime {
     return [...this.decorateTranscript([...items, ...this.liveItemsForDisplay(live)]), ...this.pendingUsers.values()];
   }
 
-  protected async refreshTranscript(): Promise<void> {
-    this.captureContributedRows();
-    await this.streamRendered(async () => turboStream("update", ids.transcript(this.ctx), renderTranscript(this.ctx, this.itemsForDisplay(), this.modelContext())));
+  protected async refreshTranscript(): Promise<void> { this.invalidatePresentation(); }
+
+  protected async refreshStats(): Promise<void> { await this.footerRefresh.refresh(); }
+
+  revealTurn(target: string): string | undefined {
+    const items = this.itemsForDisplay();
+    return items.find(item => item.type === "working" && item.items.some(child => child.key === target || child.anchor === target))?.key;
   }
 
-  protected async refreshStats(): Promise<void> {
-    await this.streamRendered(async () => turboStream("update", ids.stats(this.ctx), renderAgentPaneComposerFooter(this.ctx, await this.statsView())));
-  }
-
-  private capturePaneState(revealTarget?: string): () => Promise<AgentPaneState> {
-    // The transcript and busy flag are the mutable live boundary. Capture both
-    // synchronously before stats performs any configuration or provider I/O.
-    this.captureContributedRows();
-    const transcriptHtml = renderTranscript({ ...this.ctx, revealTarget }, this.itemsForDisplay(), this.modelContext());
-    const busy = this.isStreaming;
-    const stats = this.statsView();
-    return async () => ({ transcriptHtml, busy, stats: await stats });
-  }
-
-  private captureAuthoritativePresentationUpdate(): () => Promise<string> {
-    const completeState = this.capturePaneState();
-    const notificationHtml = notificationControlTurboStream(this.ctx, this.isStreaming);
-    return async () => {
-      const state = await completeState();
-      return notificationHtml
-        + turboStream("update", ids.transcript(this.ctx), state.transcriptHtml)
-        + turboStream("update", ids.actions(this.ctx), renderPromptActions(this.ctx, state.busy))
-        + turboStream("update", ids.stats(this.ctx), renderAgentPaneComposerFooter(this.ctx, state.stats));
-    };
-  }
-
-  protected async authoritativePresentationUpdate(): Promise<string> {
-    return await this.captureAuthoritativePresentationUpdate()();
-  }
-
-  async paneState(revealTarget?: string): Promise<AgentPaneState> {
+  async refreshCompletionCatalog(): Promise<string> {
     this.assertActive();
-    return await this.capturePaneState(revealTarget)();
+    await this.completionCatalogRefresh.refresh();
+    return this.completionCatalogHtml;
+  }
+
+  async paneState(): Promise<AgentPaneState> {
+    this.assertActive();
+    void this.refreshStats().catch(error => console.error("Could not refresh agent footer", error));
+    return { transcriptHtml: this.transcriptRendering.renderInitialTranscript(this.renderContext(), this.itemsForDisplay(), this.modelContext(), this.notices.join("")), busy: this.isStreaming, stats: this.footer };
   }
 
   async detailHtml(key: string, count = 100): Promise<string> {
@@ -876,4 +700,3 @@ export abstract class BaseAgentRuntime implements WorkspaceAgentRuntime {
   abstract navigateTree(entryId: string, options: { summarize: boolean; customInstructions?: string }): Promise<string>;
   abstract newSession(): Promise<void>;
 }
-

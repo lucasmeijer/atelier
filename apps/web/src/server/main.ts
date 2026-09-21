@@ -1,37 +1,36 @@
-import { agentProvider, rememberAgentProvider } from "./agent-providers.ts";
-import { deliverAttachmentDraft, removeAttachmentDraft, validDraftId } from "@atelier/prompt/server";
-import { configureOnboardingTools, configureAgentDelegation, configureAgentMcp, handleAgentMcpRequest, markProjectOnboardingWorkspace } from "@atelier/agent/server";
-import { createProjectSecretRequester } from "./project-secret-request.ts";
-import { ensureDefaultWorkspaceImage } from "@atelier/workspace-image";
-import { ensureHostInotifyLimit } from "@atelier/workspace";
-import { recoverWorkspaces, prepareWorkspaceForUse } from "./workspace-recovery.ts";
-import { designSystemCatalogueHtml } from "@atelier/design-system/catalogue";
-import { subagentsDelegation } from "@atelier/subagents/server";
-import { join } from "node:path";
-import { timingSafeEqual as timingSafeEqualBytes } from "node:crypto";
-import { gzipSync } from "node:zlib";
-import type { ServerWebSocket } from "bun";
-import { Type } from "typebox";
-import { Value } from "typebox/value";
+import { configureAgentDelegation, configureAgentMcp, configureOnboardingTools, handleAgentMcpRequest, markProjectOnboardingWorkspace } from "@atelier/agent/server";
 import { createAtelierEventBus, getAtelierRuntimeContext } from "@atelier/core";
+import { designSystemCatalogueHtml } from "@atelier/design-system/catalogue";
 import { attachHostObservableTerminal, observableTerminalCols, observableTerminalRows, type ObservableTerminalConnection } from "@atelier/observable-terminal/server";
-import { checkWorkspaceReadiness, workspacePortBackend, workspaceImageOutdated, createWorkspace, deleteWorkspace, isWorkspaceRunning, listWorkspaces, resolveWorkspace, setWorkspaceParked, setWorkspaceContainerRunning, workspaceSetupProvisioningHook } from "@atelier/workspace";
-import { atelierName, CableTopics, escapeHtml, type WorkspaceAppBackend, type WorkspaceAppRef, type WorkspaceServerAppResolver, type WorkspaceServerProvisioningHook, type WorkspaceServerSocketHandler, type WorkspaceServerSocketSession } from "@atelier/shared";
+import { deliverAttachmentDraft, removeAttachmentDraft, validDraftId } from "@atelier/prompt/server";
 import {
   createFileOriginIdentityStore,
-  detectParentOriginPublisher,
-  createWorkspaceIngressSockets,
   createWorkspaceIngress,
+  createWorkspaceIngressSockets,
+  detectParentOriginPublisher,
   publicOriginPortRangeFromEnv,
   publicWorkspaceAppOrigin,
   StoppedWorkspaceError,
 } from "@atelier/proxy-ingress/server";
+import { atelierName, escapeHtml, type WorkspaceAppBackend, type WorkspaceAppRef, type WorkspaceServerAppResolver, type WorkspaceServerProvisioningHook, type WorkspaceServerSocketHandler, type WorkspaceServerSocketSession } from "@atelier/shared";
+import { subagentsDelegation } from "@atelier/subagents/server";
+import { checkWorkspaceReadiness, createWorkspace, deleteWorkspace, ensureHostInotifyLimit, isWorkspaceRunning, listWorkspaces, resolveWorkspace, setWorkspaceContainerRunning, setWorkspaceParked, workspaceImageOutdated, workspacePortBackend, workspaceSetupProvisioningHook } from "@atelier/workspace";
+import { ensureDefaultWorkspaceImage } from "@atelier/workspace-image";
+import type { ServerWebSocket } from "bun";
+import { timingSafeEqual as timingSafeEqualBytes } from "node:crypto";
+import { join } from "node:path";
+import { gzipSync } from "node:zlib";
+import { Type } from "typebox";
+import { Value } from "typebox/value";
+import { agentProvider, rememberAgentProvider } from "./agent-providers.ts";
 import { createWebApp, type WebApp } from "./app.ts";
 import { parseAssetManifest } from "./asset-manifest.ts";
 import { createCableServer, type CableSocketData } from "./cable.ts";
+import { createProjectSecretRequester } from "./project-secret-request.ts";
 import { legacyStaticFiles } from "./static-files.ts";
-import { createFileWorkspaceActivityStore, createFileWorkspaceDeletionStore, createFileWorkspaceAttentionStore, createWorkspaceRegistry } from "./workspace-registry.ts";
 import { workspaceModules } from "./workspace-modules.ts";
+import { prepareWorkspaceForUse, recoverWorkspaces } from "./workspace-recovery.ts";
+import { createFileWorkspaceActivityStore, createFileWorkspaceAttentionStore, createFileWorkspaceDeletionStore, createWorkspaceRegistry } from "./workspace-registry.ts";
 
 // Explicit feature assembly; workspace-module discovery still owns routes, views and assets.
 configureAgentDelegation(workspaceModules.some((module) => module.id === "subagents") ? subagentsDelegation : undefined);
@@ -225,11 +224,10 @@ const workspaceStartupOperations = {
   imageOutdated: (id: string) => workspaceImageOutdated(id, undefined, atelierEvents),
   get provisioning() { return app.provisioning; },
 };
-const cableServer = createCableServer({ registry, channels: workspaceModules.flatMap((module) => module.cableChannels ?? []), events: atelierEvents, shellSnapshot: () => app.shellSnapshot() });
+const cableServer = createCableServer({ registry, channels: [...workspaceModules.flatMap((module) => module.cableChannels ?? []), { name: "surface", subscribe: (identifier, listener) => app.subscribeSurface(identifier, listener) }, { name: "shell", subscribe: (_identifier, listener) => app.subscribeShell(listener) }], events: atelierEvents });
 
 app = createWebApp({
   registry,
-  cable: cableServer,
   events: atelierEvents,
   devReload: devReloadFile !== undefined,
   workspaceRemovedHandlers,
@@ -271,7 +269,7 @@ for (const module of workspaceModules) {
     globalSidebarContributions: app.globalSidebarContributions,
     createWorkView: (workspaceId, reference) => app.createWorkView(workspaceId, reference),
     presentWorkView: (workspaceId, reference) => app.presentWorkViewFromAgent(workspaceId, reference),
-    broadcastWorkspace: (workspaceId, html) => cableServer.broadcast(CableTopics.workspace(workspaceId), html),
+    invalidateWorkspace: workspaceId => app.invalidateWorkspace(workspaceId),
     deleteCurrentWorkspace: (workspaceId, force) => app.deleteCurrentWorkspaceFromAgent(workspaceId, force),
     registerSocketHandler: (handler) => socketHandlers.push(handler),
     publishWorkspacePort: (workspaceId, port, protocol) => workspaceIngress.publishPort(workspaceId, port, protocol),

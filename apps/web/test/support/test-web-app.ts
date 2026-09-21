@@ -1,8 +1,8 @@
+import type { AtelierEventBus, JsonObject } from "@atelier/core";
+import type { WorkspaceDeletionReview } from "@atelier/shared";
 import { mkdtemp, rm } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
-import type { AtelierEventBus, JsonObject } from "@atelier/core";
-import type { WorkspaceDeletionReview } from "@atelier/shared";
 import { Type } from "typebox";
 import { Value } from "typebox/value";
 import { createWebApp } from "../../src/server/app.ts";
@@ -20,7 +20,6 @@ type ProvisionWorkspace = Parameters<typeof createWebApp>[0]["provisionWorkspace
 export type ProvisionWorkspaceOptions = Parameters<ProvisionWorkspace>[1];
 
 interface TestAppOptions {
-  cable?: Parameters<typeof createWebApp>[0]["cable"];
   provision?: ProvisionWorkspace;
   inspect?: (id: string) => Promise<string[]>;
   destroy?: (id: string) => Promise<void>;
@@ -50,7 +49,6 @@ export function createTestApp(options: TestAppOptions = {}) {
   });
   const app = createWebApp({
     registry,
-    cable: options.cable ?? { broadcast() {} },
     events: options.events,
     provisionWorkspace: options.provision ?? (async () => {}),
     deletionReview: deletionReview(options.inspect ?? (async () => [])),

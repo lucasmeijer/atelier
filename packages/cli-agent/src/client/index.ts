@@ -1,5 +1,5 @@
 import { atelierObservableTerminalTheme, createObservableTerminalViewer, observableWebSocketUrl, type ObservableTerminalViewer } from "@atelier/observable-terminal/client";
-import type { WorkspaceClientModule } from "@atelier/shared";
+import { isWorkspacePaneVisible, type WorkspaceClientModule } from "@atelier/shared";
 
 export const atelierClientModule: WorkspaceClientModule = {
   id: "cli-agent",
@@ -16,7 +16,14 @@ export const atelierClientModule: WorkspaceClientModule = {
       private resize = new ResizeObserver(() => this.refresh());
 
       connect(): void {
-        if (!this.hasTerminalTarget) return;
+        window.addEventListener("atelier:workspace-pane-visible", this.activate);
+        this.activate();
+      }
+      private readonly activate = (): void => {
+        if (isWorkspacePaneVisible(this.element)) this.start();
+      };
+      private start(): void {
+        if (!this.hasTerminalTarget || this.viewer) return;
         this.resize.observe(this.terminalTarget);
         this.viewer = createObservableTerminalViewer({
           host: this.terminalTarget, mode: "interactive", websocketUrl: observableWebSocketUrl(`${this.urlValue}/ws`),
@@ -25,7 +32,7 @@ export const atelierClientModule: WorkspaceClientModule = {
           onDisconnect: () => this.setConnected(false),
         });
       }
-      disconnect(): void { this.resize.disconnect(); this.viewer?.dispose(); this.viewer = undefined; }
+      disconnect(): void { window.removeEventListener("atelier:workspace-pane-visible", this.activate); this.resize.disconnect(); this.viewer?.dispose(); this.viewer = undefined; }
       private setConnected(connected: boolean): void {
         this.connectionStatusTarget.hidden = connected;
         this.element.setAttribute("data-transcription-composer-unavailable-value", String(!connected));
@@ -36,8 +43,7 @@ export const atelierClientModule: WorkspaceClientModule = {
       }
       focus(): void { this.viewer?.focus(); }
       retry(): void {
-        // Reinspect session status on explicit retry, not on a polling timer.
-        this.element.closest<HTMLElement & { reload(): void }>("turbo-frame")!.reload();
+        this.viewer!.reconnect();
       }
       refresh(): void { this.viewer?.refresh(); }
       theme(): void { this.viewer?.setTheme(atelierObservableTerminalTheme()); }

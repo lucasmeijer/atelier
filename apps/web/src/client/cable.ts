@@ -1,6 +1,6 @@
 /// <reference lib="dom" />
 
-import { decodeCableServerMessage, serializeCableIdentifier, type WorkspaceVisibilityReport, type AtelierCableClient, type CableClientMessage, type CableIdentifier, type CableSubscription, type CableSubscriptionOptions } from "@atelier/shared";
+import { decodeCableServerMessage, serializeCableIdentifier, type AtelierCableClient, type CableClientMessage, type CableIdentifier, type CableSubscription, type CableSubscriptionOptions, type WorkspaceVisibilityReport } from "@atelier/shared";
 
 declare global {
   interface Window {
@@ -28,14 +28,20 @@ export function createAtelierCableClient(renderStreams: CableStreamRenderer): At
   let socket: WebSocket | undefined;
   let reconnectTimer: ReturnType<typeof setTimeout> | undefined;
   let attempts = 0;
+  let recovering = true;
   let closingForPageHide = false;
   let visibility: WorkspaceVisibilityReport = { surfaceKeys: [] };
-  let activeConnectionId: string | undefined;
+  let lastMessageAt = Date.now();
+  setInterval(() => {
+    if (socket?.readyState === WebSocket.OPEN && Date.now() - lastMessageAt > 75_000) socket.close();
+  }, 15_000);
 
   function cableUrl(): string {
     const protocol = location.protocol === "https:" ? "wss:" : "ws:";
     return `${protocol}//${location.host}/cable`;
   }
+
+  function changed(): void { document.dispatchEvent(new Event("live:connection")); }
 
   function sendRaw(message: CableClientMessage): void {
     if (socket?.readyState === WebSocket.OPEN) socket.send(JSON.stringify(message));
@@ -45,6 +51,7 @@ export function createAtelierCableClient(renderStreams: CableStreamRenderer): At
     const subscriptionId = crypto.randomUUID();
     subscription.ready = false;
     subscription.subscriptionId = subscriptionId;
+    changed();
     sendRaw({ command: "subscribe", identifier: subscription.identifier, subscriptionId });
   }
 
@@ -78,11 +85,11 @@ export function createAtelierCableClient(renderStreams: CableStreamRenderer): At
 
   function handleMessage(source: WebSocket, event: MessageEvent): void {
     if (socket !== source) return;
+    lastMessageAt = Date.now();
     const message = decodeCableServerMessage(String(event.data));
     switch (message.type) {
       case "welcome":
         attempts = 0;
-        activeConnectionId = message.connectionId;
         sendRaw({ command: "visibility", visibility });
         resubscribeAll();
         break;
@@ -93,6 +100,8 @@ export function createAtelierCableClient(renderStreams: CableStreamRenderer): At
         const applied = () => {
           if (!isCurrent()) return;
           subscription.ready = true;
+          if ([...desired.values()].every(item => item.ready)) recovering = false;
+          changed();
           for (const lease of subscription.leases) lease.options?.onReady?.();
         };
         if (message.html) renderStreams(message.html, isCurrent, applied);
@@ -100,7 +109,11 @@ export function createAtelierCableClient(renderStreams: CableStreamRenderer): At
         break;
       }
       case "reject_subscription":
-        if (matchingSubscription(message.identifier, message.subscriptionId)) console.error("Cable subscription rejected", message);
+        const rejected = matchingSubscription(message.identifier, message.subscriptionId);
+        if (rejected) {
+          console.error("Cable subscription rejected", message);
+          for (const lease of rejected.leases) lease.options?.onRejected?.(message.reason);
+        }
         break;
       case "turbo_stream": {
         const subscription = matchingSubscription(message.identifier, message.subscriptionId);
@@ -118,14 +131,16 @@ export function createAtelierCableClient(renderStreams: CableStreamRenderer): At
 
   function connect(): void {
     if (socket && (socket.readyState === WebSocket.OPEN || socket.readyState === WebSocket.CONNECTING)) return;
+    lastMessageAt = Date.now();
     const connecting = new WebSocket(cableUrl());
     socket = connecting;
     connecting.onmessage = (event) => handleMessage(connecting, event);
     connecting.onclose = () => {
       if (socket !== connecting) return;
       socket = undefined;
-      activeConnectionId = undefined;
+      recovering = true;
       if (!closingForPageHide) markSubscriptionsDisconnected(true);
+      changed();
       scheduleReconnect();
     };
     connecting.onerror = () => connecting.close();
@@ -133,6 +148,7 @@ export function createAtelierCableClient(renderStreams: CableStreamRenderer): At
 
   window.addEventListener("pagehide", () => {
     closingForPageHide = true;
+    recovering = true;
     markSubscriptionsDisconnected(false);
     socket?.close();
   });
@@ -142,6 +158,8 @@ export function createAtelierCableClient(renderStreams: CableStreamRenderer): At
   });
 
   const client: AtelierCableClient = {
+    ready() { return socket?.readyState === WebSocket.OPEN && !recovering; },
+    reconnect() { socket?.close(); },
     reportVisibility(next) {
       visibility = next;
       sendRaw({ command: "visibility", visibility });
@@ -163,6 +181,8 @@ export function createAtelierCableClient(renderStreams: CableStreamRenderer): At
           if (!subscription.leases.delete(lease) || subscription.leases.size > 0) return;
           if (desired.get(key) !== subscription) return;
           desired.delete(key);
+          if ([...desired.values()].every(item => item.ready)) recovering = false;
+          changed();
           if (subscription.subscriptionId) {
             sendRaw({ command: "unsubscribe", identifier: subscription.identifier, subscriptionId: subscription.subscriptionId });
           }
@@ -173,12 +193,6 @@ export function createAtelierCableClient(renderStreams: CableStreamRenderer): At
         if (subscription.leases.has(lease) && desired.get(key) === subscription && subscription.ready) lease.options?.onReady?.();
       });
       return lease;
-    },
-    connected() {
-      return socket?.readyState === WebSocket.OPEN;
-    },
-    connectionId() {
-      return activeConnectionId;
     },
   };
 

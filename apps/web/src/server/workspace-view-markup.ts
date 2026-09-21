@@ -29,6 +29,7 @@ export function fullscreenViewAttributes(key: string, title: string): string {
 export function selectorCloseForm(close: ViewCloseAction): string {
   const label = `Close ${close.label}`;
   const confirmation = destructiveConfirmationHtml({
+    id: `close_${close.action}`,
     trigger: { type: "button", variant: "danger", content: { kind: "icon-only", iconHtml: Icons.Close, label } },
     confirmCaption: "Yes, close",
     cancelCaption: "Oops",
@@ -42,8 +43,4 @@ export function behaviorTurboStream(action: string, workspaceId: string, attribu
     if (value !== undefined) data += ` data-${name}="${escapeHtml(String(value))}"`;
   }
   return `<turbo-stream action="${escapeHtml(action)}" target="workspace_detail"${data}></turbo-stream>`;
-}
-
-export function workspacePreparationInvalidatedTurboStream(workspaceId: string, conversationId?: string): string {
-  return behaviorTurboStream("invalidate-workspace-preparation", workspaceId, { "conversation-id": conversationId });
 }

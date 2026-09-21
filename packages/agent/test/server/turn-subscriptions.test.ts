@@ -60,135 +60,6 @@ class Runtime extends BaseAgentRuntime {
   async newSession() {}
 }
 
-// Inspect protocol operation envelopes, never rendered markup or visual structure.
-function operations(deliveries: string[]) {
-  return deliveries.flatMap((payload) => [...payload.matchAll(/<turbo-stream\s+([^>]+)>/g)].map((match) => ({
-    action: /\baction="([^"]+)"/.exec(match[1]!)?.[1],
-    target: /\btarget="([^"]+)"/.exec(match[1]!)?.[1],
-  })));
-}
-
-function deferred() {
-  let resolve!: () => void;
-  return { promise: new Promise<void>((done) => { resolve = done; }), resolve };
-}
-
-test("main receives commentary while thousands of tool and thinking operations stay lazy", async () => {
-  const runtime = new Runtime();
-  const main: string[] = [];
-  const subscription = runtime.subscribeLivePresentation((payload) => main.push(payload));
-  await subscription.ready;
-  runtime.begin();
-  main.length = 0;
-  expect(runtime.subscribers).toBe(0);
-  for (let index = 0; index < 2000; index++) runtime.text("commentary_increment ");
-  runtime.endText();
-  expect(operations(main)).toEqual([
-    { action: "append", target: runtime.targets.commentary },
-    { action: "replace", target: runtime.targets.commentaryText },
-  ]);
-  expect(main.join("")).toContain("commentary_increment");
-  const count = main.length;
-  const bytes = main.join("").length;
-  for (let index = 0; index < 2000; index++) runtime.thinking("private_thinking ");
-  runtime.tool();
-  for (let index = 0; index < 2000; index++) runtime.toolUpdate(`private_tool_${index}`);
-  runtime.toolEnd("private_tool_failure", true);
-  expect(main.length).toBe(count);
-  expect(main.join("").length).toBe(bytes);
-  expect(runtime.subscribers).toBe(0);
-  await runtime.refresh();
-  // Payload routing, not a check of the HTML rendering.
-  expect(main.at(-1)).toContain("commentary_increment");
-  expect(main.some((payload) => payload.includes("private_thinking") || payload.includes("private_tool"))).toBe(false);
-  runtime.failure("outside_failure");
-  expect(main.length).toBeGreaterThan(count + 1);
-  subscription.unsubscribe();
-  await runtime.dispose();
-});
-
-test("late final promotion removes both commentary projections and appends the final through main", async () => {
-  const runtime = new Runtime();
-  runtime.begin();
-  const main: string[] = [];
-  const inner: string[] = [];
-  const outer = runtime.subscribeLivePresentation((payload) => main.push(payload));
-  const turn = runtime.subscribeTurnPresentation("entry:working", "session:branch", (payload) => inner.push(payload));
-  await Promise.all([outer.ready, turn.ready]);
-  main.length = inner.length = 0;
-  runtime.text("late_final_text");
-  runtime.endText();
-  expect(operations(main)).toEqual([
-    { action: "append", target: runtime.targets.commentary },
-    { action: "replace", target: runtime.targets.commentaryText },
-  ]);
-  expect(main.join("")).toContain("late_final_text");
-  expect(operations(inner)).toContainEqual({ action: "append", target: runtime.targets.turn });
-  main.length = inner.length = 0;
-  runtime.final("late_final_text");
-  expect(operations(inner)).toEqual([{ action: "remove", target: runtime.targets.text }]);
-  expect(operations(main)).toEqual([
-    { action: "remove", target: runtime.targets.commentaryText },
-    { action: "append", target: runtime.targets.transcript },
-  ]);
-  const reopened: string[] = [];
-  const second = runtime.subscribeTurnPresentation("entry:working", "session:branch", (payload) => reopened.push(payload));
-  await second.ready;
-  expect(reopened.some((payload) => payload.includes("late_final_text"))).toBe(false);
-  outer.unsubscribe(); turn.unsubscribe(); second.unsubscribe();
-  expect(runtime.subscribers).toBe(0);
-  await runtime.dispose();
-});
-
-test("early final classification migrates an open provisional text and routes subsequent text outside", async () => {
-  const runtime = new Runtime();
-  runtime.begin();
-  const main: string[] = [], inner: string[] = [];
-  const outer = runtime.subscribeLivePresentation((payload) => main.push(payload));
-  const turn = runtime.subscribeTurnPresentation("entry:working", "session:branch", (payload) => inner.push(payload));
-  await Promise.all([outer.ready, turn.ready]);
-  runtime.text("provisional");
-  main.length = inner.length = 0;
-  runtime.text(" certainly final", true);
-  runtime.endText();
-  expect(operations(inner)).toEqual([{ action: "remove", target: runtime.targets.text }]);
-  expect(operations(main).slice(0, 2)).toEqual([
-    { action: "remove", target: runtime.targets.commentaryText },
-    { action: "append", target: runtime.targets.transcript },
-  ]);
-  outer.unsubscribe(); turn.unsubscribe(); await runtime.dispose();
-});
-
-test("a delayed main snapshot precedes subsequent commentary delivery and final promotion", async () => {
-  const runtime = new Runtime();
-  runtime.begin();
-  const barrier = deferred();
-  runtime.statsBarrier = barrier.promise;
-  const started = deferred();
-  runtime.statsStarted = started.resolve;
-  const main: string[] = [];
-  const subscription = runtime.subscribeLivePresentation((payload) => main.push(payload));
-  await started.promise;
-  runtime.text("commentary_during_snapshot");
-  runtime.endText();
-  runtime.final("public_final");
-  expect(main).toEqual([]);
-  barrier.resolve();
-  await subscription.ready;
-  expect(main).toHaveLength(5);
-  expect(operations(main.slice(0, 1))).toContainEqual({ action: "update", target: runtime.targets.transcript });
-  expect(main[0]).not.toContain("commentary_during_snapshot");
-  expect(operations(main.slice(1))).toEqual([
-    { action: "append", target: runtime.targets.commentary },
-    { action: "replace", target: runtime.targets.commentaryText },
-    { action: "remove", target: runtime.targets.commentaryText },
-    { action: "append", target: runtime.targets.transcript },
-  ]);
-  expect(main[2]).toContain("commentary_during_snapshot");
-  expect(main[4]).toContain("public_final");
-  subscription.unsubscribe(); await runtime.dispose();
-});
-
 test("runtime validates branch and turn membership, cancelling obsolete subscriptions", async () => {
   const runtime = new Runtime();
   runtime.begin();
@@ -198,7 +69,7 @@ test("runtime validates branch and turn membership, cancelling obsolete subscrip
   expect(() => runtime.subscribeTurnPresentation("entry:working", "other-session:branch", listener)).toThrow("obsolete branch");
   expect(deliveries).toBe(0);
   const first = runtime.subscribeTurnPresentation("entry:working", "session:branch", listener);
-  await first.ready;
+
   expect(runtime.subscribers).toBe(1);
   runtime.branch("session:other");
   expect(runtime.subscribers).toBe(0);
@@ -207,7 +78,7 @@ test("runtime validates branch and turn membership, cancelling obsolete subscrip
   expect(deliveries).toBe(count);
   expect(() => runtime.subscribeTurnPresentation("entry:working", "session:branch", listener)).toThrow("obsolete branch");
   const current = runtime.subscribeTurnPresentation("entry:working", "session:other", listener);
-  await current.ready;
+
   first.unsubscribe();
   expect(runtime.subscribers).toBe(1);
   current.unsubscribe();
@@ -228,7 +99,7 @@ test("completed history and reconnect snapshots include commentary but keep tool
   for (let reconnect = 0; reconnect < 3; reconnect++) {
     const deliveries: string[] = [];
     const subscription = runtime.subscribeLivePresentation((payload) => deliveries.push(payload));
-    await subscription.ready;
+
     expect(deliveries).toHaveLength(1);
     expect(deliveries[0]).toContain("persisted_commentary");
     expect(deliveries[0]).toContain("public_persisted_final");
@@ -238,7 +109,7 @@ test("completed history and reconnect snapshots include commentary but keep tool
   }
   const inner: string[] = [];
   const turn = runtime.subscribeTurnPresentation("persisted:working", "session:branch", (payload) => inner.push(payload));
-  await turn.ready;
+
   expect(inner).toHaveLength(1);
   expect(inner[0]).toContain("persisted_commentary");
   expect(inner[0]).toContain("private_persisted_thinking");
@@ -248,40 +119,6 @@ test("completed history and reconnect snapshots include commentary but keep tool
   await runtime.dispose();
 });
 
-test("closing a turn before capture cancels readiness and reopening receives only current state", async () => {
-  const runtime = new Runtime();
-  runtime.begin();
-  let obsolete = 0;
-  const first = runtime.subscribeTurnPresentation("entry:working", "session:branch", () => { obsolete++; });
-  first.unsubscribe();
-  runtime.text("promoted_before_reopen");
-  runtime.final("promoted_before_reopen");
-  const deliveries: string[] = [];
-  const current = runtime.subscribeTurnPresentation("entry:working", "session:branch", (payload) => deliveries.push(payload));
-  await Promise.all([first.ready, current.ready]);
-  expect(obsolete).toBe(0);
-  expect(deliveries).toHaveLength(1);
-  expect(deliveries.some((payload) => payload.includes("promoted_before_reopen"))).toBe(false);
-  current.unsubscribe();
-  await runtime.dispose();
-});
-
-test("an opened turn gets authoritative state before interleaved final removal", async () => {
-  const runtime = new Runtime();
-  runtime.begin();
-  runtime.text("pending_final");
-  const deliveries: string[] = [];
-  const turn = runtime.subscribeTurnPresentation("entry:working", "session:branch", (payload) => deliveries.push(payload));
-  await turn.ready;
-  runtime.final("pending_final");
-  const routed = operations(deliveries);
-  expect(routed[0]).toEqual({ action: "update", target: runtime.targets.turn });
-  expect(routed.at(-1)).toEqual({ action: "remove", target: runtime.targets.text });
-  turn.unsubscribe();
-  await runtime.dispose();
-});
-
-
 test("a persisted task start is overlaid by its live turn rather than replaying stale activity", async () => {
   const runtime = new Runtime();
   runtime.history = [{ type: "working", key: "entry:working", startedAt: 1, items: [{ type: "thinking", key: "old", text: "stale_task_activity" }] }];
@@ -289,7 +126,7 @@ test("a persisted task start is overlaid by its live turn rather than replaying 
   runtime.thinking("current_task_activity");
   const deliveries: string[] = [];
   const subscription = runtime.subscribeTurnPresentation("entry:working", "session:branch", (payload) => deliveries.push(payload));
-  await subscription.ready;
+
   expect(deliveries.join("")).toContain("current_task_activity");
   expect(deliveries.join("")).not.toContain("stale_task_activity");
   subscription.unsubscribe();

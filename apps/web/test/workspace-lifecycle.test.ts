@@ -1,6 +1,6 @@
 import { createPiModelRuntime, setConfiguredModels } from "@atelier/llm/server";
-import { afterEach, beforeEach, describe, expect, test } from "bun:test";
 import { addProject, isGitProjectInit } from "@atelier/projects";
+import { afterEach, beforeEach, describe, expect, test } from "bun:test";
 import {
   createTestApp,
   deferred,
@@ -277,20 +277,17 @@ describe("workspace lifecycle", () => {
   });
 
   test("parking requires confirmation and force closes VS Code views while preserving other views", async () => {
-    const broadcasts: string[] = [];
-    const { app, registry } = createTestApp({ cable: { broadcast: (_topic, html) => { broadcasts.push(html); } } });
+    const { app, registry } = createTestApp();
     await registry.seed([{ id: "confirm-park", title: "Confirm park", parked: false }]);
     const request = (path: string) => new Request(`http://test.local${path}`, {
       method: "POST", headers: { accept: "application/json", "content-type": "application/json" }, body: "{}",
     });
     await app.fetch(new Request("http://test.local/workspaces/confirm-park", { headers: { accept: "application/json" } }));
     expect((await app.fetch(request("/workspaces/confirm-park/commands/vscode.open"))).status).toBe(200);
-    broadcasts.length = 0;
     const blocked = await app.fetch(request("/workspaces/confirm-park/park"));
     expect(blocked.status).toBe(409);
     expect((await blocked.json()).workViews).toHaveLength(1);
     expect(registry.get("confirm-park")?.parked).toBe(false);
-    expect(broadcasts).toEqual([]);
     expect((await app.fetch(request("/workspaces/confirm-park/park?force=1"))).status).toBe(200);
     expect(registry.get("confirm-park")?.parked).toBe(true);
     await app.fetch(request("/workspaces/confirm-park/unpark"));

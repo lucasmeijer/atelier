@@ -1,6 +1,6 @@
+import { CableTopics, selectedWorkspaceAgent, type CableSubscription, type WorkspaceClientControllerConstructor } from "@atelier/shared";
 import { Type } from "typebox";
 import { Value } from "typebox/value";
-import { CableTopics, selectedWorkspaceAgent, type CableSubscription, type WorkspaceClientControllerConstructor } from "@atelier/shared";
 type Frame = HTMLElement & { src: string };
 
 export function createSubagentsController(Controller: WorkspaceClientControllerConstructor) {
@@ -77,14 +77,23 @@ export function createSubagentsController(Controller: WorkspaceClientControllerC
         child?.subscription.unsubscribe();
         const subscription = window.AtelierCable!.subscribe(CableTopics.agent(this.workspaceIdValue, id), {
           onReady: () => {
-            if (this.reveal === id && this.message) {
-              const frame = branch.querySelector<Frame>(":scope > .subagent-branch-body > [data-subagent-transcript]")!;
-              frame.src = `${this.urlValue}/${encodeURIComponent(id)}/transcript?agent=${encodeURIComponent(this.parentId!)}&message=${encodeURIComponent(this.message)}`;
-            } else this.loaded();
+            if (this.reveal === id && this.message) void this.revealMessage(branch, id, this.message);
+            else this.loaded();
           },
         });
         this.children.set(id, { branch, subscription });
       }
+    }
+    private async revealMessage(branch: HTMLDetailsElement, id: string, message: string): Promise<void> {
+      const response = await fetch(`/workspaces/${encodeURIComponent(this.workspaceIdValue)}/agents/${encodeURIComponent(id)}/reveal/${encodeURIComponent(message)}`);
+      if (!response.ok) throw new Error(`Could not resolve transcript target: ${response.status}`);
+      const { turnId } = Value.Parse(Type.Object({ turnId: Type.Union([Type.String(), Type.Null()]) }), await response.json());
+      if (!branch.isConnected || this.reveal !== id) return;
+      if (turnId !== null) {
+        const turn = branch.querySelector<HTMLDetailsElement>(`[data-agent-turn-turn-id-value="${CSS.escape(turnId)}"]`);
+        if (turn) { turn.dataset.agentTurnRevealValue = message; turn.open = true; }
+      }
+      this.loaded();
     }
     toggle(event: Event): void {
       const details = event.target;

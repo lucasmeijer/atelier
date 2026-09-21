@@ -2,7 +2,7 @@ import { Icons } from "@atelier/design-system/icons";
 import { actionLinkHtml } from "@atelier/design-system/action-link";
 import { buttonHtml } from "@atelier/design-system/button";
 import { buttonGroupHtml } from "@atelier/design-system/button-group";
-import { escapeHtml, type WorkspaceWorkViewPresentation } from "@atelier/shared";
+import { domId, escapeHtml, type WorkspaceWorkViewPresentation } from "@atelier/shared";
 import { isWorkspaceLoopbackHost } from "../shared.ts";
 import { browserFrameId, type WorkspaceBrowserView } from "./state.ts";
 
@@ -44,6 +44,7 @@ const workspacePreviewPermissions = [
 ].map((feature) => `${feature} *`).join("; ");
 
 export function renderBrowserFrame(workspaceId: string, view: WorkspaceBrowserView, previewUrl: string): string {
+  const navigationKey = domId("browser_navigation", workspaceId, view.key, Bun.hash(previewUrl).toString(16));
   const target = view.targetUrl ? new URL(view.targetUrl) : undefined;
   const appKey = view.key;
   const frameControllerAttributes = previewUrl
@@ -91,11 +92,11 @@ export function renderBrowserFrame(workspaceId: string, view: WorkspaceBrowserVi
       <form class="browser-toolbar work-view-toolbar" method="post" action="/workspaces/${encodeURIComponent(workspaceId)}/browser/${encodeURIComponent(appKey)}/navigate" data-turbo-frame="${browserFrameId(workspaceId, appKey)}" data-controller="browser-address" data-action="submit->browser-address#submit">
         <div class="browser-window-controls" aria-hidden="true"><span class="red"></span><span class="amber"></span><span class="green"></span></div>
         <div class="browser-navigation">${navigation}</div>
-        <input class="browser-address-input text-field" name="url" value="${escapeHtml(view.targetUrl)}" placeholder="http://localhost:3000" spellcheck="false" autocomplete="off" aria-label="Browser URL" data-action="click->browser-address#initializeAddress">
+        <input id="${navigationKey}_address" data-turbo-permanent class="browser-address-input text-field" name="url" value="${escapeHtml(view.targetUrl)}" placeholder="http://localhost:3000" spellcheck="false" autocomplete="off" aria-label="Browser URL" data-action="click->browser-address#initializeAddress">
         ${externalLink}
       </form>
       <div class="browser-viewport">
-        <iframe${frameControllerAttributes} title="Workspace browser preview" loading="eager" referrerpolicy="no-referrer"></iframe>
+        <iframe id="${navigationKey}_viewport" data-turbo-permanent${frameControllerAttributes} title="Workspace browser preview" loading="lazy" referrerpolicy="no-referrer"></iframe>
       </div>
     </div>
   </turbo-frame>`;

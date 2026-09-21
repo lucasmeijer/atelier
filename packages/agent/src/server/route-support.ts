@@ -1,7 +1,6 @@
-import { resolveAgentConversation } from "./delegation.ts";
 import { type AtelierEventBus } from "@atelier/core";
-import type { WorkspaceAgentViewInvalidatedEvent } from "@atelier/workspace";
 import type { maybeNameAgentFromPrompt } from "./agent-title-suggestion.ts";
+import { resolveAgentConversation } from "./delegation.ts";
 import { getWorkspaceAgentRuntime } from "./runtime.ts";
 import { type WorkspaceAgentConversationInfo } from "./session-store.ts";
 
@@ -18,11 +17,8 @@ export function matchRoute(url: URL, pattern: RegExp): string[] | undefined {
   return result ? result.slice(1).map(decodeURIComponent) : undefined;
 }
 
-export async function invalidateAgentView(options: AgentRouteOptions, workspaceId: string, conversationId: string, exceptConnectionId?: string, html?: string): Promise<void> {
-  const event: WorkspaceAgentViewInvalidatedEvent = { workspaceId, conversationId };
-  if (exceptConnectionId) event.exceptConnectionId = exceptConnectionId;
-  if (html) event.html = html;
-  await options.events?.emit("workspace_agent_view_invalidated", event);
+export async function invalidateAgentView(options: AgentRouteOptions, workspaceId: string, conversationId: string): Promise<void> {
+  await options.events?.emit("workspace_agent_view_invalidated", { workspaceId, conversationId });
 }
 
 export async function resolveAgentRuntime(agent: WorkspaceAgentConversationInfo, options: AgentRouteOptions): ReturnType<typeof getWorkspaceAgentRuntime> {

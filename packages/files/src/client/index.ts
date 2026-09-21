@@ -1,7 +1,7 @@
 /// <reference lib="dom" />
 
 import { isWorkspacePaneVisible, type WorkspaceClientController, type WorkspaceClientControllerConstructor, type WorkspaceClientModule } from "@atelier/shared";
-import { installFileEditorControllers } from "./file-editor.ts";
+import { installFileEditorControllers } from "./editor-controllers.ts";
 type UploadResult = { kind: "ok" | "conflict" | "error" | "cancelled"; message?: string };
 type UploadTask = { file: File; loaded: number; xhr?: XMLHttpRequest };
 type StimulusActionEvent<EventType extends Event, CurrentTarget extends EventTarget> = EventType & {

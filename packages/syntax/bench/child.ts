@@ -50,18 +50,18 @@ switch (path) {
   }
   case "write":
   case "read": {
-    const { renderActiveToolContent } = await import("../../agent/src/server/render-tool.ts");
+    const { renderToolCard } = await import("../../agent/src/server/render-tool.ts");
     run = path === "write"
-      ? (text) => { renderActiveToolContent(ctx, "repro", {
+      ? (text) => { renderToolCard(ctx, "repro", {
         name: "write", callId: "repro", status: chunkSize ? "streaming" : "running",
         // Actual accumulated JSON prefixes exercise the production partial-JSON parser.
         ...(chunkSize
           ? { args: undefined, argsStream: text }
           : { args: { path: fixture, content: text } }),
       }); }
-      : (text) => { renderActiveToolContent(ctx, "repro", {
+      : (text) => { renderToolCard(ctx, "repro", {
         name: "read", callId: "repro", status: "ok", args: { path: fixture }, resultText: text,
-      }); };
+      }, { live: true }); };
     break;
   }
   case "bash": {

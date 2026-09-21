@@ -3,21 +3,31 @@ import { actionItemHtml } from "@atelier/design-system/action-item";
 import { actionLinkHtml } from "@atelier/design-system/action-link";
 import { buttonHtml } from "@atelier/design-system/button";
 import { copyButtonHtml } from "@atelier/design-system/copy-button";
-import { publicWorkspaceAppOrigin } from "@atelier/proxy-ingress";
-import { dialogHtml } from "@atelier/design-system/dialog";
 import { destructiveConfirmationHtml } from "@atelier/design-system/destructive-confirmation";
+import { dialogHtml } from "@atelier/design-system/dialog";
 import { Icons } from "@atelier/design-system/icons";
 import { toggleHtml } from "@atelier/design-system/toggle";
 import { transientFeedbackHtml } from "@atelier/design-system/transient-feedback";
 import { warningBannerHtml } from "@atelier/design-system/warning-banner";
 import {
-  addProject, createProjectEnvironmentVariable, createProjectSshKey, createProjectSecret,
+  addProject, createProjectEnvironmentVariable,
+  createProjectSecret,
+  createProjectSshKey,
   deleteProject, deleteProjectEnvironmentVariable, deleteProjectSecret, deleteProjectSshKey,
-  formatProjectSpec, getProjectConfiguration, listProjectEnvironmentVariables, listProjectSecrets, secretNeedsValue,
-  getProjectSshKnownHosts, setProjectSshKnownHosts, listProjectSshKeys, listProjects, parseProjectSpec, updateProject,
-  updateProjectEnvironmentVariable, updateProjectSecret, setProjectSecretValue, projectSecretRoutingRevision, projectSecretValueInputSchema, setProjectDockerfile, setProjectPreloadImages,
+  formatProjectSpec, getProjectConfiguration,
+  getProjectSshKnownHosts,
+  listProjectEnvironmentVariables, listProjectSecrets,
+  listProjectSshKeys, listProjects, parseProjectSpec,
+  projectSecretRoutingRevision, projectSecretValueInputSchema,
+  secretNeedsValue,
+  setProjectDockerfile, setProjectPreloadImages,
+  setProjectSecretValue,
+  setProjectSshKnownHosts,
+  updateProject,
+  updateProjectEnvironmentVariable, updateProjectSecret,
   type ProjectEnvironmentVariable, type ProjectSecretInput, type ProjectSecretSummary, type ProjectSshKeySummary, type ProjectSummary,
 } from "@atelier/projects";
+import { publicWorkspaceAppOrigin } from "@atelier/proxy-ingress";
 import { domId, escapeHtml, turboStreamResponse } from "@atelier/shared";
 import { Type } from "typebox";
 import { Value } from "typebox/value";
@@ -46,8 +56,7 @@ interface ProjectWorkspaceReference {
 
 export function createProjectRoutes(deps: {
   referencingWorkspaces(projectId: string): ProjectWorkspaceReference[];
-  refreshWorkspacePaneCollections(): Promise<string>;
-  refreshProjectWarnings(projectId: string): Promise<string>;
+  invalidatePresentation(): void;
   renderLaunchComposer(project: ProjectSummary): Promise<string>;
   createOnboardingWorkspace(project: ProjectSummary, request: Request): Promise<Response>;
   createAgentWorkspace(project: ProjectSummary, request: Request): Promise<Response>;
@@ -55,6 +64,7 @@ export function createProjectRoutes(deps: {
 }): ProjectRoutes {
   function projectEnvironmentRow(project: ProjectSummary, variable: ProjectEnvironmentVariable): string {
     const removeButton = destructiveConfirmationHtml({
+      id: domId("remove_environment", project.id, variable.id),
       trigger: {
         type: "button",
         variant: "danger",
@@ -147,6 +157,7 @@ export function createProjectRoutes(deps: {
   function projectSecretRow(project: ProjectSummary, secret?: ProjectSecretSummary): string {
     const secretPath = `/projects/${encodeURIComponent(project.id)}/secrets${secret ? `/${encodeURIComponent(secret.id)}` : ""}`;
     const deleteButton = secret ? destructiveConfirmationHtml({
+      id: domId("delete_secret", project.id, secret.id),
       trigger: { type: "button", variant: "danger", content: { kind: "caption", caption: "Delete secret" } },
       confirmCaption: "Delete secret",
       cancelCaption: "Cancel",
@@ -191,6 +202,7 @@ export function createProjectRoutes(deps: {
     const projectPath = `/projects/${encodeURIComponent(project.id)}`;
     const configuredKeys = keys.map((key) => {
       const removeButton = destructiveConfirmationHtml({
+        id: domId("remove_ssh_key", project.id, key.id),
         trigger: { type: "button", variant: "danger", content: { kind: "caption", caption: "Remove SSH key" } },
         confirmCaption: "Remove SSH key",
         cancelCaption: "Cancel",
@@ -218,6 +230,7 @@ export function createProjectRoutes(deps: {
 
   function projectDeleteControl(projectId: string, references: ProjectWorkspaceReference[] = []): string {
     const confirmation = destructiveConfirmationHtml({
+      id: domId("delete_project", projectId),
       trigger: { type: "button", variant: "danger", content: { kind: "caption", caption: "Delete project" } },
       confirmCaption: "Delete project",
       cancelCaption: "Cancel",
@@ -342,9 +355,9 @@ export function createProjectRoutes(deps: {
       const projects = (await listProjects()).projects;
       project = projects.find((candidate) => candidate.gitUrl === specification.gitUrl && candidate.branch === specification.branch)!;
     }
-    const paneStream = await deps.refreshWorkspacePaneCollections();
+    deps.invalidatePresentation();
     if (json) return jsonResponse({ project });
-    if (wantsTurboStream(request)) return turboStreamResponse(`${turboReplaceStream("project-editor-modal", onboardingModal(project))}${paneStream}`);
+    if (wantsTurboStream(request)) return turboStreamResponse(`${turboReplaceStream("project-editor-modal", onboardingModal(project))}`);
     return Response.redirect(new URL(`/projects/${encodeURIComponent(project.id)}/onboarding`, url).toString(), 303);
   }
 
@@ -362,23 +375,23 @@ export function createProjectRoutes(deps: {
       spec = String(formData.get("gitUrl") ?? "");
     }
     const { project } = await updateProject(projectId, { name, spec });
-    const paneStream = await deps.refreshWorkspacePaneCollections();
-    return projectSettingsResponse(projectId, request, { project }, async () => paneStream);
+    deps.invalidatePresentation();
+    return projectSettingsResponse(request, { project }, async () => "");
   }
 
   type ProjectSettingsResult = { knownHosts: string } | { project: ProjectSummary } | { secret: ProjectSecretSummary; deleted?: true } | { environmentVariable: ProjectEnvironmentVariable; deleted?: true };
 
   /** Every settings mutation refreshes workspace warnings, including JSON callers. */
-  async function projectSettingsResponse(projectId: string, request: Request, result: ProjectSettingsResult, renderFields: () => Promise<string> = async () => ""): Promise<Response> {
-    const warnings = await deps.refreshProjectWarnings(projectId);
-    return requestAcceptsJson(request) ? jsonResponse(result) : turboStreamResponse(`${await renderFields()}${warnings}`);
+  async function projectSettingsResponse(request: Request, result: ProjectSettingsResult, renderFields: () => Promise<string> = async () => ""): Promise<Response> {
+    deps.invalidatePresentation();
+    return requestAcceptsJson(request) ? jsonResponse(result) : turboStreamResponse(`${await renderFields()}`);
   }
 
   async function updateProjectDockerfileEndpoint(projectId: string, request: Request): Promise<Response> {
     const json = requestAcceptsJson(request);
     const dockerfile = json ? jsonString(await readJsonObject(request), "dockerfile") : String((await request.formData()).get("dockerfile") ?? "");
     const result = await setProjectDockerfile(projectId, dockerfile);
-    return projectSettingsResponse(projectId, request, result);
+    return projectSettingsResponse(request, result);
   }
 
   async function updateProjectPreloadImagesEndpoint(projectId: string, request: Request): Promise<Response> {
@@ -411,18 +424,18 @@ export function createProjectRoutes(deps: {
 
   async function createProjectEnvironmentVariableEndpoint(projectId: string, request: Request): Promise<Response> {
     const environmentVariable = await createProjectEnvironmentVariable(projectId, await projectEnvironmentVariableValues(request));
-    return projectSettingsResponse(projectId, request, { environmentVariable }, () => renderProjectEnvironmentStreams(projectId));
+    return projectSettingsResponse(request, { environmentVariable }, () => renderProjectEnvironmentStreams(projectId));
   }
 
   async function updateProjectEnvironmentVariableEndpoint(projectId: string, variableId: string, request: Request): Promise<Response> {
     const environmentVariable = await updateProjectEnvironmentVariable(projectId, variableId, await projectEnvironmentVariableValues(request));
-    return projectSettingsResponse(projectId, request, { environmentVariable }, () => renderProjectEnvironmentStreams(projectId));
+    return projectSettingsResponse(request, { environmentVariable }, () => renderProjectEnvironmentStreams(projectId));
   }
 
   async function deleteProjectEnvironmentVariableEndpoint(projectId: string, variableId: string, request: Request): Promise<Response> {
     if (requestAcceptsJson(request)) await readJsonObject(request);
     const environmentVariable = await deleteProjectEnvironmentVariable(projectId, variableId);
-    return projectSettingsResponse(projectId, request, { deleted: true, environmentVariable }, () => renderProjectEnvironmentStreams(projectId));
+    return projectSettingsResponse(request, { deleted: true, environmentVariable }, () => renderProjectEnvironmentStreams(projectId));
   }
 
   async function secretValueModal(projectId: string, secretId: string, purpose?: string): Promise<string> {
@@ -451,7 +464,7 @@ export function createProjectRoutes(deps: {
     const input = requestAcceptsJson(request) ? await readJsonObject(request) : Object.fromEntries(await request.formData());
     if (!Value.Check(projectSecretValueInputSchema, input)) throw invalidArguments("Supply a secret value and the routing confirmation from the secret dialog");
     const secret = await setProjectSecretValue(projectId, secretId, input);
-    return projectSettingsResponse(projectId, request, { secret }, async () => turboReplaceStream("project-editor-modal", '<div id="project-editor-modal"></div>'));
+    return projectSettingsResponse(request, { secret }, async () => turboReplaceStream("project-editor-modal", '<div id="project-editor-modal"></div>'));
   }
 
   async function renderProjectSecretStreams(projectId: string): Promise<string> {
@@ -487,30 +500,30 @@ export function createProjectRoutes(deps: {
 
   async function createProjectSecretEndpoint(projectId: string, request: Request): Promise<Response> {
     const secret = await createProjectSecret(projectId, await projectSecretValues(request));
-    return projectSettingsResponse(projectId, request, { secret }, () => renderProjectSecretStreams(projectId));
+    return projectSettingsResponse(request, { secret }, () => renderProjectSecretStreams(projectId));
   }
 
   async function updateProjectSecretEndpoint(projectId: string, secretId: string, request: Request): Promise<Response> {
     const secret = await updateProjectSecret(projectId, secretId, await projectSecretValues(request));
-    return projectSettingsResponse(projectId, request, { secret }, () => renderProjectSecretStreams(projectId));
+    return projectSettingsResponse(request, { secret }, () => renderProjectSecretStreams(projectId));
   }
 
   async function deleteProjectSecretEndpoint(projectId: string, secretId: string, request: Request): Promise<Response> {
     if (requestAcceptsJson(request)) await readJsonObject(request);
     const secret = await deleteProjectSecret(projectId, secretId);
-    return projectSettingsResponse(projectId, request, { deleted: true, secret }, () => renderProjectSecretStreams(projectId));
+    return projectSettingsResponse(request, { deleted: true, secret }, () => renderProjectSecretStreams(projectId));
   }
 
   async function renderProjectSshKeyStreams(projectId: string): Promise<string> {
     const project = await projectById(projectId);
-    const warnings = await deps.refreshProjectWarnings(projectId);
-    return `${turboReplaceStream(domId("project_ssh_key_fields", projectId), projectSshKeyFields(project, await listProjectSshKeys(projectId)))}${warnings}`;
+    deps.invalidatePresentation();
+    return `${turboReplaceStream(domId("project_ssh_key_fields", projectId), projectSshKeyFields(project, await listProjectSshKeys(projectId)))}`;
   }
 
   async function updateProjectSshKnownHostsEndpoint(projectId: string, request: Request): Promise<Response> {
     const input = requestAcceptsJson(request) ? jsonString(await readJsonObject(request), "knownHosts") : String((await request.formData()).get("knownHosts") ?? "");
     const knownHosts = await setProjectSshKnownHosts(projectId, input);
-    return projectSettingsResponse(projectId, request, { knownHosts }, async () => turboReplaceStream(domId("project_ssh_host_trust", projectId), projectSshHostTrustFields(projectId, knownHosts)));
+    return projectSettingsResponse(request, { knownHosts }, async () => turboReplaceStream(domId("project_ssh_host_trust", projectId), projectSshHostTrustFields(projectId, knownHosts)));
   }
 
   async function createProjectSshKeyFromForm(projectId: string, request: Request): Promise<Response> {
@@ -538,9 +551,9 @@ export function createProjectRoutes(deps: {
       return turboStreamResponse(turboReplaceStream(domId("project_delete_control", project.id), projectDeleteControl(project.id, references)), { status: 422 });
     }
     await deleteProject(projectId);
-    const paneStream = await deps.refreshWorkspacePaneCollections();
+    deps.invalidatePresentation();
     if (json) return jsonResponse({ deleted: true, blocked: false, project });
-    return turboStreamResponse(`${turboUpdateStream("project_editor_body", "")}${paneStream}`);
+    return turboStreamResponse(`${turboUpdateStream("project_editor_body", "")}`);
   }
 
   async function githubRepositorySearchEndpoint(url: URL): Promise<Response> {
@@ -553,7 +566,6 @@ export function createProjectRoutes(deps: {
       throw error;
     }
   }
-
 
   async function byReference(reference: string): Promise<ProjectSummary> {
     const { projects } = await listProjects();

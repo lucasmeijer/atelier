@@ -78,13 +78,6 @@ function toolSummaryMetadataHtml(tool: ToolView): string {
   return `<span class="agent-tool-elapsed agent-duration-slot" data-controller="agent-elapsed" data-agent-elapsed-since-value="${tool.startedAt}" data-agent-elapsed-max-value="${timeout}"><span data-agent-elapsed-target="time">${formatDuration(Date.now() - tool.startedAt)} / ${formatDuration(timeout * 1000)}</span></span>`;
 }
 
-export interface ActiveToolContent {
-  status: string;
-  summary: string;
-  metadata: string;
-  detail?: string;
-}
-
 export interface ToolPresentation {
   showsDetail: boolean;
   autoOpenOnReveal: boolean;
@@ -96,23 +89,12 @@ export function toolPresentation(tool: ToolView): ToolPresentation {
   return { showsDetail, autoOpenOnReveal: showsDetail && tool.name === "edit" };
 }
 
-export function renderActiveToolContent(ctx: AgentRenderContext, key: string, original: ToolView): ActiveToolContent {
-  const tool = toolForRender(original);
-  const presentation = toolPresentation(tool);
-  return {
-    status: statusHtml(tool.status),
-    summary: escapeHtml(toolSummaryText(tool)),
-    metadata: toolSummaryMetadataHtml(tool),
-    detail: presentation.showsDetail ? renderToolDetail(ctx, key, tool, 100) : undefined,
-  };
-}
-
 function tailFrameAttributes(ctx: AgentRenderContext, key: string): string {
   return `id="${ids.detailFrame(ctx, key)}" data-controller="agent-tail-frame" data-action="turbo:frame-load->agent-tail-frame#loaded"`;
 }
 
 function lazyTranscriptItemFrame(ctx: AgentRenderContext, key: string): string {
-  return `<turbo-frame ${tailFrameAttributes(ctx, key)} data-agent-lazy-detail-target="frame" data-src="${escapeHtml(transcriptItemPath(ctx, key))}"></turbo-frame>`;
+  return `<turbo-frame ${tailFrameAttributes(ctx, key)} data-turbo-permanent data-agent-lazy-detail-target="frame" data-src="${escapeHtml(transcriptItemPath(ctx, key))}"></turbo-frame>`;
 }
 
 export function renderToolCard(ctx: AgentRenderContext, key: string, original: ToolView, options: { open?: boolean; live?: boolean } = {}): string {
@@ -137,10 +119,6 @@ export function renderToolCard(ctx: AgentRenderContext, key: string, original: T
 
 function sourceRegionHtml(title: string, body: string, className = "agent-source-region"): string {
   return detailFullscreen(title, `<section class="${className}"><div class="agent-region-header">${escapeHtml(title)}</div>${body}</section>`);
-}
-
-function sourceRegion(title: string, code: string, path: string | undefined, className?: string): string {
-  return sourceRegionHtml(title, codeBlockHtml(code, path, "agent-tool-code"), className);
 }
 
 interface TextWindow {
@@ -326,10 +304,6 @@ export function renderToolDetail(ctx: AgentRenderContext, key: string, tool: Too
 function toolClass(name: string): string {
   const slug = name.toLowerCase().replace(/[^a-z0-9_-]+/g, "-").replace(/^-+|-+$/g, "") || "unknown";
   return `tool-${slug}`;
-}
-
-function domIdFragment(text: string): string {
-  return text.toLowerCase().replace(/[^a-z0-9_-]+/g, "-").replace(/^-+|-+$/g, "") || "item";
 }
 
 function toolArgs(tool: ToolView): JsonObject | undefined {

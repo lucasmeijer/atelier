@@ -54,6 +54,12 @@ export function createAgentTurnController(Controller: WorkspaceClientControllerC
       this.reconcile();
     }
 
+    branchIdValueChanged(): void {
+      if (!this.pane) return;
+      this.stop();
+      this.reconcile();
+    }
+
     toggle(event: Event): void {
       // Nested tool disclosures emit their own toggle events.
       if (event.target !== this.element) return;

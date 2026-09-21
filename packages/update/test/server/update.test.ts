@@ -1,11 +1,11 @@
-import { expect, test } from "bun:test";
 import { createAtelierEventBus } from "@atelier/core";
-import { UpdateManager, createUpdateRouteHandler, type UpdateManagerDeps } from "../../src/server/index.ts";
-import { requestSupervisorUpdate } from "../../src/server/supervisor.ts";
-import { readStoredReleaseChannel, writeStoredReleaseChannel } from "../../src/server/settings-store.ts";
+import { expect, test } from "bun:test";
 import { mkdtemp, rm } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
+import { UpdateManager, createUpdateRouteHandler, type UpdateManagerDeps } from "../../src/server/index.ts";
+import { readStoredReleaseChannel, writeStoredReleaseChannel } from "../../src/server/settings-store.ts";
+import { requestSupervisorUpdate } from "../../src/server/supervisor.ts";
 
 function context() {
   const sidebar: string[] = [];
@@ -16,13 +16,13 @@ function context() {
     ctx: {
       events: createAtelierEventBus(),
       registry: { setAgentBusy: () => {}, requestSurfaceAttention: () => undefined, requestAttention: () => undefined },
-      globalSidebarContributions: { set: (_id: string, html?: string, options?: { broadcastHtml?: string }) => {
+      globalSidebarContributions: { set: (_id: string, html?: string, regions?: readonly import("@atelier/shared").LiveRegion[]) => {
         sidebar.push(html ?? "");
-        broadcasts.push(options?.broadcastHtml ?? "");
+        broadcasts.push(regions?.map(region => region.html).join("") ?? "");
       } },
       createWorkView: async () => {},
       presentWorkView: async () => {},
-      broadcastWorkspace: () => {},
+      invalidateWorkspace: () => {},
       deleteCurrentWorkspace: async () => ({ deleted: false, blocked: false }),
       registerSocketHandler: () => {},
       publishWorkspacePort: async () => { throw new Error("not used"); },
@@ -41,7 +41,6 @@ function deferred<T = void>() {
   const promise = new Promise<T>((res, rej) => { resolve = res; reject = rej; });
   return { promise, resolve, reject };
 }
-
 
 const oldDigest = `sha256:${"a".repeat(64)}`;
 const newDigest = `sha256:${"b".repeat(64)}`;

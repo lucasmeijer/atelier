@@ -1,5 +1,7 @@
 /// <reference lib="dom" />
 
+import { setToggleValue, type ToggleChangeEvent } from "@atelier/design-system/toggle/client";
+import { type WorkspaceClientControllerConstructor } from "@atelier/shared";
 import { closeBrackets, closeBracketsKeymap } from "@codemirror/autocomplete";
 import { defaultKeymap, history, historyKeymap, indentWithTab } from "@codemirror/commands";
 import { bracketMatching, HighlightStyle, indentOnInput, syntaxHighlighting } from "@codemirror/language";
@@ -7,11 +9,9 @@ import { highlightSelectionMatches, searchKeymap } from "@codemirror/search";
 import { EditorState } from "@codemirror/state";
 import { drawSelection, EditorView, highlightActiveLine, keymap } from "@codemirror/view";
 import { tags } from "@lezer/highlight";
-import { setToggleValue, type ToggleChangeEvent } from "@atelier/design-system/toggle/client";
-import { CableTopics, type CableSubscription, type WorkspaceClientApplication, type WorkspaceClientControllerConstructor } from "@atelier/shared";
-import { parseEditableFileResponse, parseFileSaveResponse, type EditableFileResponse } from "../protocol.ts";
+import { editFileText, editorText, type FileTextChange } from "../editable-text.ts";
 import { FileDraft } from "../file-draft.ts";
-import { editorText, editFileText, type FileTextChange } from "../editable-text.ts";
+import { parseEditableFileResponse, parseFileSaveResponse, type EditableFileResponse } from "../protocol.ts";
 import { languageExtension } from "./editor-language.ts";
 
 // Retain drafts and in-flight writes across Turbo frame replacements.
@@ -71,9 +71,11 @@ const editorHighlightStyle = HighlightStyle.define([
   { tag: [tags.typeName, tags.className, tags.tagName], color: "var(--editor-type)" },
 ]);
 
+type EditorPosition = { line: number; column: number };
+
 type EditorRefreshDetail = { workspaceId: string };
 
-function createFileEditorController(Controller: WorkspaceClientControllerConstructor): WorkspaceClientControllerConstructor {
+export function createFileEditorController(Controller: WorkspaceClientControllerConstructor): WorkspaceClientControllerConstructor {
   return class FileEditorController extends Controller {
     static values = { workspaceId: String, path: String, contentUrl: String, line: Number, column: Number };
     static targets = ["host", "loading", "status", "conflict", "conflictMine", "conflictTheirs", "preview", "previewOptions", "copyButton"];
@@ -103,6 +105,7 @@ function createFileEditorController(Controller: WorkspaceClientControllerConstru
     private applyingDisk = false;
     private saveSequence = 0;
     private diskSequence = 0;
+    private requestedPosition?: EditorPosition;
 
     connect(): void {
       this.connection = new AbortController();
@@ -123,6 +126,7 @@ function createFileEditorController(Controller: WorkspaceClientControllerConstru
       // SAFETY: The files-refresh event carries EditorRefreshDetail.
       window.addEventListener("atelier:files-refresh", this.refreshRequested as EventListener, { signal });
       this.element.addEventListener("atelier:file-editor-refresh", this.refreshDisk, { signal });
+      this.element.addEventListener("atelier:file-editor-position", this.positionRequested, { signal });
       void this.load(signal).catch((error: Error) => {
         if (this.isCurrentConnection(signal)) this.showLoadError(error);
       });
@@ -166,7 +170,7 @@ function createFileEditorController(Controller: WorkspaceClientControllerConstru
     }
 
     private async load(signal: AbortSignal): Promise<void> {
-      const file = await this.fetchFile(signal);
+      const [file, language] = await Promise.all([this.fetchFile(signal), languageExtension(this.pathValue)]);
       if (!this.isCurrentConnection(signal)) return;
       this.draft = fileDraft(this.contentUrlValue, file);
       this.loadingTarget.hidden = true;
@@ -183,7 +187,7 @@ function createFileEditorController(Controller: WorkspaceClientControllerConstru
             closeBrackets(),
             highlightSelectionMatches(),
             syntaxHighlighting(editorHighlightStyle),
-            languageExtension(this.pathValue),
+            language,
             EditorState.readOnly.of(!file.writable),
             EditorView.editable.of(file.writable),
             EditorView.domEventHandlers({
@@ -214,8 +218,9 @@ function createFileEditorController(Controller: WorkspaceClientControllerConstru
       if (this.draft.dirty && !this.draft.conflict) void this.save();
       this.copyButtonTarget.disabled = false;
       if (!file.writable) this.setStatus("Read only", "");
-      this.jumpTo(this.lineValue, this.columnValue);
-      if (this.hasPreviewTarget && this.lineValue < 1) await this.showPreview();
+      const position = this.requestedPosition ?? { line: this.lineValue, column: this.columnValue };
+      this.jumpTo(position.line, position.column);
+      if (this.hasPreviewTarget && position.line < 1) await this.showPreview();
     }
 
     private readonly refreshRequested = (event: CustomEvent<EditorRefreshDetail>): void => {
@@ -336,6 +341,12 @@ function createFileEditorController(Controller: WorkspaceClientControllerConstru
       setToggleValue(this.previewOptionsTarget, visible ? "preview" : "edit");
     }
 
+    private readonly positionRequested = (event: Event): void => {
+      // SAFETY: The navigation controller emits this event with an EditorPosition payload.
+      this.requestedPosition = (event as CustomEvent<EditorPosition>).detail;
+      this.jumpTo(this.requestedPosition.line, this.requestedPosition.column);
+    };
+
     private jumpTo(line: number, column = 1): void {
       if (!this.view || line < 1) return;
       this.showRaw();
@@ -356,27 +367,4 @@ function createFileEditorController(Controller: WorkspaceClientControllerConstru
       this.statusTarget.className = `file-editor-status${state ? ` is-${state}` : ""}`;
     }
   };
-}
-
-function createFilesRefreshSignalController(Controller: WorkspaceClientControllerConstructor): WorkspaceClientControllerConstructor {
-  return class FilesRefreshSignalController extends Controller {
-    static values = { workspaceId: String };
-    declare readonly workspaceIdValue: string;
-    private cableSubscription?: CableSubscription;
-
-    connect(): void {
-      this.cableSubscription = window.AtelierCable?.subscribe(CableTopics.workspace(this.workspaceIdValue));
-      queueMicrotask(() => window.dispatchEvent(new CustomEvent<EditorRefreshDetail>("atelier:files-refresh", { detail: { workspaceId: this.workspaceIdValue } })));
-    }
-
-    disconnect(): void {
-      this.cableSubscription?.unsubscribe();
-      this.cableSubscription = undefined;
-    }
-  };
-}
-
-export function installFileEditorControllers(application: WorkspaceClientApplication, Controller: WorkspaceClientControllerConstructor): void {
-  application.register("file-editor", createFileEditorController(Controller));
-  application.register("files-refresh-signal", createFilesRefreshSignalController(Controller));
 }
