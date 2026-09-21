@@ -18,6 +18,7 @@ export const Icons = {
   Close: iconHtml('<path d="M6 6l12 12M18 6L6 18"/>'),
   CollapseAll: iconHtml('<path d="M7 4l5 5 5-5M7 20l5-5 5 5"/>'),
   Code: iconHtml('<path d="m9 7-5 5 5 5m6-10 5 5-5 5"/>'),
+  Server: iconHtml('<rect x="6" y="3" width="12" height="18" rx="1.5"/><path d="M9 7h6M9 11h6M9 15h6"/><path d="M9 18h.01"/>'),
   Desktop: iconHtml('<rect x="3" y="4" width="18" height="13" rx="2"/><path d="M12 17v4M8 21h8"/>'),
   Disclosure: '<svg class="disclosure-icon" aria-hidden="true" viewBox="0 0 24 24"><path d="m6 9 6 6 6-6"/></svg>',
   Exclamation: iconHtml('<path d="M12 4v10"/><circle cx="12" cy="19" r="1" fill="currentColor" stroke="none"/>'),

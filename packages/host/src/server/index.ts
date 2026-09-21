@@ -65,7 +65,7 @@ async function handle(request: Request, url: URL, context: WorkspaceModuleRouteC
     const instanceUrl = process.env.ATELIER_PUBLIC_URL || publicWorkspaceAppOrigin(request);
     const instance = `<div class="host-instance-url"><span>External URL:</span><a href="${e(instanceUrl)}" target="_blank" rel="noopener noreferrer">${e(instanceUrl)}</a>${copyButtonHtml({ label: "Copy Atelier instance URL", copyText: instanceUrl })}</div>`;
     const body = hostAvailable() ? `<div class="host-content"><turbo-frame id="${statsFrame}" src="/host/sample"><p role="status">Sampling host…</p></turbo-frame><turbo-frame id="${terminalFrame}" src="/host/terminals"><p role="status">Loading terminals…</p></turbo-frame></div>` : `<p>Host access requires an Atelier System image with the host service. This instance has no System host connection.</p>`;
-    const dialog = dialogHtml({ element: { id: "host_dialog", attributesHtml: 'data-dialog-auto-show data-controller="host-panel" data-action="close->host-panel#closed"' }, titleCaption: "Host", iconHtml: Icons.Terminal, bodyHtml: `<div class="host-content">${instance}${body}</div>` });
+    const dialog = dialogHtml({ element: { id: "host_dialog", attributesHtml: 'data-dialog-auto-show data-controller="host-panel" data-action="close->host-panel#closed"' }, titleCaption: "Host", iconHtml: Icons.Server, bodyHtml: `<div class="host-content">${instance}${body}</div>` });
     return request.headers.has("turbo-frame") ? response(`<turbo-frame id="${workspaceModuleModalFrameId}">${dialog}</turbo-frame>`) : context.renderModalPage(dialog);
   }
   if (!hostAvailable()) return json
@@ -97,7 +97,7 @@ async function handle(request: Request, url: URL, context: WorkspaceModuleRouteC
 }
 export const atelierServerModule: WorkspaceModule = {
   id: "host",
-  renderWorkspacePaneActions: () => actionLinkHtml({ href: "/host", variant: "secondary", content: { kind: "icon-only", iconHtml: Icons.Terminal, label: "Host" }, attributesHtml: `data-turbo-frame="${workspaceModuleModalFrameId}"` }),
+  renderWorkspacePaneActions: () => actionLinkHtml({ href: "/host", variant: "secondary", content: { kind: "icon-only", iconHtml: Icons.Server, label: "Host" }, attributesHtml: `data-turbo-frame="${workspaceModuleModalFrameId}"` }),
   initialize(context) { context.registerSocketHandler(hostTerminalSocket); },
   routes: [{ handle }],
   openApiPaths: hostOpenApiPaths,
