@@ -8,8 +8,7 @@ export function registerLaunchComposerCommand(hooks: WorkspaceClientHooks): void
     scope: "global",
     binding: "Meta+Alt+Quote",
     run() {
-      const resident = document.querySelector<HTMLElement>(".workspace-detail-resident.visible");
-      const projectId = resident ? resident.dataset.projectId : localStorage.getItem(recentWorkspaceProjectStorageKey);
+      const projectId = localStorage.getItem(recentWorkspaceProjectStorageKey);
       const frame = document.getElementById("launch_composer")!;
       frame.replaceChildren();
       frame.removeAttribute("src");

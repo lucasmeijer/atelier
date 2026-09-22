@@ -178,7 +178,7 @@ class WorkspaceNavigationController extends Controller<HTMLElement> {
   setActiveWorkspace(workspaceId: string): void {
     markActiveWorkspaceRow(this.element, workspaceId);
     const row = this.element.querySelector<HTMLElement>(`[data-workspace-entry-id="${CSS.escape(workspaceId)}"]`);
-    localStorage.setItem(recentWorkspaceProjectStorageKey, row?.dataset.projectId ?? "");
+    if (row?.dataset.projectId) localStorage.setItem(recentWorkspaceProjectStorageKey, row.dataset.projectId);
   }
 
   private scrolled = (): void => {
