@@ -44,7 +44,7 @@ export function createCliAgentModule(adapter: CliAgentAdapter): WorkspaceModule 
             ${canDictate ? `<div class="cli-terminal-toolbar"><span class="cli-terminal-dictation-preview" data-transcription-composer-target="preview"></span>${renderTranscriptionComposerControl({ disabled: true })}</div>` : ""}
             <div class="cli-terminal-status" role="status">${session.error ? failureStatus(session.error) : terminalStatus(terminal)}</div>
             <div class="cli-terminal-status" data-cli-terminal-target="connectionStatus" role="status" hidden>Connection lost. ${retryButton()}</div>
-            ${terminal.exists ? '<div class="observable-terminal-host" data-cli-terminal-target="terminal" tabindex="0"></div>' : ""}
+            ${terminal.exists ? '<div class="observable-terminal-host" data-cli-terminal-target="terminal" tabindex="0" data-action="touchstart->cli-terminal#startTerminalTouch:passive touchmove->cli-terminal#moveTerminalTouch:passive touchcancel->cli-terminal#cancelTerminalTouch touchend->cli-terminal#finishTerminalTouch:!passive"></div>' : ""}
           </section>`;
         },
         close: ({ workspaceId, conversationId }) => sessions.close(workspaceId, conversationId),

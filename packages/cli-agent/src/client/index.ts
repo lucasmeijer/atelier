@@ -1,4 +1,4 @@
-import { atelierObservableTerminalTheme, createObservableTerminalViewer, observableWebSocketUrl, type ObservableTerminalViewer } from "@atelier/observable-terminal/client";
+import { atelierObservableTerminalTheme, createObservableTerminalViewer, observableWebSocketUrl, TerminalTouchFocus, type ObservableTerminalViewer } from "@atelier/observable-terminal/client";
 import { isWorkspacePaneVisible, type WorkspaceClientModule } from "@atelier/shared";
 
 export const atelierClientModule: WorkspaceClientModule = {
@@ -13,6 +13,7 @@ export const atelierClientModule: WorkspaceClientModule = {
       declare readonly connectionStatusTarget: HTMLElement;
       declare readonly hasTerminalTarget: boolean;
       private viewer?: ObservableTerminalViewer;
+      private readonly touchFocus = new TerminalTouchFocus(() => this.viewer?.focus());
       private resize = new ResizeObserver(() => this.refresh());
 
       connect(): void {
@@ -32,7 +33,11 @@ export const atelierClientModule: WorkspaceClientModule = {
           onDisconnect: () => this.setConnected(false),
         });
       }
-      disconnect(): void { window.removeEventListener("atelier:workspace-pane-visible", this.activate); this.resize.disconnect(); this.viewer?.dispose(); this.viewer = undefined; }
+      disconnect(): void { window.removeEventListener("atelier:workspace-pane-visible", this.activate); this.resize.disconnect(); this.touchFocus.cancel(); this.viewer?.dispose(); this.viewer = undefined; }
+      startTerminalTouch(event: TouchEvent): void { this.touchFocus.start(event); }
+      moveTerminalTouch(event: TouchEvent): void { this.touchFocus.move(event); }
+      cancelTerminalTouch(): void { this.touchFocus.cancel(); }
+      finishTerminalTouch(event: TouchEvent): void { this.touchFocus.finish(event); }
       private setConnected(connected: boolean): void {
         this.connectionStatusTarget.hidden = connected;
         this.element.setAttribute("data-transcription-composer-unavailable-value", String(!connected));

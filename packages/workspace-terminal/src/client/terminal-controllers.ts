@@ -4,6 +4,7 @@ import {
   atelierObservableTerminalTheme,
   createObservableTerminalViewer,
   observableWebSocketUrl,
+  TerminalTouchFocus,
   type ObservableTerminalViewer,
 } from "@atelier/observable-terminal/client";
 import { isWorkspacePaneVisible, type WorkspaceClientControllerConstructor, type WorkspaceClientModule } from "@atelier/shared";
@@ -60,7 +61,7 @@ function createTerminalPaneController(Controller: WorkspaceClientControllerConst
     declare readonly idValue: string;
     private readonly viewport = window.visualViewport!;
     private readonly layoutObserver = new ResizeObserver(() => this.syncViewportHeight());
-    private terminalTouch?: Touch;
+    private readonly touchFocus = new TerminalTouchFocus(() => this.viewer?.focus());
     private pointerDrag?: { id: number; select: boolean };
 
     private viewer?: ObservableTerminalViewer;
@@ -128,7 +129,7 @@ function createTerminalPaneController(Controller: WorkspaceClientControllerConst
       this.viewport.removeEventListener("resize", this.syncViewportHeight);
       this.viewport.removeEventListener("scroll", this.syncViewportHeight);
       this.layoutObserver.disconnect();
-      this.terminalTouch = undefined;
+      this.touchFocus.cancel();
       this.pointerDrag = undefined;
       this.element.style.removeProperty("--terminal-viewport-height");
       this.stop();
@@ -138,37 +139,10 @@ function createTerminalPaneController(Controller: WorkspaceClientControllerConst
     connectionOpened(): void { this.connectionStatusTarget.hidden = true; }
     retry(): void { this.viewer?.reconnect(); }
 
-    startTerminalTouch(event: TouchEvent): void {
-      this.terminalTouch = event.touches.length === 1 ? event.touches[0] : undefined;
-    }
-
-    moveTerminalTouch(event: TouchEvent): void {
-      if (!this.isTerminalTap(event.touches[0]!)) this.cancelTerminalTouch();
-    }
-
-    cancelTerminalTouch(): void {
-      this.terminalTouch = undefined;
-    }
-
-    private isTerminalTap(touch: Touch): boolean {
-      const start = this.terminalTouch;
-      // Screen coordinates exclude keyboard-induced viewport panning.
-      return start !== undefined && touch.identifier === start.identifier
-        && Math.hypot(touch.screenX - start.screenX, touch.screenY - start.screenY) <= 10;
-    }
-
-    finishTerminalTouch(event: TouchEvent): void {
-      const tapped = event.touches.length === 0 && event.changedTouches.length === 1
-        && this.isTerminalTap(event.changedTouches[0]!);
-      this.cancelTerminalTouch();
-      if (!tapped) return;
-
-      // Gespenst focuses on pointerdown. iOS can undo that focus when the native
-      // touch finishes on the canvas. Own the completed tap, not blur events:
-      // suppress release-time activation and focus within this user gesture.
-      event.preventDefault();
-      this.viewer?.focus();
-    }
+    startTerminalTouch(event: TouchEvent): void { this.touchFocus.start(event); }
+    moveTerminalTouch(event: TouchEvent): void { this.touchFocus.move(event); }
+    cancelTerminalTouch(): void { this.touchFocus.cancel(); }
+    finishTerminalTouch(event: TouchEvent): void { this.touchFocus.finish(event); }
 
     dragPointer(event: PointerEvent): void {
       // Leave touch scrolling/taps and non-primary buttons to Gespenst.

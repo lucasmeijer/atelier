@@ -57,6 +57,40 @@ export function atelierObservableTerminalTheme(): ObservableTerminalTheme {
   };
 }
 
+// Gespenst focuses on pointerdown, but a native touch release on its canvas can
+// undo that focus. Only completed taps should reclaim it; drags must still scroll.
+export class TerminalTouchFocus {
+  private touch?: Touch;
+
+  constructor(private readonly focus: () => void) {}
+
+  start(event: TouchEvent): void {
+    this.touch = event.touches.length === 1 ? event.touches[0] : undefined;
+  }
+
+  move(event: TouchEvent): void {
+    if (event.touches.length !== 1 || !this.isTap(event.touches[0]!)) this.cancel();
+  }
+
+  cancel(): void { this.touch = undefined; }
+
+  finish(event: TouchEvent): void {
+    const tapped = event.touches.length === 0 && event.changedTouches.length === 1
+      && this.isTap(event.changedTouches[0]!);
+    this.cancel();
+    if (!tapped) return;
+    event.preventDefault();
+    this.focus();
+  }
+
+  private isTap(touch: Touch): boolean {
+    const start = this.touch;
+    // Screen coordinates exclude keyboard-induced viewport panning.
+    return start !== undefined && touch.identifier === start.identifier
+      && Math.hypot(touch.screenX - start.screenX, touch.screenY - start.screenY) <= 10;
+  }
+}
+
 export interface ObservableTerminalViewer {
   dispose(): void;
   focus(): void;
