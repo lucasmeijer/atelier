@@ -10,12 +10,13 @@ type StimulusActionEvent<EventType extends Event, CurrentTarget extends EventTar
 
 function createFilesController(Controller: WorkspaceClientControllerConstructor): WorkspaceClientControllerConstructor {
   return class FilesController extends Controller {
-    static values = { path: String, uploadUrl: String };
+    static values = { path: String, uploadUrl: String, workspaceId: String };
     static targets = ["progress", "status"];
 
     declare readonly element: HTMLElement;
     declare readonly pathValue: string;
     declare readonly uploadUrlValue: string;
+    declare readonly workspaceIdValue: string;
     declare readonly progressTarget: HTMLElement;
     declare readonly statusTarget: HTMLElement;
 
@@ -83,10 +84,18 @@ function createFilesController(Controller: WorkspaceClientControllerConstructor)
       void this.startUpload(event, row.dataset.filesDestination!);
     }
 
-    private refresh(): void {
-      // SAFETY: The server-rendered Files browser is always owned by a Turbo Frame with the Turbo reload interface.
-      const frame = this.element.closest("turbo-frame") as HTMLElement & { reload(): void };
-      frame.reload();
+    refresh(): void {
+      this.element.querySelector<HTMLFormElement>(".files-filter")!.requestSubmit();
+    }
+
+    diskChanged(event: CustomEvent<{ workspaceId: string }>): void {
+      if (event.detail.workspaceId === this.workspaceIdValue) this.refresh();
+    }
+
+    preserveExpandedDirectories(event: FormDataEvent): void {
+      for (const row of this.element.querySelectorAll<HTMLElement>('[data-kind="directory"][aria-expanded="true"]')) {
+        event.formData.append("expanded", row.dataset.filesPath!);
+      }
     }
 
     keydown(event: KeyboardEvent): void {
@@ -140,6 +149,7 @@ function createFilesController(Controller: WorkspaceClientControllerConstructor)
         this.statusTarget.textContent = `${errors.length} ${errors.length === 1 ? "upload" : "uploads"} failed: ${errors[0]?.message ?? "Unknown error"}`;
         return;
       }
+      this.element.querySelector<HTMLElement>(".files-upload-status")!.hidden = true;
       this.refresh();
     }
 

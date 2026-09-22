@@ -158,7 +158,7 @@ export function renderFilesTreeFrame(workspaceId: string, viewId: string, entrie
     attributesHtml: 'data-action="files#cancel"',
   });
   return `<turbo-frame id="${filesTreeFrameId(workspaceId, viewId)}" data-turbo-permanent class="files-frame">
-    <div class="files-browser" data-controller="files" data-files-path-value="${escapeHtml(workspaceRoot)}" data-files-upload-url-value="/workspaces/${encodeURIComponent(workspaceId)}/file-browser/upload" data-action="dragenter->files#dragEnter dragover->files#dragOver dragleave->files#dragLeave drop->files#drop keydown->files#keydown">
+    <div class="files-browser" data-controller="files" data-files-workspace-id-value="${escapeHtml(workspaceId)}" data-files-path-value="${escapeHtml(workspaceRoot)}" data-files-upload-url-value="/workspaces/${encodeURIComponent(workspaceId)}/file-browser/upload" data-action="atelier:files-refresh@window->files#diskChanged formdata->files#preserveExpandedDirectories dragenter->files#dragEnter dragover->files#dragOver dragleave->files#dragLeave drop->files#drop keydown->files#keydown">
       <form class="managed-list__filter files-filter" method="get" action="/workspaces/${encodeURIComponent(workspaceId)}/files" data-controller="server-filter" data-action="input->server-filter#submit" data-turbo-frame="${resultsFrameId}">
         <input type="hidden" name="filesView" value="${escapeHtml(viewId)}">
         <input class="text-field" type="search" name="q" placeholder="Filter files…" aria-label="Filter files by name" autocomplete="off">

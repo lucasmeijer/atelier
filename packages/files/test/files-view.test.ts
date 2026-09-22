@@ -2,7 +2,7 @@ import { createAtelierEventBus } from "@atelier/core";
 import type { WorkspaceWorkViewReference } from "@atelier/shared";
 import { describe, expect, test } from "bun:test";
 import { atelierServerModule } from "../src/server/index.ts";
-import { createFilesView, deleteFilesViewState, listFilesViews, setFilesViewFile } from "../src/server/state.ts";
+import { createFilesView, deleteFilesViewState, filesDiskGeneration, listFilesViews, setFilesViewFile } from "../src/server/state.ts";
 
 describe("Files Work view integration", () => {
   test("embed-style links select the file in the default Files view", async () => {
@@ -40,14 +40,15 @@ describe("Files Work view integration", () => {
     deleteFilesViewState("workspace-command");
   });
 
-  test("asks selected Files editors to check disk after an agent turn", async () => {
+  test.each([undefined, "/work/example.ts"])("refreshes Files after an agent turn with selected path %s", async (path) => {
     const events = createAtelierEventBus();
     const invalidations: string[] = [];
     // SAFETY: The test fixture supplies the module initialization fields exercised by this test.
     await atelierServerModule.initialize!({ events, invalidateWorkspace: (workspaceId: string) => invalidations.push(workspaceId), onWorkspaceRemoved: () => {} } as never);
-    setFilesViewFile("workspace-events", "workspace", "/work/example.ts");
+    setFilesViewFile("workspace-events", "workspace", path);
     await events.emit("workspace_agent_turn_finished", { workspaceId: "workspace-events", conversationId: "conversation-1" });
     expect(invalidations).toEqual(["workspace-events"]);
+    expect(filesDiskGeneration("workspace-events")).toBe(1);
     deleteFilesViewState("workspace-events");
   });
 

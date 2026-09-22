@@ -31,21 +31,27 @@ export class LiveTranscriptRenderer {
     });
   }
 
-  private transcriptRows(ctx: AgentRenderContext, items: TranscriptItem[], modelContext: AgentModelContextView, notices: string, initial: boolean) {
+  private transcriptRows(ctx: AgentRenderContext, items: TranscriptItem[], modelContext: AgentModelContextView, initial: boolean) {
     return [
       { id: `${ids.transcript(ctx)}_context`, html: renderModelContextEntries(ctx, modelContext) },
       ...this.rows(ctx, items, initial),
-      { id: ids.notices(ctx), html: notices },
     ];
   }
 
-  renderInitialTranscript(ctx: AgentRenderContext, items: TranscriptItem[], modelContext: AgentModelContextView, notices: string): string {
-    return this.transcriptRows(ctx, items, modelContext, notices, true)
-      .map(row => `<div id="${escapeHtml(row.id)}" data-turbo-permanent>${row.html}</div>`).join("");
+  renderInitialTranscript(ctx: AgentRenderContext, items: TranscriptItem[], modelContext: AgentModelContextView): string {
+    return this.transcriptRows(ctx, items, modelContext, true)
+      .map(row => `<div id="${escapeHtml(row.id)}" data-turbo-permanent>${row.html}</div>`).join("") + this.noticesMount(ctx);
   }
 
-  renderTranscript(ctx: AgentRenderContext, items: TranscriptItem[], modelContext: AgentModelContextView, notices: string): LiveRegion {
-    return liveCollection(ids.transcript(ctx), this.transcriptRows(ctx, items, modelContext, notices, false));
+  renderTranscript(ctx: AgentRenderContext, items: TranscriptItem[], modelContext: AgentModelContextView): LiveRegion {
+    const region = liveCollection(ids.transcript(ctx), this.transcriptRows(ctx, items, modelContext, false));
+    // Notices are browser-owned ephemeral messages, never snapshot state.
+    region.html += this.noticesMount(ctx);
+    return region;
+  }
+
+  private noticesMount(ctx: AgentRenderContext): string {
+    return `<div id="${escapeHtml(ids.notices(ctx))}" class="agent-notices" data-turbo-permanent></div>`;
   }
 
   renderTurn(ctx: AgentRenderContext, turn: WorkingTranscriptItem): LiveRegion {

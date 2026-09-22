@@ -104,7 +104,7 @@ export function createSubagentsController(Controller: WorkspaceClientControllerC
       if (!this.reveal) return;
       const branch = this.branchTargets.find((branch) => branch.dataset.subagentId === this.reveal);
       if (!branch) return;
-      const target = this.message ? branch.querySelector<HTMLElement>(`[data-transcript-anchor="${CSS.escape(this.message)}"]`) : branch;
+      const target = this.message ? branch.querySelector<HTMLElement>(`[data-transcript-anchor="${CSS.escape(this.message)}"], [data-transcript-key="${CSS.escape(this.message)}"]`) : branch;
       if (target) {
         if (target instanceof HTMLDetailsElement) target.open = true;
         target.scrollIntoView({ block: "center" });

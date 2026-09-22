@@ -47,3 +47,14 @@ test("disposing during an initial read rejects the reader instead of returning m
   load.resolve(1);
   await expect(read).rejects.toThrow("disposed");
 });
+
+test("invalidation between publication and the read continuation waits for fresh state", async () => {
+  let loads = 0;
+  const resource = createLiveResource(async () => ++loads, () => [], reportError);
+  const read = resource.read();
+  queueMicrotask(() => resource.invalidate());
+  expect(await read).toBe(2);
+  expect(await resource.read()).toBe(2);
+  expect(loads).toBe(2);
+  resource.dispose();
+});

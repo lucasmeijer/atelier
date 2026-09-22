@@ -11,10 +11,11 @@ export function createLiveResource<T>(load: () => Promise<T>, render: (state: T)
     presentation.invalidate();
   });
   async function read(): Promise<T> {
-    if (disposed) throw new Error("Live resource is disposed");
-    if (state === undefined) await refresh.refresh();
-    if (disposed) throw new Error("Live resource is disposed");
-    return state!;
+    for (;;) {
+      if (disposed) throw new Error("Live resource is disposed");
+      if (state !== undefined) return state;
+      await refresh.refresh();
+    }
   }
   return {
     read,

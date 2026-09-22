@@ -24,6 +24,7 @@ class Runtime extends BaseAgentRuntime {
   tool() { this.closeOpenItem(); this.liveToolExecStart({ callId: "call", name: "read", args: { path: "/file" } }); }
   toolUpdate(text: string) { this.liveToolUpdate("call", { outputText: text }); }
   toolEnd(text: string, failed = false) { this.liveToolEnd("call", text, failed); }
+  transientNotice(level: "info" | "error", text: string) { this.notice(level, text); }
   failure(text: string) { this.liveNote(text, "error"); }
   finish() { this.finishLivePresentation("completed"); }
   branch(id: string) { this.resetTurnSubscriptions(id); }
@@ -130,4 +131,54 @@ test("a persisted task start is overlaid by its live turn rather than replaying 
   expect(deliveries.join("")).not.toContain("stale_task_activity");
   subscription.unsubscribe();
   await runtime.dispose();
+});
+
+test("notices are delivered once to current subscribers and never replayed by snapshots", async () => {
+  const runtime = new Runtime();
+  const first: string[] = [];
+  const second: string[] = [];
+  const a = runtime.subscribeLivePresentation(html => first.push(html));
+  const b = runtime.subscribeLivePresentation(html => second.push(html));
+  const initialDelivery = [...first];
+  expect(initialDelivery).toHaveLength(1);
+  expect(second).toEqual(initialDelivery);
+  first.length = 0;
+  second.length = 0;
+  runtime.transientNotice("error", "transient_failure");
+  runtime.transientNotice("info", "transient_information");
+  expect(first).toEqual(second);
+  expect(first).toHaveLength(2);
+  a.unsubscribe();
+  b.unsubscribe();
+
+  runtime.transientNotice("error", "offline_notice");
+  const reconnect: string[] = [];
+  const c = runtime.subscribeLivePresentation(html => reconnect.push(html));
+  expect(reconnect).toEqual(initialDelivery);
+  c.unsubscribe();
+  await runtime.dispose();
+});
+
+test("notice listeners follow successful subscription lifetimes and disposal", async () => {
+  const runtime = new Runtime();
+  let failedDeliveries = 0;
+  expect(() => runtime.subscribeLivePresentation(() => {
+    failedDeliveries++;
+    throw new Error("subscription failed");
+  })).toThrow("subscription failed");
+  runtime.transientNotice("error", "after_failed_subscription");
+  expect(failedDeliveries).toBe(1);
+
+  const deliveries: string[] = [];
+  const subscription = runtime.subscribeLivePresentation(html => deliveries.push(html));
+  subscription.unsubscribe();
+  const count = deliveries.length;
+  runtime.transientNotice("error", "after_unsubscribe");
+  expect(deliveries).toHaveLength(count);
+
+  runtime.subscribeLivePresentation(html => deliveries.push(html));
+  const beforeDispose = deliveries.length;
+  await runtime.dispose();
+  runtime.transientNotice("error", "after_disposal");
+  expect(deliveries).toHaveLength(beforeDispose);
 });

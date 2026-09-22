@@ -1,6 +1,6 @@
 import { AtelierCoreError, type JsonObject } from "@atelier/core";
 import { StreamingMarkdownRenderer } from "@atelier/markdown";
-import { createLivePresentation, createPublishedRefresh } from "@atelier/shared";
+import { createLivePresentation, createPublishedRefresh, turboStream } from "@atelier/shared";
 import { Type } from "typebox";
 import { Value } from "typebox/value";
 import { renderWorkspaceCompletionCatalog } from "./completion-catalog.ts";
@@ -95,14 +95,14 @@ export abstract class BaseAgentRuntime implements WorkspaceAgentRuntime {
   );
   private footer: AgentStatsView = { contextPercent: null, compactAvailable: false, inputTokens: 0, outputTokens: 0, cost: 0, modelName: undefined, thinkingLevel: "", thinkingLevels: [], models: [] };
   private readonly transcriptRendering = new LiveTranscriptRenderer();
-  private readonly notices: string[] = [];
+  private readonly noticeListeners = new Set<AgentLivePresentationListener>();
   private readonly textRendering = new Map<string, { source: string; renderer: StreamingMarkdownRenderer; stableHtml: string; tailHtml: string }>();
   private readonly footerRefresh = createPublishedRefresh(() => this.statsView(), footer => {
     this.footer = footer;
     this.livePresentation.invalidate();
   });
   private readonly livePresentation = createLivePresentation(() => [
-    this.transcriptRendering.renderTranscript(this.renderContext(), this.itemsForDisplay(), this.modelContext(), this.notices.join("")),
+    this.transcriptRendering.renderTranscript(this.renderContext(), this.itemsForDisplay(), this.modelContext()),
     { target: notificationControlId(this.ctx), html: renderNotificationControl(this.ctx, this.isStreaming), action: "replace" },
     { target: ids.actions(this.ctx), html: renderPromptActions(this.ctx, this.isStreaming) },
     { target: ids.completionCatalog(this.ctx), html: this.completionCatalogHtml },
@@ -158,12 +158,14 @@ export abstract class BaseAgentRuntime implements WorkspaceAgentRuntime {
   subscribeLivePresentation(listener: AgentLivePresentationListener): AgentLivePresentationSubscription {
     this.assertActive();
     const subscription = this.livePresentation.subscribe(listener);
+    this.noticeListeners.add(listener);
     this.liveSubscriberCount += 1;
     let active = true;
     const unsubscribe = (): void => {
       if (!active) return;
       active = false;
       subscription.unsubscribe();
+      this.noticeListeners.delete(listener);
       this.liveSubscriberCount -= 1;
       if (this.liveSubscriberCount === 0 && this.turnSubscriberCount === 0) {
         this.cancelToolArgsFlush();
@@ -245,6 +247,7 @@ export abstract class BaseAgentRuntime implements WorkspaceAgentRuntime {
     if (this.disposed) return false;
     this.disposed = true;
     this.livePresentation.dispose();
+    this.noticeListeners.clear();
     this.footerRefresh.dispose();
     this.completionCatalogRefresh.dispose();
     this.resetTurnSubscriptions(this.ctx.branchId ?? "");
@@ -264,8 +267,8 @@ export abstract class BaseAgentRuntime implements WorkspaceAgentRuntime {
   }
 
   protected notice(level: "info" | "error", message: string): void {
-    this.notices.push(renderNotice(level, message));
-    this.invalidatePresentation();
+    const html = turboStream("append", ids.notices(this.ctx), renderNotice(level, message));
+    for (const listener of this.noticeListeners) listener(html);
   }
 
   // ---- live transcript streaming ----------------------------------------
@@ -651,7 +654,7 @@ export abstract class BaseAgentRuntime implements WorkspaceAgentRuntime {
   async paneState(): Promise<AgentPaneState> {
     this.assertActive();
     void this.refreshStats().catch(error => console.error("Could not refresh agent footer", error));
-    return { transcriptHtml: this.transcriptRendering.renderInitialTranscript(this.renderContext(), this.itemsForDisplay(), this.modelContext(), this.notices.join("")), busy: this.isStreaming, stats: this.footer };
+    return { transcriptHtml: this.transcriptRendering.renderInitialTranscript(this.renderContext(), this.itemsForDisplay(), this.modelContext()), busy: this.isStreaming, stats: this.footer };
   }
 
   async detailHtml(key: string, count = 100): Promise<string> {

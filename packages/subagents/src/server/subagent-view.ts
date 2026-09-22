@@ -23,7 +23,7 @@ export const subagentsWorkViewAdapter: WorkspaceModuleWorkViewAdapter = {
   },
   identity: () => "workspace",
   render({ workspaceId }) {
-    return `<section class="subagents-view" data-controller="subagents" data-subagents-workspace-id-value="${h(workspaceId)}" data-action="atelier:workspace-agent-selected@document->subagents#sync atelier:workspace-pane-visible@document->subagents#sync atelier:workspace-pane-hidden@document->subagents#sync visibilitychange@document->subagents#sync toggle->subagents#toggle:capture">
+    return `<section class="subagents-view" data-controller="subagents" data-subagents-workspace-id-value="${h(workspaceId)}" data-action="atelier:workspace-agent-selected@document->subagents#sync atelier:workspace-pane-visible@document->subagents#sync atelier:workspace-pane-hidden@document->subagents#sync visibilitychange@document->subagents#sync agent:turn-reveal->subagents#loaded toggle->subagents#toggle:capture">
       <div class="subagents-scroll"><div id="subagents-content-${h(workspaceId)}" data-turbo-permanent></div></div>
     </section>`;
   },

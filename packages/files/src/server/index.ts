@@ -33,7 +33,8 @@ async function filesEndpoint(workspaceId: string, url: URL): Promise<Response> {
   if (query !== null) {
     const normalizedQuery = query.trim();
     const selectedPath = filesState.path;
-    const entries = normalizedQuery ? await searchFiles(workspaceId, normalizedQuery) : (await listFiles(workspaceId, workspaceRoot, selectedPath)).entries;
+    const expandedPaths = new Set(url.searchParams.getAll("expanded"));
+    const entries = normalizedQuery ? await searchFiles(workspaceId, normalizedQuery, expandedPaths) : (await listFiles(workspaceId, workspaceRoot, undefined, expandedPaths)).entries;
     return htmlResponse(renderFilesTreeResultsFrame(workspaceId, viewId, entries, selectedPath, Boolean(normalizedQuery)));
   }
   const view = url.searchParams.get("view");
@@ -137,7 +138,6 @@ const filesWorkspaceModule: WorkspaceModule = {
   }],
   initialize(context) {
     context.events.on("workspace_agent_turn_finished", ({ workspaceId }) => {
-      if (!listFilesViews(workspaceId).some((view) => view.path)) return;
       filesDiskChanged(workspaceId);
       context.invalidateWorkspace(workspaceId);
     });
