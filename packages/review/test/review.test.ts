@@ -6,7 +6,7 @@ import { reviewCommentsPrompt, type ReviewCommentModel } from "../src/model.ts";
 import { collectReviewFile, collectReviewIndex, collectReviewStats, type ReviewFile } from "../src/server/diff.ts";
 import { renderReviewBody } from "../src/server/render.ts";
 import { readReviewSettings, updateReviewSettings } from "../src/server/settings.ts";
-import { addReviewComment, deleteReviewState, listReviewComments, remapReviewComment, updateReviewComment, type ReviewComment } from "../src/server/state.ts";
+import { addReviewComment, deleteReviewState, listReviewComments, remapReviewComment, remapReviewFileComments, updateReviewComment, type ReviewComment } from "../src/server/state.ts";
 import { command, createReviewRepository } from "./support/repository.ts";
 
 const roots: string[] = [];
@@ -175,6 +175,22 @@ describe("Review comment anchors", () => {
   function file(contents: string): ReviewFile {
     return { path: comment.path, change: "modified", kind: "text", newContents: contents };
   }
+
+  test("reports persisted anchor changes only once for parent-region invalidation", () => {
+    const workspaceId = `review-remap-${crypto.randomUUID()}`;
+    try {
+      addReviewComment(workspaceId, comment);
+      expect(remapReviewFileComments(workspaceId, file("before\ntarget\nafter")).changed).toBe(false);
+      expect(remapReviewFileComments(workspaceId, file("before\nchanged\nafter")).changed).toBe(true);
+      expect(listReviewComments(workspaceId)[0]!.outdated).toBe(true);
+      expect(remapReviewFileComments(workspaceId, file("before\nchanged\nafter")).changed).toBe(false);
+      expect(remapReviewFileComments(workspaceId, file("inserted\nbefore\ntarget\nafter")).changed).toBe(true);
+      expect(listReviewComments(workspaceId)[0]).toMatchObject({ startLine: 3, endLine: 3, outdated: undefined });
+      expect(remapReviewFileComments(workspaceId, file("inserted\nbefore\ntarget\nafter")).changed).toBe(false);
+    } finally {
+      deleteReviewState(workspaceId);
+    }
+  });
 
   test("keeps exact anchors, remaps one exact match, and marks ambiguous matches outdated", () => {
     expect(remapReviewComment(comment, file("before\ntarget\nafter"))).toMatchObject({ startLine: 2, outdated: undefined });

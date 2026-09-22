@@ -18,6 +18,7 @@ import { addReviewComment, deleteReviewComments, deleteReviewState, listReviewCo
 
 const reviewReferenceSchema = Type.Object({ type: Type.Literal("review") });
 type ReviewReference = Static<typeof reviewReferenceSchema>;
+let invalidateWorkspace: (workspaceId: string) => void;
 const indexes = new Map<string, ReviewIndex>();
 const stats = new WeakMap<ReviewIndex, Promise<ReviewFileStats[]>>();
 
@@ -92,9 +93,10 @@ export const reviewWorkspaceModule: WorkspaceModule = {
   id: "review",
   liveSurfaces: [{ name: "review-file", async load({ workspaceId, key }) {
     const file = await collectReviewFile(workspaceWorkHostPath(workspaceId), key);
-    return [{ target: reviewFileFrameId(workspaceId, key), html: file
-      ? await renderReviewFileContent(workspaceId, file, remapReviewFileComments(workspaceId, file))
-      : '<p role="note">This change is no longer available.</p>' }];
+    if (!file) return [{ target: reviewFileFrameId(workspaceId, key), html: '<p role="note">This change is no longer available.</p>' }];
+    const { comments, changed } = remapReviewFileComments(workspaceId, file);
+    if (changed) invalidateWorkspace(workspaceId);
+    return [{ target: reviewFileFrameId(workspaceId, key), html: await renderReviewFileContent(workspaceId, file, comments) }];
   } }, { name: "review-page", async load({ workspaceId, key }) {
     const offset = Number(key);
     if (!Number.isSafeInteger(offset) || offset < reviewFilePageSize || offset % reviewFilePageSize !== 0) throw new Error("Invalid review file offset");
@@ -181,6 +183,7 @@ export const reviewWorkspaceModule: WorkspaceModule = {
     },
   }],
   initialize(context) {
+    invalidateWorkspace = context.invalidateWorkspace;
     context.events.on("workspace_agent_turn_finished", async ({ workspaceId }) => {
       await refresh(workspaceId);
       context.invalidateWorkspace(workspaceId);

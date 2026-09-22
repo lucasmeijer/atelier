@@ -31,7 +31,7 @@ export function renderModelContextEntries(ctx: AgentRenderContext, modelContext:
 }
 
 function renderLazyTranscriptEntry(ctx: AgentRenderContext, key: string, label: string): string {
-  const frame = `<turbo-frame id="${ids.detailFrame(ctx, key)}" data-agent-lazy-detail-target="frame" data-src="${escapeHtml(transcriptItemPath(ctx, key))}"></turbo-frame>`;
+  const frame = `<turbo-frame id="${ids.detailFrame(ctx, key)}" data-turbo-permanent data-agent-lazy-detail-target="frame" data-src="${escapeHtml(transcriptItemPath(ctx, key))}"></turbo-frame>`;
   return transcriptRow(`<details class="agent-lazy-detail" data-controller="agent-lazy-detail" data-action="toggle->agent-lazy-detail#load">${transcriptActionItemHtml({ kind: "text", text: label }, { disclosure: true })}${frame}</details>`);
 }
 
