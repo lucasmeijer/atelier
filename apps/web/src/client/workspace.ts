@@ -1,32 +1,33 @@
+import { registerLiveSurfaces } from "./live-surface.ts";
 /// <reference lib="dom" />
 
 import { Application as StimulusApplication, Controller as StimulusController } from "@hotwired/stimulus";
 // Turbo does not publish TypeScript declarations, but Bun resolves and bundles its browser module.
-// @ts-expect-error No declaration file is included in @hotwired/turbo.
-import * as Turbo from "@hotwired/turbo";
-import { createProvisionTerminalController } from "@atelier/workspace/client";
+import { registerDesignSystemControllers } from "@atelier/design-system/client";
 import {
   installSoftwareKeyboardTracking,
   type AtelierCableClient,
   type WorkspaceClientControllerConstructor,
 } from "@atelier/shared";
-import { workspaceClientModules } from "./workspace-client-modules.generated.ts";
-import { registerDesignSystemControllers } from "@atelier/design-system/client";
+import { createProvisionTerminalController } from "@atelier/workspace/client";
+// @ts-expect-error Turbo ships no TypeScript declarations.
+import * as Turbo from "@hotwired/turbo";
 import { AccessSettingsController } from "./access-settings.ts";
-import { PwaReminderController } from "./pwa-reminder.ts";
 import { AtelierEasterEggController } from "./atelier-easter-egg.ts";
-import { clientHooks } from "./workspace-client-hooks.ts";
+import { PwaReminderController } from "./pwa-reminder.ts";
+import { registerWorkspaceAppFrameController } from "./workspace-app-frame.ts";
 import { installWorkspaceCable } from "./workspace-cable.ts";
+import { clientHooks } from "./workspace-client-hooks.ts";
+import { workspaceClientModules } from "./workspace-client-modules.generated.ts";
+import { initializeWorkspaceControllerRegistry, registerWorkspaceControllers, workspaceNavigationController } from "./workspace-controller-registry.ts";
 import { registerWorkspaceDevReloadController } from "./workspace-dev-reload.ts";
 import { registerWorkspaceDialogControllers } from "./workspace-dialogs.ts";
 import { registerWorkspaceFullscreenController } from "./workspace-fullscreen.ts";
 import { registerWorkspaceNavigationControllers } from "./workspace-navigation.ts";
+import { createWorkspacePresentationController, installWorkspacePresentationTurboStream } from "./workspace-presentation.ts";
 import { registerWorkspaceResidencyController } from "./workspace-residency.ts";
-import { initializeWorkspaceControllerRegistry, registerWorkspaceControllers, workspaceNavigationController } from "./workspace-controller-registry.ts";
-import { registerWorkspaceAppFrameController } from "./workspace-app-frame.ts";
 import { registerWorkspaceSettingsControllers } from "./workspace-settings.ts";
 import { registerWorkspaceShortcutsController } from "./workspace-shortcuts.ts";
-import { createWorkspacePresentationController, installWorkspacePresentationTurboStream } from "./workspace-presentation.ts";
 
 declare global {
   interface Window {
@@ -43,6 +44,7 @@ installSoftwareKeyboardTracking();
 initializeWorkspaceControllerRegistry(application);
 
 installWorkspaceCable();
+registerLiveSurfaces();
 installWorkspacePresentationTurboStream(Turbo, application);
 Turbo.StreamActions["select-workspace"] = function selectWorkspace(this: HTMLElement): void {
   const workspaceId = this.dataset.workspaceId;

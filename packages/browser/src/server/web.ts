@@ -1,15 +1,15 @@
-import { Icons } from "@atelier/design-system/icons";
-import { turboStream, type WorkspaceCommandContribution, type WorkspaceModule, type WorkspaceModuleCommandHandler } from "@atelier/shared";
-import { browserWorkViewPresentation, renderBrowserFrame, renderBrowserWorkViewBody } from "./render.ts";
-import { browserFrameId, createWorkspaceBrowserView, deleteWorkspaceBrowserState, deleteWorkspaceBrowserView, getWorkspaceBrowserView, listWorkspaceBrowserViews, setWorkspaceBrowserTarget } from "./state.ts";
-import { browserStaticFiles } from "./static.ts";
-import { isWorkspaceLoopbackHost } from "../shared.ts";
-import type { WorkspaceBrowserView } from "./state.ts";
-import { invalidArguments, readJsonObject, requestAcceptsJson, type JsonObject, type JsonValue } from "@atelier/core";
-import { createBrowserPresenter } from "./agent-tool.ts";
 import { registerWorkspacePresenter } from "@atelier/agent/server";
+import { invalidArguments, readJsonObject, requestAcceptsJson, type JsonObject, type JsonValue } from "@atelier/core";
+import { Icons } from "@atelier/design-system/icons";
+import { turboStreamResponse, type WorkspaceCommandContribution, type WorkspaceModule, type WorkspaceModuleCommandHandler } from "@atelier/shared";
 import { Type, type Static } from "typebox";
 import { Value } from "typebox/value";
+import { isWorkspaceLoopbackHost } from "../shared.ts";
+import { createBrowserPresenter } from "./agent-tool.ts";
+import { browserWorkViewPresentation, renderBrowserWorkViewBody } from "./render.ts";
+import type { WorkspaceBrowserView } from "./state.ts";
+import { createWorkspaceBrowserView, deleteWorkspaceBrowserState, deleteWorkspaceBrowserView, getWorkspaceBrowserView, listWorkspaceBrowserViews, setWorkspaceBrowserTarget } from "./state.ts";
+import { browserStaticFiles } from "./static.ts";
 
 let publishWorkspacePort: (workspaceId: string, port: number, protocol?: "http" | "https") => Promise<string>;
 async function previewUrl(workspaceId: string, view: WorkspaceBrowserView): Promise<string> {
@@ -99,7 +99,7 @@ export const browserWorkspaceModule: WorkspaceModule = {
     registerWorkspacePresenter("browser", (workspaceId) => createBrowserPresenter(workspaceId, {
       async presentBrowser(view) {
         await context.presentWorkView(workspaceId, { type: "browser", browserId: view.key });
-        context.broadcastWorkspace(workspaceId, turboStream("replace", browserFrameId(workspaceId, view.key), renderBrowserFrame(workspaceId, view, await previewUrl(workspaceId, view))));
+        context.invalidateWorkspace(workspaceId);
       },
     }));
   },
@@ -123,7 +123,7 @@ async function browserNavigateEndpoint(workspaceId: string, appKey: string, requ
     : new Response("browser view not found", { status: 404, headers: { "content-type": "text/plain; charset=utf-8" } });
   return wantsJson
     ? Response.json({ view: { key: view.key, label: view.label, url: view.targetUrl } })
-    : new Response(renderBrowserFrame(workspaceId, view, await previewUrl(workspaceId, view)), { headers: { "content-type": "text/html; charset=utf-8" } });
+    : turboStreamResponse("");
 }
 
 function browserNavigateJsonUrl(input: JsonObject): string {

@@ -44,7 +44,12 @@ function renderSample(sample?: HostSample, error?: string): string {
 }
 
 function closeTerminalForm(terminal: HostTerminal): string {
-  return `<form method="post" action="/host/terminals/${terminal.id}/terminate" data-turbo-frame="${terminalFrame}">${destructiveConfirmationHtml({ trigger: { type: "button", variant: "secondary", content: { kind: "icon-only", iconHtml: Icons.Close, label: `Close ${terminal.title} and stop its processes` } }, confirmCaption: "Stop processes & close", cancelCaption: "Keep running" })}</form>`;
+  return `<form method="post" action="/host/terminals/${terminal.id}/terminate" data-turbo-frame="${terminalFrame}">${destructiveConfirmationHtml({
+    id: `close_host_terminal_${terminal.id}`,
+    trigger: { type: "button", variant: "secondary", content: { kind: "icon-only", iconHtml: Icons.Close, label: `Close ${terminal.title} and stop its processes` } },
+    confirmCaption: "Stop processes & close",
+    cancelCaption: "Keep running",
+  })}</form>`;
 }
 function renderTerminals(terminals: HostTerminal[], selected?: string): string {
   const active = terminals.find(t => t.id === selected) ?? terminals[0];

@@ -1,4 +1,3 @@
-import { posix } from "node:path";
 import { actionItemHtml } from "@atelier/design-system/action-item";
 import { actionLinkHtml } from "@atelier/design-system/action-link";
 import { buttonHtml } from "@atelier/design-system/button";
@@ -9,14 +8,15 @@ import { Icons } from "@atelier/design-system/icons";
 import { toggleHtml } from "@atelier/design-system/toggle";
 import { domId, escapeHtml, workspaceFileOpenUrl, workspaceProxyUrl, type WorkspaceWorkViewPresentation } from "@atelier/shared";
 import { workspaceRoot } from "@atelier/workspace";
+import { posix } from "node:path";
 import type { FileEntry } from "./files.ts";
-import { defaultFilesViewId, type FilesView } from "./state.ts";
+import { defaultFilesViewId, filesDiskGeneration, filesNavigationRequest, type FilesView } from "./state.ts";
 
-export function filesTreeFrameId(workspaceId: string, viewId: string): string {
+function filesTreeFrameId(workspaceId: string, viewId: string): string {
   return domId("workspace", workspaceId, "files", viewId, "tree");
 }
 
-export function filesEditorFrameId(workspaceId: string, viewId: string): string {
+function filesEditorFrameId(workspaceId: string, viewId: string): string {
   return domId("workspace", workspaceId, "files", viewId, "editor");
 }
 
@@ -28,12 +28,8 @@ export function filesDirectoryFrameId(workspaceId: string, viewId: string, path:
   return `files_directory_${Buffer.from(`${workspaceId}\0${viewId}\0${path}`).toString("base64url")}`;
 }
 
-export function filesRefreshSignalId(workspaceId: string): string {
-  return domId("files_refresh_signal", workspaceId);
-}
-
 export function renderFilesRefreshSignal(workspaceId: string): string {
-  return `<span id="${filesRefreshSignalId(workspaceId)}" data-controller="files-refresh-signal" data-files-refresh-signal-workspace-id-value="${escapeHtml(workspaceId)}" hidden></span>`;
+  return `<span id="${domId("files_refresh_signal", workspaceId)}" data-controller="files-refresh-signal" data-files-refresh-signal-generation-value="${filesDiskGeneration(workspaceId)}" data-files-refresh-signal-workspace-id-value="${escapeHtml(workspaceId)}" hidden></span>`;
 }
 
 function filesPaneToggle(action: "expand" | "collapse"): string {
@@ -127,7 +123,7 @@ function renderEntryRow(workspaceId: string, viewId: string, entry: FileEntry, e
     element: {
       tag: destination ? "a" : "div",
 
-      attributesHtml: `role="treeitem" tabindex="-1" data-kind="${entry.kind}"${destination ? ` ${destination}` : ""}${directoryAttributes}${selectedAttribute}`,
+      attributesHtml: `role="treeitem" tabindex="-1" data-kind="${entry.kind}" data-files-path="${escapeHtml(entry.path)}"${destination ? ` ${destination}` : ""}${directoryAttributes}${selectedAttribute}`,
     },
   });
 }
@@ -161,8 +157,8 @@ export function renderFilesTreeFrame(workspaceId: string, viewId: string, entrie
     content: { kind: "caption", caption: "Cancel" },
     attributesHtml: 'data-action="files#cancel"',
   });
-  return `<turbo-frame id="${filesTreeFrameId(workspaceId, viewId)}" class="files-frame">
-    <div class="files-browser" data-controller="files" data-files-path-value="${escapeHtml(workspaceRoot)}" data-files-upload-url-value="/workspaces/${encodeURIComponent(workspaceId)}/file-browser/upload" data-action="dragenter->files#dragEnter dragover->files#dragOver dragleave->files#dragLeave drop->files#drop keydown->files#keydown">
+  return `<turbo-frame id="${filesTreeFrameId(workspaceId, viewId)}" data-turbo-permanent class="files-frame">
+    <div class="files-browser" data-controller="files" data-files-workspace-id-value="${escapeHtml(workspaceId)}" data-files-path-value="${escapeHtml(workspaceRoot)}" data-files-upload-url-value="/workspaces/${encodeURIComponent(workspaceId)}/file-browser/upload" data-action="atelier:files-refresh@window->files#diskChanged formdata->files#preserveExpandedDirectories dragenter->files#dragEnter dragover->files#dragOver dragleave->files#dragLeave drop->files#drop keydown->files#keydown">
       <form class="managed-list__filter files-filter" method="get" action="/workspaces/${encodeURIComponent(workspaceId)}/files" data-controller="server-filter" data-action="input->server-filter#submit" data-turbo-frame="${resultsFrameId}">
         <input type="hidden" name="filesView" value="${escapeHtml(viewId)}">
         <input class="text-field" type="search" name="q" placeholder="Filter files…" aria-label="Filter files by name" autocomplete="off">
@@ -174,9 +170,9 @@ export function renderFilesTreeFrame(workspaceId: string, viewId: string, entrie
   </turbo-frame>`;
 }
 
-export function renderLazyFilesTreeFrame(workspaceId: string, view: FilesView): string {
+function renderLazyFilesTreeFrame(workspaceId: string, view: FilesView): string {
   const query = new URLSearchParams({ filesView: view.id });
-  return `<turbo-frame id="${filesTreeFrameId(workspaceId, view.id)}" class="files-frame" src="/workspaces/${encodeURIComponent(workspaceId)}/files?${query}" loading="lazy"><div class="files-loading"><span class="status-spinner"></span> Loading files…</div></turbo-frame>`;
+  return `<turbo-frame id="${filesTreeFrameId(workspaceId, view.id)}" data-turbo-permanent class="files-frame" src="/workspaces/${encodeURIComponent(workspaceId)}/files?${query}" loading="lazy"><div class="files-loading"><span class="status-spinner"></span> Loading files…</div></turbo-frame>`;
 }
 
 function fileConflictDialog(): string {
@@ -232,7 +228,8 @@ export function renderFilesEditorFrame(workspaceId: string, view: FilesView): st
   if (!view.path) return `<turbo-frame id="${frameId}" class="files-editor-frame"><section class="file-editor-pane files-editor-empty"><header class="file-editor-toolbar work-view-toolbar"><span class="file-editor-path">Choose a file</span>${filesPaneToggle("expand")}</header><p>Select a file to view or edit. Drop files into the Files pane to upload, or create them in Terminal and choose Refresh.</p></section></turbo-frame>`;
   const contentUrl = `/workspaces/${encodeURIComponent(workspaceId)}/files-view/content?${new URLSearchParams({ path: view.path })}`;
   const markdown = /\.(?:md|markdown)$/i.test(view.path);
-  return `<turbo-frame id="${frameId}" class="files-editor-frame"><section class="file-editor-pane" data-controller="file-editor" data-file-editor-workspace-id-value="${escapeHtml(workspaceId)}" data-file-editor-path-value="${escapeHtml(view.path)}" data-file-editor-content-url-value="${escapeHtml(contentUrl)}" data-file-editor-line-value="${view.line ?? 0}" data-file-editor-column-value="${view.column ?? 0}">
+  const editorId = `${frameId}_${Bun.hash(view.path).toString(16)}`;
+  return `<turbo-frame id="${frameId}" class="files-editor-frame" data-controller="file-editor-navigation" data-file-editor-navigation-editor-value="${escapeHtml(editorId)}" data-file-editor-navigation-request-value="${filesNavigationRequest(workspaceId, view.id)}" data-file-editor-navigation-line-value="${view.line ?? 0}" data-file-editor-navigation-column-value="${view.column ?? 0}"><section class="file-editor-pane" id="${escapeHtml(editorId)}" data-turbo-permanent data-controller="file-editor" data-file-editor-workspace-id-value="${escapeHtml(workspaceId)}" data-file-editor-path-value="${escapeHtml(view.path)}" data-file-editor-content-url-value="${escapeHtml(contentUrl)}" data-file-editor-line-value="${view.line ?? 0}" data-file-editor-column-value="${view.column ?? 0}">
     <header class="file-editor-toolbar work-view-toolbar"><span class="file-editor-path" title="${escapeHtml(view.path)}">${escapeHtml(view.path)}</span><span class="file-editor-toolbar-actions">${markdown ? markdownDisplayToggle() : ""}<span class="file-editor-status" data-file-editor-target="status">Loading…</span>${refreshButton()}${selectedFileActions(workspaceId, view)}${filesPaneToggle("expand")}</span></header>
     <div class="file-editor-host" data-file-editor-target="host"><div class="file-editor-loading" data-file-editor-target="loading" role="status"><i class="status-spinner sm" aria-hidden="true"></i><span>Loading file…</span></div></div>
     ${markdown ? `<div class="file-editor-preview markdown" data-file-editor-target="preview" hidden></div>` : ""}
@@ -252,7 +249,7 @@ export function filesWorkViewPresentation(view: FilesView): WorkspaceWorkViewPre
 }
 
 export function renderFilesWorkViewBody(workspaceId: string, view: FilesView): string {
-  return `<section class="work-view-pane files-work-view"><div class="files-workbench${view.path ? "" : " is-files-pane-open"}" data-controller="files-view">
+  return `<section class="work-view-pane files-work-view"><div class="files-workbench${view.path ? "" : " is-files-pane-open"}" data-controller="files-view" data-files-view-selected-path-value="${escapeHtml(view.path ?? "")}" data-action="turbo:frame-load->files-view#updateSelection turbo:before-morph-attribute->files-view#preservePaneState">
     <div class="files-editor-canvas">${renderFilesEditorFrame(workspaceId, view)}</div>
     <aside class="files-navigator" aria-label="Files"><header class="files-navigator-header work-view-toolbar"><span class="files-navigator-path">${escapeHtml(workspaceRoot)}</span>${refreshButton()}${filesPaneToggle("collapse")}</header>${renderLazyFilesTreeFrame(workspaceId, view)}</aside>
   </div></section>`;

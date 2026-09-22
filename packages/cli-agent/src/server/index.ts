@@ -1,7 +1,7 @@
 import { renderTranscriptionComposerControl } from "@atelier/transcription/server";
 import { buttonHtml } from "@atelier/design-system/button";
 import { observableTerminalStaticFiles } from "@atelier/observable-terminal/server";
-import { escapeHtml, type WorkspaceModule } from "@atelier/shared";
+import { domId, escapeHtml, type WorkspaceModule } from "@atelier/shared";
 import type { CliAgentAdapter } from "./adapter.ts";
 import { createCliSessions } from "./sessions.ts";
 import { cliSocketHandler } from "./sockets.ts";
@@ -40,7 +40,7 @@ export function createCliAgentModule(adapter: CliAgentAdapter): WorkspaceModule 
           const transcriptionAttributes = canDictate
             ? 'data-transcription-composer-terminal-value="true" data-transcription-composer-unavailable-value="true"'
             : "";
-          return `<section class="cli-agent-body" data-controller="cli-terminal${canDictate ? " transcription-composer" : ""}" ${transcriptionAttributes} data-cli-terminal-url-value="${escapeHtml(url)}" data-action="transcription:segment->cli-terminal#dictate transcription:focus->cli-terminal#focus atelier:workspace-pane-visible@window->cli-terminal#refresh atelier:theme-change@document->cli-terminal#theme">
+          return `<section id="${domId("cli_agent", workspaceId, conversationId)}" data-turbo-permanent class="cli-agent-body" data-controller="cli-terminal${canDictate ? " transcription-composer" : ""}" ${transcriptionAttributes} data-cli-terminal-url-value="${escapeHtml(url)}" data-action="transcription:segment->cli-terminal#dictate transcription:focus->cli-terminal#focus atelier:workspace-pane-visible@window->cli-terminal#refresh atelier:theme-change@document->cli-terminal#theme">
             ${canDictate ? `<div class="cli-terminal-toolbar"><span class="cli-terminal-dictation-preview" data-transcription-composer-target="preview"></span>${renderTranscriptionComposerControl({ disabled: true })}</div>` : ""}
             <div class="cli-terminal-status" role="status">${session.error ? failureStatus(session.error) : terminalStatus(terminal)}</div>
             <div class="cli-terminal-status" data-cli-terminal-target="connectionStatus" role="status" hidden>Connection lost. ${retryButton()}</div>

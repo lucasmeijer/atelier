@@ -1,8 +1,9 @@
 import type { ModelRef } from "@atelier/llm/server";
-import type { SessionImageRef } from "./transcript.ts";
 import { domId } from "./html.ts";
+import type { SessionImageRef } from "./transcript.ts";
 
 export interface AgentRenderContext {
+  streamingText?: (key: string, source: string) => { stableHtml: string; tailHtml: string };
   workspaceId: string;
   conversationId: string;
   model?: ModelRef;
@@ -37,6 +38,7 @@ export const ids = {
   itemSummaryStatus: (ctx: AgentRenderContext, key: string) => domId(`${prefix(ctx)}_summary_status`, key),
   itemSummaryMetadata: (ctx: AgentRenderContext, key: string) => domId(`${prefix(ctx)}_summary_metadata`, key),
   detailFrame: (ctx: AgentRenderContext, key: string) => domId(`${prefix(ctx)}_detail`, key),
+  completionCatalog: (ctx: AgentRenderContext) => `${prefix(ctx)}_completion_catalog`,
   stats: (ctx: AgentRenderContext) => `${prefix(ctx)}_stats`,
   actions: (ctx: AgentRenderContext) => `${prefix(ctx)}_actions`,
   abortForm: (ctx: AgentRenderContext) => `${prefix(ctx)}_abort_form`,

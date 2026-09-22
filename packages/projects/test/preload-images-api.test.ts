@@ -2,8 +2,8 @@ import { expect, test } from "bun:test";
 import { mkdtemp, rm } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
-import { addProject, getProjectConfiguration } from "../src/project.ts";
 import { createProjectRoutes } from "../../../apps/web/src/server/project-routes.ts";
+import { addProject, getProjectConfiguration } from "../src/project.ts";
 
 test("project preload API updates future creation settings and rejects malformed requests without mutation", async () => {
   const previous = process.env.ATELIER_DATA_DIR;
@@ -13,8 +13,7 @@ test("project preload API updates future creation settings and rejects malformed
     const { project } = await addProject("/tmp/example");
     const routes = createProjectRoutes({
       referencingWorkspaces: () => [],
-      refreshWorkspacePaneCollections: async () => "",
-      refreshProjectWarnings: async () => { throw new Error("preload changes must not invalidate existing workspaces"); },
+      invalidatePresentation: () => { throw new Error("preload changes must not invalidate existing workspaces"); },
       renderLaunchComposer: async () => "",
       createOnboardingWorkspace: async () => { throw new Error("unused"); },
       createAgentWorkspace: async () => new Response(),

@@ -1,6 +1,6 @@
 /// <reference lib="dom" />
 
-import { createTerminal, KeyModifiers, type TerminalTheme } from "@gespenst/core";
+import type { TerminalTheme } from "@gespenst/core";
 import { encodeObservableTerminalMessage } from "../shared/index.ts";
 
 declare const ATELIER_GHOSTTY_WASM_URL: string;
@@ -158,6 +158,8 @@ async function initializeTerminalViewer(options: ObservableTerminalViewerOptions
   const fontSize = options.fontSize ?? (options.mode === "fixed-readonly" ? 11 : 13);
   const fontFamily = options.fontFamily ?? "JetBrains Mono, ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace";
 
+  const { createTerminal, KeyModifiers } = await import("@gespenst/core");
+  if (isDisposed()) return;
   const term = await createTerminal({
     container: mount,
     fontSizePx: fontSize,

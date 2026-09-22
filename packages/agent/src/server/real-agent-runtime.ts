@@ -1,35 +1,31 @@
-import { resolveNewWorkspaceAgentModel, launchComposerThinkingSettings, configuredModelOptionViews } from "./model-state.ts";
-import { applyTranscriptContributions } from "./transcript-contributions.ts";
 import { isJsonObject } from "@atelier/core";
+import { hasConnectedModelProvider } from "@atelier/llm/server";
 import { contentText, type UserMessage } from "@earendil-works/pi-ai";
 import type { CompactionEntry, SessionEntry } from "@earendil-works/pi-coding-agent";
+import { isFinalAssistantTextEvent } from "./assistant-text-phase.ts";
 import { BaseAgentRuntime } from "./base-agent-runtime.ts";
 import { collectCacheMisses, detectCacheMiss } from "./cache-miss.ts";
-import { turboStream } from "./html.ts";
-import { isFinalAssistantTextEvent } from "./live-presentation.ts";
-import { createPiSession, type AgentSessionDelegation } from "./pi-session.ts";
 import { getModelThinkingLevel } from "./model-preferences.ts";
-import { hasConnectedModelProvider } from "@atelier/llm/server";
+import { configuredModelOptionViews, launchComposerThinkingSettings, resolveNewWorkspaceAgentModel } from "./model-state.ts";
+import { createPiSession, type AgentSessionDelegation } from "./pi-session.ts";
 import type { AgentStatsView } from "./render-composer.ts";
-import { ids } from "./render-context.ts";
 import {
-  renderTranscript,
-  renderTranscriptItem,
   type AgentModelContextView,
-  type AgentToolDefinitionView,
+  type AgentToolDefinitionView
 } from "./render-transcript.ts";
 import { contextUsagePercent, manualCompactionAvailable, terminalCompactionNotice } from "./runtime-status.ts";
 import type { RewindMode, SubmitOptions, WorkspaceAgentRuntime, WorkspaceAgentRuntimeOptions } from "./runtime-types.ts";
 import { AgentServiceTierState, supportsFastMode, type AgentServiceTier } from "./service-tier.ts";
 import { recordsFromSessionEntries, sessionContentImages } from "./session-records.ts";
 import { replaceWorkspaceAgentSession, type WorkspaceAgentConversationInfo } from "./session-store.ts";
-import { expandWorkspaceSkillCommand } from "./skills.ts";
 import { renderAgentSessionTree, updateAgentSessionTreeLabel, type TreeFilterMode } from "./session-tree.ts";
+import { expandWorkspaceSkillCommand } from "./skills.ts";
+import { applyTranscriptContributions } from "./transcript-contributions.ts";
 import {
   assistantErrorText,
-  finalAssistantTextIndexes,
   buildTranscript,
   finalAssistantText,
+  finalAssistantTextIndexes,
   isFinalAssistantMessage,
   isToolViewDetails,
   type SessionImageRef,
@@ -88,8 +84,8 @@ export class RealAgentRuntime extends BaseAgentRuntime {
     this.unsubscribeCosts = this.delegation.attachment?.costs?.subscribe(() => {
       void this.refreshStats().catch((error) => console.error("Could not refresh Agent costs", normalizedPromiseError(error)));
     });
-    this.captureContributedRows();
-    this.unsubscribeTranscript = this.delegation.transcript?.subscribe(() => this.refreshContributedRows());
+
+    this.unsubscribeTranscript = this.delegation.transcript?.subscribe(() => this.invalidatePresentation());
   }
 
   private detachContributions(): void {
@@ -285,7 +281,7 @@ export class RealAgentRuntime extends BaseAgentRuntime {
     const entry = this.latestSessionMessage((message) => message?.role === "toolResult" && message.toolCallId === callId);
     if (!entry) return;
     item.tool.resultImages = sessionContentImages(entry);
-    this.streamActiveToolContent(item);
+    this.invalidatePresentation();
   }
 
   private async handleEvent(event: any): Promise<void> {
@@ -413,7 +409,7 @@ export class RealAgentRuntime extends BaseAgentRuntime {
         // prompt busy until agent_settled, independent of willRetry.
         if (!event.willRetry && !this.turnTiming) this.setBusy(false);
         if (event.reason === "manual" && !event.willRetry) await this.emitTurnFinished();
-        await this.refreshTranscript();
+        this.invalidatePresentation();
         await this.refreshStats();
         const notice = terminalCompactionNotice(event);
         if (notice) this.notice(notice.level, notice.message);
@@ -483,9 +479,7 @@ export class RealAgentRuntime extends BaseAgentRuntime {
         // prompt was never presented and must not keep lifecycle state alive.
         if (thisRuntime.pendingAcceptedPrompt === acceptedPrompt) {
           thisRuntime.pendingAcceptedPrompt = undefined;
-          void thisRuntime.streamRendered(async () => await thisRuntime.authoritativePresentationUpdate()).catch((error) => {
-            console.error("Could not refresh Agent after handled prompt", normalizedPromiseError(error));
-          });
+          thisRuntime.invalidatePresentation();
         }
       })
       // Pi extensions can reject with arbitrary JavaScript values. Before
@@ -637,7 +631,7 @@ export class RealAgentRuntime extends BaseAgentRuntime {
       try { await created.session.abort(); } finally { await created.delegation.dispose(); }
       throw error;
     }
-    await this.streamRendered(async () => await this.authoritativePresentationUpdate());
+    this.invalidatePresentation();
   }
 
   treeHtml(options: { filter: TreeFilterMode; query: string }): string {
@@ -661,15 +655,13 @@ export class RealAgentRuntime extends BaseAgentRuntime {
       this.serviceTiers.reload();
       if (options.summarize) {
         await this.finishBranchSummary();
-        void (async () => {
-          await this.refreshTranscript();
-          await this.refreshStats();
-        })().catch((error) => {
+        this.invalidatePresentation();
+        void this.refreshStats().catch((error) => {
           console.error("Could not refresh Agent after tree summarization", normalizedPromiseError(error));
         });
         return result.editorText ?? "";
       }
-      await this.refreshTranscript();
+      this.invalidatePresentation();
       await this.refreshStats();
       return result.editorText ?? "";
     } finally {
@@ -690,11 +682,7 @@ export class RealAgentRuntime extends BaseAgentRuntime {
       this.beginBranchSummary();
       try {
         this.notice("info", "Summarizing the abandoned branch…");
-        await this.streamRendered(async () => {
-          const truncated = this.canonicalItems(target);
-          if (this.live) truncated.push(...this.liveItemsForDisplay(this.live));
-          return turboStream("update", ids.transcript(this.ctx), renderTranscript(this.ctx, truncated, this.modelContext()));
-        });
+        this.invalidatePresentation();
         this.assertActive();
         const navigation = this.session.navigateTree(target, { summarize: true, customInstructions: customInstructions?.trim() || undefined });
         started = true;
@@ -715,10 +703,8 @@ export class RealAgentRuntime extends BaseAgentRuntime {
           this.finishLivePresentation();
           await this.finishBranchSummary();
         }
-        void (async () => {
-          await this.refreshTranscript();
-          await this.refreshStats();
-        })().catch((error) => {
+        this.invalidatePresentation();
+        void this.refreshStats().catch((error) => {
           console.error("Could not refresh Agent after rewind summarization", normalizedPromiseError(error));
         });
       }
@@ -744,7 +730,7 @@ export class RealAgentRuntime extends BaseAgentRuntime {
       await this.session.navigateTree(target, { summarize: false });
       this.selectBranch();
       this.serviceTiers.reload();
-      await this.refreshTranscript();
+      this.invalidatePresentation();
       await this.refreshStats();
     })());
   }
@@ -761,7 +747,6 @@ export class RealAgentRuntime extends BaseAgentRuntime {
     await this.emitTurnFinished();
   }
 }
-
 
 export async function createRealRuntime(agent: WorkspaceAgentConversationInfo, options: WorkspaceAgentRuntimeOptions = {}): Promise<WorkspaceAgentRuntime> {
   const created = await createPiSession(agent, options);

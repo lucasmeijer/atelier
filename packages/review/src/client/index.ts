@@ -7,7 +7,7 @@ import { Icons } from "@atelier/design-system/icons";
 import { setToggleValue, type ToggleChangeEvent } from "@atelier/design-system/toggle/client";
 import { isWorkspacePaneVisible, phoneLayoutMediaQuery, type WorkspaceClientModule } from "@atelier/shared";
 import { isReviewDiffHighlighting, isReviewDiffOverflow, reviewCommentsPrompt, type ReviewCommentModel, type ReviewDiffHighlighting, type ReviewDiffLayout, type ReviewDiffOverflow, type ReviewViewport } from "../model.ts";
-import { reviewDiffOptions } from "../pierre.ts";
+import { reviewDiffOptions } from "@atelier/syntax/diff-options";
 
 type StimulusControllerConstructor = new (...args: never[]) => { element: Element };
 
@@ -23,10 +23,6 @@ type DraftModel = {
 type AnnotationMetadata = ({ kind: "comment" } & ReviewCommentModel) | DraftModel;
 type DiffModel = { fileDiff: FileDiffMetadata; comments: ReviewCommentModel[] };
 type FileDiffConstructor = typeof import("@pierre/diffs")["FileDiff"];
-
-declare global {
-  interface Window { Turbo?: { renderStreamMessage(html: string): void } }
-}
 
 function annotation(comment: ReviewCommentModel): DiffLineAnnotation<AnnotationMetadata> {
   return { side: comment.side, lineNumber: comment.startLine, metadata: { kind: "comment", ...comment } };
@@ -70,8 +66,7 @@ function nextAnimationFrame(): Promise<void> {
 function requestReviewFile(event: Event): void {
   if (!(event.currentTarget instanceof HTMLDetailsElement)) throw new Error("Review file loading requires details");
   if (event.type === "toggle" && !event.currentTarget.open) return;
-  const frame = event.currentTarget.querySelector<HTMLElement>(":scope > turbo-frame[data-src]")!;
-  if (!frame.hasAttribute("src")) frame.setAttribute("src", frame.dataset.src!);
+  event.currentTarget.querySelector<HTMLElement>(":scope > [data-controller~=live-surface]")!.dispatchEvent(new Event("live:activate"));
 }
 
 function parseDiffModel(script: HTMLScriptElement): DiffModel {
@@ -126,32 +121,15 @@ function createReviewController(Controller: StimulusControllerConstructor) {
     private readonly beforeMorphElement = (event: Event): void => {
       if (!(event.target instanceof HTMLElement)) return;
       const current = event.target;
-      // Stats arrive in the body stream; do not restart the initial lazy stats request.
-      if (current.hasAttribute("data-review-stats-frame")) {
-        event.preventDefault();
-        return;
-      }
       // Pierre owns the shadow DOM and its expanded context; morph only its model.
       if (current.matches("diffs-container")) {
         event.preventDefault();
         return;
       }
-      if (!current.matches("turbo-frame[data-src], turbo-frame[data-review-more-frame][src]")) return;
-      // SAFETY: Turbo supplies newElement when morphing, but not when removing a node.
-      const incoming = (event as CustomEvent<{ newElement?: Element }>).detail.newElement;
-      if (!incoming) return;
-      // Keep the loaded frame instead of morphing it into the lazy placeholder.
-      // Its own response is morphed by Turbo's refresh="morph" frame renderer.
-      event.preventDefault();
-      if (current.hasAttribute("src")) {
-        // SAFETY: The selector above identifies a Turbo frame with reload().
-        void (current as HTMLElement & { reload(): Promise<void> }).reload();
-      }
     };
     private readonly beforeMorphAttribute = (event: Event): void => {
       // SAFETY: Turbo before-morph-attribute supplies the changed attribute name.
       const { attributeName } = (event as CustomEvent<{ attributeName: string }>).detail;
-      if (event.target instanceof HTMLDetailsElement && attributeName === "open") event.preventDefault();
       if (event.target instanceof HTMLElement && event.target.matches(".review-file > summary") && attributeName === "aria-current") event.preventDefault();
     };
     private readonly afterMorphElement = (event: Event): void => {
@@ -207,10 +185,7 @@ function createReviewController(Controller: StimulusControllerConstructor) {
       this.refreshing = true;
       try {
         const url = `/workspaces/${encodeURIComponent(this.workspaceIdValue)}/review/refresh`;
-        const response = await fetch(url, { method: "POST", headers: { Accept: "text/vnd.turbo-stream.html" } });
-        if (!response.ok) throw new Error(await response.text());
-        const stream = await response.text();
-        if (this.element.isConnected && stream) window.Turbo?.renderStreamMessage(stream);
+        await this.post(url);
       } finally {
         this.refreshing = false;
       }
@@ -383,7 +358,7 @@ function createReviewController(Controller: StimulusControllerConstructor) {
 
     private async hydrateHost(host: HTMLElement): Promise<void> {
       if (this.hydratedHosts.has(host)) return;
-      const { FileDiff } = await import("@pierre/diffs");
+      const [{ FileDiff }] = await Promise.all([import("@pierre/diffs"), import("@atelier/syntax/pierre")]);
       if (!host.isConnected || this.hydratedHosts.has(host)) return;
       this.hydratedHosts.add(host);
       this.hydrateDiff(host, FileDiff);
@@ -608,16 +583,17 @@ function createReviewController(Controller: StimulusControllerConstructor) {
       const endpoint = draft.commentId
         ? `/workspaces/${encodeURIComponent(this.workspaceIdValue)}/review/comments/${encodeURIComponent(draft.commentId)}/update`
         : `/workspaces/${encodeURIComponent(this.workspaceIdValue)}/review/comments`;
-      const response = await fetch(endpoint, { method: "POST", body: data, headers: { Accept: "text/vnd.turbo-stream.html" } });
-      if (!response.ok) throw new Error(await response.text());
+      await this.post(endpoint, data);
       this.clearDraft();
-      window.Turbo?.renderStreamMessage(await response.text());
     }
 
     private async deleteComment(id: string): Promise<void> {
-      const response = await fetch(`/workspaces/${encodeURIComponent(this.workspaceIdValue)}/review/comments/${encodeURIComponent(id)}/delete`, { method: "POST", headers: { Accept: "text/vnd.turbo-stream.html" } });
+      await this.post(`/workspaces/${encodeURIComponent(this.workspaceIdValue)}/review/comments/${encodeURIComponent(id)}/delete`);
+    }
+
+    private async post(url: string, body?: FormData): Promise<void> {
+      const response = await fetch(url, { method: "POST", body, headers: { Accept: "text/vnd.turbo-stream.html" } });
       if (!response.ok) throw new Error(await response.text());
-      window.Turbo?.renderStreamMessage(await response.text());
     }
 
     copyCommentsToComposer(): void {
@@ -670,7 +646,10 @@ function createDeletionReviewController(Controller: StimulusControllerConstructo
     private hydratedHosts = new WeakSet<HTMLElement>();
 
     requestFile(event: Event): void {
-      requestReviewFile(event);
+      if (!(event.currentTarget instanceof HTMLDetailsElement)) throw new Error("Deletion review loading requires details");
+      if (!event.currentTarget.open) return;
+      const frame = event.currentTarget.querySelector<HTMLElement>(":scope > turbo-frame[data-src]")!;
+      if (!frame.hasAttribute("src")) frame.setAttribute("src", frame.dataset.src!);
     }
 
     diffTargetConnected(host: HTMLElement): void {
@@ -684,7 +663,7 @@ function createDeletionReviewController(Controller: StimulusControllerConstructo
 
     private async hydrateHost(host: HTMLElement): Promise<void> {
       if (this.hydratedHosts.has(host)) return;
-      const { FileDiff } = await import("@pierre/diffs");
+      const [{ FileDiff }] = await Promise.all([import("@pierre/diffs"), import("@atelier/syntax/pierre")]);
       if (!host.isConnected || this.hydratedHosts.has(host)) return;
       this.hydratedHosts.add(host);
       const { model, container, prerenderedHTML } = serverRenderedDiff(host);

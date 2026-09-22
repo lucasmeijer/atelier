@@ -8,7 +8,7 @@ import { Value } from "typebox/value";
 import { parseDiffFromFile, processPatch, type FileDiffMetadata } from "@pierre/diffs";
 import { diffStats, type DiffOperation } from "./diff.ts";
 import { embeddedBashCommand, formatBashCommandForDisplay, highlightedBashCommandHtml } from "./embedded-code.ts";
-import { escapeHtml } from "./html.ts";
+import { domId, escapeHtml } from "./html.ts";
 import { isBashTool, formatDuration, formatTokens, type ToolView, type ToolViewDetails } from "./transcript.ts";
 import { ids, sessionImageUrl, transcriptItemPath, type AgentRenderContext } from "./render-context.ts";
 import { codeBlockHtml, detailFullscreen, fullscreenAttributes, transcriptActionItemHtml } from "./render-markup.ts";
@@ -78,13 +78,6 @@ function toolSummaryMetadataHtml(tool: ToolView): string {
   return `<span class="agent-tool-elapsed agent-duration-slot" data-controller="agent-elapsed" data-agent-elapsed-since-value="${tool.startedAt}" data-agent-elapsed-max-value="${timeout}"><span data-agent-elapsed-target="time">${formatDuration(Date.now() - tool.startedAt)} / ${formatDuration(timeout * 1000)}</span></span>`;
 }
 
-export interface ActiveToolContent {
-  status: string;
-  summary: string;
-  metadata: string;
-  detail?: string;
-}
-
 export interface ToolPresentation {
   showsDetail: boolean;
   autoOpenOnReveal: boolean;
@@ -96,23 +89,12 @@ export function toolPresentation(tool: ToolView): ToolPresentation {
   return { showsDetail, autoOpenOnReveal: showsDetail && tool.name === "edit" };
 }
 
-export function renderActiveToolContent(ctx: AgentRenderContext, key: string, original: ToolView): ActiveToolContent {
-  const tool = toolForRender(original);
-  const presentation = toolPresentation(tool);
-  return {
-    status: statusHtml(tool.status),
-    summary: escapeHtml(toolSummaryText(tool)),
-    metadata: toolSummaryMetadataHtml(tool),
-    detail: presentation.showsDetail ? renderToolDetail(ctx, key, tool, 100) : undefined,
-  };
-}
-
 function tailFrameAttributes(ctx: AgentRenderContext, key: string): string {
   return `id="${ids.detailFrame(ctx, key)}" data-controller="agent-tail-frame" data-action="turbo:frame-load->agent-tail-frame#loaded"`;
 }
 
 function lazyTranscriptItemFrame(ctx: AgentRenderContext, key: string): string {
-  return `<turbo-frame ${tailFrameAttributes(ctx, key)} data-agent-lazy-detail-target="frame" data-src="${escapeHtml(transcriptItemPath(ctx, key))}"></turbo-frame>`;
+  return `<turbo-frame ${tailFrameAttributes(ctx, key)} data-turbo-permanent data-agent-lazy-detail-target="frame" data-src="${escapeHtml(transcriptItemPath(ctx, key))}"></turbo-frame>`;
 }
 
 export function renderToolCard(ctx: AgentRenderContext, key: string, original: ToolView, options: { open?: boolean; live?: boolean } = {}): string {
@@ -137,10 +119,6 @@ export function renderToolCard(ctx: AgentRenderContext, key: string, original: T
 
 function sourceRegionHtml(title: string, body: string, className = "agent-source-region"): string {
   return detailFullscreen(title, `<section class="${className}"><div class="agent-region-header">${escapeHtml(title)}</div>${body}</section>`);
-}
-
-function sourceRegion(title: string, code: string, path: string | undefined, className?: string): string {
-  return sourceRegionHtml(title, codeBlockHtml(code, path, "agent-tool-code"), className);
 }
 
 interface TextWindow {
@@ -237,7 +215,8 @@ function renderBashDetail(ctx: AgentRenderContext, key: string, tool: ToolView, 
   const commandHtml = destinationHtml + renderBashCommand(command, tool.status === "streaming");
   if (tool.status === "streaming") return `<div class="agent-tool-detail">${commandHtml}</div>`;
   if (tool.status === "running") {
-    const terminal = tool.tmuxSession && tool.terminalVisible ? `<section class="agent-tool-region agent-bash-output agent-terminal-awaiting-output"><div class="agent-region-header">Live terminal</div><div class="agent-terminal-viewport"><div class="agent-tool-term observable-terminal-host" data-controller="agent-term" data-agent-term-workspace-id-value="${escapeHtml(destination ?? ctx.workspaceId)}" data-agent-term-session-value="${escapeHtml(tool.tmuxSession)}"></div></div></section>` : "";
+    // The viewer owns its generated DOM and the awaiting-output visibility state.
+    const terminal = tool.tmuxSession && tool.terminalVisible ? `<section id="${domId(ids.item(ctx, key), "terminal", destination ?? ctx.workspaceId, tool.tmuxSession)}" data-turbo-permanent class="agent-tool-region agent-bash-output agent-terminal-awaiting-output"><div class="agent-region-header">Live terminal</div><div class="agent-terminal-viewport"><div class="agent-tool-term observable-terminal-host" data-controller="agent-term" data-agent-term-workspace-id-value="${escapeHtml(destination ?? ctx.workspaceId)}" data-agent-term-session-value="${escapeHtml(tool.tmuxSession)}"></div></div></section>` : "";
     return `<div class="agent-tool-detail agent-bash-detail">${commandHtml}${terminal}</div>`;
   }
   return `<div class="agent-tool-detail agent-bash-detail">${commandHtml}${renderBashResultViews(ctx, key, tool, count)}</div>`;
@@ -326,10 +305,6 @@ export function renderToolDetail(ctx: AgentRenderContext, key: string, tool: Too
 function toolClass(name: string): string {
   const slug = name.toLowerCase().replace(/[^a-z0-9_-]+/g, "-").replace(/^-+|-+$/g, "") || "unknown";
   return `tool-${slug}`;
-}
-
-function domIdFragment(text: string): string {
-  return text.toLowerCase().replace(/[^a-z0-9_-]+/g, "-").replace(/^-+|-+$/g, "") || "item";
 }
 
 function toolArgs(tool: ToolView): JsonObject | undefined {

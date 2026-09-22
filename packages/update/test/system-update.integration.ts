@@ -3,15 +3,15 @@
  * injected dependency is discovery of fixture releases instead of public GHCR.
  * No browser or UI assertions. Retains fixtures on failure for diagnosis.
  */
-import assert from "node:assert/strict";
-import { mkdir, readFile, writeFile } from "node:fs/promises";
-import { randomUUID } from "node:crypto";
-import { UpdateManager } from "../src/server/index.ts";
-import { prepareUpdate } from "../src/server/docker.ts";
-import { readStoredReleaseChannel, writeStoredReleaseChannel } from "../src/server/settings-store.ts";
 import { createAtelierEventBus } from "@atelier/core";
+import assert from "node:assert/strict";
+import { randomUUID } from "node:crypto";
+import { mkdir, readFile, writeFile } from "node:fs/promises";
 import { Type } from "typebox";
 import { Value } from "typebox/value";
+import { prepareUpdate } from "../src/server/docker.ts";
+import { UpdateManager } from "../src/server/index.ts";
+import { readStoredReleaseChannel, writeStoredReleaseChannel } from "../src/server/settings-store.ts";
 
 process.env.ATELIER_DATA_DIR = "/data/app";
 
@@ -74,13 +74,13 @@ function testContext() {
     ctx: {
       events: createAtelierEventBus(),
       registry: { setAgentBusy: () => {}, requestSurfaceAttention: () => undefined, requestAttention: () => undefined },
-      globalSidebarContributions: { set: (_id: string, html?: string, options?: { broadcastHtml?: string }) => {
+      globalSidebarContributions: { set: (_id: string, html?: string, regions?: readonly import("@atelier/shared").LiveRegion[]) => {
         sidebar.push(html ?? "");
-        broadcasts.push(options?.broadcastHtml ?? "");
+        broadcasts.push(regions?.map(region => region.html).join("") ?? "");
       } },
       createWorkView: async () => {},
       presentWorkView: async () => {},
-      broadcastWorkspace: () => {},
+      invalidateWorkspace: () => {},
       deleteCurrentWorkspace: async () => ({ deleted: false, blocked: false }),
       registerSocketHandler: () => {},
       publishWorkspacePort: async () => { throw new Error("not used"); },
@@ -90,7 +90,6 @@ function testContext() {
     },
   };
 }
-
 
 const context = testContext().ctx;
 async function restored(previousAppId: string) {

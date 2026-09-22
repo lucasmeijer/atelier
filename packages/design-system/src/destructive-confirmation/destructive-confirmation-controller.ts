@@ -1,8 +1,6 @@
 import { Controller } from "@hotwired/stimulus";
 import { PopupPosition } from "../popup/popup-position.ts";
 
-let confirmationSequence = 0;
-
 /** A top-layer confirmation, with an in-flow opt-out and native form owner. */
 export class DestructiveConfirmationController extends Controller<HTMLElement> {
   private triggerButton!: HTMLButtonElement;
@@ -17,13 +15,13 @@ export class DestructiveConfirmationController extends Controller<HTMLElement> {
     this.confirmation = this.element.querySelector<HTMLElement>(".destructive-confirmation__confirm")!;
     this.initialLabel = this.triggerButton.getAttribute("aria-label");
     this.initialVariant = ["primary", "secondary", "danger"].find((variant) => this.triggerButton.classList.contains(variant))!;
-    this.confirmation.id = `destructive-confirmation-${++confirmationSequence}`;
-    this.triggerButton.setAttribute("popovertarget", this.confirmation.id);
-    this.triggerButton.setAttribute("aria-controls", this.confirmation.id);
-    this.triggerButton.setAttribute("aria-expanded", "false");
     this.position = new PopupPosition(this.triggerButton, this.confirmation, "adjacent");
     this.confirmation.addEventListener("beforetoggle", this.prepareState);
     this.confirmation.addEventListener("toggle", this.syncOpenState);
+  }
+
+  preserveOpenState(event: Event): void {
+    if (event.target === this.element && this.confirmation.matches(":popover-open")) event.preventDefault();
   }
 
   disconnect(): void {

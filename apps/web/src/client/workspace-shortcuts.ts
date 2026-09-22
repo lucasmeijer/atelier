@@ -1,10 +1,9 @@
-import { Controller } from "@hotwired/stimulus";
 import { actionItemElement, actionItemHtml } from "@atelier/design-system/action-item";
 import { dialogHtml } from "@atelier/design-system/dialog";
 import { Icons } from "@atelier/design-system/icons";
 import { escapeHtml, type WorkspaceClientCommand, type WorkspacePaletteItem } from "@atelier/shared";
+import { Controller } from "@hotwired/stimulus";
 import { submitFormWithFirstButton } from "./form-submission.ts";
-import { cableRequestHeaders } from "./workspace-cable.ts";
 import { clientHooks, type PaletteResult } from "./workspace-client-hooks.ts";
 import { registerWorkspaceControllers, residencyController, workspaceNavigationController } from "./workspace-controller-registry.ts";
 
@@ -568,7 +567,7 @@ class AtelierShortcutsController extends Controller<HTMLElement> {
     try {
       const response = await fetch(`/workspaces/${encodeURIComponent(workspaceId)}/commands/${encodeURIComponent(commandId)}`, {
         method: "POST",
-        headers: cableRequestHeaders({ "Accept": "text/vnd.turbo-stream.html" }),
+        headers: { "Accept": "text/vnd.turbo-stream.html" },
       });
       if (!response.ok) throw new Error(`HTTP ${response.status}`);
       const html = await response.text();

@@ -1,12 +1,12 @@
-import { currentNotificationTurn, setTurnNotification } from "../../src/server/turn-notifications.ts";
 import { createAtelierEventBus } from "@atelier/core";
 import { expect, spyOn, test } from "bun:test";
 import { RealAgentRuntime } from "../../src/server/real-agent-runtime.ts";
 import type { AgentStatsView } from "../../src/server/render-composer.ts";
 import { AgentServiceTierState } from "../../src/server/service-tier.ts";
-import { subscribeWorkspaceAgentBusy } from "../../src/server/workspace-agent-busy.ts";
-import { turnTimingEntryType } from "../../src/server/turn-timing.ts";
 import { buildTranscript, type TranscriptItem } from "../../src/server/transcript.ts";
+import { currentNotificationTurn, setTurnNotification } from "../../src/server/turn-notifications.ts";
+import { turnTimingEntryType } from "../../src/server/turn-timing.ts";
+import { subscribeWorkspaceAgentBusy } from "../../src/server/workspace-agent-busy.ts";
 
 interface Deferred<Value> {
   promise: Promise<Value>;
@@ -112,13 +112,6 @@ class InspectableAgentRuntime extends RealAgentRuntime {
     super.liveNote(text, tone);
   }
 
-  readonly toolContentUpdates: Array<{ prefix?: string; status: string }> = [];
-
-  protected override streamActiveToolContent(item: Extract<TranscriptItem, { type: "tool" }>, morphDetail = true): void {
-    this.toolContentUpdates.push({ prefix: item.tool.argsStream, status: item.tool.status });
-    super.streamActiveToolContent(item, morphDetail);
-  }
-
   protected override canonicalItems(_leafId?: string): TranscriptItem[] {
     return [];
   }
@@ -167,103 +160,59 @@ function runtimeFor(session: any, events = createAtelierEventBus()): Inspectable
   );
 }
 
-test("tool deltas update authoritative state immediately and coalesce server publications", async () => {
+test("tool deltas update authoritative state immediately", async () => {
   const { session, emit } = fakeSession(deferred());
   const runtime = runtimeFor(session);
   const subscription = runtime.subscribeLivePresentation(() => {});
-  await subscription.ready;
+
   const event = (inner: ToolStreamEvent) => emit({ type: "message_update", assistantMessageEvent: inner });
   await startPrompt(session, emit);
   const innerSubscription = runtime.subscribeCurrentTurn(() => {});
-  await innerSubscription.ready;
+
   event({ type: "toolcall_start", contentIndex: 0, partial: { content: [{ name: "write" }] } });
   const args = { path: "coalescing.js", content: "const n = 42;" };
   const json = JSON.stringify(args);
   for (const delta of json) event({ type: "toolcall_delta", delta });
   const item = runtime.inspectLiveItems().flatMap((item) => item.type === "working" ? item.items : [item]).find((item) => item.type === "tool");
   expect(item?.type === "tool" && item.tool.argsStream).toBe(json);
-  expect(runtime.toolContentUpdates).toHaveLength(0);
   await Bun.sleep(70);
-  expect(runtime.toolContentUpdates).toEqual([{ prefix: json, status: "streaming" }]);
   event({ type: "toolcall_delta", delta: " " });
   event({ type: "toolcall_end", toolCall: { id: "call", name: "write", arguments: args } });
   expect(item?.type === "tool" && item.tool.status).toBe("running");
-  const count = runtime.toolContentUpdates.length;
   await Bun.sleep(70);
-  expect(runtime.toolContentUpdates).toHaveLength(count);
   innerSubscription.unsubscribe();
   subscription.unsubscribe();
 });
 
-test("completed bash rebuilds streamed shell markup with embedded languages", async () => {
+test("large tool arguments retain the authoritative prefix and complete immediately", async () => {
   const { session, emit } = fakeSession(deferred());
   const runtime = runtimeFor(session);
   const subscription = runtime.subscribeLivePresentation(() => {});
-  await subscription.ready;
-  await startPrompt(session, emit);
-  const updates: string[] = [];
-  const innerSubscription = runtime.subscribeCurrentTurn((html) => updates.push(html));
-  await innerSubscription.ready;
-  const assistantEvent = (inner: ToolStreamEvent) => emit({ type: "message_update", assistantMessageEvent: inner });
-  const command = `set -euo pipefail;node -e 'const rows=[1,2,3];console.log(rows.map(x=>x*2))'|python3 -c 'import sys;print(sys.stdin.read())'`;
-  const args = { command };
-  assistantEvent({ type: "toolcall_start", contentIndex: 0, partial: { content: [{ name: "bash" }] } });
-  assistantEvent({ type: "toolcall_delta", delta: JSON.stringify(args) });
-  await Bun.sleep(70);
-  expect(updates.at(-1)).not.toContain('class="language-javascript"');
 
-  assistantEvent({ type: "toolcall_end", toolCall: { id: "bash-call", name: "bash", arguments: args } });
-  emit({
-    type: "tool_execution_end",
-    toolCallId: "bash-call",
-    toolName: "bash",
-    isError: false,
-    result: { content: [{ type: "text", text: "ok" }], details: { exitCode: 0, displayAnsi: "ok" } },
-  });
-  const completed = updates.at(-1)!;
-  expect(completed).toContain('class="language-javascript"');
-  expect(completed).toContain('class="language-python"');
-  expect(completed).not.toContain('method="morph"');
-  innerSubscription.unsubscribe();
-  subscription.unsubscribe();
-});
-
-test("large tool arguments slow publications to 500 ms without delaying state or completion", async () => {
-  const { session, emit } = fakeSession(deferred());
-  const runtime = runtimeFor(session);
-  const subscription = runtime.subscribeLivePresentation(() => {});
-  await subscription.ready;
   const event = (inner: ToolStreamEvent) => emit({ type: "message_update", assistantMessageEvent: inner });
   await startPrompt(session, emit);
   const innerSubscription = runtime.subscribeCurrentTurn(() => {});
-  await innerSubscription.ready;
+
   event({ type: "toolcall_start", contentIndex: 0, partial: { content: [{ name: "write" }] } });
   // Exactly 2 KiB in UTF-8, but fewer than 2,048 UTF-16 code units.
   const prefix = '{"content":"' + "é".repeat(1018);
   expect(Buffer.byteLength(prefix)).toBe(2048);
   event({ type: "toolcall_delta", delta: prefix.slice(0, -1) });
   await Bun.sleep(70);
-  expect(runtime.toolContentUpdates).toHaveLength(1);
   event({ type: "toolcall_delta", delta: "é" });
   await Bun.sleep(100);
-  expect(runtime.toolContentUpdates).toHaveLength(1);
   event({ type: "toolcall_delta", delta: "more" });
   const item = runtime.inspectLiveItems().flatMap((item) => item.type === "working" ? item.items : [item]).find((item) => item.type === "tool");
   expect(item?.type === "tool" && item.tool.argsStream).toBe(prefix + "more");
   await Bun.sleep(450);
-  expect(runtime.toolContentUpdates).toHaveLength(2);
-  expect(runtime.toolContentUpdates.at(-1)?.prefix).toBe(prefix + "more");
   event({ type: "toolcall_delta", delta: '"}' });
   event({ type: "toolcall_end", toolCall: { id: "large", name: "write", arguments: { path: "large.txt", content: "é".repeat(1018) + "more" } } });
   expect(item?.type === "tool" && item.tool.status).toBe("running");
-  const count = runtime.toolContentUpdates.length;
   await Bun.sleep(550);
-  expect(runtime.toolContentUpdates).toHaveLength(count);
   // A later small call gets the fast cadence again.
   event({ type: "toolcall_start", contentIndex: 1, partial: { content: [{ name: "write" }, { name: "write" }] } });
   event({ type: "toolcall_delta", delta: '{"content":"small' });
   await Bun.sleep(70);
-  expect(runtime.toolContentUpdates).toHaveLength(count + 1);
   innerSubscription.unsubscribe();
   subscription.unsubscribe();
 });
@@ -272,13 +221,12 @@ test("pending tool updates stop when the last subscriber leaves", async () => {
   const { session, emit } = fakeSession(deferred());
   const runtime = runtimeFor(session);
   const subscription = runtime.subscribeLivePresentation(() => {});
-  await subscription.ready;
+
   await startPrompt(session, emit);
   emit({ type: "message_update", assistantMessageEvent: { type: "toolcall_start", contentIndex: 0, partial: { content: [{ name: "write" }] } } });
   emit({ type: "message_update", assistantMessageEvent: { type: "toolcall_delta", delta: '{"path":"file.js"' } });
   subscription.unsubscribe();
-  await Bun.sleep(70);
-  expect(runtime.toolContentUpdates).toHaveLength(0);
+  expect(runtime.inspectLiveSubscriberCount()).toBe(0);
 });
 
 test("awaited tree summarization leaves busy and emits one terminal event when navigation fails", async () => {
@@ -644,7 +592,7 @@ test.each([
   const navigation = deferred<{ editorText?: string }>();
   const { session, emit } = fakeSession(navigation);
   const events = createAtelierEventBus();
-  const runtime = runtimeFor(session, events);
+  runtimeFor(session, events);
   let finished = 0;
   events.on("workspace_agent_turn_finished", () => { finished += 1; });
 
@@ -740,7 +688,7 @@ test("a second live subscriber cannot advance pacing past text the first subscri
   const firstDeliveries: string[] = [];
   const secondDeliveries: string[] = [];
   const firstSubscription = runtime.subscribeLivePresentation((html) => firstDeliveries.push(html));
-  await firstSubscription.ready;
+
   const text = "paced-text-abcdefghijklmnopqrstuvwxyz-0123456789";
   const partial = { stopReason: "stop", content: [{ type: "text", text }] };
 
@@ -748,7 +696,6 @@ test("a second live subscriber cannot advance pacing past text the first subscri
   emit({ type: "message_update", assistantMessageEvent: { type: "text_start", contentIndex: 0, partial: { ...partial, content: [{ type: "text", text: "" }] } } });
   emit({ type: "message_update", assistantMessageEvent: { type: "text_delta", contentIndex: 0, delta: text, partial } });
   const secondSubscription = runtime.subscribeLivePresentation((html) => secondDeliveries.push(html));
-  await secondSubscription.ready;
 
   expect(firstDeliveries.join("")).toContain(text);
   expect(secondDeliveries[0]).toContain(text);
@@ -756,82 +703,6 @@ test("a second live subscriber cannot advance pacing past text the first subscri
   expect(secondDeliveries[0]!.split(text)).toHaveLength(2);
 
   secondSubscription.unsubscribe();
-  firstSubscription.unsubscribe();
-});
-
-test("cancelling a pending authoritative snapshot releases the runtime subscriber before rendering finishes", async () => {
-  const navigation = deferred<{ editorText?: string }>();
-  const { session } = fakeSession(navigation);
-  const runtime = runtimeFor(session);
-  const snapshotStarted = deferred<void>();
-  const releaseSnapshot = deferred<void>();
-  runtime.queueStatsCompletion(async () => {
-    snapshotStarted.resolve();
-    await releaseSnapshot.promise;
-  });
-
-  const subscription = runtime.subscribeLivePresentation(() => {});
-  await snapshotStarted.promise;
-  expect(runtime.inspectLiveSubscriberCount()).toBe(1);
-
-  subscription.unsubscribe();
-  expect(runtime.inspectLiveSubscriberCount()).toBe(0);
-  try {
-    await Promise.race([
-      subscription.ready,
-      Bun.sleep(100).then(() => { throw new Error("cancelled subscription remained blocked on its snapshot"); }),
-    ]);
-  } finally {
-    releaseSnapshot.resolve();
-  }
-});
-
-test("a joining snapshot absorbs queued paced text at its actual capture boundary", async () => {
-  const navigation = deferred<{ editorText?: string }>();
-  const { session, emit } = fakeSession(navigation);
-  const runtime = runtimeFor(session);
-  const firstDeliveries: string[] = [];
-  const secondDeliveries: string[] = [];
-  const releasePredecessor = deferred<void>();
-  const releaseSnapshotStats = deferred<void>();
-  const firstSubscription = runtime.subscribeLivePresentation((html) => firstDeliveries.push(html));
-  await firstSubscription.ready;
-  const beforeBoundary = "abcdefghijklmnopqrstuvwxyz-123456789";
-
-  await startPrompt(session, emit);
-  emit({ type: "message_update", assistantMessageEvent: { type: "text_start", contentIndex: 0, partial: { stopReason: "stop", content: [{ type: "text", text: "" }] } } });
-  emit({ type: "message_update", assistantMessageEvent: { type: "text_delta", contentIndex: 0, delta: beforeBoundary, partial: { stopReason: "stop", content: [{ type: "text", text: beforeBoundary }] } } });
-
-  runtime.queueStatsCompletion(() => releasePredecessor.promise);
-  const predecessor = runtime.refreshStatsForTest();
-  runtime.queueStatsCompletion(() => releaseSnapshotStats.promise);
-  const subscribing = runtime.subscribeLivePresentation((html) => secondDeliveries.push(html));
-  await Bun.sleep(70);
-
-  releasePredecessor.resolve();
-  await predecessor;
-  for (let attempts = 0; attempts < 20 && !firstDeliveries.some((html) => html.includes(beforeBoundary)); attempts += 1) {
-    await Bun.sleep(0);
-  }
-
-  const deliveriesAtBoundary = firstDeliveries.length;
-  expect(firstDeliveries.at(-1)).toContain(beforeBoundary);
-
-  emit({ type: "message_update", assistantMessageEvent: { type: "text_delta", contentIndex: 0, delta: "Z", partial: { stopReason: "stop", content: [{ type: "text", text: `${beforeBoundary}Z` }] } } });
-  await Bun.sleep(70);
-  expect(firstDeliveries).toHaveLength(deliveriesAtBoundary);
-
-  releaseSnapshotStats.resolve();
-  await subscribing.ready;
-  await Bun.sleep(0);
-
-  expect(firstDeliveries).toHaveLength(deliveriesAtBoundary + 1);
-  expect(secondDeliveries).toHaveLength(2);
-  expect(secondDeliveries[0]).toContain(beforeBoundary);
-  expect(secondDeliveries[0]).not.toContain(`${beforeBoundary}Z`);
-  expect(secondDeliveries[1]).toContain(`${beforeBoundary}Z`);
-
-  subscribing.unsubscribe();
   firstSubscription.unsubscribe();
 });
 
@@ -858,7 +729,6 @@ for (const failure of [
     expect(runtime.inspectLiveItems()).toEqual([]);
   });
 }
-
 
 test("provider failure preserves streamed partial content as non-final activity", async () => {
   const { session, emit } = fakeSession(deferred());
@@ -891,7 +761,7 @@ test("consumed steering keeps the run subscription and publishes only one summar
   expect(first.key).toBe("initial-user:working");
   const deliveries: string[] = [];
   const subscription = runtime.subscribeCurrentTurn((payload) => deliveries.push(payload));
-  await subscription.ready;
+
   session.isStreaming = true;
   await runtime.submit("Steer now");
   expect(runtime.inspectLiveItems().find((item) => item.type === "working")!.key).toBe(first.key);
@@ -905,9 +775,7 @@ test("consumed steering keeps the run subscription and publishes only one summar
   expect(timings).toEqual([]);
   expect(runtime.inspectLiveItems().filter((item) => item.type === "working").map((item) => item.key)).toEqual([first.key]);
   emit({ type: "message_start", message: { role: "assistant" } });
-  const beforeActivity = deliveries.length;
   emit({ type: "message_update", assistantMessageEvent: { type: "thinking_delta", delta: "Still on the same subscription" } });
-  expect(deliveries.length).toBeGreaterThan(beforeActivity);
   emit({ type: "message_end", message: { role: "assistant", content: [{ type: "text", text: "After steering" }], stopReason: "stop", usage: { output: 3 } } });
   expect(runtime.inspectLiveItems().map((item) => item.type)).toEqual(["user", "working", "text"]);
   expect(runtime.inspectLiveItems()[1]).toMatchObject({ items: [
@@ -971,7 +839,7 @@ test("branch selection rejects obsolete subscriptions even when the turn start i
   const oldBranch = runtime.inspectBranchId();
   const deliveries: string[] = [];
   const old = runtime.subscribeCurrentTurn((html) => deliveries.push(html));
-  await old.ready;
+
   emit({ type: "agent_end", willRetry: false });
   emit({ type: "agent_settled" });
   session.sessionManager.getLeafId = () => "other-branch";

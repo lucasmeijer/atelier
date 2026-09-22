@@ -7,11 +7,11 @@ export interface CableSubscriptionOptions {
   onReady?: () => void;
   /** Runs when a previously ready subscription loses its Cable connection. */
   onDisconnected?: () => void;
+  onRejected?: (reason: string) => void;
 }
 
 const cableIdentifierSchema = Type.Union([
   Type.Object({ channel: Type.Literal("shell") }),
-  Type.Object({ channel: Type.Literal("workspace"), workspaceId: Type.String({ minLength: 1 }) }),
   Type.Object({ channel: Type.Literal("module"), name: Type.String({ minLength: 1 }), workspaceId: Type.String({ minLength: 1 }), params: Type.Record(Type.String(), Type.String()) }),
   Type.Object({ channel: Type.Literal("agent"), workspaceId: Type.String({ minLength: 1 }), conversationId: Type.String({ minLength: 1 }) }),
   Type.Object({ channel: Type.Literal("agent-turn"), workspaceId: Type.String({ minLength: 1 }), conversationId: Type.String({ minLength: 1 }), turnId: Type.String({ minLength: 1 }), branchId: Type.String({ minLength: 1 }) }),
@@ -77,11 +77,9 @@ export interface CableSubscription {
 export interface AtelierCableClient {
   reportVisibility(visibility: WorkspaceVisibilityReport): void;
   subscribe(identifier: CableIdentifier, options?: CableSubscriptionOptions): CableSubscription;
-  connected(): boolean;
-  connectionId(): string | undefined;
+  ready(): boolean;
+  reconnect(): void;
 }
-
-export const atelierCableConnectionHeader = "Atelier-Cable-Connection-Id";
 
 function requireNonEmpty(value: string, message: string): string {
   if (!(value.length > 0)) throw new Error(message);
@@ -90,9 +88,6 @@ function requireNonEmpty(value: string, message: string): string {
 
 export const CableTopics = {
   shell(): CableIdentifier { return { channel: "shell" }; },
-  workspace(workspaceId: string): CableIdentifier {
-    return { channel: "workspace", workspaceId: requireNonEmpty(workspaceId, "workspace identifier must not be empty") };
-  },
   module(name: string, workspaceId: string, params: Record<string, string> = {}): CableIdentifier {
     return { channel: "module", name: requireNonEmpty(name, "channel name must not be empty"), workspaceId: requireNonEmpty(workspaceId, "workspace identifier must not be empty"), params };
   },
@@ -117,7 +112,6 @@ export const CableTopics = {
 export function serializeCableIdentifier(identifier: CableIdentifier): string {
   switch (identifier.channel) {
     case "shell": return JSON.stringify(["shell"]);
-    case "workspace": return JSON.stringify(["workspace", requireNonEmpty(identifier.workspaceId, "workspace identifier must not be empty")]);
     case "module": return JSON.stringify(["module", identifier.name, identifier.workspaceId, Object.entries(identifier.params).sort(([a], [b]) => a.localeCompare(b))]);
     case "agent-turn": return JSON.stringify([
       identifier.channel,
@@ -136,7 +130,6 @@ export function serializeCableIdentifier(identifier: CableIdentifier): string {
 }
 
 export interface CableChannelSubscription {
-  readonly ready: Promise<void>;
   unsubscribe(): void;
 }
 

@@ -9,10 +9,30 @@ export function createAgentProxyController(Controller: StimulusControllerConstru
     declare readonly pathValue: string;
 
     connect(): void {
+      this.element.addEventListener("turbo:before-morph-attribute", this.preserveUrl);
+      this.updateUrl();
+    }
+
+    disconnect(): void {
+      this.element.removeEventListener("turbo:before-morph-attribute", this.preserveUrl);
+    }
+
+    workspaceIdValueChanged(): void { this.updateUrl(); }
+    appKeyValueChanged(): void { this.updateUrl(); }
+    pathValueChanged(): void { this.updateUrl(); }
+
+    private readonly preserveUrl = (event: Event): void => {
+      // SAFETY: Turbo's before-morph-attribute event carries the mutated attribute name.
+      const { attributeName } = (event as CustomEvent<{ attributeName: string }>).detail;
+      if (event.target === this.element && attributeName === (this.element instanceof HTMLAnchorElement ? "href" : "src")) event.preventDefault();
+    };
+
+    private updateUrl(): void {
       const url = workspaceProxyUrl(this.workspaceIdValue, this.appKeyValue, this.pathValue || "/");
-      if (this.element instanceof HTMLAnchorElement) this.element.href = url;
-      else if (this.element instanceof HTMLImageElement || this.element instanceof HTMLVideoElement || this.element instanceof HTMLIFrameElement) this.element.src = url;
+      const attribute = this.element instanceof HTMLAnchorElement ? "href" : "src";
+      // These URLs belong to the browser; server-owned values still morph and
+      // update them when the embed's destination changes.
+      if (this.element.getAttribute(attribute) !== url) this.element.setAttribute(attribute, url);
     }
   };
 }
-

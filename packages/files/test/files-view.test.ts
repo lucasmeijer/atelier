@@ -1,8 +1,8 @@
-import { describe, expect, test } from "bun:test";
 import { createAtelierEventBus } from "@atelier/core";
 import type { WorkspaceWorkViewReference } from "@atelier/shared";
+import { describe, expect, test } from "bun:test";
 import { atelierServerModule } from "../src/server/index.ts";
-import { createFilesView, deleteFilesViewState, listFilesViews, setFilesViewFile } from "../src/server/state.ts";
+import { createFilesView, deleteFilesViewState, filesDiskGeneration, listFilesViews, setFilesViewFile } from "../src/server/state.ts";
 
 describe("Files Work view integration", () => {
   test("embed-style links select the file in the default Files view", async () => {
@@ -16,14 +16,8 @@ describe("Files Work view integration", () => {
       },
     } as never);
 
-    expect(response?.headers.get("content-type")).toContain("text/vnd.turbo-stream.html");
     expect(opened).toEqual({ type: "files", id: "workspace" });
     expect(listFilesViews("workspace-progressive")[0]?.path).toBe("/work/new.ts");
-    const html = await response?.text();
-    expect(html).toContain("workspace_workspace-progressive_files_workspace_editor");
-    expect(html).toContain("workspace_workspace-progressive_files_workspace_tree");
-    expect(html).toContain('loading="lazy"');
-    expect(html).toContain("new.ts");
     deleteFilesViewState("workspace-progressive");
   });
 
@@ -46,15 +40,15 @@ describe("Files Work view integration", () => {
     deleteFilesViewState("workspace-command");
   });
 
-  test("asks selected Files editors to check disk after an agent turn", async () => {
+  test.each([undefined, "/work/example.ts"])("refreshes Files after an agent turn with selected path %s", async (path) => {
     const events = createAtelierEventBus();
-    const broadcasts: string[] = [];
+    const invalidations: string[] = [];
     // SAFETY: The test fixture supplies the module initialization fields exercised by this test.
-    await atelierServerModule.initialize!({ events, broadcastWorkspace: (_workspaceId: string, html: string) => broadcasts.push(html), onWorkspaceRemoved: () => {} } as never);
-    setFilesViewFile("workspace-events", "workspace", "/work/example.ts");
+    await atelierServerModule.initialize!({ events, invalidateWorkspace: (workspaceId: string) => invalidations.push(workspaceId), onWorkspaceRemoved: () => {} } as never);
+    setFilesViewFile("workspace-events", "workspace", path);
     await events.emit("workspace_agent_turn_finished", { workspaceId: "workspace-events", conversationId: "conversation-1" });
-    expect(broadcasts).toHaveLength(1);
-    expect(broadcasts[0]).toContain("files_refresh_signal_workspace-events");
+    expect(invalidations).toEqual(["workspace-events"]);
+    expect(filesDiskGeneration("workspace-events")).toBe(1);
     deleteFilesViewState("workspace-events");
   });
 

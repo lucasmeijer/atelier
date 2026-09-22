@@ -6,12 +6,7 @@ import type { ImageRef } from "./transcript.ts";
 
 export type AgentLivePresentationListener = (streamHtml: string) => void;
 
-export interface AgentLivePresentationSubscription {
-  /** Resolves after the authoritative snapshot has been delivered, or after cancellation. */
-  readonly ready: Promise<void>;
-  /** Immediately removes the subscriber, including while its snapshot is still rendering. */
-  unsubscribe(): void;
-}
+export type AgentLivePresentationSubscription = import("@atelier/shared").LiveSubscription;
 
 export interface SubmitOptions {
   images?: ImageRef[];
@@ -31,12 +26,15 @@ export interface WorkspaceAgentRuntime {
   label: string;
   sessionFile: string;
   readonly isStreaming: boolean;
-  /** First delivers one complete authoritative update, then every incremental update in order. */
+  /** Synchronously delivers current published state; subsequent changes are coalesced. */
   subscribeLivePresentation(listener: AgentLivePresentationListener): AgentLivePresentationSubscription;
   /** Lazily subscribes to one persisted turn on the selected branch; invalid boundaries reject before delivery. */
   subscribeTurnPresentation(turnId: string, branchId: string, listener: AgentLivePresentationListener): AgentLivePresentationSubscription;
   /** Server-rendered state for initial pane HTML. */
-  paneState(revealTarget?: string): Promise<AgentPaneState>;
+  paneState(): Promise<AgentPaneState>;
+  /** Publish current workspace skills and templates to this composer. */
+  refreshCompletionCatalog(): Promise<string>;
+  revealTurn(target: string): string | undefined;
   userMessages(): string[];
   submit(text: string, options?: SubmitOptions): Promise<void>;
   compact(customInstructions?: string): Promise<void>;

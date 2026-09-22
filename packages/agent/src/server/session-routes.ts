@@ -1,7 +1,6 @@
 import { requestAcceptsJson } from "@atelier/core";
-import { ids } from "./render-context.ts";
-import { turboStream, turboStreamResponse } from "./html.ts";
-import { resolveAgentRuntime, invalidateAgentView, matchRoute, requireAgentConversation, requireAgentRuntime, type AgentRouteHandler } from "./route-support.ts";
+import { turboStreamResponse } from "./html.ts";
+import { invalidateAgentView, matchRoute, requireAgentConversation, requireAgentRuntime, resolveAgentRuntime, type AgentRouteHandler } from "./route-support.ts";
 import { sessionImageEndpoint } from "./session-images.ts";
 import { handleAgentTreeRequest } from "./session-tree.ts";
 
@@ -10,8 +9,7 @@ export const handleSessionRequest: AgentRouteHandler = async (request, url, opti
   if ((params = matchRoute(url, /^\/workspaces\/([^/]+)\/agents\/([^/]+)\/reveal\/([^/]+)$/)) && request.method === "GET") {
     const [workspaceId, conversationId, target] = params;
     const runtime = await requireAgentRuntime(workspaceId, conversationId, options);
-    const state = await runtime.paneState(target);
-    return turboStreamResponse(turboStream("update", ids.transcript({ workspaceId, conversationId }), state.transcriptHtml));
+    return Response.json({ turnId: runtime.revealTurn(target) ?? null });
   }
   if ((params = matchRoute(url, /^\/workspaces\/([^/]+)\/agents\/([^/]+)\/transcript-items\/([^/]+)$/)) && request.method === "GET") {
     const runtime = await resolveAgentRuntime(await requireAgentConversation(params[0], params[1], options.events), options);

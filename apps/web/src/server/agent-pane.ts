@@ -3,13 +3,14 @@ import { buttonHtml } from "@atelier/design-system/button";
 import { buttonGroupHtml } from "@atelier/design-system/button-group";
 import { destructiveConfirmationHtml } from "@atelier/design-system/destructive-confirmation";
 import { Icons } from "@atelier/design-system/icons";
-import { popupHtml } from "@atelier/design-system/popup";
 import { panelHtml } from "@atelier/design-system/panel";
-import { domId, escapeHtml, turboStream } from "@atelier/shared";
-import { busyAttentionIndicator, barButton, fullscreenViewAttributes, selectorCloseForm, behaviorTurboStream, workspacePreparationInvalidatedTurboStream, type ViewCloseAction } from "./workspace-view-markup.ts";
+import { popupHtml } from "@atelier/design-system/popup";
+import { domId, escapeHtml } from "@atelier/shared";
 import type { WorkspacePresentation } from "./workspace-presentation.ts";
+import { barButton, behaviorTurboStream, busyAttentionIndicator, fullscreenViewAttributes, selectorCloseForm, type ViewCloseAction } from "./workspace-view-markup.ts";
 
 export interface AgentPaneContribution {
+  bodyHtml?: string;
   busy?: boolean;
   requestingAttention?: boolean;
   attentionSequence?: number;
@@ -18,7 +19,6 @@ export interface AgentPaneContribution {
   providerId: string;
   iconHtml: string;
   title: string;
-  bodyUrl: string;
   close?: ViewCloseAction;
 }
 
@@ -46,12 +46,8 @@ export function agentPaneSlotDomId(workspaceId: string, conversationId: string):
   return domId("fixed_workspace", workspaceId, "agent_pane", conversationId);
 }
 
-export function agentBodyFrameId(workspaceId: string, conversationId: string): string {
-  return domId("agent_body", workspaceId, conversationId);
-}
-
-export function renderAgentBodyFrame(workspaceId: string, conversationId: string, bodyHtml: string): string {
-  return `<turbo-frame id="${agentBodyFrameId(workspaceId, conversationId)}">${bodyHtml}</turbo-frame>`;
+export function agentContentId(workspaceId: string, conversationId: string): string {
+  return domId("agent_content", workspaceId, conversationId);
 }
 
 function agentStateDomId(workspaceId: string, conversationId: string): string { return domId("agent_state", workspaceId, conversationId); }
@@ -60,20 +56,12 @@ function renderAgentState(workspaceId: string, conversationId: string, state: { 
   return `<span id="${agentStateDomId(workspaceId, conversationId)}" data-agent-attention-id="${escapeHtml(conversationId)}"${state.attentionSequence === undefined ? "" : ` data-attention-sequence="${state.attentionSequence}"`}${state.busy || state.requestingAttention ? "" : " hidden"}>${busyAttentionIndicator(state)}</span>`;
 }
 
-export function agentStateTurboStream(workspaceId: string, conversationId: string, state: { busy: boolean; requestingAttention: boolean; attentionSequence?: number }): string {
-  return turboStream("replace", agentStateDomId(workspaceId, conversationId), renderAgentState(workspaceId, conversationId, state));
-}
-
 function mobileAgentAttentionHtml(agents: readonly AgentPaneContribution[]): string {
   return agents.some((agent) => agent.requestingAttention) ? '<i class="status-dot attention" aria-label="Agent requesting attention"></i>' : "";
 }
 
 export function renderMobileAgentAttention(workspaceId: string, agents: readonly AgentPaneContribution[]): string {
   return `<span id="${domId("mobile_agent_attention", workspaceId)}">${mobileAgentAttentionHtml(agents)}</span>`;
-}
-
-export function mobileAgentAttentionTurboStream(workspaceId: string, agents: readonly AgentPaneContribution[]): string {
-  return turboStream("update", domId("mobile_agent_attention", workspaceId), mobileAgentAttentionHtml(agents));
 }
 
 function renderAgentTab(workspaceId: string, agent: AgentPaneContribution): string {
@@ -104,7 +92,7 @@ export function renderAgentNavigation(presentation: WorkspacePresentation): stri
     ? `<div id="${agentTabListDomId(presentation.workspace.id)}" class="fixed-shell-agent-conversations" role="tablist" aria-label="Agent conversations">${presentation.agentConversations.map((agent) => renderAgentTab(presentation.workspace.id, { ...agent, title: presentation.agentConversations.length === 1 && agent.untitled ? presentation.workspace.title : agent.title })).join("")}</div>`
     : `<div class="fixed-shell-workspace-title"><strong>${escapeHtml(presentation.workspace.title)}</strong></div>`;
   const menu = popupHtml({
-    id: domId("agent_providers", presentation.workspace.id), label: "New agent", 
+    id: domId("agent_providers", presentation.workspace.id), label: "New agent",
     trigger: { variant: "secondary", content: { kind: "icon-only", iconHtml: Icons.Plus, label: "New agent" } },
     contentHtml: providerOptions(presentation, true),
   });
@@ -117,16 +105,15 @@ function renderAgentEmpty(presentation: WorkspacePresentation): string {
   return `<div id="${agentEmptyId(presentation.workspace.id)}" class="agent-empty-canvas"><div class="agent-empty-choices"><h2>Choose your first agent</h2><p>Start a conversation with an agent provider.</p><div class="action-list">${providerOptions(presentation, false)}</div></div></div>`;
 }
 
-function renderAgentPaneSlot(workspaceId: string, agent: AgentPaneContribution): string {
-  const loading = `<div class="agent-body-loading" role="status" aria-label="Loading ${escapeHtml(agent.title)}"><span class="status-spinner" aria-hidden="true"></span></div>`;
-  const frame = `<turbo-frame id="${agentBodyFrameId(workspaceId, agent.id)}" src="${escapeHtml(agent.bodyUrl)}" loading="lazy" data-agent-body-hydration data-action="turbo:frame-render->workspace-presentation#bodyRendered turbo:frame-missing->workspace-presentation#bodyMissing turbo:frame-load->workspace-presentation#agentBodyLoaded">${loading}</turbo-frame>`;
-  return `<section id="${agentPaneSlotDomId(workspaceId, agent.id)}" class="fixed-shell-surface" data-workspace-pane-role="agent" data-workspace-pane-id="${escapeHtml(agent.id)}" data-atelier-fullscreen-view-key="${escapeHtml(agent.id)}" data-workspace-logically-visible="false" tabindex="-1"><div class="fixed-shell-live-body">${frame}</div></section>`;
+function renderAgentPaneSlot(workspaceId: string, agent: AgentPaneContribution, active: boolean): string {
+  return `<section id="${agentPaneSlotDomId(workspaceId, agent.id)}" class="fixed-shell-surface${active ? " is-active" : ""}" data-workspace-pane-role="agent" data-workspace-pane-id="${escapeHtml(agent.id)}" data-atelier-fullscreen-view-key="${escapeHtml(agent.id)}" data-workspace-logically-visible="false" tabindex="-1"><div class="fixed-shell-live-body" id="${agentContentId(workspaceId, agent.id)}" data-turbo-permanent>${agent.bodyHtml ?? ""}</div></section>`;
 }
 
 function renderAgentActions(presentation: WorkspacePresentation): string {
   const parkButton = buttonHtml({ type: "submit", variant: "secondary", content: { kind: "icon-only", iconHtml: Icons.Park, label: "Park workspace" } });
   const parkWorkspace = `<form class="fixed-shell-park-workspace" method="post" action="/workspaces/${encodeURIComponent(presentation.workspace.id)}/park" data-action="submit->workspace-navigation#parkWorkspace">${parkButton}</form>`;
   const deleteConfirmation = destructiveConfirmationHtml({
+    id: domId("delete_workspace", presentation.workspace.id),
     trigger: { type: "button", variant: "danger", content: { kind: "icon-only", iconHtml: Icons.Trash, label: "Delete workspace" } },
     confirmCaption: "Yes, delete",
     cancelCaption: "Oops",
@@ -137,7 +124,7 @@ function renderAgentActions(presentation: WorkspacePresentation): string {
 }
 
 export function renderAgentPane(presentation: WorkspacePresentation): string {
-  const panes = presentation.agentConversations.map((agent) => renderAgentPaneSlot(presentation.workspace.id, agent)).join("");
+  const panes = presentation.agentConversations.map((agent) => renderAgentPaneSlot(presentation.workspace.id, agent, agent.id === (presentation.initialSelection?.agent ?? presentation.agentConversations[0]?.id))).join("");
   return `<div class="fixed-shell-agent-pane"><div class="workspace-warning-stack" id="${domId("workspace_warnings", presentation.workspace.id)}">${presentation.warningsHtml ?? ""}</div>${panelHtml({
     element: { tag: "section",  attributesHtml: 'data-workspace-role-region="agent" data-workspace-presentation-target="agentPane" aria-label="Agent"' },
     headerHtml: `${barButton("Show Workspace pane", "click->workspace-navigation#toggleWorkspacePaneCollapsed", Icons.Panel, "data-show-workspace-pane")}<div class="fixed-shell-agent-header-scroll"><div id="${agentNavigationDomId(presentation.workspace.id)}" class="fixed-shell-agent-navigation">${renderAgentNavigation(presentation)}</div><div id="${agentActionsDomId(presentation.workspace.id)}" class="fixed-shell-agent-actions">${renderAgentActions(presentation)}</div></div>`,
@@ -147,45 +134,4 @@ export function renderAgentPane(presentation: WorkspacePresentation): string {
 
 export function selectAgentTurboStream(workspaceId: string, conversationId: string): string {
   return behaviorTurboStream("select-agent", workspaceId, { "conversation-id": conversationId });
-}
-
-function selectAgentSuccessorTurboStream(workspaceId: string, closedConversationId: string, successorConversationId: string): string {
-  return behaviorTurboStream("select-agent-successor", workspaceId, { "closed-conversation-id": closedConversationId, "successor-conversation-id": successorConversationId });
-}
-
-interface AgentTabsTurboStreamOptions {
-  addedConversationId?: string;
-  removedConversationId?: string;
-  selectConversationId?: string;
-  successorConversationId?: string;
-}
-
-export function agentTabsTurboStream(presentation: WorkspacePresentation, options: AgentTabsTurboStreamOptions = {}): string {
-  const { workspace } = presentation;
-  const added = options.addedConversationId === undefined
-    ? undefined
-    : presentation.agentConversations.find((agent) => agent.id === options.addedConversationId);
-  if (options.addedConversationId !== undefined && !added) throw new Error(`Added Agent is missing from the presentation: ${options.addedConversationId}`);
-  // Refresh choices and tabs once, without remounting existing agent bodies.
-  const streams = [agentProviderChoicesTurboStream(presentation), mobileAgentAttentionTurboStream(workspace.id, presentation.agentConversations)];
-  if (added) {
-    streams.push(turboStream("remove", agentEmptyId(workspace.id)));
-    streams.push(turboStream("append", agentBodiesDomId(workspace.id), renderAgentPaneSlot(workspace.id, added)));
-  }
-  if (options.removedConversationId) {
-    streams.push(turboStream("remove", agentPaneSlotDomId(workspace.id, options.removedConversationId)));
-  }
-  if (options.selectConversationId) streams.push(selectAgentTurboStream(workspace.id, options.selectConversationId));
-  if (options.removedConversationId && options.successorConversationId) {
-    streams.push(selectAgentSuccessorTurboStream(workspace.id, options.removedConversationId, options.successorConversationId));
-  }
-  streams.push(workspacePreparationInvalidatedTurboStream(workspace.id));
-  return streams.join("");
-}
-
-
-/** Refresh creation choices without remounting any running agent body. */
-export function agentProviderChoicesTurboStream(presentation: WorkspacePresentation): string {
-  const navigation = turboStream("update", agentNavigationDomId(presentation.workspace.id), renderAgentNavigation(presentation));
-  return navigation + (presentation.agentConversations.length ? "" : turboStream("update", agentBodiesDomId(presentation.workspace.id), renderAgentEmpty(presentation)));
 }

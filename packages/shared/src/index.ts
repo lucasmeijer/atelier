@@ -1,17 +1,17 @@
-import type { WorkspaceGateway } from "./workspace-gateway.ts";
-export * from "./workspace-gateway.ts";
 import type { AtelierEventBus, JsonObject, JsonValue } from "@atelier/core";
 import type { TSchema } from "typebox";
 import { escapeHtml } from "./html.ts";
 import { focusLikelyOpensSoftwareKeyboard } from "./software-keyboard.ts";
+import type { WorkspaceGateway } from "./workspace-gateway.ts";
+export * from "./workspace-gateway.ts";
 
-export { providerBrandColor, providerBrandIconHtml, providerBadgeHtml } from "./brand-icons.ts";
+export { providerBadgeHtml, providerBrandColor, providerBrandIconHtml } from "./brand-icons.ts";
 export { escapeHtml } from "./html.ts";
 export { hopByHopHeaderNames, isHopByHopHeader, stripHopByHopHeaders } from "./proxy-headers.ts";
 
 export const atelierName = "Atelier" as const;
 
-export { workspaceFileOpenUrl, parseWorkspaceFileTarget, type WorkspaceFileTarget } from "./file-target.ts";
+export { parseWorkspaceFileTarget, workspaceFileOpenUrl, type WorkspaceFileTarget } from "./file-target.ts";
 
 export function domId(...parts: string[]): string {
   return parts.join("_").replace(/[^a-zA-Z0-9_-]/g, "_");
@@ -266,7 +266,7 @@ export interface WorkspaceServerProvisioningHook {
 
 export interface GlobalSidebarContributionRegistry {
   /** Set server-rendered sidebar HTML for a module contribution; empty/undefined clears it. */
-  set(contributionId: string, html?: string, options?: { broadcastHtml?: string }): void;
+  set(contributionId: string, html?: string, regions?: readonly import("./live-presentation.ts").LiveRegion[]): void;
 }
 
 export interface SettingsActionContext {
@@ -327,7 +327,7 @@ export interface WorkspaceServerModuleContext {
   /** Add a Work view without selecting it or requesting attention. */
   createWorkView(workspaceId: string, reference: WorkspaceWorkViewReference): Promise<void>;
   presentWorkView(workspaceId: string, reference: WorkspaceWorkViewReference): Promise<void>;
-  broadcastWorkspace(workspaceId: string, html: string): void;
+  invalidateWorkspace(workspaceId: string): void;
   deleteCurrentWorkspace(workspaceId: string, force: boolean): Promise<DeleteCurrentWorkspaceResult>;
   registerSocketHandler(handler: WorkspaceServerSocketHandler): void;
   publishWorkspacePort(workspaceId: string, port: number, protocol?: "http" | "https"): Promise<string>;
@@ -341,6 +341,8 @@ export interface WorkspaceModule {
    * Render immediately; module-owned Turbo requests load any remote state. */
   renderWorkspacePaneActions?(): string;
   cableChannels?: import("./cable.ts").CableChannelAdapter[];
+  /** Declarative lazy surfaces. The host owns loading, publication, subscriptions and invalidation. */
+  liveSurfaces?: { name: string; load(context: { workspaceId: string; key: string }): Promise<readonly import("./live-presentation.ts").LiveRegion[]> }[];
   openApiPaths?: Record<string, import("@atelier/core").JsonObject>;
   id: string;
   staticFiles?: Record<string, StaticFileContribution>;
@@ -464,23 +466,20 @@ export interface WorkspaceClientModule {
 }
 
 export {
-  atelierCableConnectionHeader,
   CableTopics,
   decodeCableClientMessage,
   decodeCableServerMessage,
   serializeCableIdentifier,
-  type AtelierCableClient,
-  type WorkspaceVisibilityReport,
-  type CableClientMessage,
+  type AtelierCableClient, type CableClientMessage,
   type CableIdentifier,
   type CableServerMessage,
   type CableSubscription,
-  type CableSubscriptionOptions,
+  type CableSubscriptionOptions, type WorkspaceVisibilityReport
 } from "./cable.ts";
 
 export {
   notifyInputListeners,
-  setTextInputValue,
+  setTextInputValue
 } from "./text-input.ts";
 
 export { focusLikelyOpensSoftwareKeyboard, installSoftwareKeyboardTracking } from "./software-keyboard.ts";
@@ -521,3 +520,5 @@ export interface WorkspaceAgentProvider {
   create(context: { workspaceId: string; events?: AtelierEventBus }): Promise<string>;
   launch: WorkspaceAgentLaunch;
 }
+
+export { createLivePresentation, createPublishedRefresh, liveCollection, type LiveRegion, type LiveSubscription } from "./live-presentation.ts";

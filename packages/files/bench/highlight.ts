@@ -4,8 +4,8 @@ import { highlightTree } from "@lezer/highlight";
 import { languageExtension } from "../src/client/editor-language.ts";
 
 /** Exercise the editor's parser and tokenization without mounting an EditorView. */
-export function highlightEditorSource(path: string, text: string): void {
-  const state = EditorState.create({ doc: text, extensions: [languageExtension(path)] });
+export async function highlightEditorSource(path: string, text: string): Promise<void> {
+  const state = EditorState.create({ doc: text, extensions: [await languageExtension(path)] });
   const tree = ensureSyntaxTree(state, text.length, 10_000);
   if (!tree || tree.length !== text.length) throw new Error("Editor did not parse the complete fixture");
   let spans = 0;

@@ -5,7 +5,7 @@ import { Icons } from "@atelier/design-system/icons";
 import { buttonGroupHtml } from "@atelier/design-system/button-group";
 import { buttonHtml } from "@atelier/design-system/button";
 import { observableTerminalStaticFiles } from "@atelier/observable-terminal/server";
-import { escapeHtml } from "@atelier/shared";
+import { domId, escapeHtml } from "@atelier/shared";
 import type { WorkspaceProvisionStep, WorkspaceProvisionSnapshot, WorkspaceProvisionStepStatus } from "../provisioning.ts";
 
 export const workspaceProvisioningStaticFiles = {
@@ -37,7 +37,7 @@ function renderProvisionStep(workspaceId: string, step: WorkspaceProvisionStep, 
   const activity = liveOutput
     ? `<pre class="provision-terminal-progress provision-output-log" data-controller="auto-scroll">${escapeHtml(liveOutput)}</pre>`
     : step.status === "running" && step.terminalSession
-      ? `<div class="provision-terminal observable-terminal-host" data-controller="provision-terminal" data-provision-terminal-session-value="${escapeHtml(step.terminalSession)}"></div>`
+      ? `<div id="${domId("provision_terminal", workspaceId, step.id, step.terminalSession)}" data-turbo-permanent class="provision-terminal observable-terminal-host" data-controller="provision-terminal" data-provision-terminal-session-value="${escapeHtml(step.terminalSession)}"></div>`
       : "";
   const log = [step.output, step.error && !step.output?.includes(step.error) ? step.error : undefined].filter(Boolean).join("\n\n");
   const output = log && step.status !== "running" ? `<details class="provision-output-disclosure"${step.error ? " open" : ""}>${actionItemHtml({ kind: "single", element: { tag: "summary" }, leadingHtml: Icons.Disclosure, label: { kind: "text", text: "View output" } })}<pre class="provision-output-log provision-output" data-controller="auto-scroll">${escapeHtml(log)}</pre></details>` : "";

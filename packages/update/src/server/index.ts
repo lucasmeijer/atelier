@@ -1,16 +1,16 @@
-import { toggleHtml } from "@atelier/design-system/toggle";
-import { Icons } from "@atelier/design-system/icons";
 import { buttonHtml } from "@atelier/design-system/button";
 import { destructiveConfirmationHtml } from "@atelier/design-system/destructive-confirmation";
+import { Icons } from "@atelier/design-system/icons";
 import { progressButtonHtml } from "@atelier/design-system/progress-button";
+import { toggleHtml } from "@atelier/design-system/toggle";
 import { transientFeedbackHtml } from "@atelier/design-system/transient-feedback";
 import { escapeHtml, turboStream, turboStreamResponse, type SettingsContribution, type WorkspaceModule, type WorkspaceServerModuleContext } from "@atelier/shared";
-import { pollIntervalMs, repository, updateSidebarContributionId } from "./constants.ts";
 import { isReleaseChannel, type ReleaseChannel } from "./channels.ts";
+import { pollIntervalMs, repository, updateSidebarContributionId } from "./constants.ts";
 import { detectSelfUpdateRuntime, prepareUpdate, type PreparedUpdate, type PullProgress, type SelfUpdateRuntime } from "./docker.ts";
-import { requestSupervisorUpdate } from "./supervisor.ts";
 import { fetchChannelImageMetadata, type ImageMetadata } from "./registry.ts";
 import { readStoredReleaseChannel, writeStoredReleaseChannel } from "./settings-store.ts";
+import { requestSupervisorUpdate } from "./supervisor.ts";
 
 export type UpdateState = "idle" | "checking" | "available" | "pulling" | "ready_to_restart" | "failed" | "restarting";
 
@@ -75,9 +75,9 @@ export class UpdateManager {
 
   private updateSidebar(checked = false): void {
     const sidebarHtml = renderSidebarRow(this.snapshot());
-    this.context?.globalSidebarContributions.set(updateSidebarContributionId, sidebarHtml || undefined, {
-      broadcastHtml: updateSettingsStream(this, checked),
-    });
+    this.context?.globalSidebarContributions.set(updateSidebarContributionId, sidebarHtml || undefined, [
+      { target: "settings-sec-update", html: renderUpdateSettings(this, checked), action: "replace" },
+    ]);
   }
 
   private setState(state: UpdateState, options: { percent?: number; error?: string } = {}, checked = false): void {
@@ -213,6 +213,7 @@ function restartFeedbackId(surface: UpdateControlSurface): string {
 
 function restartFormHtml(surface: UpdateControlSurface): string {
   const confirmation = destructiveConfirmationHtml({
+    id: `restart_${surface}`,
     trigger: { type: "button", variant: "primary", content: { kind: "caption", caption: "Restart" } },
     confirmCaption: "Restart",
     cancelCaption: "Cancel",
@@ -300,14 +301,14 @@ export function createUpdateRouteHandler(updateManager: UpdateManager): (request
     if (request.method === "POST" && (url.pathname.startsWith("/update/") || url.pathname === "/settings/update-channel") && !updateManager.snapshot().selfUpdatable) return new Response("Updates require Atelier System", { status: 409 });
     if (url.pathname === "/update/dismiss-error" && request.method === "POST") {
       updateManager.clearError();
-      return turboStreamResponse(updateSettingsStream(updateManager));
+      return turboStreamResponse("");
     }
     if (url.pathname === "/settings/update-channel" && request.method === "POST") {
       const form = await request.formData();
       const channel = form.get("channel");
       if (!isReleaseChannel(channel)) return new Response("Unsupported release channel", { status: 400 });
       await updateManager.setReleaseChannel(channel);
-      return turboStreamResponse(updateSettingsStream(updateManager));
+      return turboStreamResponse("");
     }
     if (url.pathname === "/update/start" && request.method === "POST") {
       try {
@@ -316,11 +317,11 @@ export function createUpdateRouteHandler(updateManager: UpdateManager): (request
         if (!(error instanceof UpdateConflictError)) throw error;
         return turboStreamResponse(updateSettingsStream(updateManager), { status: 409 });
       }
-      return turboStreamResponse(updateSettingsStream(updateManager));
+      return turboStreamResponse("");
     }
     if (url.pathname === "/update/check-now" && request.method === "POST") {
       await updateManager.checkNow({ announceCurrent: true });
-      return turboStreamResponse(updateSettingsStream(updateManager, true));
+      return turboStreamResponse("");
     }
     if (url.pathname === "/update/restart" && request.method === "POST") {
       try {

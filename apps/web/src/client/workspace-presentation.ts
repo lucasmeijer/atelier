@@ -1,11 +1,11 @@
 import { workspaceAgentSelectionEvent } from "@atelier/shared";
 /// <reference lib="dom" />
 
-import { atelierCableConnectionHeader, phoneLayoutMediaQuery, type WorkspaceClientApplication, type WorkspaceClientControllerConstructor, type WorkspaceClientSurfaceVisibilityContext } from "@atelier/shared";
+import { phoneLayoutMediaQuery, type WorkspaceClientApplication, type WorkspaceClientControllerConstructor, type WorkspaceClientSurfaceVisibilityContext } from "@atelier/shared";
 import { Type, type Static } from "typebox";
 import { Value } from "typebox/value";
+import { prepareLiveSurface, selectLiveSurface } from "./live-surface.ts";
 import { residencyController } from "./workspace-controller-registry.ts";
-import { frameFreshness } from "./frame-freshness.ts";
 
 type PresentationPane = HTMLElement & { dataset: DOMStringMap & { workspacePaneRole?: string; workspacePaneId?: string; workspaceLogicallyVisible?: string } };
 const phoneDestinationSchema = Type.Union([
@@ -47,6 +47,8 @@ interface TurboLike {
   StreamActions: Record<string, (this: StreamElement) => void | Promise<void>>;
 }
 
+const navigationIntents = new Map<string, { agent?: string; work?: string }>();
+
 const visiblePresentationPanes = new WeakSet<HTMLElement>();
 const agentPaneWidthStorageKey = "atelier:agent-pane-width";
 
@@ -62,33 +64,11 @@ function workspaceNavigationStorageKey(workspaceId: string): string {
   return `atelier:workspace-navigation:${workspaceId}`;
 }
 
-function persistIntendedWorkView(workspaceId: string, key: string): void {
-  const storageKey = workspaceNavigationStorageKey(workspaceId);
-  const state = storedNavigation(sessionStorage, storageKey) ?? {};
-  sessionStorage.setItem(storageKey, JSON.stringify({ ...state, activeWorkViewKey: key, workPaneVisible: true, phoneDestination: `work:${key}` } satisfies StoredPersonalNavigation));
-}
-
 function persistIntendedAgent(workspaceId: string, conversationId: string): void {
+  navigationIntents.set(workspaceId, { ...navigationIntents.get(workspaceId), agent: conversationId });
   const storageKey = workspaceNavigationStorageKey(workspaceId);
   const state = storedNavigation(sessionStorage, storageKey) ?? {};
   sessionStorage.setItem(storageKey, JSON.stringify({ ...state, activeAgentId: conversationId, phoneDestination: "agents" } satisfies StoredPersonalNavigation));
-}
-
-function persistAgentSuccessor(workspaceId: string, closedConversationId: string, successorConversationId: string): void {
-  const storageKey = workspaceNavigationStorageKey(workspaceId);
-  const state = storedNavigation(sessionStorage, storageKey);
-  if (state?.activeAgentId !== closedConversationId) return;
-  sessionStorage.setItem(storageKey, JSON.stringify({ ...state, activeAgentId: successorConversationId } satisfies StoredPersonalNavigation));
-}
-
-function persistWorkViewSuccessor(workspaceId: string, closedKey: string, successorKey?: string): void {
-  const storageKey = workspaceNavigationStorageKey(workspaceId);
-  const state = storedNavigation(sessionStorage, storageKey);
-  if (state?.activeWorkViewKey !== closedKey) return;
-  const next: StoredPersonalNavigation = { ...state, workPaneVisible: successorKey !== undefined, phoneDestination: successorKey ? `work:${successorKey}` : "agents" };
-  if (successorKey) next.activeWorkViewKey = successorKey;
-  else delete next.activeWorkViewKey;
-  sessionStorage.setItem(storageKey, JSON.stringify(next));
 }
 
 export function markActiveWorkspaceRow(root: ParentNode, workspaceId: string): void {
@@ -105,7 +85,8 @@ export function createWorkspacePresentationController(
   lifecycle: PresentationLifecycle,
 ) {
   return class WorkspacePresentationController extends Controller {
-    static values = { workspaceId: String };
+    static values = { workspaceId: String, workIntent: Object };
+    declare readonly workIntentValue: { key?: string; revision?: string };
     declare readonly element: HTMLElement;
     declare readonly workspaceIdValue: string;
     private state!: PersonalNavigationState;
@@ -118,10 +99,12 @@ export function createWorkspacePresentationController(
     private draggedWorkKey?: string;
 
     connect(): void {
+      const initialUrl = new URL(location.href);
       this.state = this.restoreState();
       this.media = window.matchMedia(phoneLayoutMediaQuery);
       this.media.addEventListener("change", this.viewportChanged);
       this.element.addEventListener("atelier:workspace-residency-visible", this.residencyVisible);
+      this.element.addEventListener("live:structure", this.structureChanged);
       this.element.addEventListener("atelier:workspace-residency-hidden", this.residencyHidden);
       document.addEventListener("visibilitychange", this.documentVisibilityChanged);
       this.restorePreferences();
@@ -130,15 +113,16 @@ export function createWorkspacePresentationController(
         this.scheduleMobileNavigationLayout();
       });
       this.sizeObserver.observe(this.element);
+      this.acceptWorkIntent();
       this.normalizeState();
-      this.applyInitialAttentionIntent();
-      this.applyDeepLink();
+      this.applyDeepLink(initialUrl);
       this.applyState({ emit: true });
     }
 
     disconnect(): void {
       this.media?.removeEventListener("change", this.viewportChanged);
       this.element.removeEventListener("atelier:workspace-residency-visible", this.residencyVisible);
+      this.element.removeEventListener("live:structure", this.structureChanged);
       this.element.removeEventListener("atelier:workspace-residency-hidden", this.residencyHidden);
       document.removeEventListener("visibilitychange", this.documentVisibilityChanged);
       this.sizeObserver?.disconnect();
@@ -156,59 +140,39 @@ export function createWorkspacePresentationController(
     }
 
     selectAgentById(conversationId: string): void {
-      if (!this.element.querySelector(`[data-workspace-pane-role="agent"][data-workspace-pane-id="${CSS.escape(conversationId)}"]`)) return;
       this.state.activeAgentId = conversationId;
       this.state.phoneDestination = "agents";
       this.persistAndApply();
     }
 
-    selectAgentSuccessor(closedConversationId: string, successorConversationId: string): void {
-      if (this.state.activeAgentId === closedConversationId) this.state.activeAgentId = successorConversationId;
-      this.presentationChanged();
-    }
-
-    invalidatePreparation(conversationId?: string): void {
-      this.element.querySelectorAll<PresentationPane>("[data-workspace-pane-role='agent']").forEach((pane) => {
-        if (conversationId && pane.dataset.workspacePaneId !== conversationId) return;
-        // Visible Agents already receive authoritative live updates.
-        if (pane.dataset.workspaceLogicallyVisible === "true" && visiblePresentationPanes.has(pane)) return;
-        const frame = pane.querySelector<HTMLElement>("turbo-frame[data-agent-body-hydration][src]");
-        if (frame) frameFreshness(frame).invalidate();
-      });
-      if (!conversationId) {
-        this.element.querySelectorAll<HTMLElement>("turbo-frame[data-work-view-hydration][src]").forEach((frame) => frameFreshness(frame).invalidate());
-      }
-    }
-
-    selectWorkViewSuccessor(closedKey: string, successorKey?: string): void {
-      if (this.state.activeWorkViewKey === closedKey) {
-        this.state.activeWorkViewKey = successorKey;
-        if (!successorKey) {
-          this.state.workPaneVisible = false;
-          this.state.phoneDestination = "agents";
-        } else if (this.state.phoneDestination === `work:${closedKey}`) {
-          this.state.phoneDestination = `work:${successorKey}`;
-        }
-      }
-      this.presentationChanged();
-    }
-
-    intendWorkView(key: string): void {
-      const selector = this.element.querySelector<HTMLElement>(`[data-work-view-key="${CSS.escape(key)}"]`);
-      if (!selector || this.isPhone) return;
-      const alreadyVisible = this.visiblePanes().some((pane) => pane.dataset.workspacePaneRole === "work" && pane.dataset.workspacePaneId === key);
-      this.selectWorkViewState(key, selector.dataset.workViewKind === "contextual");
-      this.persist();
-      if (this.element.closest(".workspace-detail-resident.visible")) this.applyState({ emit: true, focus: true });
-      if (alreadyVisible) this.finishVisibleWorkViewPreparation();
-    }
-
     presentWorkView(key: string): void {
+      navigationIntents.set(this.workspaceIdValue, { ...navigationIntents.get(this.workspaceIdValue), work: key });
       if (!this.element.closest(".workspace-detail-resident.visible")) return;
       const selector = this.element.querySelector<HTMLElement>(`[data-work-view-key="${CSS.escape(key)}"]`);
-      if (!selector) return;
-      this.selectWorkViewState(key, selector.dataset.workViewKind === "contextual");
+      this.selectWorkViewState(key, selector?.dataset.workViewKind === "contextual");
       this.persistAndApply({ focus: true });
+    }
+
+    workIntentValueChanged(): void {
+      if (!this.state) return; // Stimulus initializes values before connect.
+      this.acceptWorkIntent();
+      this.presentationChanged();
+    }
+
+    private acceptWorkIntent(): void {
+      const { key, revision } = this.workIntentValue;
+      const storageKey = `atelier:work-presentation:${this.workspaceIdValue}`;
+      if (!key || !revision || sessionStorage.getItem(storageKey) === revision) return;
+      sessionStorage.setItem(storageKey, revision);
+      navigationIntents.set(this.workspaceIdValue, { ...navigationIntents.get(this.workspaceIdValue), work: key });
+    }
+
+    intendedSurfacesReady(): boolean {
+      const pane = this.element.querySelector<HTMLElement>(`[data-workspace-pane-role="agent"][data-workspace-pane-id="${CSS.escape(this.state.activeAgentId ?? "")}"]`);
+      // Hidden panes already have server-rendered content; only visible agents
+      // need an active transcript subscription to finish preparation.
+      return !pane || !visiblePresentationPanes.has(pane) || document.hidden
+        || !pane.querySelector('[data-agent-presentation-ready="false"]');
     }
 
     presentationChanged(): void {
@@ -218,78 +182,13 @@ export function createWorkspacePresentationController(
 
     async prepareIntendedSurfaces(): Promise<void> {
       this.normalizeState();
-      if (!this.element.closest(".workspace-detail-resident.visible")) this.applyInitialAttentionIntent();
       this.applyState({ emit: false });
-      const agentFrame = this.element.querySelector<HTMLElement>(`[data-workspace-pane-role="agent"][data-workspace-pane-id="${CSS.escape(this.state.activeAgentId ?? "")}"] turbo-frame[data-agent-body-hydration][src]`);
-      if (agentFrame) await frameFreshness(agentFrame).ensureFresh();
-      if (!this.state.workPaneVisible || !this.state.activeWorkViewKey) return;
-      const workFrame = this.element.querySelector<HTMLElement>(`[data-workspace-pane-role="work"][data-workspace-pane-id="${CSS.escape(this.state.activeWorkViewKey)}"] turbo-frame[data-work-view-hydration][src]`);
-      if (workFrame) await frameFreshness(workFrame).ensureFresh();
+      await prepareLiveSurface(this.element.closest<HTMLElement>(".workspace-detail-resident")!);
       await this.initializeEmbeddedWorkSurface();
     }
 
     selectedAgentId(): string | undefined {
       return this.state.activeAgentId;
-    }
-
-    bodyMissing(event: Event): void {
-      if (event.target !== event.currentTarget) return;
-      // Let Turbo settle loaded instead of throwing from its unawaited response
-      // handler. Freshness rejects the missing render through our load-error UI.
-      event.preventDefault();
-    }
-
-    bodyRendered(event: Event): void {
-      // Nested transcript and file frames must not confirm the enclosing surface.
-      if (event.target !== event.currentTarget) return;
-      // SAFETY: Turbo emits frame-render after rendering, with its FetchResponse.
-      const { fetchResponse } = (event as CustomEvent<{ fetchResponse: { succeeded: boolean } }>).detail;
-      // SAFETY: This action is attached directly to an Atelier hydration Turbo Frame.
-      frameFreshness(event.currentTarget as HTMLElement).rendered(fetchResponse.succeeded);
-    }
-
-    agentBodyLoaded(event: Event): void {
-      // Nested transcript Turbo Frames bubble the same event through the body Frame.
-      if (event.target !== event.currentTarget) return;
-      // SAFETY: The action is attached directly to the server-rendered Agent Turbo Frame.
-      const frame = event.currentTarget as HTMLElement;
-      const pane = frame.closest<PresentationPane>("[data-workspace-pane-role='agent']");
-      requestAnimationFrame(() => {
-        if (pane?.dataset.workspaceLogicallyVisible !== "true") return;
-        if (!frameFreshness(frame).isFresh) return;
-        if (visiblePresentationPanes.has(pane)) {
-          // The stable pane survives a Turbo Frame reload, but its Agent controller does not.
-          // Re-deliver logical visibility after Stimulus connects the reconstructed body.
-          lifecycle.becomeVisible(this.lifecycleContext(pane));
-          pane.dispatchEvent(new CustomEvent("atelier:workspace-pane-visible", { bubbles: true, detail: { role: "agent", id: pane.dataset.workspacePaneId } }));
-        } else {
-          this.emitVisible(pane);
-        }
-      });
-    }
-
-    workBodyLoaded(event: Event): void {
-      if (event.target !== event.currentTarget) return;
-      // SAFETY: The action is attached directly to the server-rendered Work Turbo Frame.
-      const frame = event.currentTarget as HTMLElement;
-      const pane = frame.closest<PresentationPane>("[data-workspace-pane-role='work']");
-      requestAnimationFrame(() => {
-        if (pane?.dataset.workspaceLogicallyVisible !== "true") return;
-        if (!visiblePresentationPanes.has(pane)) this.emitVisible(pane);
-      });
-    }
-
-    workBodyWillRender(event: Event): void {
-      // Nested file refreshes do not hide or reconstruct the Work view itself.
-      if (event.target !== event.currentTarget) return;
-      // SAFETY: The action is attached directly to the server-rendered Work Turbo Frame.
-      const frame = event.currentTarget as HTMLElement;
-      const pane = frame.closest<PresentationPane>("[data-workspace-pane-role='work']");
-      if (!pane || !visiblePresentationPanes.has(pane)) return;
-      visiblePresentationPanes.delete(pane);
-      pane.dataset.workspaceSurfaceVisible = "false";
-      lifecycle.noLongerVisible(this.lifecycleContext(pane));
-      pane.dispatchEvent(new CustomEvent("atelier:workspace-pane-hidden", { bubbles: true, detail: { role: "work", id: pane.dataset.workspacePaneId } }));
     }
 
     selectWorkView(event: Event): void {
@@ -380,8 +279,6 @@ export function createWorkspacePresentationController(
       const views = [...target.parentElement!.querySelectorAll<HTMLElement>("[data-work-view-reorder-key]")];
       const index = views.indexOf(target);
       const headers = new Headers({ "Content-Type": "application/json", "Accept": "text/vnd.turbo-stream.html" });
-      const connectionId = window.AtelierCable?.connectionId();
-      if (connectionId) headers.set(atelierCableConnectionHeader, connectionId);
       const response = await fetch(`/workspaces/${encodeURIComponent(this.workspaceIdValue)}/work-views/reorder`, {
         method: "POST",
         headers,
@@ -435,29 +332,22 @@ export function createWorkspacePresentationController(
     private normalizeState(): void {
       const agents = [...this.element.querySelectorAll<HTMLElement>("[data-agent-conversation-id], [data-workspace-pane-role='agent']")].map((item) => item.dataset.agentConversationId ?? item.dataset.workspacePaneId!).filter(Boolean);
       const workViews = [...this.element.querySelectorAll<HTMLElement>("[data-work-view-key]")].map((item) => item.dataset.workViewKey!);
-      if (!this.state.activeAgentId || !agents.includes(this.state.activeAgentId)) this.state.activeAgentId = agents[0];
-      if (!this.state.activeWorkViewKey || !workViews.includes(this.state.activeWorkViewKey)) this.state.activeWorkViewKey = workViews[0];
-      if (this.state.phoneDestination.startsWith("work:") && !workViews.includes(this.state.phoneDestination.slice(5))) this.state.phoneDestination = "agents";
-      this.persist();
-    }
-
-    private applyInitialAttentionIntent(): void {
-      const oldest = (selector: string) => [...this.element.querySelectorAll<HTMLElement>(selector)]
-        .sort((a, b) => Number(a.dataset.attentionSequence) - Number(b.dataset.attentionSequence))[0];
-      const agent = oldest("[data-agent-attention-id][data-attention-sequence]");
-      if (agent) {
-        this.state.activeAgentId = agent.dataset.agentAttentionId;
+      const intent = navigationIntents.get(this.workspaceIdValue);
+      if (intent?.agent) {
+        this.state.activeAgentId = intent.agent;
         this.state.phoneDestination = "agents";
-      }
-      if (!this.isPhone) {
-        const view = oldest("[data-work-view-key][data-attention-sequence]");
-        if (view) this.selectWorkViewState(view.dataset.workViewKey!, view.dataset.workViewKind === "contextual");
-      }
+        if (agents.includes(intent.agent)) delete intent.agent;
+      } else if (!this.state.activeAgentId || !agents.includes(this.state.activeAgentId)) this.state.activeAgentId = agents[0];
+      if (intent?.work) {
+        const selector = this.element.querySelector<HTMLElement>(`[data-work-view-key="${CSS.escape(intent.work)}"]`);
+        this.selectWorkViewState(intent.work, selector?.dataset.workViewKind === "contextual");
+        if (workViews.includes(intent.work)) delete intent.work;
+      } else if (!this.state.activeWorkViewKey || !workViews.includes(this.state.activeWorkViewKey)) this.state.activeWorkViewKey = workViews[0];
+      if (!intent?.work && this.state.phoneDestination.startsWith("work:") && !workViews.includes(this.state.phoneDestination.slice(5))) this.state.phoneDestination = "agents";
       this.persist();
     }
 
-    private applyDeepLink(): void {
-      const url = new URL(window.location.href);
+    private applyDeepLink(url = new URL(location.href)): void {
       if (!url.pathname.endsWith(`/workspaces/${encodeURIComponent(this.workspaceIdValue)}`)) return;
       const agentId = url.searchParams.get("agent");
       const workViewKey = url.searchParams.get("workView");
@@ -470,6 +360,8 @@ export function createWorkspacePresentationController(
       if (workViewKey) {
         const workView = this.element.querySelector<HTMLElement>(`[data-work-view-key="${CSS.escape(workViewKey)}"]`);
         if (!workView) return;
+        const intent = navigationIntents.get(this.workspaceIdValue);
+        if (intent) delete intent.work;
         this.selectWorkViewState(workViewKey, workView.dataset.workViewKind === "contextual");
       }
       if (agentId || workViewKey) this.persist();
@@ -477,6 +369,17 @@ export function createWorkspacePresentationController(
 
     private persist(): void {
       sessionStorage.setItem(this.storageKey, JSON.stringify(this.state));
+      if (this.element.closest(".workspace-detail-resident.visible")) {
+        const url = new URL(location.href);
+        if (url.pathname === `/workspaces/${encodeURIComponent(this.workspaceIdValue)}`) {
+          if (url.searchParams.get("agent") !== this.state.activeAgentId) url.searchParams.delete("agentTarget");
+          if (this.state.activeAgentId) url.searchParams.set("agent", this.state.activeAgentId);
+          else url.searchParams.delete("agent");
+          if (this.state.workPaneVisible && this.state.activeWorkViewKey) url.searchParams.set("workView", this.state.activeWorkViewKey);
+          else url.searchParams.delete("workView");
+          history.replaceState({}, "", url);
+        }
+      }
     }
     private persistAndApply(options: { focus?: boolean } = {}): void { this.persist(); this.applyState({ emit: true, focus: options.focus }); }
 
@@ -485,6 +388,7 @@ export function createWorkspacePresentationController(
       this.element.classList.toggle("is-work-pane-open", this.state.workPaneVisible);
       this.element.dataset.phoneDestination = this.state.phoneDestination;
       this.element.dataset.navigationReady = "true";
+      selectLiveSurface(this.element.closest<HTMLElement>(".workspace-detail-resident")!, this.state.activeAgentId ?? "", this.state.workPaneVisible ? this.state.activeWorkViewKey ?? "" : "");
       const selectedAgentChanged = this.element.dataset.workspaceSelectedAgent !== this.state.activeAgentId;
       this.element.dataset.workspaceSelectedAgent = this.state.activeAgentId ?? "";
 
@@ -522,6 +426,7 @@ export function createWorkspacePresentationController(
       const afterSet = new Set(after);
       this.element.querySelectorAll<PresentationPane>("[data-workspace-pane-role]").forEach((pane) => {
         pane.dataset.workspaceLogicallyVisible = String(afterSet.has(pane));
+        pane.dataset.workspaceSurfaceVisible = String(visiblePresentationPanes.has(pane));
       });
       if (options.emit) this.emitVisibilityChanges(before, after);
       if (options.focus && document.hasFocus()) this.focusActiveSurface();
@@ -574,10 +479,9 @@ export function createWorkspacePresentationController(
     }
 
     private emitVisibilityChanges(before: PresentationPane[], after: PresentationPane[]): void {
-      const beforeSet = new Set(before);
       const afterSet = new Set(after);
       before.filter((pane) => !afterSet.has(pane)).forEach((pane) => this.emitHidden(pane));
-      after.filter((pane) => !beforeSet.has(pane) || !visiblePresentationPanes.has(pane)).forEach((pane) => this.emitVisible(pane));
+      after.forEach((pane) => this.emitVisible(pane));
     }
 
     private lifecycleContext(pane: PresentationPane): WorkspaceClientSurfaceVisibilityContext {
@@ -585,40 +489,23 @@ export function createWorkspacePresentationController(
     }
 
     private emitVisible(pane: PresentationPane): void {
-      if (visiblePresentationPanes.has(pane)) return;
-      const frame = pane.querySelector<HTMLElement>("turbo-frame[data-agent-body-hydration][src], turbo-frame[data-work-view-hydration][src]");
-      if (frame && !frameFreshness(frame).isFresh) {
-        void frameFreshness(frame).ensureFresh()
-          .then(() => { if (pane.dataset.workspaceLogicallyVisible === "true") this.emitVisible(pane); })
-          .catch((error) => console.error("Could not prepare workspace surface", error));
-        return;
-      }
-      visiblePresentationPanes.add(pane);
       pane.dataset.workspaceSurfaceVisible = "true";
-      if (pane.dataset.workspacePaneRole === "work") {
-        const frame = pane.querySelector<HTMLElement>("turbo-frame[data-work-view-hydration][src]");
-        if (frame) void frameFreshness(frame).ensureFresh().then(() => this.initializeEmbeddedWorkSurface()).catch((error) => console.error("Could not hydrate Work view", error));
-      }
+      if (visiblePresentationPanes.has(pane)) return;
+      visiblePresentationPanes.add(pane);
       pane.querySelectorAll<HTMLIFrameElement>('[data-controller~="workspace-app-frame"]').forEach((frame) => {
         // SAFETY: The server-rendered DOM and connected controller contract establish this element shape.
         const controller = application.getControllerForElementAndIdentifier(frame, "workspace-app-frame") as { becomeVisible?(): void } | null;
         controller?.becomeVisible?.();
       });
       lifecycle.becomeVisible(this.lifecycleContext(pane));
-      if (pane.dataset.workspacePaneRole === "work") this.finishVisibleWorkViewPreparation();
       pane.dispatchEvent(new CustomEvent("atelier:workspace-pane-visible", { bubbles: true, detail: { role: pane.dataset.workspacePaneRole, id: pane.dataset.workspacePaneId } }));
-    }
-
-    private finishVisibleWorkViewPreparation(): void {
-      if (document.visibilityState !== "visible") return;
-      document.dispatchEvent(new CustomEvent("atelier:workspace-preparation-request-acknowledged", { detail: { workspaceId: this.workspaceIdValue } }));
     }
 
     private emitHidden(pane: PresentationPane): void {
       pane.dataset.workspaceLogicallyVisible = "false";
+      pane.dataset.workspaceSurfaceVisible = "false";
       if (!visiblePresentationPanes.has(pane)) return;
       visiblePresentationPanes.delete(pane);
-      pane.dataset.workspaceSurfaceVisible = "false";
       lifecycle.noLongerVisible(this.lifecycleContext(pane));
       pane.dispatchEvent(new CustomEvent("atelier:workspace-pane-hidden", { bubbles: true, detail: { role: pane.dataset.workspacePaneRole, id: pane.dataset.workspacePaneId } }));
     }
@@ -681,9 +568,9 @@ export function createWorkspacePresentationController(
       this.resize = undefined;
     };
 
+    private structureChanged = (): void => { this.presentationChanged(); };
     private viewportChanged = (): void => { this.applyState({ emit: true }); };
     private residencyVisible = (): void => {
-      this.applyInitialAttentionIntent();
       this.applyDeepLink();
       this.persist();
       this.applyState({ emit: true });
@@ -695,7 +582,6 @@ export function createWorkspacePresentationController(
     };
     private documentVisibilityChanged = (): void => {
       if (document.visibilityState !== "visible") return;
-      if (this.visiblePanes().some((pane) => pane.dataset.workspacePaneRole === "work")) this.finishVisibleWorkViewPreparation();
     };
   };
 }
@@ -703,11 +589,7 @@ export function createWorkspacePresentationController(
 export function installWorkspacePresentationTurboStream(Turbo: TurboLike, application: PresentationApplication): void {
   interface PresentationActions {
     selectAgentById(conversationId: string): void;
-    selectAgentSuccessor(closedConversationId: string, successorConversationId: string): void;
-    selectWorkViewSuccessor(closedKey: string, successorKey?: string): void;
     presentWorkView(key: string): void;
-    intendWorkView(key: string): void;
-    invalidatePreparation(conversationId?: string): void;
     presentationChanged(): void;
   }
   const controllerFor = (target: HTMLElement, workspaceId: string): PresentationActions | null => {
@@ -732,16 +614,7 @@ export function installWorkspacePresentationTurboStream(Turbo: TurboLike, applic
       if (workspaceId) document.dispatchEvent(new CustomEvent("atelier:workspace-removed", { detail: { workspaceId } }));
     }
   };
-  Turbo.StreamActions["prune-workspace-rows"] = function pruneWorkspaceRows(this: StreamElement): void {
-    const ids: string[] = JSON.parse(this.dataset.rowIds!);
-    for (const target of this.targetElements) for (const row of [...target.children]) if (!ids.includes(row.id)) row.remove();
-  };
-  Turbo.StreamActions["move-workspace-row"] = function moveWorkspaceRow(this: StreamElement): void {
-    for (const target of this.targetElements) {
-      const before = this.dataset.beforeId ? document.getElementById(this.dataset.beforeId) : null;
-      target.parentElement!.insertBefore(target, before);
-    }
-  };
+
   Turbo.StreamActions["workspace-pane-changed"] = function workspacePaneChanged(this: StreamElement): void {
     for (const target of this.targetElements) {
       const visibleWorkspaceId = document.querySelector<HTMLElement>(".workspace-detail-resident.visible[data-workspace-id]")?.dataset.workspaceId;
@@ -755,16 +628,10 @@ export function installWorkspacePresentationTurboStream(Turbo: TurboLike, applic
     const key = this.dataset.workViewKey;
     if (!key) throw new Error("present-work-view requires a Work view key");
     const workspaceId = behaviorWorkspaceId(this);
+    navigationIntents.set(workspaceId, { ...navigationIntents.get(workspaceId), work: key });
     for (const target of this.targetElements) controllerFor(target, workspaceId)?.presentWorkView(key);
   };
-  Turbo.StreamActions["intend-work-view"] = function intendWorkView(this: StreamElement): void {
-    const key = this.dataset.workViewKey;
-    if (!key) throw new Error("intend-work-view requires a Work view key");
-    const workspaceId = behaviorWorkspaceId(this);
-    if (!window.matchMedia(phoneLayoutMediaQuery).matches) persistIntendedWorkView(workspaceId, key);
-    document.dispatchEvent(new CustomEvent("atelier:workspace-preparation-requested", { detail: { workspaceId } }));
-    for (const target of this.targetElements) controllerFor(target, workspaceId)?.intendWorkView(key);
-  };
+
   Turbo.StreamActions["select-agent"] = function selectAgent(this: StreamElement): void {
     const conversationId = this.dataset.conversationId;
     if (!conversationId) throw new Error("select-agent requires a conversation ID");
@@ -772,29 +639,5 @@ export function installWorkspacePresentationTurboStream(Turbo: TurboLike, applic
     persistIntendedAgent(workspaceId, conversationId);
     for (const target of this.targetElements) controllerFor(target, workspaceId)?.selectAgentById(conversationId);
   };
-  Turbo.StreamActions["select-agent-successor"] = function selectAgentSuccessor(this: StreamElement): void {
-    const closedConversationId = this.dataset.closedConversationId;
-    const successorConversationId = this.dataset.successorConversationId;
-    if (!closedConversationId || !successorConversationId) throw new Error("select-agent-successor requires closed and successor conversation IDs");
-    const workspaceId = behaviorWorkspaceId(this);
-    persistAgentSuccessor(workspaceId, closedConversationId, successorConversationId);
-    for (const target of this.targetElements) controllerFor(target, workspaceId)?.selectAgentSuccessor(closedConversationId, successorConversationId);
-  };
-  Turbo.StreamActions["select-work-view-successor"] = function selectWorkViewSuccessor(this: StreamElement): void {
-    const closedKey = this.dataset.closedWorkViewKey;
-    if (!closedKey) throw new Error("select-work-view-successor requires a closed Work view key");
-    const workspaceId = behaviorWorkspaceId(this);
-    persistWorkViewSuccessor(workspaceId, closedKey, this.dataset.successorWorkViewKey);
-    for (const target of this.targetElements) controllerFor(target, workspaceId)?.selectWorkViewSuccessor(closedKey, this.dataset.successorWorkViewKey);
-  };
-  Turbo.StreamActions["invalidate-workspace-preparation"] = function invalidateWorkspacePreparation(this: StreamElement): void {
-    const workspaceId = behaviorWorkspaceId(this);
-    const conversationId = this.dataset.conversationId;
-    for (const target of this.targetElements) {
-      const controller = controllerFor(target, workspaceId);
-      controller?.invalidatePreparation(conversationId);
-      controller?.presentationChanged();
-    }
-    document.dispatchEvent(new CustomEvent("atelier:workspace-preparation-invalidated", { detail: { workspaceId } }));
-  };
+
 }

@@ -12,6 +12,7 @@ import { registerSettingsContribution } from "./registry.ts";
 type SettingsSurface = "settings" | "onboarding";
 
 const githubDisconnectConfirmation = destructiveConfirmationHtml({
+  id: "disconnect_github",
   trigger: { type: "button", variant: "danger", content: { kind: "caption", caption: "Disconnect" } },
   confirmCaption: "Disconnect GitHub",
   cancelCaption: "Cancel",

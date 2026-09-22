@@ -152,7 +152,4 @@ export class StreamingMarkdownRenderer {
     };
   }
 
-  sync(source: string): void {
-    this.stableBoundary = streamingMarkdownStableBoundary(source);
-  }
 }

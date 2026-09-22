@@ -1,16 +1,13 @@
+import { CableTopics, selectedWorkspaceAgent, type CableSubscription, type WorkspaceClientControllerConstructor } from "@atelier/shared";
 import { Type } from "typebox";
 import { Value } from "typebox/value";
-import { CableTopics, selectedWorkspaceAgent, type CableSubscription, type WorkspaceClientControllerConstructor } from "@atelier/shared";
-type Frame = HTMLElement & { src: string };
 
 export function createSubagentsController(Controller: WorkspaceClientControllerConstructor) {
   return class extends Controller {
-    static targets = ["frame", "branch"];
-    static values = { url: String, workspaceId: String };
+    static targets = ["branch"];
+    static values = { workspaceId: String };
     declare readonly element: HTMLElement;
-    declare readonly frameTarget: Frame;
     declare readonly branchTargets: HTMLDetailsElement[];
-    declare readonly urlValue: string;
     declare readonly workspaceIdValue: string;
     private parentId?: string;
     private tree?: CableSubscription;
@@ -18,7 +15,7 @@ export function createSubagentsController(Controller: WorkspaceClientControllerC
     private expanded = new Set<string>();
     private reveal?: string;
     private message?: string;
-    private get storageKey(): string { return `atelier:subagents:${this.urlValue}:${this.parentId}`; }
+    private get storageKey(): string { return `atelier:subagents:/workspaces/${this.workspaceIdValue}/subagents:${this.parentId}`; }
 
     connect(): void { this.sync(); }
     disconnect(): void { this.stop(); }
@@ -77,14 +74,23 @@ export function createSubagentsController(Controller: WorkspaceClientControllerC
         child?.subscription.unsubscribe();
         const subscription = window.AtelierCable!.subscribe(CableTopics.agent(this.workspaceIdValue, id), {
           onReady: () => {
-            if (this.reveal === id && this.message) {
-              const frame = branch.querySelector<Frame>(":scope > .subagent-branch-body > [data-subagent-transcript]")!;
-              frame.src = `${this.urlValue}/${encodeURIComponent(id)}/transcript?agent=${encodeURIComponent(this.parentId!)}&message=${encodeURIComponent(this.message)}`;
-            } else this.loaded();
+            if (this.reveal === id && this.message) void this.revealMessage(branch, id, this.message);
+            else this.loaded();
           },
         });
         this.children.set(id, { branch, subscription });
       }
+    }
+    private async revealMessage(branch: HTMLDetailsElement, id: string, message: string): Promise<void> {
+      const response = await fetch(`/workspaces/${encodeURIComponent(this.workspaceIdValue)}/agents/${encodeURIComponent(id)}/reveal/${encodeURIComponent(message)}`);
+      if (!response.ok) throw new Error(`Could not resolve transcript target: ${response.status}`);
+      const { turnId } = Value.Parse(Type.Object({ turnId: Type.Union([Type.String(), Type.Null()]) }), await response.json());
+      if (!branch.isConnected || this.reveal !== id) return;
+      if (turnId !== null) {
+        const turn = branch.querySelector<HTMLDetailsElement>(`[data-agent-turn-turn-id-value="${CSS.escape(turnId)}"]`);
+        if (turn) { turn.dataset.agentTurnRevealValue = message; turn.open = true; }
+      }
+      this.loaded();
     }
     toggle(event: Event): void {
       const details = event.target;
@@ -98,7 +104,7 @@ export function createSubagentsController(Controller: WorkspaceClientControllerC
       if (!this.reveal) return;
       const branch = this.branchTargets.find((branch) => branch.dataset.subagentId === this.reveal);
       if (!branch) return;
-      const target = this.message ? branch.querySelector<HTMLElement>(`[data-transcript-anchor="${CSS.escape(this.message)}"]`) : branch;
+      const target = this.message ? branch.querySelector<HTMLElement>(`[data-transcript-anchor="${CSS.escape(this.message)}"], [data-transcript-key="${CSS.escape(this.message)}"]`) : branch;
       if (target) {
         if (target instanceof HTMLDetailsElement) target.open = true;
         target.scrollIntoView({ block: "center" });

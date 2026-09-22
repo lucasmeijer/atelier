@@ -1,12 +1,7 @@
-import { validDraftId } from "@atelier/prompt/server";
-import { parseModelRef } from "@atelier/llm/server";
-import { createAgentPaneHost } from "./agent-pane-host.ts";
-import { renderLaunchComposer, launchComposerContent, renderLaunchProvider } from "./launch-composer.ts";
-import { registeredAgentProviders, agentProvider, defaultAgentProvider, orderedAgentProviders, rememberAgentProvider } from "./agent-providers.ts";
 import {
   maybeNameWorkspaceFromPrompt,
-  type OnboardingToolDependencies,
   projectOnboardingInitialPrompt,
+  type OnboardingToolDependencies,
 } from "@atelier/agent/server";
 import {
   AtelierCoreError,
@@ -24,55 +19,56 @@ import { buttonHtml } from "@atelier/design-system/button";
 import { dialogHtml } from "@atelier/design-system/dialog";
 import { Icons } from "@atelier/design-system/icons";
 import { warningBannerHtml } from "@atelier/design-system/warning-banner";
-import { workspaceWarnings, type WorkspaceWarning } from "./workspace-warnings.ts";
-import { isSshAuthenticationFailure, getProjectConfiguration, type ProjectConfiguration, isGitProjectInit, listProjects, projectWorkspaceInit, projectWorkspaceInitWithSettings, readProjectWorkspaceSettings, type ProjectSummary } from "@atelier/projects";
-import { createWorkspaceProvisioning, type WorkspaceProvisioning, type WorkspaceProvisionRun, createWorkspacePresentationStore, generateWorkspaceId, listWorkspaces, setWorkspaceParked, setWorkspaceTitle, type WorkspaceCreationContext, type WorkspaceInitInstruction, type WorkspaceWorkViewReference, type WorkspaceWorkViewState } from "@atelier/workspace";
-import { renderWorkspaceLaunchPrompt, renderWorkspaceProvisioning } from "@atelier/workspace/server/provisioning";
+import { parseModelRef } from "@atelier/llm/server";
+import { getProjectConfiguration, isGitProjectInit, isSshAuthenticationFailure, listProjects, projectWorkspaceInit, projectWorkspaceInitWithSettings, readProjectWorkspaceSettings, type ProjectConfiguration, type ProjectSummary } from "@atelier/projects";
+import { validDraftId } from "@atelier/prompt/server";
 import {
-  workspaceModuleModalFrameId,
-  parseWorkspaceFileTarget,
-  atelierCableConnectionHeader,
-  CableTopics,
-  emptyWorkspaceCommandInputSchema,
   domId,
+  emptyWorkspaceCommandInputSchema,
   escapeHtml,
-  turboStream,
+  parseWorkspaceFileTarget,
   turboStreamResponse,
+  workspaceModuleModalFrameId,
   type CableIdentifier,
   type DeleteCurrentWorkspaceResult,
   type GlobalSidebarContributionRegistry,
+  type LiveRegion,
   type WorkspaceAttachment,
+  type WorkspaceCommandContribution,
+  type WorkspaceDeletionReview,
   type WorkspaceModuleCommandHandler,
   type WorkspaceModuleCommandResult,
   type WorkspaceModuleRouteHandler,
-  type WorkspaceCommandContribution,
   type WorkspaceModuleWorkViewAdapter,
-  type WorkspaceDeletionReview,
-  type WorkspaceWorkViewPresentation,
+  type WorkspaceWorkViewPresentation
 } from "@atelier/shared";
-import type { WorkspaceDeletionState, WorkspaceEntry, WorkspaceRegistry } from "./workspace-registry.ts";
-import { workspaceModules } from "./workspace-modules.ts";
-import { handleSettingsRequest, renderDevelopmentSettingsDialog, renderSettingsDialog } from "./settings/routes.ts";
-import { handleOnboardingRequest, renderOnboardingDialog } from "./onboarding/routes.ts";
-import { atelierOpenApi } from "./openapi.ts";
-import { openWorkspaceFile } from "./file-navigation.ts";
-import { parseCloseWorkViewRequest, parseReorderWorkViewRequest } from "./work-view-api.ts";
+import { createWorkspacePresentationStore, createWorkspaceProvisioning, generateWorkspaceId, listWorkspaces, setWorkspaceParked, setWorkspaceTitle, type WorkspaceCreationContext, type WorkspaceInitInstruction, type WorkspaceProvisioning, type WorkspaceProvisionRun, type WorkspaceWorkViewReference, type WorkspaceWorkViewState } from "@atelier/workspace";
+import { renderWorkspaceLaunchPrompt, renderWorkspaceProvisioning } from "@atelier/workspace/server/provisioning";
+import { setTimeout as delay } from "node:timers/promises";
 import { Type } from "typebox";
 import { Value } from "typebox/value";
-import { openWorkViewTurboStream, presentWorkViewTurboStream, removeWorkspaceResidentTurboStream, renderAtelierBar, renderMobileWorkspaceBar, renderWorkViewBodyFrame, renderWorkspaceDeletionPresentation, renderWorkspaceParkConfirmation, dismissWorkspaceParkConfirmationTurboStream, renderWorkspacePane, renderWorkspacePresentation, workspacePaneCollectionsTurboStream, workspacePaneOnboardingState, workspacePresentationDomId, workViewsTurboStream, type WorkPaneContribution, type WorkspacePaneProject, type WorkspacePanePresentation, type WorkspacePresentation as FixedWorkspacePresentation } from "./workspace-presentation.ts";
-import { mobileAgentAttentionTurboStream, agentStateTurboStream, agentProviderChoicesTurboStream, agentTabsTurboStream, renderAgentBodyFrame, selectAgentTurboStream } from "./agent-pane.ts";
-import { workspacePreparationInvalidatedTurboStream } from "./workspace-view-markup.ts";
-import type { CableBroadcastOptions } from "./cable.ts";
-import { jsonResponse, problemJsonResponse, httpErrorStatus, response, turboReplaceStream, turboUpdateStream, wantsTurboStream } from "./http-responses.ts";
+import { createAgentPaneHost } from "./agent-pane-host.ts";
+import { agentContentId, selectAgentTurboStream } from "./agent-pane.ts";
+import { agentProvider, defaultAgentProvider, orderedAgentProviders, registeredAgentProviders, rememberAgentProvider } from "./agent-providers.ts";
+import { openWorkspaceFile } from "./file-navigation.ts";
+import { httpErrorStatus, jsonResponse, problemJsonResponse, response, turboReplaceStream, turboUpdateStream, wantsTurboStream } from "./http-responses.ts";
+import { launchComposerContent, renderLaunchComposer, renderLaunchProvider } from "./launch-composer.ts";
+import { createLiveResource } from "./live-resource.ts";
+import { handleOnboardingRequest, renderOnboardingDialog } from "./onboarding/routes.ts";
+import { atelierOpenApi } from "./openapi.ts";
 import { createPageLayout } from "./page-layout.ts";
 import { createProjectRoutes, type ProjectEditorModalOptions } from "./project-routes.ts";
-import { setTimeout as delay } from "node:timers/promises";
+import { handleSettingsRequest, renderDevelopmentSettingsDialog, renderSettingsDialog } from "./settings/routes.ts";
+import { parseCloseWorkViewRequest, parseReorderWorkViewRequest } from "./work-view-api.ts";
 import { createWorkspaceDeletion } from "./workspace-deletion.ts";
+import { workspaceModules } from "./workspace-modules.ts";
+import { dismissWorkspaceParkConfirmationTurboStream, presentWorkViewTurboStream, renderAtelierBar, renderMobileWorkspaceBar, renderWorkspaceDeletionPresentation, renderWorkspacePane, renderWorkspaceParkConfirmation, renderWorkspacePresentation, workspacePaneCollectionsRegions, workspacePaneOnboardingState, workContentId, type WorkspacePresentation as FixedWorkspacePresentation, type WorkPaneContribution, type WorkspacePanePresentation, type WorkspacePaneProject } from "./workspace-presentation.ts";
+import type { WorkspaceDeletionState, WorkspaceEntry, WorkspaceRegistry } from "./workspace-registry.ts";
+import { workspaceWarnings, type WorkspaceWarning } from "./workspace-warnings.ts";
 
 const jsonStringSchema = Type.String();
 export interface WebAppDeps {
   registry: WorkspaceRegistry;
-  cable?: { broadcast(identifier: CableIdentifier, html: string, options?: CableBroadcastOptions): void };
   /** Event bus passed through to the agent module routes. */
   events?: AtelierEventBus;
   devReload?: boolean;
@@ -91,7 +87,9 @@ export interface WebAppDeps {
 
 export interface WebApp {
   fetch(request: Request): Promise<Response>;
-  shellSnapshot(): Promise<string>;
+  invalidateWorkspace(workspaceId: string): void;
+  subscribeShell(listener: (html: string) => void): Promise<import("@atelier/shared").CableChannelSubscription>;
+  subscribeSurface(identifier: CableIdentifier, listener: (html: string) => void): Promise<import("@atelier/shared").CableChannelSubscription>;
   deleteCurrentWorkspaceFromAgent(workspaceId: string, force: boolean): Promise<DeleteCurrentWorkspaceResult>;
   resumeWorkspaceDeletions(): void;
   provisioning: WorkspaceProvisioning;
@@ -120,7 +118,7 @@ export function createWebApp(deps: WebAppDeps): WebApp {
     inspect: (id) => deletionReview.inspect(id),
     destroy: deps.destroyWorkspace,
     cancelPreparation: (id) => provisioning.cancel(id),
-    changed: broadcastDeletionPresentation,
+    changed: invalidatePresentation,
   });
   const agentProviders = registeredAgentProviders();
   const agentTabs = createAgentPaneHost(agentProviders);
@@ -129,34 +127,72 @@ export function createWebApp(deps: WebAppDeps): WebApp {
   });
   const serializePresentationMutation = createKeyedOperationQueue();
 
-  function broadcastShell(html: string, options?: CableBroadcastOptions): void {
-    deps.cable?.broadcast(CableTopics.shell(), html, options);
+  const workPresentationIntents = new Map<string, { key: string; revision: string }>();
+  type SurfaceState = { kind: "workspace"; presentation: FixedWorkspacePresentation }
+    | { kind: "regions"; regions: readonly LiveRegion[] };
+  const surfaces = new Map<string, { workspaceId: string; kind: string; resource: ReturnType<typeof createLiveResource<SurfaceState>> }>();
+  const reportPresentationError = (error: Error) => logError(
+    `Could not refresh live state: ${error instanceof Error ? error.message : String(error)}`,
+  );
+  const shell = createLiveResource(async () => {
+    const pane = await workspacePaneCollections("");
+    return [...workspacePaneCollectionsRegions(pane), ...[...globalRegions.values()].flat(),
+      { target: "global_sidebar_contributions", html: renderGlobalSidebarContributions() },
+      { target: "workspace_residents", html: workspaceMounts() },
+      { target: emptyWorkspaceOnboardingId, html: emptyWorkspaceOnboardingHtml(pane), action: "replace" as const },
+    ];
+  }, regions => regions, reportPresentationError);
+
+  function invalidatePresentation(): void {
+    shell.invalidate();
+    for (const { kind, resource } of surfaces.values()) if (kind === "workspace") resource.invalidate();
   }
 
-  function deliverShellMutation(request: Request, structuralHtml: string, originHtml = ""): string {
-    if (structuralHtml) broadcastShell(structuralHtml);
-    if (requestAcceptsJson(request) && !wantsTurboStream(request)) return "";
-    const originConnectionId = request.headers.get(atelierCableConnectionHeader);
-    if (!deps.cable || !originConnectionId) return `${structuralHtml}${originHtml}`;
-    if (originHtml) broadcastShell(originHtml, { onlyConnectionId: originConnectionId });
-    return "";
-  }
-
-  deps.events?.on("agent_provider_default_changed", async () => {
-    for (const entry of registry.list().filter((entry) => entry.phase.kind === "runningPhase")) {
-      broadcastShell(agentProviderChoicesTurboStream(await fixedWorkspacePresentation(entry.id)));
+  function invalidateWorkspace(workspaceId?: string): void {
+    invalidatePresentation();
+    for (const surface of surfaces.values()) {
+      if (surface.kind !== "workspace" && surface.workspaceId === workspaceId) surface.resource.invalidate();
     }
-  });
-  deps.events?.on("workspace_agent_view_invalidated", ({ workspaceId, conversationId, exceptConnectionId, html }) => {
-    broadcastShell(`${html ?? ""}${workspacePreparationInvalidatedTurboStream(workspaceId, conversationId)}`, exceptConnectionId ? { exceptConnectionId } : undefined);
-  });
-  deps.events?.on("workspace_agent_conversation_title_changed", async ({ workspaceId }) => {
-    broadcastShell(agentTabsTurboStream(await fixedWorkspacePresentation(workspaceId)));
-  });
+  }
+
+  function surfaceFor(identifier: CableIdentifier) {
+    if (identifier.channel !== "module" || identifier.name !== "surface") throw new Error("Invalid surface channel");
+    const { workspaceId, params } = identifier;
+    requireWorkspace(workspaceId);
+    const { kind, key = "" } = params;
+    const contributed = workspaceModules.flatMap(module => module.liveSurfaces ?? []).find(surface => surface.name === kind);
+    if (kind !== "workspace" && !contributed) throw new Error("Unknown surface kind");
+    const cacheKey = JSON.stringify([workspaceId, kind, key, params.agent ?? "", params.work ?? ""]);
+    let surface = surfaces.get(cacheKey);
+    if (!surface) {
+      const resource = createLiveResource<SurfaceState>(async () => {
+        const entry = requireWorkspace(workspaceId);
+        if (contributed) return { kind: "regions", regions: await contributed.load({ workspaceId, key }) };
+        if (entry.phase.kind === "runningPhase" && !entry.phase.deletion) {
+          return { kind: "workspace", presentation: await prepareWorkspacePresentation(workspaceId, { agent: params.agent, workView: params.work }) };
+        }
+        return { kind: "regions", regions: [{ target: workspaceResidentId(workspaceId), html: entry.phase.deletion
+          ? deletionPresentation(entry, entry.phase.deletion) : workspaceBootResidentHtml(entry) }] };
+      }, state => state.kind === "workspace"
+        ? workspaceRegions(state.presentation)
+        : state.regions, reportPresentationError);
+      surface = { workspaceId, kind, resource };
+      surfaces.set(cacheKey, surface);
+    }
+    return surface.resource;
+  }
+
+  async function subscribeSurface(identifier: CableIdentifier, listener: (html: string) => void) {
+    return surfaceFor(identifier).subscribe(listener);
+  }
+
+  deps.events?.on("agent_provider_default_changed", invalidatePresentation);
+  deps.events?.on("workspace_agent_view_invalidated", invalidatePresentation);
+  deps.events?.on("workspace_agent_conversation_title_changed", invalidatePresentation);
 
   const provisioningPrompts = new Map<string, string>();
   const provisioning = createWorkspaceProvisioning({ events: deps.events, onChange: (workspaceId) => {
-    broadcastWorkspaceBoot(workspaceId);
+    invalidatePresentation();
     const entry = registry.get(workspaceId);
     const snapshot = provisioning.snapshot(workspaceId);
     if (entry?.phase.kind === "provisioningPhase" && snapshot) {
@@ -174,8 +210,7 @@ export function createWebApp(deps: WebAppDeps): WebApp {
     referencingWorkspaces: (projectId) => registry.list()
       .filter((entry) => isGitProjectInit(entry.init) && entry.init.projectId === projectId)
       .map((entry) => ({ workspaceId: entry.id, title: workspaceTitle(entry) })),
-    refreshWorkspacePaneCollections,
-    refreshProjectWarnings,
+    invalidatePresentation,
     renderLaunchComposer: renderProjectLaunchComposerFrame,
     createAgentWorkspace: async (project, request) => await createAgentWorkspaceFromForm(request, { project }),
     createOnboardingWorkspace,
@@ -186,6 +221,7 @@ export function createWebApp(deps: WebAppDeps): WebApp {
     return domId("workspace_resident", id);
   }
 
+  const globalRegions = new Map<string, readonly LiveRegion[]>();
   const globalSidebarContributionStore = new Map<string, string>();
 
   function renderGlobalSidebarContributions(): string {
@@ -193,11 +229,11 @@ export function createWebApp(deps: WebAppDeps): WebApp {
   }
 
   const globalSidebarContributions: GlobalSidebarContributionRegistry = {
-    set(contributionId: string, html?: string, options = {}) {
+    set(contributionId, html, regions = []) {
+      globalRegions.set(contributionId, regions);
       if (html) globalSidebarContributionStore.set(contributionId, html);
       else globalSidebarContributionStore.delete(contributionId);
-      const streamHtml = `${turboUpdateStream("global_sidebar_contributions", renderGlobalSidebarContributions(), { method: "morph" })}${options.broadcastHtml ?? ""}`;
-      broadcastShell(streamHtml);
+      invalidatePresentation();
     },
   };
 
@@ -208,59 +244,25 @@ export function createWebApp(deps: WebAppDeps): WebApp {
   const persistWorkspaceParked = deps.persistWorkspaceParked ?? setWorkspaceParked;
   let suppressParkedStateCallbacks = false;
 
-  let previousWorkspacePane: WorkspacePanePresentation | undefined;
-  let paneRefresh = Promise.resolve("");
-  function refreshWorkspacePaneCollections(): Promise<string> {
-    paneRefresh = paneRefresh.then(async () => {
-      const pane = await workspacePaneCollections("");
-      const onboarding = emptyWorkspaceOnboardingHtml(pane);
-      const stream = workspacePaneCollectionsTurboStream(pane, previousWorkspacePane)
-        + (!previousWorkspacePane || onboarding !== emptyWorkspaceOnboardingHtml(previousWorkspacePane) ? turboReplaceStream(emptyWorkspaceOnboardingId, onboarding) : "");
-      previousWorkspacePane = pane;
-      broadcastShell(stream);
-      return stream;
-    });
-    return paneRefresh;
-  }
-
-  function broadcastWorkspacePaneCollections(): void {
-    void refreshWorkspacePaneCollections().catch((error) => logError(`could not refresh Workspace pane: ${error instanceof Error ? error.message : String(error)}`));
-  }
-
   registry.setCallbacks({
-    rowChanged(entry, context) {
-      broadcastWorkspacePaneCollections();
-      if (context.phaseChanged) {
-        if (entry.phase.kind === "provisioningPhase") {
-          broadcastWorkspaceBoot(entry.id);
-        } else if (entry.phase.kind === "runningPhase") {
-          provisioningPrompts.delete(entry.id);
-          void broadcastWorkspaceReady(entry.id);
-        }
-      }
-      if (context.issuesChanged && entry.phase.kind === "runningPhase") void workspaceWarningStream(entry).then(broadcastShell);
-      if (context.viewKey) {
-        if (context.viewKey.startsWith("agent:")) {
-          broadcastShell(agentStateTurboStream(entry.id, context.viewKey.slice(6), registry.agentState(entry.id, context.viewKey)));
-          void agentPaneContributions(entry.id).then((agents) => broadcastShell(mobileAgentAttentionTurboStream(entry.id, agents)));
-        } else {
-          void currentWorkPanePresentations(entry.id).then((views) => broadcastShell(workViewsTurboStream(entry.id, views)));
-        }
-        broadcastShell(workspacePreparationInvalidatedTurboStream(entry.id));
-      }
+    rowChanged(entry) {
+      if (entry.phase.kind === "runningPhase") provisioningPrompts.delete(entry.id);
+      invalidatePresentation();
     },
     listChanged() {
       if (suppressParkedStateCallbacks) return;
-      broadcastWorkspacePaneCollections();
+      invalidatePresentation();
     },
     parkedChanged(entry) {
       if (suppressParkedStateCallbacks) return;
       void persistWorkspaceParked(entry.id, entry.parked).catch((error) => logError(`could not persist parked state for workspace ${entry.id}: ${error instanceof Error ? error.message : String(error)}`));
     },
     removed(id) {
+      workPresentationIntents.delete(id);
       provisioningPrompts.delete(id);
       provisioning.delete(id);
-      broadcastShell(removeWorkspaceResidentTurboStream(id));
+      for (const [key, surface] of surfaces) if (surface.workspaceId === id) { surface.resource.dispose(); surfaces.delete(key); }
+      invalidatePresentation();
       for (const handler of deps.workspaceRemovedHandlers ?? []) void handler(id);
     },
   });
@@ -305,16 +307,19 @@ export function createWebApp(deps: WebAppDeps): WebApp {
     });
   }
 
-
   // ---------------------------------------------------------------------------
   // Workspace detail residency host
   // ---------------------------------------------------------------------------
 
   async function attachWorkspaceModules(workspaceId: string): Promise<WorkspaceAttachment[]> {
     const entry = requireWorkspace(workspaceId);
-    return await Promise.all(workspaceModules
+    const attachments = await Promise.all(workspaceModules
       .filter((module) => module.attachToWorkspace)
       .map((module) => module.attachToWorkspace!({ workspaceId, init: entry.init, events: deps.events })));
+    const initialWorkViews = attachments.flatMap(attachment => attachment.workViews ?? [])
+      .filter(view => view.initiallyOpen !== false).map(view => view.reference);
+    await presentationStore.initialize(workspaceId, initialWorkViews);
+    return attachments;
   }
 
   const workViewAdapterByType = new Map(workViewAdapters.map((adapter) => [adapter.type, adapter]));
@@ -377,7 +382,6 @@ export function createWebApp(deps: WebAppDeps): WebApp {
         close: workViewClose(workspaceId, stored.reference, contribution?.label ?? stored.reference.type),
       };
       if (contribution?.sourceKey !== undefined) view.sourceKey = contribution.sourceKey;
-      if (contribution) view.bodyUrl = `/workspaces/${encodeURIComponent(workspaceId)}/work-views/${encodeURIComponent(key)}/body`;
       if (contribution?.actionsHtml !== undefined) view.actionsHtml = contribution.actionsHtml;
       Object.assign(view, registry.surfaceState(workspaceId, key));
       return view;
@@ -401,7 +405,6 @@ export function createWebApp(deps: WebAppDeps): WebApp {
     return (await agentTabs.list({ workspaceId })).map((conversation) => ({
       ...conversation,
       ...registry.agentState(workspaceId, `agent:${conversation.id}`),
-      bodyUrl: `/workspaces/${encodeURIComponent(workspaceId)}/agents/${encodeURIComponent(conversation.id)}/body`,
       close: agentClose(workspaceId, conversation.id, conversation.title),
     }));
   }
@@ -416,7 +419,6 @@ export function createWebApp(deps: WebAppDeps): WebApp {
     const attachments = await attachWorkspaceModules(workspaceId);
     const agentConversations = await agentPaneContributions(workspaceId);
     const currentWorkViews = attachments.flatMap((attachment) => attachment.workViews ?? []);
-    await presentationStore.initialize(workspaceId, currentWorkViews.filter((view) => view.initiallyOpen !== false).map((view) => view.reference));
     const storedWorkViews = await presentationStore.listWorkViews(workspaceId);
     const commandContributions: WorkspaceCommandContribution[] = [...attachments.flatMap((attachment) => attachment.commands ?? []),
       { id: "agent.create", label: "New Agent", scope: "workspace" },
@@ -432,6 +434,7 @@ export function createWebApp(deps: WebAppDeps): WebApp {
       agentConversations,
       workViews: workViewPresentations(workspaceId, currentWorkViews, storedWorkViews),
       commands,
+      workPresentationIntent: workPresentationIntents.get(workspaceId),
       warningsHtml: workspaceWarningsHtml(entry.id, warningState),
       overlayHtml: attachments.flatMap((attachment) => attachment.overlayHtml ?? []),
     };
@@ -447,18 +450,6 @@ export function createWebApp(deps: WebAppDeps): WebApp {
     })).join("");
   }
 
-  async function workspaceWarningStream(entry: WorkspaceEntry, project?: ProjectConfiguration): Promise<string> {
-    return turboUpdateStream(domId("workspace_warnings", entry.id), workspaceWarningsHtml(entry.id, await workspaceWarningState(entry, project)));
-  }
-
-  async function refreshProjectWarnings(projectId: string): Promise<string> {
-    const entries = registry.list().filter((entry) => entry.phase.kind === "runningPhase" && isGitProjectInit(entry.init) && entry.init.projectId === projectId);
-    const project = await getProjectConfiguration(projectId);
-    const stream = (await Promise.all(entries.map((entry) => workspaceWarningStream(entry, project)))).join("");
-    broadcastShell(stream);
-    return stream;
-  }
-
   async function dismissWorkspaceWarning(id: string, kind: string, request: Request): Promise<Response> {
     const entry = requireWorkspace(id);
     const state = requestAcceptsJson(request) ? (await readJsonObject(request)).state : (await request.formData()).get("state");
@@ -466,27 +457,43 @@ export function createWebApp(deps: WebAppDeps): WebApp {
     const warning = warningState.warnings.find((candidate) => candidate.kind === kind && candidate.state === state);
     if (!warning) throw invalidArguments("warning is no longer current");
     await presentationStore.dismissWarning(id, kind, warning.state);
-    const stream = await workspaceWarningStream(entry);
-    broadcastShell(stream);
-    return requestAcceptsJson(request) ? jsonResponse({ dismissed: true }) : turboStreamResponse(stream);
+    invalidatePresentation();
+    return requestAcceptsJson(request) ? jsonResponse({ dismissed: true }) : turboStreamResponse("");
   }
 
-  async function fixedWorkspacePresentation(workspaceId: string): Promise<FixedWorkspacePresentation> {
-    return (await workspacePresentationBundle(workspaceId)).presentation;
+  function workspaceRegions(presentation: FixedWorkspacePresentation): readonly LiveRegion[] {
+    const workspaceId = presentation.workspace.id;
+    return [{
+      target: workspaceResidentId(workspaceId),
+      html: renderWorkspacePresentation({ ...presentation,
+        agentConversations: presentation.agentConversations.map(agent => ({ ...agent, bodyHtml: undefined })),
+        workViews: presentation.workViews.map(view => ({ ...view, bodyHtml: undefined })),
+      }),
+      children: [
+        ...presentation.agentConversations.flatMap(agent => agent.bodyHtml === undefined ? [] : [{ target: agentContentId(workspaceId, agent.id), html: agent.bodyHtml }]),
+        ...presentation.workViews.flatMap(view => view.bodyHtml === undefined ? [] : [{ target: workContentId(workspaceId, view.key), html: view.bodyHtml }]),
+      ],
+    }];
   }
 
-  async function workspaceDetailContent(id: string): Promise<string> {
-    const entry = requireWorkspace(id);
-    return entry.phase.deletion ? deletionPresentation(entry, entry.phase.deletion) : renderWorkspacePresentation(await fixedWorkspacePresentation(id));
+  async function prepareWorkspacePresentation(id: string, selection: NonNullable<FixedWorkspacePresentation["initialSelection"]>): Promise<FixedWorkspacePresentation> {
+    const { presentation, storedWorkViews } = await workspacePresentationBundle(id);
+    presentation.initialSelection = {
+      agent: presentation.agentConversations.find(agent => agent.id === selection.agent)?.id ?? presentation.agentConversations[0]?.id,
+      workView: presentation.workViews.find(view => view.key === selection.workView)?.key,
+    };
+    await Promise.all([
+      ...presentation.agentConversations.filter(agent => agent.id === presentation.initialSelection!.agent).map(async agent => { agent.bodyHtml = await agentTabs.render({ workspaceId: id, conversationId: agent.id }); }),
+      ...presentation.workViews.filter(view => view.key === presentation.initialSelection!.workView).map(async view => {
+        if (view.availability.phase === "unavailable") return;
+        const reference = storedWorkViews.find(stored => workViewKey(stored.reference) === view.key)!.reference;
+        view.bodyHtml = await workViewAdapterByType.get(reference.type)!.render({ workspaceId: id, reference });
+      }),
+    ]);
+    return presentation;
   }
 
-  async function workspaceDetailResidentHtml(id: string, options: { visible?: boolean } = {}): Promise<string> {
-    const entry = requireWorkspace(id);
-    const projectAttr = isGitProjectInit(entry.init) ? ` data-project-id="${escapeHtml(entry.init.projectId)}"` : "";
-    return `<div class="workspace-detail-resident ${options.visible ? "visible" : ""}" id="${workspaceResidentId(id)}" data-workspace-residency-target="resident" data-workspace-id="${escapeHtml(id)}"${projectAttr}>${await workspaceDetailContent(id)}</div>`;
-  }
-
-  function workspaceBootResidentHtml(entry: WorkspaceEntry, options: { visible?: boolean } = {}): string {
+  function workspaceBootResidentHtml(entry: WorkspaceEntry): string {
     const projectId = isGitProjectInit(entry.init) ? entry.init.projectId : undefined;
     const deleteButton = buttonHtml({ type: "submit", variant: "danger", content: { kind: "caption", caption: "Delete workspace" } });
     const deleteAction = `<form class="workspace-boot-actions" method="post" action="/workspaces/${encodeURIComponent(entry.id)}/delete">${deleteButton}</form>`;
@@ -503,19 +510,7 @@ export function createWebApp(deps: WebAppDeps): WebApp {
       actionsHtml: recoveryActions,
     } : undefined;
     const inner = `${renderWorkspaceProvisioning(entry.id, snapshot, { failed, error: entry.phase.error, recovery })}${sourceFailure ? "" : recoveryActions}${deleteAction}`;
-    const projectAttr = projectId ? ` data-project-id="${escapeHtml(projectId)}"` : "";
-    return `<div class="workspace-detail-resident workspace-boot ${options.visible ? "visible" : ""}" id="${workspaceResidentId(entry.id)}" data-workspace-residency-target="resident" data-workspace-id="${escapeHtml(entry.id)}"${projectAttr}><div class="main"><div class="body"><div class="workspace-boot-progress"><div class="workspace-boot-content">${inner}</div></div>${renderWorkspaceLaunchPrompt(provisioningPrompts.get(entry.id))}</div></div>${renderMobileWorkspaceBar()}</div>`;
-  }
-
-  function broadcastWorkspaceBoot(id: string): void {
-    const entry = registry.get(id);
-    if (!entry || entry.phase.kind !== "provisioningPhase") return;
-    broadcastShell(turboReplaceStream(workspaceResidentId(id), workspaceBootResidentHtml(entry)));
-  }
-
-  async function workspaceResidentFor(entry: WorkspaceEntry, options: { visible?: boolean } = {}): Promise<string> {
-    if (entry.phase.kind === "provisioningPhase") return workspaceBootResidentHtml(entry, options);
-    return await workspaceDetailResidentHtml(entry.id, options);
+    return `<div class="workspace-boot"><div class="main"><div class="body"><div class="workspace-boot-progress"><div class="workspace-boot-content">${inner}</div></div>${renderWorkspaceLaunchPrompt(provisioningPrompts.get(entry.id))}</div></div>${renderMobileWorkspaceBar()}</div>`;
   }
 
   const emptyWorkspaceOnboardingId = "workspace_empty_onboarding";
@@ -538,13 +533,20 @@ export function createWebApp(deps: WebAppDeps): WebApp {
     </div>`;
   }
 
-  async function workspaceDetailHostHtml(pane: WorkspacePanePresentation, selectedId?: string): Promise<string> {
-    const entry = selectedId ? registry.get(selectedId) : undefined;
-    const resident = entry ? await workspaceResidentFor(entry, { visible: true }) : "";
+  function workspaceMounts(selectedId?: string, selectedHtml = "", selection?: FixedWorkspacePresentation["initialSelection"]): string {
+    return registry.list().filter(entry => !entry.parked).map(entry => `<div id="${workspaceResidentId(entry.id)}" class="workspace-detail-resident${entry.id === selectedId ? " visible" : ""}" data-turbo-permanent data-workspace-residency-target="resident" data-workspace-id="${escapeHtml(entry.id)}" data-controller="live-surface" data-live-surface-workspace-value="${escapeHtml(entry.id)}" data-live-surface-kind-value="workspace" data-live-surface-eager-value="${entry.id === selectedId}" data-live-surface-agent-value="${entry.id === selectedId ? escapeHtml(selection?.agent ?? "") : ""}" data-live-surface-work-value="${entry.id === selectedId ? escapeHtml(selection?.workView ?? "") : ""}">${entry.id === selectedId ? selectedHtml : ""}</div>`).join("");
+  }
+
+  async function workspaceDetailHostHtml(pane: WorkspacePanePresentation, selectedId?: string, initialSelection?: FixedWorkspacePresentation["initialSelection"]): Promise<string> {
+    const entry = selectedId ? requireWorkspace(selectedId) : undefined;
+    const state = entry ? await surfaceFor({ channel: "module", name: "surface", workspaceId: entry.id, params: { kind: "workspace", agent: initialSelection?.agent ?? "", work: initialSelection?.workView ?? "" } }).read() : undefined;
+    const selectedHtml = !state ? "" : state.kind === "workspace"
+      ? renderWorkspacePresentation(state.presentation)
+      : state.regions.map(region => region.html).join("");
     return `<div id="workspace_detail" class="workspace-detail-host" data-controller="workspace-residency" data-workspace-residency-max-resident-value="5">
-      <div class="workspace-detail-empty" data-workspace-residency-target="empty"${resident ? " hidden" : ""}>${emptyWorkspaceOnboardingHtml(pane)}</div>
-      <div class="workspace-detail-loading" data-workspace-residency-target="loading" hidden><div class="workspace-detail-loading-status" role="status"><span class="status-spinner" aria-hidden="true"></span><span>Loading workspace…</span></div></div>
-      ${resident}
+      <div class="workspace-detail-empty" data-workspace-residency-target="empty"${selectedId ? " hidden" : ""}>${emptyWorkspaceOnboardingHtml(pane)}</div>
+      <div class="workspace-detail-loading" data-workspace-residency-target="loading" hidden><div class="workspace-detail-loading-status" role="status"><span class="status-spinner" aria-hidden="true"></span> Loading workspace…</div></div>
+      <div id="workspace_residents" style="display:contents">${workspaceMounts(selectedId, selectedHtml, state?.kind === "workspace" ? state.presentation.initialSelection : initialSelection)}</div>
     </div>`;
   }
 
@@ -554,7 +556,7 @@ export function createWebApp(deps: WebAppDeps): WebApp {
     | { kind: "new-workspace"; project?: ProjectSummary }
     | { kind: "settings"; section: string | undefined; development?: true };
 
-  async function renderWorkspaceShell(selectedId?: string, surface?: ShellSurface): Promise<string> {
+  async function renderWorkspaceShell(selectedId?: string, surface?: ShellSurface, initialSelection?: FixedWorkspacePresentation["initialSelection"]): Promise<string> {
     const pane = await workspacePaneCollections(selectedId ?? "");
     const projectEditor = surface?.kind === "project-editor" ? surface.dialogHtml : '<div id="project-editor-modal"></div>';
     const settings = surface?.kind === "settings"
@@ -565,7 +567,7 @@ export function createWebApp(deps: WebAppDeps): WebApp {
       : `<turbo-frame id="${launchComposerFrameId}"></turbo-frame>`;
     return `<div class="app fixed-shell-app" data-controller="atelier-shortcuts workspace-navigation">
     ${renderWorkspacePane(pane, renderGlobalSidebarContributions(), workspaceModules.map((module) => module.renderWorkspacePaneActions?.() ?? "").join(""))}
-    <main class="fixed-shell-app-main">${await workspaceDetailHostHtml(pane, selectedId)}</main>
+    <main class="fixed-shell-app-main">${await workspaceDetailHostHtml(pane, selectedId, initialSelection)}</main>
     ${renderAtelierBar()}
   </div>
   ${projectEditor}
@@ -654,9 +656,8 @@ export function createWebApp(deps: WebAppDeps): WebApp {
     if (requestAcceptsJson(request)) return await workspaceJson(id);
     const entry = requireWorkspace(id);
     if (entry.parked) return Response.redirect(new URL("/", request.url).toString(), 302);
-    const url = new URL(request.url);
-    if (url.searchParams.get("resident") === "1") return response(await workspaceResidentFor(entry, { visible: true }));
-    return response(layout(await renderWorkspaceShell(id)));
+    const params = new URL(request.url).searchParams;
+    return response(layout(await renderWorkspaceShell(id, undefined, { agent: params.get("agent") ?? undefined, workView: params.get("workView") ?? undefined })));
   }
 
   // ---------------------------------------------------------------------------
@@ -735,7 +736,7 @@ export function createWebApp(deps: WebAppDeps): WebApp {
     });
     const location = `/workspaces/${encodeURIComponent(id)}`;
     if (requestAcceptsJson(request)) return workspaceCreatedJsonResponse(id);
-    if (wantsTurboStream(request)) return turboStreamResponse(`${turboReplaceStream("project-editor-modal", '<div id="project-editor-modal"></div>')}${await refreshWorkspacePaneCollections()}${selectWorkspaceTurboStream(id)}`);
+    if (wantsTurboStream(request)) return turboStreamResponse(`${turboReplaceStream("project-editor-modal", '<div id="project-editor-modal"></div>')}${selectWorkspaceTurboStream(id)}`);
     return new Response(null, { status: 303, headers: { location } });
   }
 
@@ -756,7 +757,7 @@ export function createWebApp(deps: WebAppDeps): WebApp {
 
     const { id } = await createWorkspaceFromCommand({});
     const location = `/workspaces/${encodeURIComponent(id)}`;
-    if (wantsTurboStream(request)) return turboStreamResponse(await refreshWorkspacePaneCollections(), { headers: { location } });
+    if (wantsTurboStream(request)) return turboStreamResponse("", { headers: { location } });
     return new Response(null, { status: 303, headers: { location } });
   }
 
@@ -779,7 +780,7 @@ export function createWebApp(deps: WebAppDeps): WebApp {
       launchComposerSubmissions.set(submissionId, launch);
     }
     const { id, isFirstWorkspace } = await launch;
-    return turboStreamResponse(`${await refreshWorkspacePaneCollections()}${turboUpdateStream(launchComposerFrameId, "")}${isFirstWorkspace ? selectWorkspaceTurboStream(id) : ""}`);
+    return turboStreamResponse(`${turboUpdateStream(launchComposerFrameId, "")}${isFirstWorkspace ? selectWorkspaceTurboStream(id) : ""}`);
   }
 
   async function createEmptyAgentWorkspaceEndpoint(request: Request): Promise<Response> {
@@ -806,40 +807,10 @@ export function createWebApp(deps: WebAppDeps): WebApp {
     return value.trim();
   }
 
-  async function broadcastWorkspaceReady(id: string): Promise<void> {
-    try {
-      // No "visible" class in broadcasts: each client shows the resident
-      // itself iff it is currently looking at this workspace.
-      broadcastShell(turboReplaceStream(workspaceResidentId(id), await workspaceDetailResidentHtml(id)));
-    } catch (error) {
-      const message = error instanceof Error ? error.message : String(error);
-      logError(`could not render workspace detail for ${id}: ${message}`);
-    }
-  }
-
   function deletionPresentation(entry: WorkspaceEntry, state: WorkspaceDeletionState): string {
     const details = state.status === "blocked" ? deletion.evidence(entry.id) : undefined;
     const evidence = details === undefined ? undefined : deletionReview.renderEvidence(entry.id, details);
     return renderWorkspaceDeletionPresentation(entry.id, state, evidence);
-  }
-
-  function deletionPresentationStream(entry: WorkspaceEntry, deletion: WorkspaceDeletionState): string {
-    return `${turboReplaceStream(workspacePresentationDomId(entry.id), deletionPresentation(entry, deletion))}${workspacePreparationInvalidatedTurboStream(entry.id)}`;
-  }
-
-  function broadcastDeletionPresentation(id: string): void {
-    const entry = requireWorkspace(id);
-    if (!entry.phase.deletion) throw new Error(`workspace ${id} has no deletion state`);
-    const resident = `<div id="${workspaceResidentId(id)}" class="workspace-detail-resident" data-workspace-residency-target="resident" data-workspace-id="${escapeHtml(id)}">${deletionPresentation(entry, entry.phase.deletion)}</div>`;
-    const unselect = entry.phase.deletion.status === "deleting"
-      ? `<turbo-stream action="unselect-workspace" data-workspace-id="${escapeHtml(id)}"></turbo-stream>`
-      : "";
-    broadcastShell(`${unselect}${turboReplaceStream(workspaceResidentId(id), resident)}${workspacePreparationInvalidatedTurboStream(id)}`);
-  }
-
-  function currentDeletionStream(id: string): string {
-    const entry = registry.get(id);
-    return entry?.phase.deletion ? deletionPresentationStream(entry, entry.phase.deletion) : removeWorkspaceResidentTurboStream(id);
   }
 
   async function forceDeleteAllWorkspacesFromSettings(): Promise<{ deleted: number; errors: string[] }> {
@@ -871,7 +842,7 @@ export function createWebApp(deps: WebAppDeps): WebApp {
       : new URL(request.url).searchParams.get("force") === "1";
     const result = await deletion.request(id, { force });
     if (requestAcceptsJson(request)) return jsonResponse(result);
-    return turboStreamResponse(currentDeletionStream(id));
+    return turboStreamResponse("");
   }
 
   function cancelWorkspaceDeletionEndpoint(id: string, request: Request): Response {
@@ -884,7 +855,7 @@ export function createWebApp(deps: WebAppDeps): WebApp {
     const fingerprint = String((await request.formData()).get("fingerprint") ?? "");
     const result = await deletion.request(id, { fingerprint });
     if (requestAcceptsJson(request)) return jsonResponse(result);
-    return turboStreamResponse(currentDeletionStream(id));
+    return turboStreamResponse("");
   }
 
   async function retryWorkspaceDeletionEndpoint(id: string, request: Request): Promise<Response> {
@@ -892,7 +863,7 @@ export function createWebApp(deps: WebAppDeps): WebApp {
     if (entry.phase.deletion?.status !== "failed") return turboStreamResponse("", { status: 409 });
     const result = await deletion.request(id);
     if (requestAcceptsJson(request)) return jsonResponse(result);
-    return turboStreamResponse(currentDeletionStream(id));
+    return turboStreamResponse("");
   }
 
   async function requestWorkspaceParkedState(id: string, parked: boolean, force = false): Promise<
@@ -910,9 +881,9 @@ export function createWebApp(deps: WebAppDeps): WebApp {
         registry.setParked(id, parked);
         suppressParkedStateCallbacks = false;
       }
-      const parkedResident = parked ? `${removeWorkspaceResidentTurboStream(id)}${dismissWorkspaceParkConfirmationTurboStream(id)}` : "";
-      const stream = `${await refreshWorkspacePaneCollections()}${parkedResident}`;
-      broadcastShell(stream);
+      const parkedResident = parked ? dismissWorkspaceParkConfirmationTurboStream(id) : "";
+      const stream = `${parkedResident}`;
+      invalidatePresentation();
       return { kind: "updated", stream };
     });
   }
@@ -947,7 +918,7 @@ export function createWebApp(deps: WebAppDeps): WebApp {
       : String((await request.formData()).get("title") ?? "").trim();
     await setWorkspaceTitle(id, title);
     registry.setTitle(id, title || null);
-    return requestAcceptsJson(request) ? await workspaceJson(id) : turboStreamResponse(await refreshWorkspacePaneCollections());
+    return requestAcceptsJson(request) ? await workspaceJson(id) : turboStreamResponse("");
   }
 
   function workspaceModuleCommands(): WorkspaceModuleCommandHandler[] {
@@ -995,55 +966,44 @@ export function createWebApp(deps: WebAppDeps): WebApp {
     return await command.execute({ workspaceId, events: deps.events, input: await commandInput(request, command) });
   }
 
-  async function currentWorkPanePresentations(workspaceId: string): Promise<WorkPaneContribution[]> {
-    const attachments = await attachWorkspaceModules(workspaceId);
-    const currentWorkViews = attachments.flatMap((attachment) => attachment.workViews ?? []);
-    return workViewPresentations(workspaceId, currentWorkViews, await presentationStore.listWorkViews(workspaceId));
-  }
-
   async function openAvailableWorkView(workspaceId: string, reference: WorkspaceWorkViewReference) {
     const key = workViewKey(reference);
     const attachments = await attachWorkspaceModules(workspaceId);
     const contribution = attachments.flatMap((attachment) => attachment.workViews ?? []).find((view) => workViewKey(view.reference) === key);
     if (!contribution) throw new AtelierCoreError("work_view_not_found", `Work view is not available: ${key}`);
-    const { opened } = await presentationStore.openWorkView(workspaceId, contribution.reference);
-    return { reference: contribution.reference, key, opened };
+    await presentationStore.openWorkView(workspaceId, contribution.reference);
+    return { reference: contribution.reference, key };
   }
 
   async function openWorkspaceModuleWorkView(workspaceId: string, reference: WorkspaceWorkViewReference, request: Request, options: { select?: boolean } = {}): Promise<Response> {
     return await serializePresentationMutation(workspaceId, async () => {
-      const { opened, key } = await openAvailableWorkView(workspaceId, reference);
-      const structural = workViewsTurboStream(workspaceId, await currentWorkPanePresentations(workspaceId), { openedKey: opened ? key : undefined });
-      return turboStreamResponse(deliverShellMutation(request, structural, options.select === false ? "" : presentWorkViewTurboStream(workspaceId, key)));
+      const { key } = await openAvailableWorkView(workspaceId, reference);
+      // Navigation GETs can open a view too; they do not pass through the POST invalidation path.
+      invalidateWorkspace(workspaceId);
+      return turboStreamResponse(options.select === false || (requestAcceptsJson(request) && !wantsTurboStream(request)) ? "" : presentWorkViewTurboStream(workspaceId, key));
     });
   }
 
   async function workspaceCommandEndpoint(workspaceId: string, commandId: string, request: Request): Promise<Response> {
     const result = await executeWorkspaceCommand(workspaceId, commandId, request);
     let createdWorkView: WorkspaceWorkViewReference | undefined;
-    let openedWorkView = false;
     if (result.createdWorkView) {
-      ({ reference: createdWorkView, opened: openedWorkView } = await openAvailableWorkView(workspaceId, result.createdWorkView));
+      ({ reference: createdWorkView } = await openAvailableWorkView(workspaceId, result.createdWorkView));
     }
-    const presentation = createdWorkView || result.createdAgentConversationId ? await fixedWorkspacePresentation(workspaceId) : undefined;
-    const structural = [
-      result.createdAgentConversationId && presentation ? agentTabsTurboStream(presentation, { addedConversationId: result.createdAgentConversationId }) : "",
-      createdWorkView && presentation ? workViewsTurboStream(workspaceId, presentation.workViews, { openedKey: openedWorkView ? workViewKey(createdWorkView) : undefined }) : "",
-    ].join("");
     const origin = `${result.createdAgentConversationId ? selectAgentTurboStream(workspaceId, result.createdAgentConversationId) : ""}${createdWorkView ? presentWorkViewTurboStream(workspaceId, workViewKey(createdWorkView)) : ""}${result.streamHtml ?? ""}`;
-    const responseStream = deliverShellMutation(request, structural, origin);
     if (requestAcceptsJson(request) && !wantsTurboStream(request)) {
       const command: WorkspaceCommandResponse = { id: commandId };
       if (createdWorkView) command.workView = createdWorkView;
       if (result.createdAgentConversationId) command.agentConversationId = result.createdAgentConversationId;
       return jsonResponse({ command, workViews: workViewSummaries(workspaceId, await presentationStore.listWorkViews(workspaceId)) });
     }
-    return turboStreamResponse(responseStream);
+    return turboStreamResponse(origin);
   }
 
   async function closeWorkView(workspaceId: string, reference: WorkspaceWorkViewReference): Promise<void> {
     await workViewAdapterByType.get(reference.type)!.close?.({ workspaceId, reference });
     await presentationStore.closeWorkView(workspaceId, reference);
+    if (workPresentationIntents.get(workspaceId)?.key === workViewKey(reference)) workPresentationIntents.delete(workspaceId);
     registry.clearSurfaceAttention(workspaceId, workViewKey(reference));
   }
 
@@ -1054,18 +1014,10 @@ export function createWebApp(deps: WebAppDeps): WebApp {
     if (!adapter) throw new AtelierCoreError("work_view_reference_invalid", `unknown Work view type: ${reference.type}`);
     const parsed = adapter.parseReference(reference);
     const before = await presentationStore.listWorkViews(workspaceId);
-    const closedKey = workViewKey(parsed);
-    const closedIndex = before.findIndex((view) => workViewKey(view.reference) === closedKey);
-    const open = closedIndex >= 0;
-    if (!open) throw new AtelierCoreError("work_view_not_found", `Work view is not open: ${workViewKey(parsed)}`);
+    if (!before.some(view => workViewKey(view.reference) === workViewKey(parsed))) throw new AtelierCoreError("work_view_not_found", `Work view is not open: ${workViewKey(parsed)}`);
     await closeWorkView(workspaceId, parsed);
-    const storedWorkViews = await presentationStore.listWorkViews(workspaceId);
-    const workViews = await currentWorkPanePresentations(workspaceId);
-    const successor = workViews[Math.min(closedIndex, workViews.length - 1)]?.key;
-    const structural = workViewsTurboStream(workspaceId, workViews, { removedKey: closedKey, successorKey: successor });
-    const responseStream = deliverShellMutation(request, structural);
-    if (requestAcceptsJson(request) && !wantsTurboStream(request)) return jsonResponse({ closed: parsed, workViews: workViewSummaries(workspaceId, storedWorkViews) });
-    return turboStreamResponse(responseStream);
+    if (requestAcceptsJson(request) && !wantsTurboStream(request)) return jsonResponse({ closed: parsed, workViews: workViewSummaries(workspaceId, await presentationStore.listWorkViews(workspaceId)) });
+    return turboStreamResponse("");
   }
 
   async function reorderWorkViewEndpoint(workspaceId: string, request: Request): Promise<Response> {
@@ -1073,11 +1025,8 @@ export function createWebApp(deps: WebAppDeps): WebApp {
     const stored = (await presentationStore.listWorkViews(workspaceId)).find((view) => workViewKey(view.reference) === body.key);
     if (!stored) throw new AtelierCoreError("work_view_not_found", `Work view is not open: ${body.key}`);
     await presentationStore.reorderWorkView(workspaceId, stored.reference, body.index);
-    const storedWorkViews = await presentationStore.listWorkViews(workspaceId);
-    const structural = workViewsTurboStream(workspaceId, await currentWorkPanePresentations(workspaceId));
-    const responseStream = deliverShellMutation(request, structural);
-    if (requestAcceptsJson(request) && !wantsTurboStream(request)) return jsonResponse({ workViews: workViewSummaries(workspaceId, storedWorkViews) });
-    return turboStreamResponse(responseStream);
+    if (requestAcceptsJson(request) && !wantsTurboStream(request)) return jsonResponse({ workViews: workViewSummaries(workspaceId, await presentationStore.listWorkViews(workspaceId)) });
+    return turboStreamResponse("");
   }
 
   async function closeWorkViewJsonEndpoint(workspaceId: string, request: Request): Promise<Response> {
@@ -1087,28 +1036,19 @@ export function createWebApp(deps: WebAppDeps): WebApp {
 
   async function createWorkView(workspaceId: string, reference: WorkspaceWorkViewReference): Promise<void> {
     await serializePresentationMutation(workspaceId, async () => {
-      const { opened, key } = await openAvailableWorkView(workspaceId, reference);
-      if (opened) broadcastShell(openWorkViewTurboStream(workspaceId, await currentWorkPanePresentations(workspaceId), key));
+      await openAvailableWorkView(workspaceId, reference);
+      invalidatePresentation();
     });
   }
 
   async function presentWorkViewFromAgent(workspaceId: string, reference: WorkspaceWorkViewReference): Promise<void> {
     await serializePresentationMutation(workspaceId, async () => {
-      const { opened, key } = await openAvailableWorkView(workspaceId, reference);
+      const { key } = await openAvailableWorkView(workspaceId, reference);
       registry.setParked(workspaceId, false);
       registry.requestSurfaceAttention(workspaceId, key);
-      const workViews = await currentWorkPanePresentations(workspaceId);
-      broadcastShell(workViewsTurboStream(workspaceId, workViews, { openedKey: opened ? key : undefined, selectKey: key, intendSelection: true }));
+      workPresentationIntents.set(workspaceId, { key, revision: crypto.randomUUID() });
+      invalidatePresentation();
     });
-  }
-
-  async function workViewBodyEndpoint(workspaceId: string, key: string): Promise<Response> {
-    requireWorkspace(workspaceId);
-    const stored = (await presentationStore.listWorkViews(workspaceId)).find((view) => workViewKey(view.reference) === key);
-    if (!stored) throw new AtelierCoreError("work_view_not_found", `Work view is not open: ${key}`);
-    const adapter = workViewAdapterByType.get(stored.reference.type)!;
-    const bodyHtml = await adapter.render({ workspaceId, reference: stored.reference });
-    return response(renderWorkViewBodyFrame(workspaceId, key, bodyHtml), { headers: { "content-type": "text/html; charset=utf-8", "cache-control": "no-store" } });
   }
 
   async function requestWorkViewAttentionEndpoint(workspaceId: string, key: string, request: Request): Promise<Response> {
@@ -1116,43 +1056,25 @@ export function createWebApp(deps: WebAppDeps): WebApp {
     if (!stored) throw new AtelierCoreError("work_view_not_found", `Work view is not open: ${key}`);
     registry.setParked(workspaceId, false);
     registry.requestSurfaceAttention(workspaceId, key);
-    const presentationStream = workViewsTurboStream(workspaceId, await currentWorkPanePresentations(workspaceId));
-    const responseStream = deliverShellMutation(request, presentationStream);
-    return requestAcceptsJson(request) && !wantsTurboStream(request) ? jsonResponse({ attention: stored.reference }) : turboStreamResponse(responseStream);
+    return requestAcceptsJson(request) && !wantsTurboStream(request) ? jsonResponse({ attention: stored.reference }) : turboStreamResponse("");
   }
 
   async function closeAgentConversationEndpoint(workspaceId: string, conversationId: string, request: Request): Promise<Response> {
     requireWorkspace(workspaceId);
     const before = await agentTabs.list({ workspaceId });
-    const closedIndex = before.findIndex((agent) => agent.id === conversationId);
-    if (closedIndex < 0) throw new AtelierCoreError("agent_conversation_not_found", `Agent conversation not found: ${conversationId}`);
+    if (!before.some(agent => agent.id === conversationId)) throw new AtelierCoreError("agent_conversation_not_found", `Agent conversation not found: ${conversationId}`);
     await agentTabs.close({ workspaceId, conversationId });
     registry.clearSurfaceAttention(workspaceId, `agent:${conversationId}`);
-    const presentation = await fixedWorkspacePresentation(workspaceId);
-    const successorConversationId = presentation.agentConversations[Math.min(closedIndex, presentation.agentConversations.length - 1)]?.id;
-    const structural = agentTabsTurboStream(presentation, { removedConversationId: conversationId, successorConversationId });
-    const responseStream = deliverShellMutation(request, structural);
-    if (requestAcceptsJson(request) && !wantsTurboStream(request)) return jsonResponse({ archivedConversationId: conversationId, agentConversations: presentation.agentConversations.map(({ id, title, providerId, busy, requestingAttention }) => ({ id, title, providerId, busy, requestingAttention })) });
-    return turboStreamResponse(responseStream);
+    if (requestAcceptsJson(request) && !wantsTurboStream(request)) {
+      const agents = await agentPaneContributions(workspaceId);
+      return jsonResponse({ archivedConversationId: conversationId, agentConversations: agents.map(({ id, title, providerId, busy, requestingAttention }) => ({ id, title, providerId, busy, requestingAttention })) });
+    }
+    return turboStreamResponse("");
   }
 
   async function renderModelPickerUpdates(request: Request): Promise<string> {
-    const launchUpdates = (await Promise.all(agentProviders.map((provider) => provider.launch.refreshConfiguration?.(launchComposerSettingsFrameId)))).join("");
-    const invalidations: string[] = [];
-    for (const entry of registry.list().filter((workspace) => workspace.phase.kind === "runningPhase")) {
-      const presentation = await fixedWorkspacePresentation(entry.id);
-      for (const conversation of presentation.agentConversations) {
-        invalidations.push(workspacePreparationInvalidatedTurboStream(entry.id, conversation.id));
-      }
-    }
-    const html = invalidations.join("") + launchUpdates;
-    return deliverShellMutation(request, html);
-  }
-
-  async function agentBodyEndpoint(workspaceId: string, conversationId: string): Promise<Response> {
-    requireWorkspace(workspaceId);
-    const bodyHtml = await agentTabs.render({ workspaceId, conversationId });
-    return response(renderAgentBodyFrame(workspaceId, conversationId, bodyHtml), { headers: { "content-type": "text/html; charset=utf-8", "cache-control": "no-store" } });
+    const launchUpdates = (await Promise.all(agentProviders.map(provider => provider.launch.refreshConfiguration?.(launchComposerSettingsFrameId)))).join("");
+    return requestAcceptsJson(request) && !wantsTurboStream(request) ? "" : launchUpdates;
   }
 
   function openOldestAttentionWorkspaceEndpoint(): Response {
@@ -1264,7 +1186,6 @@ export function createWebApp(deps: WebAppDeps): WebApp {
       const commandId = routeParam(params, 1);
       return await serializePresentationMutation(workspaceId, async () => await workspaceCommandEndpoint(workspaceId, commandId, request));
     }
-    if ((params = match(/^\/workspaces\/([^/]+)\/agents\/([^/]+)\/body$/)) && request.method === "GET") return await agentBodyEndpoint(params[0], params[1]);
     if ((params = match(/^\/workspaces\/([^/]+)\/agents\/([^/]+)\/close$/)) && request.method === "POST") {
       const workspaceId = routeParam(params, 0);
       const conversationId = routeParam(params, 1);
@@ -1274,7 +1195,6 @@ export function createWebApp(deps: WebAppDeps): WebApp {
       const workspaceId = routeParam(params, 0);
       return await serializePresentationMutation(workspaceId, async () => await closeWorkViewJsonEndpoint(workspaceId, request));
     }
-    if ((params = match(/^\/workspaces\/([^/]+)\/work-views\/([^/]+)\/body$/)) && request.method === "GET") return await workViewBodyEndpoint(params[0], params[1]);
     if ((params = match(/^\/workspaces\/([^/]+)\/work-views\/(.+)\/attention\/request$/)) && request.method === "POST") {
       const workspaceId = routeParam(params, 0);
       const key = routeParam(params, 1);
@@ -1303,16 +1223,9 @@ export function createWebApp(deps: WebAppDeps): WebApp {
   }
 
   return {
-    shellSnapshot: async () => {
-      const pane = workspacePaneCollectionsTurboStream(await workspacePaneCollections(""));
-      // Readiness can change between the initial page and its Cable subscription,
-      // or while disconnected. Reconcile startup views without replacing live
-      // workspace panes (and their unsent drafts).
-      const residents = await Promise.all(registry.list().map(async (entry) =>
-        turboStream("replace", `.workspace-boot[id="${workspaceResidentId(entry.id)}"]`, await workspaceResidentFor(entry), { targets: true }),
-      ));
-      return pane + residents.join("");
-    },
+    subscribeShell: listener => shell.subscribe(listener),
+    subscribeSurface,
+    invalidateWorkspace,
     deleteCurrentWorkspaceFromAgent,
     resumeWorkspaceDeletions: deletion.resume,
     provisioning,
@@ -1342,7 +1255,11 @@ export function createWebApp(deps: WebAppDeps): WebApp {
     globalSidebarContributions,
     async fetch(request) {
       try {
-        return await route(request);
+        const result = await route(request);
+        if (request.method !== "GET" && request.method !== "HEAD") {
+          invalidateWorkspace(new URL(request.url).pathname.match(/^\/workspaces\/([^/]+)/)?.[1]);
+        }
+        return result;
       } catch (thrown) {
         const error = thrown instanceof Error ? thrown : new Error(String(thrown));
         if (error instanceof AtelierCoreError && error.code === "agent_setup_required" && !requestAcceptsJson(request)) {

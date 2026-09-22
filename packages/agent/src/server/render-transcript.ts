@@ -1,10 +1,10 @@
 import { renderStreamingMarkdownSnapshot } from "@atelier/markdown";
 import { escapeHtml } from "./html.ts";
-import { thinkingBlockRendererFor } from "./thinking-block-renderers.ts";
-import { formatDuration, formatTokens, type TranscriptItem, type WorkingTranscriptItem } from "./transcript.ts";
 import { commentaryContext, ids, sessionImageUrl, transcriptItemPath, type AgentRenderContext } from "./render-context.ts";
 import { codeBlockHtml, detailFullscreen, fullscreenAttributes, markdown, renderMarkdownRow, transcriptActionItemHtml, transcriptRow } from "./render-markup.ts";
 import { renderToolCard, renderToolDetail } from "./render-tool.ts";
+import { thinkingBlockRendererFor } from "./thinking-block-renderers.ts";
+import { formatDuration, formatTokens, type TranscriptItem, type WorkingTranscriptItem } from "./transcript.ts";
 
 export interface AgentToolDefinitionView {
   name: string;
@@ -22,7 +22,7 @@ export function renderTranscript(ctx: AgentRenderContext, items: TranscriptItem[
   return `${renderModelContextEntries(ctx, modelContext)}${items.map((item) => renderTranscriptItem(ctx, item)).join("")}<div class="agent-notices" id="${ids.notices(ctx)}"></div>`;
 }
 
-function renderModelContextEntries(ctx: AgentRenderContext, modelContext: AgentModelContextView): string {
+export function renderModelContextEntries(ctx: AgentRenderContext, modelContext: AgentModelContextView): string {
   const prompt = modelContext.systemPrompt.trim()
     ? renderLazyTranscriptEntry(ctx, "system-prompt", "System prompt") : "";
   const tools = modelContext.tools.length
@@ -31,7 +31,7 @@ function renderModelContextEntries(ctx: AgentRenderContext, modelContext: AgentM
 }
 
 function renderLazyTranscriptEntry(ctx: AgentRenderContext, key: string, label: string): string {
-  const frame = `<turbo-frame id="${ids.detailFrame(ctx, key)}" data-agent-lazy-detail-target="frame" data-src="${escapeHtml(transcriptItemPath(ctx, key))}"></turbo-frame>`;
+  const frame = `<turbo-frame id="${ids.detailFrame(ctx, key)}" data-turbo-permanent data-agent-lazy-detail-target="frame" data-src="${escapeHtml(transcriptItemPath(ctx, key))}"></turbo-frame>`;
   return transcriptRow(`<details class="agent-lazy-detail" data-controller="agent-lazy-detail" data-action="toggle->agent-lazy-detail#load">${transcriptActionItemHtml({ kind: "text", text: label }, { disclosure: true })}${frame}</details>`);
 }
 
@@ -49,7 +49,7 @@ function renderUserMessage(ctx: AgentRenderContext, user: Extract<TranscriptItem
 }
 
 function renderStreamingTextBody(ctx: AgentRenderContext, key: string, text: string, className: string): string {
-  const snapshot = renderStreamingMarkdownSnapshot(ctx.workspaceId, text);
+  const snapshot = ctx.streamingText?.(key, text) ?? renderStreamingMarkdownSnapshot(ctx.workspaceId, text);
   return `<div class="${className} agent-stream-markdown" data-controller="agent-streaming-text" id="${ids.itemText(ctx, key)}"><div id="${ids.itemTextStable(ctx, key)}">${snapshot.stableHtml}</div><div id="${ids.itemTextTail(ctx, key)}">${snapshot.tailHtml}</div></div>`;
 }
 
@@ -92,14 +92,14 @@ function renderWorkingSection(ctx: AgentRenderContext, section: WorkingTranscrip
   const commentaryHtml = section.items.filter((item) => item.type === "text").map((item) => renderTranscriptItem(commentary, item)).join("");
   const revealing = Boolean(ctx.revealTarget && section.items.some((item) => item.anchor === ctx.revealTarget || item.key === ctx.revealTarget));
   const attributes = ` data-controller="agent-turn" data-agent-turn-workspace-id-value="${escapeHtml(ctx.workspaceId)}" data-agent-turn-conversation-id-value="${escapeHtml(ctx.conversationId)}" data-agent-turn-turn-id-value="${escapeHtml(section.key)}" data-agent-turn-branch-id-value="${escapeHtml(ctx.branchId ?? "")}"${revealing ? ` open data-agent-turn-reveal-value="${escapeHtml(ctx.revealTarget!)}"` : ""} data-action="toggle->agent-turn#toggle"`;
-  return `<div class="agent-working-block" id="${ids.item(ctx, section.key)}"><details class="agent-working"${attributes}>${summary}<div class="agent-working-items" id="${ids.workingItems(ctx, section.key)}" data-agent-turn-target="items"></div></details><div class="agent-working-commentary" id="${ids.workingItems(commentary, section.key)}">${commentaryHtml}</div></div>`;
+  return `<div class="agent-working-block" id="${ids.item(ctx, section.key)}"><details class="agent-working"${attributes}>${summary}<div class="agent-working-items" id="${ids.workingItems(ctx, section.key)}" data-agent-turn-target="items" data-turbo-permanent></div></details><div class="agent-working-commentary" id="${ids.workingItems(commentary, section.key)}">${commentaryHtml}</div></div>`;
 }
 
 export function renderWorkingSummary(ctx: AgentRenderContext, section: WorkingTranscriptItem): string {
   const steeringCount = section.items.filter((item) => item.type === "user" && item.steering).length;
   const endedAt = section.completedAt ?? section.stoppedAt;
   const active = endedAt === undefined;
-  const duration = formatDuration(section.timing?.elapsedMs ?? ((endedAt ?? Date.now()) - section.startedAt));
+  const duration = formatDuration(active ? 0 : section.timing?.elapsedMs ?? (endedAt! - section.startedAt));
   const activityLabel = `${active ? "Working for" : section.completedAt !== undefined ? "Worked for" : "Stopped after"} ${duration}`;
   const status = active ? '<i class="status-dot running action-item__status" aria-label="In progress"></i>' : "";
   return transcriptActionItemHtml({ kind: "text", text: activityLabel,

@@ -226,6 +226,7 @@ function modelSetupDialog(body: string, surface: ModelSetupSurface = "dialog"): 
 async function modelSelectionDialog(provider: ProviderSummary, surface: ModelSetupSurface, error = ""): Promise<string> {
   const forgetCaption = `Forget ${provider.label.replace(" / ", "/")} credentials`;
   const disconnect = surface === "settings-dialog" ? `<form method="post" action="/settings/providers/${encodeURIComponent(provider.provider)}/disconnect?surface=${surface}" data-turbo="true">${destructiveConfirmationHtml({
+    id: `disconnect_provider_${provider.provider}_${surface}`,
     trigger: { type: "button", variant: "secondary", content: { kind: "icon-only", iconHtml: Icons.Trash, label: forgetCaption } },
     confirmCaption: forgetCaption,
     cancelCaption: "Cancel",

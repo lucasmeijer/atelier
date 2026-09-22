@@ -1,12 +1,12 @@
 import { afterEach, describe, expect, test } from "bun:test";
-import { mkdtemp, mkdir, rm, writeFile } from "node:fs/promises";
+import { mkdtemp, rm, writeFile } from "node:fs/promises";
 import { join } from "node:path";
 import { tmpdir } from "node:os";
 import { reviewCommentsPrompt, type ReviewCommentModel } from "../src/model.ts";
-import { collectReviewFile, collectReviewIndex, collectReviewStats, type ReviewFile, type ReviewFileStats } from "../src/server/diff.ts";
-import { renderReviewBody, renderReviewStatsFrame } from "../src/server/render.ts";
+import { collectReviewFile, collectReviewIndex, collectReviewStats, type ReviewFile } from "../src/server/diff.ts";
+import { renderReviewBody } from "../src/server/render.ts";
 import { readReviewSettings, updateReviewSettings } from "../src/server/settings.ts";
-import { addReviewComment, deleteReviewState, listReviewComments, remapReviewComment, updateReviewComment, type ReviewComment } from "../src/server/state.ts";
+import { addReviewComment, deleteReviewState, listReviewComments, remapReviewComment, remapReviewFileComments, updateReviewComment, type ReviewComment } from "../src/server/state.ts";
 import { command, createReviewRepository } from "./support/repository.ts";
 
 const roots: string[] = [];
@@ -176,6 +176,22 @@ describe("Review comment anchors", () => {
     return { path: comment.path, change: "modified", kind: "text", newContents: contents };
   }
 
+  test("reports persisted anchor changes only once for parent-region invalidation", () => {
+    const workspaceId = `review-remap-${crypto.randomUUID()}`;
+    try {
+      addReviewComment(workspaceId, comment);
+      expect(remapReviewFileComments(workspaceId, file("before\ntarget\nafter")).changed).toBe(false);
+      expect(remapReviewFileComments(workspaceId, file("before\nchanged\nafter")).changed).toBe(true);
+      expect(listReviewComments(workspaceId)[0]!.outdated).toBe(true);
+      expect(remapReviewFileComments(workspaceId, file("before\nchanged\nafter")).changed).toBe(false);
+      expect(remapReviewFileComments(workspaceId, file("inserted\nbefore\ntarget\nafter")).changed).toBe(true);
+      expect(listReviewComments(workspaceId)[0]).toMatchObject({ startLine: 3, endLine: 3, outdated: undefined });
+      expect(remapReviewFileComments(workspaceId, file("inserted\nbefore\ntarget\nafter")).changed).toBe(false);
+    } finally {
+      deleteReviewState(workspaceId);
+    }
+  });
+
   test("keeps exact anchors, remaps one exact match, and marks ambiguous matches outdated", () => {
     expect(remapReviewComment(comment, file("before\ntarget\nafter"))).toMatchObject({ startLine: 2, outdated: undefined });
     expect(remapReviewComment(comment, file("inserted\nbefore\ntarget\nafter"))).toMatchObject({ startLine: 3, endLine: 3, outdated: undefined });
@@ -227,26 +243,6 @@ describe("Review presentation", () => {
 
     const notGit = await renderReviewBody("workspace 1", { phase: "not-git" }, []);
     expect(notGit).toContain("No git repo in /work yet");
-  });
-
-  test("loads zero deletion stats for added files without an untracked label", () => {
-    const files: ReviewFile[] = [
-      { path: "changed.ts", change: "modified", kind: "binary" },
-      { path: "new.ts", change: "added", kind: "binary" },
-    ];
-    const fileStats: ReviewFileStats[] = [
-      { path: "changed.ts", change: "modified", additions: 1, deletions: 1 },
-      { path: "new.ts", change: "added", untracked: true, additions: 1, deletions: 0 },
-    ];
-
-    const html = renderReviewBody("workspace 1", { phase: "ready", files }, []);
-    expect(html.match(/Loading change stats/g)).toHaveLength(2);
-    expect(html).not.toContain("Untracked");
-    expect(html).not.toContain("review-additions");
-
-    const stats = renderReviewStatsFrame("workspace 1", fileStats);
-    expect(stats).toContain('<span class="review-deletions">−1</span>');
-    expect(stats).toContain('<span class="review-deletions">−0</span>');
   });
 
   test("groups comments whose anchors disappeared in a collapsed pseudo-file", async () => {

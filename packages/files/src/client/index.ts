@@ -1,7 +1,7 @@
 /// <reference lib="dom" />
 
 import { isWorkspacePaneVisible, type WorkspaceClientController, type WorkspaceClientControllerConstructor, type WorkspaceClientModule } from "@atelier/shared";
-import { installFileEditorControllers } from "./file-editor.ts";
+import { installFileEditorControllers } from "./editor-controllers.ts";
 type UploadResult = { kind: "ok" | "conflict" | "error" | "cancelled"; message?: string };
 type UploadTask = { file: File; loaded: number; xhr?: XMLHttpRequest };
 type StimulusActionEvent<EventType extends Event, CurrentTarget extends EventTarget> = EventType & {
@@ -10,12 +10,13 @@ type StimulusActionEvent<EventType extends Event, CurrentTarget extends EventTar
 
 function createFilesController(Controller: WorkspaceClientControllerConstructor): WorkspaceClientControllerConstructor {
   return class FilesController extends Controller {
-    static values = { path: String, uploadUrl: String };
+    static values = { path: String, uploadUrl: String, workspaceId: String };
     static targets = ["progress", "status"];
 
     declare readonly element: HTMLElement;
     declare readonly pathValue: string;
     declare readonly uploadUrlValue: string;
+    declare readonly workspaceIdValue: string;
     declare readonly progressTarget: HTMLElement;
     declare readonly statusTarget: HTMLElement;
 
@@ -83,10 +84,18 @@ function createFilesController(Controller: WorkspaceClientControllerConstructor)
       void this.startUpload(event, row.dataset.filesDestination!);
     }
 
-    private refresh(): void {
-      // SAFETY: The server-rendered Files browser is always owned by a Turbo Frame with the Turbo reload interface.
-      const frame = this.element.closest("turbo-frame") as HTMLElement & { reload(): void };
-      frame.reload();
+    refresh(): void {
+      this.element.querySelector<HTMLFormElement>(".files-filter")!.requestSubmit();
+    }
+
+    diskChanged(event: CustomEvent<{ workspaceId: string }>): void {
+      if (event.detail.workspaceId === this.workspaceIdValue) this.refresh();
+    }
+
+    preserveExpandedDirectories(event: FormDataEvent): void {
+      for (const row of this.element.querySelectorAll<HTMLElement>('[data-kind="directory"][aria-expanded="true"]')) {
+        event.formData.append("expanded", row.dataset.filesPath!);
+      }
     }
 
     keydown(event: KeyboardEvent): void {
@@ -140,6 +149,7 @@ function createFilesController(Controller: WorkspaceClientControllerConstructor)
         this.statusTarget.textContent = `${errors.length} ${errors.length === 1 ? "upload" : "uploads"} failed: ${errors[0]?.message ?? "Unknown error"}`;
         return;
       }
+      this.element.querySelector<HTMLElement>(".files-upload-status")!.hidden = true;
       this.refresh();
     }
 
@@ -211,7 +221,9 @@ type FilesTreeFrame = HTMLElement & {
 
 function createFilesViewController(Controller: WorkspaceClientControllerConstructor): WorkspaceClientControllerConstructor {
   return class FilesViewController extends Controller {
+    static values = { selectedPath: String };
     declare readonly element: HTMLElement;
+    declare readonly selectedPathValue: string;
 
     private pane!: HTMLElement;
 
@@ -224,6 +236,21 @@ function createFilesViewController(Controller: WorkspaceClientControllerConstruc
       this.pane.removeEventListener("atelier:workspace-pane-visible", this.becameVisible);
     }
 
+    preservePaneState(event: Event & { detail: { attributeName: string } }): void {
+      if (event.target === this.element && event.detail.attributeName === "class") event.preventDefault();
+    }
+
+    selectedPathValueChanged(): void {
+      this.updateSelection();
+    }
+
+    updateSelection(): void {
+      for (const row of this.element.querySelectorAll<HTMLElement>("[data-files-path]")) {
+        if (row.dataset.filesPath === this.selectedPathValue) row.setAttribute("aria-selected", "true");
+        else row.removeAttribute("aria-selected");
+      }
+    }
+
     private readonly becameVisible = (): void => { this.refresh(); };
 
     refresh(): void {
@@ -234,6 +261,7 @@ function createFilesViewController(Controller: WorkspaceClientControllerConstruc
 
     expand(): void {
       this.element.classList.add("is-files-pane-open");
+      this.element.querySelector<FilesTreeFrame>(".files-frame")!.loading = "eager";
     }
 
     collapse(): void {
@@ -247,7 +275,6 @@ function createFilesViewController(Controller: WorkspaceClientControllerConstruc
     async focusFilter(): Promise<void> {
       this.expand();
       const frame = this.element.querySelector<FilesTreeFrame>(".files-frame")!;
-      frame.loading = "eager";
       await frame.loaded;
       this.element.querySelector<HTMLInputElement>(".files-filter input[type='search']")!.focus();
     }

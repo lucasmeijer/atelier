@@ -694,9 +694,10 @@ export const entries: CatalogueEntry[] = [
     examples: [
       {
         title: "Animated confirmation · open, cancel or Escape, then repeat (safe demo)",
-        render: () =>
+        render: (suffix = "") =>
           '<form data-action="submit->catalogue#submit">' +
           destructiveConfirmationHtml({
+            id: `catalogue_confirm_record${suffix}`,
             trigger: {
               type: "button",
               variant: "danger",
@@ -709,8 +710,9 @@ export const entries: CatalogueEntry[] = [
       },
       {
         title: "Clipped toolbar · icon opt-out stays compact",
-        render: () => '<form data-action="submit->catalogue#submit"><div style="display:flex; align-items:center; gap:8px; overflow:hidden; height:64px; border:1px solid var(--line)"><span>Workspace</span>' +
+        render: (suffix = "") => '<form data-action="submit->catalogue#submit"><div style="display:flex; align-items:center; gap:8px; overflow:hidden; height:64px; border:1px solid var(--line)"><span>Workspace</span>' +
           destructiveConfirmationHtml({
+            id: `catalogue_confirm_workspace${suffix}`,
             trigger: { type: "button", variant: "danger", content: { kind: "icon-only", iconHtml: Icons.Close, label: "Delete workspace" } },
             confirmCaption: "Delete workspace permanently",
             cancelCaption: "Keep workspace",
@@ -718,8 +720,9 @@ export const entries: CatalogueEntry[] = [
       },
       {
         title: "A longer opt-out can grow",
-        render: () => '<form data-action="submit->catalogue#submit"><div style="display:flex; align-items:center; gap:8px">' +
+        render: (suffix = "") => '<form data-action="submit->catalogue#submit"><div style="display:flex; align-items:center; gap:8px">' +
           destructiveConfirmationHtml({
+            id: `catalogue_confirm_long_caption${suffix}`,
             trigger: { type: "button", variant: "danger", content: { kind: "caption", caption: "Delete" } },
             confirmCaption: "Confirm deletion",
             cancelCaption: "Keep record",

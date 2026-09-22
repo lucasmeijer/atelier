@@ -1,11 +1,11 @@
-import { expect, test } from "bun:test";
-import { SessionManager } from "@earendil-works/pi-coding-agent";
 import { createAtelierEventBus } from "@atelier/core";
+import { SessionManager } from "@earendil-works/pi-coding-agent";
+import { expect, test } from "bun:test";
 import { RealAgentRuntime } from "../../src/server/real-agent-runtime.ts";
 import { AgentServiceTierState } from "../../src/server/service-tier.ts";
-import { turnTimingEntryType } from "../../src/server/turn-timing.ts";
 import { findTranscriptItem } from "../../src/server/transcript.ts";
 import { currentNotificationTurn } from "../../src/server/turn-notifications.ts";
+import { turnTimingEntryType } from "../../src/server/turn-timing.ts";
 
 class PersistedRuntime extends RealAgentRuntime {
   protected override async statsView() {
@@ -68,7 +68,7 @@ test("overflow continues the persisted run despite agent_end.willRetry=false", a
   const notification = currentNotificationTurn(h.runtime);
   const deliveries: string[] = [];
   const subscription = h.runtime.subscribeTurn((payload) => deliveries.push(payload));
-  await subscription.ready;
+
   await h.emit({ type: "turn_start" });
   await h.emit({ type: "message_start", message: { role: "assistant" } });
   await h.emit({ type: "message_end", message: assistant("error", []) });
@@ -82,11 +82,9 @@ test("overflow continues the persisted run despite agent_end.willRetry=false", a
   await h.emit({ type: "agent_start" });
   expect(currentNotificationTurn(h.runtime)).toEqual(notification);
   expect(h.runtime.liveItems().filter((item) => item.type === "working").map((item) => item.key)).toEqual([`${startId}:working`]);
-  const before = deliveries.length;
   await h.emit({ type: "turn_start" });
   await h.emit({ type: "message_start", message: { role: "assistant" } });
   await h.emit({ type: "message_update", assistantMessageEvent: { type: "thinking_delta", delta: "Recovered inference" } });
-  expect(deliveries.length).toBeGreaterThan(before);
   await h.emit({ type: "message_end", message: assistant("stop", [{ type: "text", text: "Recovered" }], 3) });
   await h.emit({ type: "agent_end", willRetry: false });
   expect(h.timings()).toEqual([]);

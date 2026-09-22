@@ -92,28 +92,32 @@ export async function getDirectoryEntry(workspaceId: string, inputPath: string |
   return { ...entry, openable: false };
 }
 
-export async function listFiles(workspaceId: string, inputPath: string | null, selectedPath?: string): Promise<{ path: string; entries: FileEntry[] }> {
+export async function listFiles(workspaceId: string, inputPath: string | null, selectedPath?: string, expandedPaths: ReadonlySet<string> = new Set()): Promise<{ path: string; entries: FileEntry[] }> {
   const path = await resolveFilesDirectory(workspaceId, inputPath);
   const rawEntries = await Promise.all((await readDirectoryEntries(workspaceId, path)).map((entry) => compactDirectoryEntry(entry, (directory) => readDirectoryEntries(workspaceId, directory))));
   const entries = fileEntries(rawEntries, await openablePaths(workspaceId, rawEntries));
-  if (!selectedPath) return { path, entries };
+  if (!selectedPath && expandedPaths.size === 0) return { path, entries };
   return {
     path,
     entries: await Promise.all(entries.map(async (entry) => {
       const directoryPath = entry.directoryPath ?? entry.path;
-      if (entry.kind !== "directory" || !selectedPath.startsWith(`${directoryPath}/`)) return entry;
-      return { ...entry, children: (await listFiles(workspaceId, directoryPath, selectedPath)).entries };
+      if (entry.kind !== "directory" || (!selectedPath?.startsWith(`${directoryPath}/`) && !expandedPaths.has(entry.path))) return entry;
+      return { ...entry, children: (await listFiles(workspaceId, directoryPath, selectedPath, expandedPaths)).entries };
     })),
   };
 }
 
-export async function searchFiles(workspaceId: string, query: string): Promise<FileEntry[]> {
+export async function searchFiles(workspaceId: string, query: string, expandedPaths: ReadonlySet<string> = new Set()): Promise<FileEntry[]> {
   const literalPattern = query.replace(/[\\*?[\]]/g, "\\$&");
   const script = `find "$1" -mindepth 1 -iname "$2" -printf '%y\\0%s\\0%P\\0' | head -z -n 600`;
   const listing = await execWorkspaceCommandBuffer(workspaceId, ["sh", "-c", script, "sh", workspaceRoot, `*${literalPattern}*`]);
   if (listing.exitCode !== 0) throw new FilesPathError(listing.stderr.trim() || "Unable to search files", 403);
   const rawEntries = parseFindOutput(listing.stdout, workspaceRoot);
-  return fileEntries(rawEntries, await openablePaths(workspaceId, rawEntries));
+  const entries = fileEntries(rawEntries, await openablePaths(workspaceId, rawEntries));
+  return await Promise.all(entries.map(async (entry) => {
+    if (entry.kind !== "directory" || !expandedPaths.has(entry.path)) return entry;
+    return { ...entry, children: (await listFiles(workspaceId, entry.path, undefined, expandedPaths)).entries };
+  }));
 }
 
 export async function deleteFile(workspaceId: string, inputPath: string | null): Promise<void> {

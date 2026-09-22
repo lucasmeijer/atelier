@@ -1,6 +1,6 @@
 import { buttonHtml } from "@atelier/design-system/button";
 import { Icons } from "@atelier/design-system/icons";
-import { domId, escapeHtml, turboStream } from "./html.ts";
+import { domId, escapeHtml } from "./html.ts";
 import { agentPath, type AgentRenderContext } from "./render-context.ts";
 import { currentNotificationTurn } from "./turn-notifications.ts";
 
@@ -9,7 +9,7 @@ export function notificationFrameId(ctx: AgentRenderContext): string { return `$
 export function notificationFeedbackId(workspaceId: string, conversationId: string): string { return domId("agent_notification_feedback", workspaceId, conversationId); }
 
 export function renderAgentNotifications(ctx: AgentRenderContext): string {
-  return `<span data-controller="agent-notifications">${renderNotificationFeedback(ctx.workspaceId, ctx.conversationId)}<turbo-frame id="${notificationFrameId(ctx)}" src="${escapeHtml(agentPath(ctx, "/notification"))}"></turbo-frame></span>`;
+  return `<span data-controller="agent-notifications">${renderNotificationFeedback(ctx.workspaceId, ctx.conversationId)}${renderNotificationControl(ctx, false)}</span>`;
 }
 
 /** One dismissible surface for browser errors and server acknowledgements. */
@@ -30,8 +30,4 @@ export function renderNotificationControl(ctx: AgentRenderContext, busy: boolean
     content: { kind: "icon-only", iconHtml: Icons.Bell, label },
     attributesHtml: `aria-pressed="${armed}" data-action="click->agent-notifications#toggle" data-notification-url="${escapeHtml(agentPath(ctx, "/notification"))}" data-notification-turn="${turn?.id ?? ""}" data-notification-armed="${armed}"`,
   })}</span>`;
-}
-
-export function notificationControlTurboStream(ctx: AgentRenderContext, busy: boolean): string {
-  return turboStream("replace", notificationControlId(ctx), renderNotificationControl(ctx, busy));
 }

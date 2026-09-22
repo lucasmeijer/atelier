@@ -55,7 +55,7 @@ function renderHighlightedFence(code: string, language?: string): string {
 }
 
 function mermaidDiagram(source: string, fullscreen = false): string {
-  return `<div class="agent-mermaid-diagram${fullscreen ? " agent-mermaid-diagram-fullscreen" : ""}" data-controller="agent-mermaid"><div class="agent-mermaid-canvas" data-agent-mermaid-target="diagram" aria-busy="true"><pre data-agent-mermaid-target="source" hidden>${escapeHtml(source)}</pre></div></div>`;
+  return `<div class="agent-mermaid-diagram${fullscreen ? " agent-mermaid-diagram-fullscreen" : ""}" data-controller="agent-mermaid" data-agent-mermaid-source-value="${escapeHtml(source)}"><div class="agent-mermaid-canvas" data-agent-mermaid-target="diagram" aria-busy="true"></div></div>`;
 }
 
 function renderMermaid(source: string, filename?: string): string {

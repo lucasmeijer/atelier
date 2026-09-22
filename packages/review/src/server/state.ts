@@ -91,11 +91,18 @@ export function reconcileReviewComments(workspaceId: string, index: ReviewIndex)
   return [...state.comments];
 }
 
-export function remapReviewFileComments(workspaceId: string, file: ReviewFile): ReviewComment[] {
+export function remapReviewFileComments(workspaceId: string, file: ReviewFile) {
   const state = states.read(workspaceId);
-  state.comments = state.comments.map((comment) => comment.path === file.path ? remapReviewComment(comment, file) : comment);
-  states.write(workspaceId, state);
-  return [...state.comments];
+  let changed = false;
+  const comments = state.comments.map((comment) => {
+    if (comment.path !== file.path) return comment;
+    const mapped = remapReviewComment(comment, file);
+    if (mapped.startLine === comment.startLine && mapped.endLine === comment.endLine && mapped.outdated === comment.outdated) return comment;
+    changed = true;
+    return mapped;
+  });
+  if (changed) states.write(workspaceId, { ...state, comments });
+  return { comments, changed };
 }
 
 export function reviewCommentsForPrompt(workspaceId: string, ids: readonly string[]): ReviewComment[] {

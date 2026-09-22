@@ -8,7 +8,6 @@ import { createWorkspaceAgentTabProvider, workspaceAgentTabProvider } from "../.
 import { handleAgentRequest } from "../../src/server/routes.ts";
 import { agentAttachmentDraftId, findStagedAttachment, stageAttachment } from "@atelier/prompt/server";
 import { readInitialPromptDraft, stageInitialPrompt } from "../../src/server/initial-prompt-draft.ts";
-import { getWorkspaceAgentRuntime } from "../../src/server/runtime.ts";
 
 function deferred() {
   let resolve!: () => void;

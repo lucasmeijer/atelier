@@ -5,6 +5,7 @@
   "exports": {
     ".": "./src/index.ts",
     "./markdown-diff": "./src/markdown-diff.ts",
+    "./diff-options": "./src/diff-options.ts",
     "./pierre": "./src/pierre.ts",
     "./shader-languages": "./src/shader-languages.ts"
   },

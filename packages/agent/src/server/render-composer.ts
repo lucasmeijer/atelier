@@ -1,17 +1,15 @@
-import { renderSharedComposerSelections, renderLaunchModelSettings, type ComposerModelOption } from "@atelier/llm/server";
-import { renderAgentNotifications } from "./render-notification.ts";
-import { createPiModelRuntime, hasConnectedModelProvider, modelRefValue, parseModelRef } from "@atelier/llm/server";
 import { activityButtonHtml } from "@atelier/design-system/activity-button";
 import { buttonHtml } from "@atelier/design-system/button";
-import { renderTranscriptionComposerControl, transcriptionComposerController } from "@atelier/transcription/server";
-import { domId, escapeHtml, turboStream } from "./html.ts";
-import { launchComposerThinkingSettings, configuredModelOptionViews, selectAvailableConfiguredModel } from "./model-state.ts";
-import type { WorkspaceAgentConversationInfo } from "./session-store.ts";
+import { createPiModelRuntime, hasConnectedModelProvider, modelRefValue, parseModelRef, renderLaunchModelSettings, renderSharedComposerSelections, type ComposerModelOption } from "@atelier/llm/server";
 import { agentAttachmentDraftId, listStagedAttachments, renderAttachmentChip, renderAttachmentPicker, type StagedAttachment } from "@atelier/prompt/server";
+import { renderTranscriptionComposerControl, transcriptionComposerController } from "@atelier/transcription/server";
+import { domId, escapeHtml } from "./html.ts";
 import { readInitialPromptDraft } from "./initial-prompt-draft.ts";
-import { formatCost, formatTokens } from "./transcript.ts";
-import { renderWorkspaceCompletionCatalog } from "./completion-catalog.ts";
+import { configuredModelOptionViews, launchComposerThinkingSettings, selectAvailableConfiguredModel } from "./model-state.ts";
 import { agentConversationKey, agentPath, ids, type AgentRenderContext } from "./render-context.ts";
+import { renderAgentNotifications } from "./render-notification.ts";
+import type { WorkspaceAgentConversationInfo } from "./session-store.ts";
+import { formatCost, formatTokens } from "./transcript.ts";
 
 export interface AgentStatsView {
   contextPercent: number | null;
@@ -48,7 +46,7 @@ export async function renderAgentPane(ctx: AgentRenderContext, agent: WorkspaceA
   const initialText = initialPromptDraft?.prompt;
   const attachRowId = ids.attachRow(ctx);
   const uploadUrl = `/agent-attachment-drafts/${encodeURIComponent(draftId)}/attachments?row=${encodeURIComponent(attachRowId)}`;
-  return `<section id="${domId("agent_pane", ctx.workspaceId, agent.conversationId)}" class="agent-conversation-pane" data-agent-conversation-source="${escapeHtml(key)}">
+  return `<section id="${domId("agent_pane", ctx.workspaceId, agent.conversationId)}" data-turbo-permanent class="agent-conversation-pane" data-agent-conversation-source="${escapeHtml(key)}">
     <div class="agent-pane" id="${ids.pane(ctx)}"
       data-controller="agent-pane agent-attachments"
       data-agent-pane-workspace-id-value="${escapeHtml(ctx.workspaceId)}"
@@ -88,17 +86,8 @@ interface AgentComposerRenderOptions {
   completionCatalogHtml: string;
 }
 
-function completionCatalogClass(workspaceId: string): string {
-  return domId("agent_completion_catalog", workspaceId);
-}
-
 function renderAgentCompletionCatalog(ctx: AgentRenderContext, catalog: string): string {
-  return `<div class="${completionCatalogClass(ctx.workspaceId)}" data-agent-completions-target="catalog" hidden>${catalog}</div>`;
-}
-
-export async function renderAgentCompletionCatalogTurboStream(workspaceId: string): Promise<string> {
-  const catalog = await renderWorkspaceCompletionCatalog(workspaceId);
-  return turboStream("update", `.${completionCatalogClass(workspaceId)}`, catalog, { targets: true });
+  return `<div id="${ids.completionCatalog(ctx)}" data-agent-completions-target="catalog" hidden>${catalog}</div>`;
 }
 
 function renderAgentPaneComposer(options: AgentComposerRenderOptions): string {
