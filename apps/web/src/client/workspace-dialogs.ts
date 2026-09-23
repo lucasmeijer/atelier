@@ -139,7 +139,7 @@ const ProjectGithubSearchController = createHtmlAutocompleteController(Controlle
   request(input) {
     const query = input.value.trim();
     if (query.length < 2 || looksLikeProjectSpec(query)) return undefined;
-    return { query, debounceMs: 200 };
+    return { query, debounceMs: 700 };
   },
   select(option, input) {
     const gitUrl = option.dataset.gitUrl;

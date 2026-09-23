@@ -48,7 +48,7 @@ export async function copyTextToClipboard(text: string): Promise<void> {
 }
 
 export function looksLikeProjectSpec(value: string): boolean {
-  return /^(https?:\/\/|git@|ssh:\/\/|\/|\.\/|\.\.\/|[A-Za-z]:\\)/.test(value.trim());
+  return /^(https?:\/\/|git@|ssh:\/\/|\/|\.\/|\.\.\/|[A-Za-z]:\\|github\.com\/)/i.test(value.trim());
 }
 
 export type TurboStreamAction = "append" | "prepend" | "before" | "replace" | "update" | "remove";

@@ -134,8 +134,9 @@ export function parseProjectSpec(spec: string): { gitUrl: string; branch: string
   const trimmed = spec.trim();
   if (!trimmed) throw new AtelierCoreError("invalid_git_url", "git url is required");
 
-  const [gitUrl, branch] = trimmed.split(/#(.+)/, 2).map((part) => part.trim());
-  return gitUrl && branch ? { gitUrl, branch } : { gitUrl: trimmed, branch: null };
+  const normalized = /^github\.com\//i.test(trimmed) ? `https://${trimmed}` : trimmed;
+  const [gitUrl, branch] = normalized.split(/#(.+)/, 2).map((part) => part.trim());
+  return gitUrl && branch ? { gitUrl, branch } : { gitUrl: normalized, branch: null };
 }
 
 export async function readProjectStore(file: string): Promise<ProjectStore> {

@@ -8,6 +8,8 @@ describe("projects", () => {
   test("parseProjectSpec supports an optional #branch suffix", () => {
     expect(parseProjectSpec("https://github.com/org/repo.git#main")).toEqual({ gitUrl: "https://github.com/org/repo.git", branch: "main" });
     expect(parseProjectSpec("git@github.com:org/repo.git")).toEqual({ gitUrl: "git@github.com:org/repo.git", branch: null });
+    expect(parseProjectSpec("github.com/octocat/Hello-World")).toEqual({ gitUrl: "https://github.com/octocat/Hello-World", branch: null });
+    expect(parseProjectSpec("github.com/octocat/Hello-World#main")).toEqual({ gitUrl: "https://github.com/octocat/Hello-World", branch: "main" });
   });
 
   test("rejects malformed persisted projects", async () => {
@@ -26,6 +28,13 @@ describe("projects", () => {
     expect(result.project.branch).toBe("feature");
 
     expect(await listProjects(file)).toEqual({ projects: [result.project] });
+  });
+
+  test("addProject accepts a GitHub URL without a scheme and matches its HTTPS equivalent", async () => {
+    const file = join(await mkdtemp(join(tmpdir(), "atelier-projects-")), "projects.json");
+    const project = (await addProject("github.com/octocat/Hello-World", file)).project;
+    expect(project.gitUrl).toBe("https://github.com/octocat/Hello-World");
+    expect(addProject("https://github.com/octocat/Hello-World", file)).rejects.toThrow("project already exists");
   });
 
   test("addProject includes the branch in the name only for an existing repository", async () => {
