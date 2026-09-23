@@ -428,13 +428,15 @@ export function createWebApp(deps: WebAppDeps): WebApp {
       id: command.id, label: command.surfaces?.ui?.label ?? command.label, description: command.description, scope: command.scope, placement: command.surfaces?.ui?.placement, iconHtml: command.surfaces?.ui?.iconHtml, binding: command.surfaces?.shortcut?.defaultBinding,
     }));
     const warningState = await workspaceWarningState(entry);
+    const intent = workPresentationIntents.get(workspaceId);
+    const workPresentationIntent = intent && registry.surfaceState(workspaceId, intent.key).requestingAttention ? intent : undefined;
     const presentation: FixedWorkspacePresentation = {
       workspace: { id: entry.id, title: workspaceTitle(entry) },
       agentProviders: await orderedAgentProviders(),
       agentConversations,
       workViews: workViewPresentations(workspaceId, currentWorkViews, storedWorkViews),
       commands,
-      workPresentationIntent: workPresentationIntents.get(workspaceId),
+      workPresentationIntent,
       warningsHtml: workspaceWarningsHtml(entry.id, warningState),
       overlayHtml: attachments.flatMap((attachment) => attachment.overlayHtml ?? []),
     };

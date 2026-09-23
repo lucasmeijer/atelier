@@ -347,6 +347,14 @@ export function createWorkspacePresentationController(
       this.persist();
     }
 
+    private selectPhoneDestinationOnWorkspaceEntry(): void {
+      if (!this.isPhone) return;
+      const attention = [...this.element.querySelectorAll<HTMLElement>("[data-work-view-key][data-attention-sequence]")]
+        .sort((a, b) => Number(a.dataset.attentionSequence) - Number(b.dataset.attentionSequence))[0];
+      if (attention) this.selectWorkViewState(attention.dataset.workViewKey!, attention.dataset.workViewKind === "contextual");
+      else this.state.phoneDestination = "agents";
+    }
+
     private applyDeepLink(url = new URL(location.href)): void {
       if (!url.pathname.endsWith(`/workspaces/${encodeURIComponent(this.workspaceIdValue)}`)) return;
       const agentId = url.searchParams.get("agent");
@@ -375,7 +383,7 @@ export function createWorkspacePresentationController(
           if (url.searchParams.get("agent") !== this.state.activeAgentId) url.searchParams.delete("agentTarget");
           if (this.state.activeAgentId) url.searchParams.set("agent", this.state.activeAgentId);
           else url.searchParams.delete("agent");
-          if (this.state.workPaneVisible && this.state.activeWorkViewKey) url.searchParams.set("workView", this.state.activeWorkViewKey);
+          if (this.state.workPaneVisible && this.state.activeWorkViewKey && (!this.isPhone || this.state.phoneDestination !== "agents")) url.searchParams.set("workView", this.state.activeWorkViewKey);
           else url.searchParams.delete("workView");
           history.replaceState({}, "", url);
         }
@@ -570,8 +578,9 @@ export function createWorkspacePresentationController(
 
     private structureChanged = (): void => { this.presentationChanged(); };
     private viewportChanged = (): void => { this.applyState({ emit: true }); };
-    private residencyVisible = (): void => {
-      this.applyDeepLink();
+    private residencyVisible = (event: Event): void => {
+      if (event instanceof CustomEvent && event.detail.selectedFromList) this.selectPhoneDestinationOnWorkspaceEntry();
+      else this.applyDeepLink();
       this.persist();
       this.applyState({ emit: true });
     };

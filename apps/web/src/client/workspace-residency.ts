@@ -16,6 +16,7 @@ class WorkspaceResidencyController extends Controller<HTMLElement> {
   declare readonly loadingTargets: HTMLElement[];
   declare readonly maxResidentValue: number;
   private intended?: string;
+  private selectedFromList = false;
   private selection = 0;
   private readonly preparing = new Set<HTMLElement>();
   private retained = new Set<HTMLElement>();
@@ -52,6 +53,7 @@ class WorkspaceResidencyController extends Controller<HTMLElement> {
   }
   async selectWorkspace(workspaceId: string, href: string, historyMode: "push" | "none" = "push"): Promise<void> {
     const selection = ++this.selection;
+    this.selectedFromList = historyMode === "push" || (this.intended === workspaceId && this.selectedFromList);
     this.intended = workspaceId;
     if (historyMode === "push" && new URL(href, location.href).href !== location.href) history.pushState({}, "", href);
     workspaceNavigationController()?.setActiveWorkspace(workspaceId);
@@ -66,7 +68,8 @@ class WorkspaceResidencyController extends Controller<HTMLElement> {
     await prepareLiveSurface(resident);
     if (selection !== this.selection) return;
     const presentation = resident.querySelector<HTMLElement>("[data-controller~='workspace-presentation']");
-    presentation?.dispatchEvent(new Event("atelier:workspace-residency-visible"));
+    presentation?.dispatchEvent(new CustomEvent("atelier:workspace-residency-visible", { detail: { selectedFromList: this.selectedFromList } }));
+    this.selectedFromList = false;
     if (presentation) await controllerForElement<{ prepareIntendedSurfaces(): Promise<void> }>(presentation, "workspace-presentation")?.prepareIntendedSurfaces();
     this.changed();
     this.reportVisibility();
