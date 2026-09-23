@@ -46,6 +46,10 @@
 .status-list__item[aria-checked="true"] .status-list__marker { border-color: var(--accent); color: var(--accent); }
 .status-list__item[data-status="failed"] .status-list__marker { border-color: var(--danger); color: var(--danger); }
 .status-list__item[aria-busy="true"] .status-list__marker { border-color: var(--line-strong); border-top-color: var(--accent); color: transparent; animation: status-list-marker-spin 750ms linear infinite; }
+/* Dense progress histories retain the same semantic markers and states. */
+.status-list--compact { gap: 4px; margin-block: 0; }
+.status-list--compact .status-list__item { gap: 6px; }
+.status-list--compact .status-list__marker { width: 18px; height: 18px; }
 @keyframes status-list-marker-spin { to { transform: rotate(1turn); } }
 
 

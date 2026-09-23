@@ -21,3 +21,11 @@
 .provision-launch-prompt { width: min(720px, 100%); align-self: center; flex: 0 0 auto; display: flex; max-height: 35%; }
 .provision-launch-prompt > .panel { width: 100%; }
 .provision-launch-prompt .panel__body > p { margin: 0; white-space: pre-wrap; overflow-wrap: anywhere; }
+
+@media (max-width: 700px), (pointer: coarse) {
+  .provision-terminal.observable-terminal-host, .provision-terminal-progress { height: min(160px, 25dvh); }
+  .provision-output-log { max-height: min(160px, 25dvh); }
+  .provision-launch-prompt { max-height: min(120px, 22dvh); }
+  .provision-output-disclosure, .provision-terminal.observable-terminal-host, .provision-terminal-progress { margin-top: 6px; }
+  .provision-recovery-description, .provision-actions { margin-top: 8px; }
+}

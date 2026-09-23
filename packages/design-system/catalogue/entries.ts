@@ -1010,7 +1010,7 @@ export const entries: CatalogueEntry[] = [
     title: "Status & progress lists",
     when: "Compact status markers and multi-step summaries. Pair color with visible text.",
     contract:
-      "status-dot with success, warning, danger or running; decorative dots use aria-hidden. status-list has __item and __marker. aria-busy for running, data-status=failed for failure, aria-checked=true only with checkbox role. Reduced motion disables spinning.",
+      "status-dot with success, warning, danger or running; decorative dots use aria-hidden. status-list has __item and __marker; use status-list--compact for dense progress histories. aria-busy for running, data-status=failed for failure, aria-checked=true only with checkbox role. Reduced motion disables spinning.",
     sources: ["status/status.css"],
     examples: [
       {
