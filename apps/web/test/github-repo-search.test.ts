@@ -61,16 +61,21 @@ test("one search prioritizes private repositories among 25 matches and displays 
   expect(results).toHaveLength(12);
   expect(results[0]!.fullName).toBe("private/widget");
   expect(results.slice(1).map((repo) => repo.fullName)).toEqual(Array.from({ length: 11 }, (_, index) => `public/widget-${index}`));
-  expect(queries).toEqual(["widget in:name,description"]);
+  expect(queries).toEqual(["widget in:name"]);
   await searchGitHubRepositories(" WIDGET ");
   expect(queries).toHaveLength(1);
+});
+
+test("search excludes repositories whose names do not match the query", async () => {
+  stubSearch(() => [repository("some/not-a-repo"), repository("other/unrelated"), repository("other/not_a_repo")]);
+  expect((await searchGitHubRepositories("not-a-repo")).map((repo) => repo.fullName)).toEqual(["some/not-a-repo", "other/not_a_repo"]);
 });
 
 test("anonymous searches use one request", async () => {
   delete process.env.GH_TOKEN;
   stubSearch(() => [repository("public/anonymous-widget")]);
   expect(await searchGitHubRepositories("anonymous-widget")).toHaveLength(1);
-  expect(queries).toEqual(["anonymous-widget in:name,description"]);
+  expect(queries).toEqual(["anonymous-widget in:name"]);
 });
 
 test("rate limits remain explicit and preserve the retry delay", async () => {

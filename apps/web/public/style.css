@@ -567,7 +567,9 @@ button.settings-link:disabled { opacity: .45; cursor: default; filter: none; }
 .project-editor-detail-page .project-edit-section,.project-editor-detail-page .project-edit-config { padding:16px 0 16px; }
 .project-editor-detail-page .project-edit-form { display:grid; gap:12px; margin-top:16px; padding:0; }
 .project-editor-new-form { flex:1; display:flex; flex-direction:column; min-height:0; padding:24px 24px; }
-.project-editor-new-form footer { display:flex; justify-content:flex-end; gap:8px; margin-top:auto; padding-top:16px; }
+.project-editor-new-form > div { min-height:0; overflow-y:auto; }
+.project-github-results { position:static; width:100%; max-width:none; max-height:min(240px, 35dvh); margin-top:8px; }
+.project-editor-new-form footer { display:flex; flex:none; justify-content:flex-end; gap:8px; margin-top:auto; padding-top:16px; }
 @media(max-width:680px){.project-editor-detail-page .project-edit-form,.project-secret > label,.project-secret-requirement{grid-template-columns:1fr}}
 
 /* Pane wrappers own layout; the enclosed Panel owns its complete surface. */

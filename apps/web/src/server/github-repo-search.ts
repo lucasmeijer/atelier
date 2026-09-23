@@ -43,7 +43,7 @@ export function shouldSearchGitHubRepositories(query: string): boolean {
 
 async function searchGitHubRepositoryPage(query: string, token: string | undefined): Promise<GitHubRepositorySearchResult[]> {
   const url = new URL("https://api.github.com/search/repositories");
-  url.searchParams.set("q", `${query.trim()} in:name,description`);
+  url.searchParams.set("q", `${query.trim()} in:name`);
   url.searchParams.set("per_page", "25");
 
   const response = await fetchGitHub(url, token);
@@ -88,7 +88,9 @@ export async function searchGitHubRepositories(query: string): Promise<GitHubRep
   const cached = searchCache.get(cacheKey);
   if (cached) return cached.results;
 
+  const nameQuery = normalized.replace(/[^a-z0-9]+/g, " ").trim();
   const results = (await searchGitHubRepositoryPage(query, token))
+    .filter((repo) => nameQuery && repo.fullName.toLowerCase().replace(/[^a-z0-9]+/g, " ").includes(nameQuery))
     .sort((a, b) => Number(b.private) - Number(a.private))
     .slice(0, 12);
   searchCache.set(cacheKey, { expiresAt: Date.now() + searchCacheMs, results });
