@@ -16,6 +16,7 @@ export type ProjectStore = Static<typeof projectStoreSchema>;
 
 export interface ProjectListResult {
   projects: ProjectSummary[];
+  lastProjectlessWorkspaceCreatedAt?: number;
 }
 
 export interface AddProjectResult {
@@ -105,6 +106,7 @@ declare module "@atelier/workspace" {
 
 const projectStoreSchema = Type.Object({
   projects: Type.Array(projectRecordSchema),
+  lastProjectlessWorkspaceCreatedAt: Type.Optional(Type.Number()),
 });
 
 export function projectsFile(dataDir = getAtelierRuntimeContext().atelierDataDir): string {
@@ -236,7 +238,7 @@ export async function getProjectConfiguration(projectId: string, file = projects
 export async function listProjects(file = projectsFile()): Promise<ProjectListResult> {
   const store = await readProjectStore(file);
   const projects = [...store.projects].sort((a, b) => a.name.localeCompare(b.name) || (a.branch ?? "").localeCompare(b.branch ?? "") || a.gitUrl.localeCompare(b.gitUrl)).map(projectSummary);
-  return { projects };
+  return { projects, ...(store.lastProjectlessWorkspaceCreatedAt === undefined ? {} : { lastProjectlessWorkspaceCreatedAt: store.lastProjectlessWorkspaceCreatedAt }) };
 }
 
 export async function addProject(spec: string, file = projectsFile()): Promise<AddProjectResult> {
@@ -256,11 +258,15 @@ export async function addProject(spec: string, file = projectsFile()): Promise<A
   });
 }
 
-/** Retained on the project so parking or deleting a workspace cannot erase recency. */
-export async function recordProjectWorkspaceCreation(projectId: string, createdAt = Date.now(), file = projectsFile()): Promise<void> {
+/** Retained independently of workspaces so parking or deletion cannot erase recency. */
+export async function recordWorkspaceCreation(projectId: string | undefined, createdAt = Date.now(), file = projectsFile()): Promise<void> {
   await updateProjectStore(file, (store) => {
-    const project = findProjectRecord(store, projectId);
-    project.lastWorkspaceCreatedAt = Math.max(project.lastWorkspaceCreatedAt ?? 0, createdAt);
+    if (projectId) {
+      const project = findProjectRecord(store, projectId);
+      project.lastWorkspaceCreatedAt = Math.max(project.lastWorkspaceCreatedAt ?? 0, createdAt);
+    } else {
+      store.lastProjectlessWorkspaceCreatedAt = Math.max(store.lastProjectlessWorkspaceCreatedAt ?? 0, createdAt);
+    }
   });
 }
 

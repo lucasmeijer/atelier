@@ -1,6 +1,6 @@
 import { AtelierCoreError, collectUnpushedCommits, shellQuote, type UnpushedCommit, type AtelierEventBus, type JsonObject } from "@atelier/core";
 import { execWorkspaceShell, workspaceRoot } from "@atelier/workspace";
-import { isGitProjectInit, recordProjectWorkspaceCreation } from "./project.ts";
+import { isGitProjectInit, recordWorkspaceCreation } from "./project.ts";
 import { registerGitIdentityWorkspaceEvents } from "./git-identity.ts";
 import { registerProjectWorkspaceInitEvents } from "./workspace-source.ts";
 
@@ -51,7 +51,7 @@ export function registerProjectWorkspaceEvents(events: AtelierEventBus): void {
   registerProjectWorkspaceInitEvents(events);
   registerGitIdentityWorkspaceEvents(events);
   events.on("workspace_created", async ({ init }) => {
-    if (isGitProjectInit(init)) await recordProjectWorkspaceCreation(init.projectId);
+    await recordWorkspaceCreation(isGitProjectInit(init) ? init.projectId : undefined);
   });
   events.on("workspace_delete_inspect", async ({ workspaceId, issues }) => { issues.push(...(await inspectWorkspaceDeleteSafety(workspaceId))); });
 }

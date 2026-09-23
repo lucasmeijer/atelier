@@ -58,6 +58,7 @@ export interface WorkPaneContribution {
 
 export interface WorkspacePanePresentation {
   projects: readonly WorkspacePaneProject[];
+  lastProjectlessWorkspaceCreatedAt?: number;
   /** Already ordered by the workspace registry. */
   workspaces: readonly WorkspacePaneEntry[];
 }
@@ -125,19 +126,20 @@ function renderWorkspaceRow(workspace: WorkspacePaneEntry): string {
 
 const projectDialogTarget = 'data-turbo-frame="_top" data-turbo-stream="true"';
 
-function renderProjectHeading(project: Pick<WorkspacePaneProject, "id" | "title">, onboardingDestination?: "first-workspace"): string {
-  const id = encodeURIComponent(project.id);
-  const href = `/projects/${id}/launch-composer`;
-  const settings = actionLinkHtml({
+function renderProjectHeading(project?: Pick<WorkspacePaneProject, "id" | "title">, onboardingDestination?: "first-workspace"): string {
+  const title = project?.title ?? "Without project";
+  const id = project && encodeURIComponent(project.id);
+  const href = project ? `/projects/${id}/launch-composer` : "/launch-composer";
+  const settings = project ? actionLinkHtml({
     href: `/projects/${id}/settings`, variant: "secondary",
-    content: { kind: "icon-only", iconHtml: Icons.More, label: `Project settings: ${project.title}` },
+    content: { kind: "icon-only", iconHtml: Icons.More, label: `Project settings: ${title}` },
     attributesHtml: projectDialogTarget,
-  });
+  }) : "";
   const add = actionLinkHtml({
-    href, variant: "secondary", content: { kind: "icon-only", iconHtml: Icons.Plus, label: `New workspace: ${project.title}` },
+    href, variant: "secondary", content: { kind: "icon-only", iconHtml: Icons.Plus, label: project ? `New workspace: ${title}` : "New workspace without project" },
     attributesHtml: `data-turbo-frame="launch_composer"${onboardingDestination ? ` data-empty-workspace-onboarding-destination="${onboardingDestination}"` : ""}`,
   });
-  return actionItemHtml({ kind: "compound", label: { kind: "text", text: project.title },
+  return actionItemHtml({ kind: "compound", label: { kind: "text", text: title },
     primary: { tag: "a", attributesHtml: `href="${escapeHtml(href)}" data-turbo-frame="launch_composer"` },
     engagedActionsHtml: buttonGroupHtml({ orientation: "horizontal", semantics: "layout", itemsHtml: settings + add }),
   });
@@ -150,7 +152,11 @@ function workspaceRows(presentation: WorkspacePanePresentation): Array<{ id: str
 }
 
 function renderProjectsPane(presentation: WorkspacePanePresentation): string {
-  const paneProjects = [...presentation.projects].sort((left, right) => (right.lastWorkspaceCreatedAt ?? 0) - (left.lastWorkspaceCreatedAt ?? 0) || left.title.localeCompare(right.title));
+  const paneProjects = [
+    ...presentation.projects.map((project) => ({ project, title: project.title, lastWorkspaceCreatedAt: project.lastWorkspaceCreatedAt })),
+    { project: undefined, title: "Without project", lastWorkspaceCreatedAt: presentation.lastProjectlessWorkspaceCreatedAt },
+  ].sort((left, right) => (right.lastWorkspaceCreatedAt ?? 0) - (left.lastWorkspaceCreatedAt ?? 0) || left.title.localeCompare(right.title));
+  const firstProject = paneProjects.find((entry) => entry.project)?.project;
   const onboardingState = workspacePaneOnboardingState(presentation);
   const needsFirstProject = onboardingState === "first-project";
   const needsFirstWorkspace = onboardingState === "first-workspace";
@@ -170,9 +176,7 @@ function renderProjectsPane(presentation: WorkspacePanePresentation): string {
     element: { tag: "section", attributesHtml: 'aria-label="Projects"' },
     headerHtml: `<span class="panel__title">${Icons.Projects}Projects</span>${buttonGroupHtml({ orientation: "horizontal", semantics: "layout", itemsHtml: `${collapseProjects}${addProject}` })}`,
     bodyOverflow: "scroll",
-    bodyHtml: `<div id="workspace_projects_list" class="fixed-shell-projects-list action-list" data-projects-pane-target="list">${paneProjects.length
-      ? paneProjects.map((project, index) => renderProjectHeading(project, needsFirstWorkspace && index === 0 ? "first-workspace" : undefined)).join("")
-      : '<p class="fixed-shell-projects-empty">No projects yet, make one!<svg class="fixed-shell-projects-empty-arrow" width="40" height="36" viewBox="0 0 40 36" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true" focusable="false"><path d="M2 30 Q30 30 30 3 M24 9 L30 3 L36 9" /></svg></p>'}</div>`,
+    bodyHtml: `<div id="workspace_projects_list" class="fixed-shell-projects-list action-list" data-projects-pane-target="list">${presentation.projects.length ? "" : '<p class="fixed-shell-projects-empty">No projects yet, make one!<svg class="fixed-shell-projects-empty-arrow" width="40" height="36" viewBox="0 0 40 36" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true" focusable="false"><path d="M2 30 Q30 30 30 3 M24 9 L30 3 L36 9" /></svg></p>'}${paneProjects.map(({ project }) => renderProjectHeading(project, needsFirstWorkspace && project === firstProject ? "first-workspace" : undefined)).join("")}</div>`,
   })}</div>`;
 }
 

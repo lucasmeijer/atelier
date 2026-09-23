@@ -340,7 +340,7 @@ export function createWebApp(deps: WebAppDeps): WebApp {
   }
 
   async function workspacePaneCollections(activeWorkspaceId: string): Promise<WorkspacePanePresentation> {
-    const { projects: savedProjects } = await listProjects();
+    const { projects: savedProjects, lastProjectlessWorkspaceCreatedAt } = await listProjects();
     const projectsById = new Map<string, WorkspacePaneProject>(savedProjects.map((project) => [project.id, {
       id: project.id, title: project.name, lastWorkspaceCreatedAt: project.lastWorkspaceCreatedAt,
     }]));
@@ -365,7 +365,7 @@ export function createWebApp(deps: WebAppDeps): WebApp {
         issues: entry.issues,
       };
     });
-    return { projects: [...projectsById.values()], workspaces };
+    return { projects: [...projectsById.values()], lastProjectlessWorkspaceCreatedAt, workspaces };
   }
 
   function workViewPresentations(workspaceId: string, currentWorkViews: readonly WorkspaceWorkViewPresentation[], storedWorkViews: readonly WorkspaceWorkViewState[]): WorkPaneContribution[] {
