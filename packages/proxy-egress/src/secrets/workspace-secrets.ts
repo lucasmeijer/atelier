@@ -15,10 +15,16 @@ export type WorkspaceSecretContext = {
 
 const subscriptionSecrets: Record<string, SecretDefinition> = {};
 const requestTransforms = new Map<string, (request: Request) => Promise<Request>>();
+const responseTransforms = new Map<string, (response: Response, request: Request) => Promise<Response>>();
 
 /** Host-owned credential bridges run before ordinary secret substitution. */
 export function registerWorkspaceRequestTransform(id: string, transform: (request: Request) => Promise<Request>): void {
   requestTransforms.set(id, transform);
+  invalidateContexts();
+}
+
+export function registerWorkspaceResponseTransform(id: string, transform: (response: Response, request: Request) => Promise<Response>): void {
+  responseTransforms.set(id, transform);
   invalidateContexts();
 }
 
@@ -96,6 +102,10 @@ function buildContext(workspaceId: string, secrets: Record<string, SecretDefinit
     onRequest: async (request) => {
       for (const transform of requestTransforms.values()) request = await transform(request);
       return request;
+    },
+    onResponse: async (response, request) => {
+      for (const transform of responseTransforms.values()) response = await transform(response, request);
+      return response;
     },
   });
   return {

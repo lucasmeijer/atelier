@@ -14,6 +14,7 @@ export { proxyEgressServerModule as atelierServerModule };
 export {
   registerWorkspaceSubscriptionSecrets,
   registerWorkspaceRequestTransform,
+  registerWorkspaceResponseTransform,
   clearWorkspaceGitHubToken,
   createWorkspaceSecretContext,
   discoverHostGitHubToken,

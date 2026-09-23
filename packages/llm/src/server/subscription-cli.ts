@@ -1,7 +1,7 @@
 import { Type } from "typebox";
 import { Value } from "typebox/value";
 import { shellQuote } from "@atelier/core";
-import { registerWorkspaceSubscriptionSecrets } from "@atelier/proxy-egress/server";
+import { registerWorkspaceResponseTransform, registerWorkspaceSubscriptionSecrets } from "@atelier/proxy-egress/server";
 import { execWorkspaceCommand, listWorkspaces } from "@atelier/workspace";
 import type { ModelRuntime } from "@earendil-works/pi-coding-agent";
 
@@ -15,16 +15,41 @@ export function registerSubscriptionCli(getRuntime: () => Promise<ModelRuntime>)
     if (auth?.source !== "OAuth" || !auth.auth.apiKey) throw new Error(`Connect a ${provider} subscription in Atelier to use this CLI.`);
     return auth.auth.apiKey;
   }
+  registerWorkspaceResponseTransform("codex-accounts-check", async (response, request) => {
+    if (new URL(request.url).hostname !== "chatgpt.com" || !["/api/codex/accounts/check", "/backend-api/wham/accounts/check"].includes(new URL(request.url).pathname) || !response.ok) return response;
+    const accountId = codexAccountId(await subscriptionToken("openai-codex"));
+    return maskCodexAccountDiscovery(response, accountId);
+  });
   registerWorkspaceSubscriptionSecrets({
     codexSubscription: { placeholder: codexToken, hosts: ["chatgpt.com"], value: "", resolve: () => subscriptionToken("openai-codex") },
     codexAccount: { placeholder: codexAccount, hosts: ["chatgpt.com"], value: "", resolve: async () => {
       const token = await subscriptionToken("openai-codex");
-      const claims = JSON.parse(Buffer.from(token.split(".")[1]!, "base64url").toString());
-      const account = Value.Parse(Type.Object({ "https://api.openai.com/auth": Type.Object({ chatgpt_account_id: Type.String({ minLength: 1 }) }) }), claims)["https://api.openai.com/auth"].chatgpt_account_id;
-      return account;
+      return codexAccountId(token);
     } },
     anthropicSubscription: { placeholder: anthropicToken, hosts: ["api.anthropic.com"], value: "", resolve: () => subscriptionToken("anthropic") },
   });
+}
+
+function codexAccountId(token: string): string {
+  const claims = JSON.parse(Buffer.from(token.split(".")[1]!, "base64url").toString());
+  return Value.Parse(Type.Object({ "https://api.openai.com/auth": Type.Object({ chatgpt_account_id: Type.String({ minLength: 1 }) }) }), claims)["https://api.openai.com/auth"].chatgpt_account_id;
+}
+
+/** Codex 0.154+ checks that its selected account appears in accounts/check.
+ * Keep the real account ID in the host: translate that endpoint's selected ID
+ * back to the placeholder in the response, just as requests translate it out.
+ */
+export async function maskCodexAccountDiscovery(response: Response, accountId: string): Promise<Response> {
+  const payload: unknown = await response.clone().json().catch(() => null);
+  if (!Value.Check(Type.Object({ accounts: Type.Array(Type.Object({ id: Type.String() })) }), payload)) return response;
+  for (const account of payload.accounts) if (account.id === accountId) account.id = codexAccount;
+  const discovery = payload as typeof payload & { account_ordering?: string[]; default_account_id?: string };
+  if (Array.isArray(discovery.account_ordering)) discovery.account_ordering = discovery.account_ordering.map(id => id === accountId ? codexAccount : id);
+  if (discovery.default_account_id === accountId) discovery.default_account_id = codexAccount;
+  const headers = new Headers(response.headers);
+  headers.delete("content-length");
+  headers.delete("content-encoding");
+  return new Response(JSON.stringify(payload), { status: response.status, statusText: response.statusText, headers });
 }
 
 // Only placeholders enter the sandbox. Pi owns refresh tokens and refresh serialization.
