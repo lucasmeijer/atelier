@@ -268,10 +268,6 @@ function createFilesViewController(Controller: WorkspaceClientControllerConstruc
       this.element.classList.remove("is-files-pane-open");
     }
 
-    selectFile(): void {
-      this.collapse();
-    }
-
     async focusFilter(): Promise<void> {
       this.expand();
       const frame = this.element.querySelector<FilesTreeFrame>(".files-frame")!;
