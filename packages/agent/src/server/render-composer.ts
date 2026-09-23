@@ -143,7 +143,7 @@ function renderTranscriptEndNavigation(): string {
 }
 
 export function renderPromptActions(ctx: AgentRenderContext | undefined, busy: boolean): string {
-  const initialLabel = busy ? "Deliver a steering note while the agent keeps working" : "Send prompt";
+  const initialLabel = busy ? "Steer agent" : "Send prompt";
   const activeLabel = "Agent is working — click to stop";
   const state = busy ? "active" : "initial";
   const paneAttrs = ctx
@@ -159,7 +159,7 @@ export function renderPromptActions(ctx: AgentRenderContext | undefined, busy: b
     state,
     initialContent: { kind: "html", html: '<svg viewBox="0 0 20 20" aria-hidden="true"><path d="M10 15V5m-4 4 4-4 4 4"/></svg>' },
     activeContent: { kind: "html", html: '<svg viewBox="0 0 20 20" aria-hidden="true"><rect x="6" y="6" width="8" height="8" rx="1.5" fill="currentColor" stroke="none"/></svg>' },
-    attributesHtml: `data-popular-button ${actionAttrs}${paneAttrs}`,
+    attributesHtml: `data-controller="perimeter-button" data-popular-button ${actionAttrs}${paneAttrs}`,
   });
 }
 
