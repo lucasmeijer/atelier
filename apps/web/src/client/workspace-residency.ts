@@ -82,6 +82,7 @@ class WorkspaceResidencyController extends Controller<HTMLElement> {
     history.replaceState({}, "", "/");
     this.hideResidents();
     this.emptyTargets.forEach(element => { element.hidden = false; });
+    workspaceNavigationController()?.showWorkspacePane();
     this.changed();
     this.reportVisibility();
   }
