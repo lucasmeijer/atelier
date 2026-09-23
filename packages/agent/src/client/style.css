@@ -255,6 +255,9 @@
 .agent-tool-detail .agent-tool-region-body { padding: 8px; color: var(--text-bright); background: color-mix(in srgb, var(--bg) 58%, #000 12%); font-family: var(--font-mono); font-size: var(--text-code); }
 .agent-bash-command .agent-tool-code { max-height: none; overflow: visible; white-space: pre-wrap; overflow-wrap: anywhere; }
 .agent-terminal-viewport { overflow: auto; background: color-mix(in srgb, var(--bg) 70%, #000 7%); }
+/* The bash visualizer is display-only: dragging it should scroll the transcript,
+   not start a Gespenst text selection (or block touch panning). */
+.agent-tool-term .gespenst { pointer-events: none; }
 .agent-tool-result { margin: 0; padding: 8px 8px; max-height: 330px; overflow: auto; white-space: pre; color: var(--text-bright); background: color-mix(in srgb, var(--bg) 58%, #000 12%); font-family: var(--font-mono); font-size: var(--text-code); }
 .agent-tail-output { max-height: 330px; overflow: auto; background: color-mix(in srgb, var(--bg) 58%, #000 12%); }
 .agent-tail-output > .agent-tool-result, .agent-tail-output > .agent-tool-code { max-height: none; overflow: visible; }
