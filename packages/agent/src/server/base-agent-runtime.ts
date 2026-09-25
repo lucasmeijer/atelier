@@ -106,7 +106,7 @@ export abstract class BaseAgentRuntime implements WorkspaceAgentRuntime {
     { target: notificationControlId(this.ctx), html: renderNotificationControl(this.ctx, this.isStreaming), action: "replace" },
     { target: ids.actions(this.ctx), html: renderPromptActions(this.ctx, this.isStreaming) },
     { target: ids.completionCatalog(this.ctx), html: this.completionCatalogHtml },
-    { target: ids.stats(this.ctx), html: renderAgentPaneComposerFooter(this.ctx, this.footer) },
+    { target: ids.stats(this.ctx), html: renderAgentPaneComposerFooter(this.ctx, this.footer), morph: false },
   ], liveContentFlushIntervalMs);
 
   private renderContext(): AgentRenderContext {

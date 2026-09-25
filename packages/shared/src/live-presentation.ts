@@ -5,6 +5,8 @@ export interface LiveRegion {
   target: string;
   html: string;
   action?: "update" | "replace";
+  /** Replace this region's children rather than morphing client-enhanced markup. */
+  morph?: boolean;
   /** Append-only HTML prefix. Resetting the prefix sends an authoritative replacement. */
   appendOnly?: boolean;
   children?: readonly LiveRegion[];
@@ -21,7 +23,7 @@ function regionStreams(regions: readonly LiveRegion[], previous: Map<string, str
     const changed = snapshot || before !== region.html;
     if (changed) {
       const append = !snapshot && region.appendOnly && before !== undefined && region.html.startsWith(before);
-      html += turboStream(append ? "append" : region.action ?? "update", region.target, append ? region.html.slice(before.length) : region.html, append ? {} : { method: "morph" });
+      html += turboStream(append ? "append" : region.action ?? "update", region.target, append ? region.html.slice(before.length) : region.html, append || region.morph === false ? {} : { method: "morph" });
       previous.set(region.target, region.html);
     }
     if (region.children) html += regionStreams(region.children, previous, changed);

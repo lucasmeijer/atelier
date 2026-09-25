@@ -52,7 +52,7 @@ export function renderSharedComposerSelections(options: SharedComposerSelections
     ? ` data-controller="composer-selection-autosubmit" data-composer-selection-autosubmit-form-id-value="${escapeHtml(options.thinkingFormId)}" data-action="change->composer-selection-autosubmit#submit"`
     : "";
   const thinkingSelection = options.thinkingLevels.length > 0
-    ? `<span class="composer-selection-field"${autosubmit}><select class="composer-selection popup-select" data-popup-placement="above" name="level" form="${escapeHtml(options.thinkingFormId)}" title="Thinking level">${options.thinkingLevels.map((level) => `<option value="${escapeHtml(level)}"${level === options.selectedThinkingLevel ? " selected" : ""}>${escapeHtml(level)}</option>`).join("")}</select></span>`
+    ? `<span class="composer-selection-field"${autosubmit}><select class="composer-selection popup-select" data-controller="popup-select" data-popup-placement="above" name="level" form="${escapeHtml(options.thinkingFormId)}" title="Thinking level">${options.thinkingLevels.map((level) => `<option value="${escapeHtml(level)}"${level === options.selectedThinkingLevel ? " selected" : ""}>${escapeHtml(level)}</option>`).join("")}</select></span>`
     : "";
   const ready = options.models.some((model) => model.selected && model.available !== false);
   return `<span class="composer-selections" data-model-ready="${ready}">
